@@ -861,6 +861,22 @@ impl Tensor {
     pub fn ones_like<T: TensorDType>(&self) -> Tensor {
         Self::ones::<T>(self.shape(), self.device())
     }
+
+    fn trilu(self, upper: bool, k: Option<i32>) -> anyhow::Result<Tensor> {
+        let device = self.device.clone();
+        let trilu = Trilu::new(self, upper, k);
+        let new_view = trilu.compute_view()?;
+        Ok(Tensor::lazy(LazyOp::Trilu(trilu), new_view, device, false))
+    }
+
+    pub fn triu(self, k: Option<i32>) -> anyhow::Result<Tensor> {
+        self.trilu(true, k)
+    }
+
+    pub fn tril(self, k: Option<i32>) -> anyhow::Result<Tensor> {
+        self.trilu(false, k)
+    }
+
     /// Returns true if the data is stored in a C contiguous (aka row major) way.
     pub fn is_contiguous(&self) -> bool {
         self.view.is_contiguous()
@@ -1149,6 +1165,7 @@ impl Tensor {
             LazyOp::Conv(c) => c.compile_gpu(self, uniform, device, can_ip, debug).ok(),
             LazyOp::Select(i) => i.compile_gpu(self, uniform, device, can_ip, debug).ok(),
             LazyOp::IndexWrite(i) => i.compile_gpu(self, uniform, device, can_ip, debug).ok(),
+            LazyOp::Trilu(t) => t.compile_gpu(self, uniform, device, can_ip, debug).ok(),
             LazyOp::Cache(c) => c.compile_gpu(self, uniform, device, can_ip, debug).ok(),
             LazyOp::Detach(d) => self.compile_gpu_for_op(d, uniform, device, can_ip, debug),
             LazyOp::FillConstant(f) => f.compile_gpu(self, uniform, device, can_ip, debug).ok(),

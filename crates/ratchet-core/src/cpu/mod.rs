@@ -34,6 +34,7 @@ pub fn apply_operation(op: LazyOp, dst: Tensor) -> Result<Tensor, OperationError
         LazyOp::Select(i) => cpu_index_select(i, dst),
         LazyOp::IndexWrite(_i) => todo!(),
         LazyOp::Cache(_c) => todo!(),
+        LazyOp::Trilu(_t) => todo!(),
         LazyOp::Const => todo!(),
         LazyOp::View(_) => todo!(),
         LazyOp::WhereCond(_w) => todo!(),
