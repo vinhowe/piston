@@ -155,6 +155,9 @@ impl Kernel for ReindexKernels {
             (DType::F16, KernelElement::Scalar) => {
                 self.render::<Scalar<f16>>(inplace, dst, workgroup_size)
             }
+            (DType::I32, KernelElement::Scalar) => {
+                self.render::<Scalar<i32>>(inplace, dst, workgroup_size)
+            }
             _ => Err(OperationError::CompileError(format!(
                 "Unsupported dtype {:?} or kernel element {:?}",
                 dst.dt(),
