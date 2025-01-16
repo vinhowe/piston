@@ -42,6 +42,7 @@ pub enum LazyOp {
     Select(IndexSelect),    //Can probably be Reindex
     IndexWrite(IndexWrite), //Above 2 should be merged
     Cache(Cache),           //Should be a general class
+    Detach(Box<LazyOp>), //Because the entire graph is lazy, you can't actually detach something without computing the graph in parts
 }
 
 impl LazyOp {
@@ -67,6 +68,7 @@ impl LazyOp {
             LazyOp::Cache(c) => c.name(),
             LazyOp::View(v) => v.name(),
             LazyOp::Const => "Const",
+            LazyOp::Detach(_) => "Detach",
         }
     }
 
@@ -89,6 +91,7 @@ impl LazyOp {
             LazyOp::Select(s) => s.srcs(),
             LazyOp::IndexWrite(iw) => iw.srcs(),
             LazyOp::Cache(c) => c.srcs(),
+            LazyOp::Detach(d) => d.srcs(),
             LazyOp::FillConstant(_) | LazyOp::FillRandn(_) | LazyOp::Const => rvec![], //end of the line kid
         }
     }
@@ -115,6 +118,7 @@ impl LazyOp {
             LazyOp::Cache(c) => c.supports_inplace(),
             LazyOp::View(_v) => true,
             LazyOp::Const => false,
+            LazyOp::Detach(d) => d.supports_inplace(),
         }
     }
 
@@ -140,6 +144,7 @@ impl LazyOp {
             LazyOp::Cache(c) => c.supports_out_of_place(),
             LazyOp::View(v) => false,
             LazyOp::Const => false,
+            LazyOp::Detach(d) => d.supports_out_of_place(),
         }
     }
 
@@ -174,6 +179,7 @@ impl LazyOp {
             LazyOp::Cache(c) => c.check_invariants(),
             LazyOp::View(v) => v.check_invariants(),
             LazyOp::Const => {}
+            LazyOp::Detach(d) => d.check_invariants(),
         }
     }
 }

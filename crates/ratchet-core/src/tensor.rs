@@ -948,6 +948,26 @@ impl Tensor {
         ))
     }
 
+    /// Returns a new tensor detached from the current graph, gradient are not propagated through
+    /// this new node. The storage of this tensor is shared with the initial tensor.
+    ///
+    /// If the tensor is already detached from the computation graph, the same tensor is returned.
+    pub fn detach(&self) -> Tensor {
+        match self.op {
+            LazyOp::Const if !self.is_variable => self.clone(),
+            _ => {
+                let storage_guard = self.storage();
+                let storage = storage_guard.as_ref().and_then(|s| Some(s.clone()));
+                Self::new(
+                    LazyOp::Detach(Box::new(self.op().clone())),
+                    self.view.clone(),
+                    storage,
+                    self.device.clone(),
+                )
+            }
+        }
+    }
+
     pub(crate) fn same_storage(&self, rhs: &Self) -> bool {
         match (self.storage().as_ref(), rhs.storage().as_ref()) {
             (Some(lhs), Some(rhs)) => std::ptr::eq(lhs, rhs),
@@ -1105,14 +1125,15 @@ impl Tensor {
         order
     }
 
-    pub fn compile_gpu(
+    pub fn compile_gpu_for_op(
         &self,
+        op: &LazyOp,
         uniform: &mut CpuUniform,
         device: &WgpuDevice,
         can_ip: bool,
         debug: bool,
     ) -> Option<CompiledOp> {
-        match self.op() {
+        match op {
             LazyOp::Binary(b) => b.compile_gpu(self, uniform, device, can_ip, debug).ok(),
             LazyOp::Cast(c) => c.compile_gpu(self, uniform, device, can_ip, debug).ok(),
             LazyOp::Matmul(m) => m.compile_gpu(self, uniform, device, can_ip, debug).ok(),
@@ -1129,6 +1150,7 @@ impl Tensor {
             LazyOp::Select(i) => i.compile_gpu(self, uniform, device, can_ip, debug).ok(),
             LazyOp::IndexWrite(i) => i.compile_gpu(self, uniform, device, can_ip, debug).ok(),
             LazyOp::Cache(c) => c.compile_gpu(self, uniform, device, can_ip, debug).ok(),
+            LazyOp::Detach(d) => self.compile_gpu_for_op(d, uniform, device, can_ip, debug),
             LazyOp::FillConstant(f) => f.compile_gpu(self, uniform, device, can_ip, debug).ok(),
             LazyOp::FillRandn(f) => f.compile_gpu(self, uniform, device, can_ip, debug).ok(),
             LazyOp::Const => None,
@@ -1138,6 +1160,16 @@ impl Tensor {
 
     pub fn cpu_apply(self, dst: Tensor) -> Option<Tensor> {
         cpu::apply_operation(self.op().clone(), dst).ok()
+    }
+
+    pub fn compile_gpu(
+        &self,
+        uniform: &mut CpuUniform,
+        device: &WgpuDevice,
+        can_inplace: bool,
+        debug: bool,
+    ) -> Option<CompiledOp> {
+        self.compile_gpu_for_op(&self.op, uniform, device, can_inplace, debug)
     }
 
     fn resolve_inner(self, debug: bool) -> Result<Tensor, TensorError> {
