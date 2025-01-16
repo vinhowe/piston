@@ -4,12 +4,11 @@ use crate::{DType, Shape};
 
 #[derive(Debug, thiserror::Error)]
 pub enum InvariantError {
-    #[error("Shape mismatch at {left},{right}, {a} != {b}.")]
-    ShapeMismatch {
-        left: usize,
-        right: usize,
-        a: usize, //TODO: RDim
-        b: usize,
+    #[error("Shape mismatch in {op}: lhs: {lhs:?}, rhs: {rhs:?}.")]
+    ShapeMismatchBinaryOp {
+        lhs: Shape,
+        rhs: Shape,
+        op: &'static str,
     },
     #[error("Rank mismatch. {accepted:?} != {actual}.")]
     RankMismatch {
