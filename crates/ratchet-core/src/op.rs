@@ -363,6 +363,7 @@ pub trait Operation: OpGuards + Debug + 'static {
     ///
     /// Determine if the operation can be performed out-of-place.
     fn supports_out_of_place(&self) -> bool {
+        // We assume that all operations can be done out-of-place.
         true
     }
 }
