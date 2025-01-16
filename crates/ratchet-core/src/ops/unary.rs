@@ -68,8 +68,8 @@ impl UnaryOp {
 
 #[derive(new, Debug, Clone)]
 pub struct Unary {
-    input: Tensor,
-    op: UnaryOp,
+    pub input: Tensor,
+    pub op: UnaryOp,
 }
 
 impl KernelRenderable for UnaryKernels {

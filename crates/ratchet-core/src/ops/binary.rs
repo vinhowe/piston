@@ -45,9 +45,9 @@ impl BinaryOp {
 
 #[derive(new, Debug, Clone)]
 pub struct Binary {
-    lhs: Tensor,
-    rhs: Tensor,
-    op: BinaryOp,
+    pub lhs: Tensor,
+    pub rhs: Tensor,
+    pub op: BinaryOp,
 }
 
 impl KernelRenderable for BinaryKernels {

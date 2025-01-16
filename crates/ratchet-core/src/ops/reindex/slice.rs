@@ -22,7 +22,7 @@ pub struct SliceMeta {
 #[derive(derive_new::new, Debug, Clone)]
 pub struct Slice {
     pub src: Tensor,
-    indices: RVec<Range<usize>>,
+    pub indices: RVec<Range<usize>>,
 }
 
 impl Slice {

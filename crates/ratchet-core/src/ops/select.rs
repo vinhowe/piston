@@ -13,9 +13,9 @@ use inline_wgsl::wgsl;
 
 #[derive(new, Debug, Clone)]
 pub struct IndexSelect {
-    src: Tensor,
-    indices: Tensor,
-    dim: usize,
+    pub src: Tensor,
+    pub indices: Tensor,
+    pub dim: usize,
 }
 
 impl IndexSelect {

@@ -14,11 +14,11 @@ use inline_wgsl::wgsl;
 
 #[derive(new, Debug, Clone)]
 pub struct Conv {
-    input: Tensor,
-    weight: Tensor,
-    bias: Option<Tensor>,
-    stride: usize,
-    padding: usize,
+    pub input: Tensor,
+    pub weight: Tensor,
+    pub bias: Option<Tensor>,
+    pub stride: usize,
+    pub padding: usize,
     //dilation: usize, TODO: implement dilation
 }
 

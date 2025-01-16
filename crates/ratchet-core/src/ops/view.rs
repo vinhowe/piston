@@ -2,8 +2,8 @@ use crate::{rvec, OpGuards, Operation, Shape, StorageView, Strides, Tensor};
 
 #[derive(Debug, derive_new::new, Clone)]
 pub struct View {
-    src: Tensor,
-    shape: Shape,
+    pub(crate) src: Tensor,
+    pub(crate) shape: Shape,
 }
 
 impl View {
