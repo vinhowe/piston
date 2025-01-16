@@ -110,6 +110,7 @@ impl LazyOp {
             LazyOp::Trilu(t) => t.srcs(),
             LazyOp::Cache(c) => c.srcs(),
             LazyOp::Detach(d) => d.srcs(),
+            LazyOp::View(v) => v.srcs(),
             LazyOp::FillConstant(_) | LazyOp::FillRandn(_) | LazyOp::Const => rvec![], //end of the line kid
         }
     }
@@ -172,7 +173,7 @@ impl LazyOp {
             LazyOp::FillConstant(fc) => fc.supports_out_of_place(),
             LazyOp::FillRandn(fr) => fr.supports_out_of_place(),
             LazyOp::Cache(c) => c.supports_out_of_place(),
-            LazyOp::View(v) => false,
+            LazyOp::View(_v) => false,
             LazyOp::Const => false,
             LazyOp::Detach(d) => d.supports_out_of_place(),
         }
