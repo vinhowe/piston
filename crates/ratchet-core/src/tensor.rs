@@ -811,6 +811,33 @@ impl Tensor {
         ))
     }
 
+    pub fn arange(start: i32, end: i32, device: Device) -> anyhow::Result<Tensor> {
+        Self::arange_step(start, end, 1i32, device)
+    }
+
+    /// Creates a new 1D tensor with values from the interval `[start, end)` taken with a common
+    /// difference `step` from `start`.
+    pub fn arange_step(start: i32, end: i32, step: i32, device: Device) -> anyhow::Result<Tensor> {
+        if step == 0 {
+            anyhow::bail!("step cannot be zero")
+        }
+        let mut data = vec![];
+        let mut current = start;
+        if step >= 0i32 {
+            while current < end {
+                data.push(current);
+                current += step;
+            }
+        } else {
+            while current > end {
+                data.push(current);
+                current += step;
+            }
+        }
+        let len = data.len();
+        Ok(Tensor::from_data(data, shape![len], device))
+    }
+
     #[cfg(feature = "rand")]
     pub(crate) fn randint_impl<T: TensorDType + rand_distr::uniform::SampleUniform + PartialOrd>(
         low: T,
