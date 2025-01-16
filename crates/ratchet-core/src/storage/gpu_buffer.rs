@@ -6,6 +6,7 @@ use crate::{
 };
 
 use bytemuck::NoUninit;
+use half::f16;
 use maybe_async::maybe_async;
 use wgpu::BufferUsages;
 
@@ -36,6 +37,18 @@ impl GPUBuffer {
             T::dt().size_of(),
             device,
         )
+    }
+
+    pub fn ones<T: TensorDType>(shape: &Shape, device: &WgpuDevice) -> Self {
+        match T::dt() {
+            DType::Q8_0H(_) => Self::from_slice(&vec![1u8; shape.numel()], shape, device),
+            DType::Q8_0F(_) => Self::from_slice(&vec![1u8; shape.numel()], shape, device),
+            DType::F16 => Self::from_slice(&vec![f16::from_f32(1.0); shape.numel()], shape, device),
+            DType::F32 => Self::from_slice(&vec![1f32; shape.numel()], shape, device),
+            DType::I32 => Self::from_slice(&vec![1i32; shape.numel()], shape, device),
+            DType::U32 => Self::from_slice(&vec![1u32; shape.numel()], shape, device),
+            _ => unimplemented!(),
+        }
     }
 
     /// # Safety

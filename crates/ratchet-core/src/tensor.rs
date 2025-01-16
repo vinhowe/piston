@@ -66,6 +66,28 @@ impl Tensor {
         Self::new_impl(op, meta, storage, device, false)
     }
 
+    pub(crate) fn full_impl(shape: &Shape, value: f32, device: &Device, is_variable: bool) -> Self {
+        let meta = StorageView {
+            shape: shape.clone(),
+            dt: DType::F32,
+            strides: Strides::from(&shape.clone()),
+        };
+        Self::new_impl(
+            LazyOp::FillConstant(FillConstant {
+                shape: shape.to_vec(),
+                value,
+            }),
+            meta,
+            None,
+            device.clone(),
+            is_variable,
+        )
+    }
+
+    pub fn full(shape: &Shape, value: f32, device: &Device) -> Self {
+        Self::full_impl(shape, value, device, false)
+    }
+
     #[track_caller]
     fn lazy(op: LazyOp, meta: StorageView, device: Device, is_variable: bool) -> Self {
         op.check_invariants();
@@ -657,6 +679,31 @@ impl Tensor {
         Self::zeros_impl::<T>(shape, device, false)
     }
 
+    pub(crate) fn ones_impl<T: TensorDType>(
+        shape: &Shape,
+        device: &Device,
+        is_variable: bool,
+    ) -> Tensor {
+        if device.is_cpu() {
+            let storage = Storage::ones::<T>(shape, device);
+            let strides = Strides::from(shape);
+            let meta = StorageView::new(shape.clone(), T::dt(), strides);
+            Tensor::new_impl(
+                LazyOp::Const,
+                meta,
+                Some(storage),
+                device.clone(),
+                is_variable,
+            )
+        } else {
+            Self::full_impl(shape, 1.0, device, is_variable)
+        }
+    }
+
+    pub fn ones<T: TensorDType>(shape: &Shape, device: &Device) -> Tensor {
+        Self::ones_impl::<T>(&shape, &device, false)
+    }
+
     pub fn has_nan<T: TensorDType + num_traits::Float>(&self) -> bool {
         assert!(self.device().is_cpu());
         let self_nd = self.to_ndarray_view::<T>();
@@ -897,6 +944,7 @@ impl Tensor {
             LazyOp::Select(i) => i.compile_gpu(self, uniform, device, can_ip, debug).ok(),
             LazyOp::IndexWrite(i) => i.compile_gpu(self, uniform, device, can_ip, debug).ok(),
             LazyOp::Cache(c) => c.compile_gpu(self, uniform, device, can_ip, debug).ok(),
+            LazyOp::FillConstant(f) => f.compile_gpu(self, uniform, device, can_ip, debug).ok(),
             LazyOp::Const => None,
             LazyOp::View(_) => None,
         }

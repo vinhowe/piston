@@ -105,6 +105,18 @@ impl CPUBuffer {
         Self::new(raw)
     }
 
+    pub fn ones<T: TensorDType>(shape: &Shape) -> Self {
+        match T::dt() {
+            DType::Q8_0H(_) => Self::from_slice(&vec![1u8; shape.numel()], shape),
+            DType::Q8_0F(_) => Self::from_slice(&vec![1u8; shape.numel()], shape),
+            DType::F16 => Self::from_slice(&vec![f16::from_f32(1.0); shape.numel()], shape),
+            DType::I32 => Self::from_slice(&vec![1i32; shape.numel()], shape),
+            DType::F32 => Self::from_slice(&vec![1.0f32; shape.numel()], shape),
+            DType::U32 => Self::from_slice(&vec![1u32; shape.numel()], shape),
+            _ => unimplemented!("Unable to create ones for {:?}", T::dt()),
+        }
+    }
+
     pub fn from_disk<T: TensorDType, R: std::io::BufRead + std::io::Seek>(
         reader: &mut R,
         shape: &Shape,

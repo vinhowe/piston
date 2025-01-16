@@ -34,6 +34,7 @@ pub fn apply_operation(op: LazyOp, dst: Tensor) -> Result<Tensor, OperationError
         LazyOp::Cache(_c) => todo!(),
         LazyOp::Const => todo!(),
         LazyOp::View(_) => todo!(),
+        LazyOp::FillConstant(_f) => todo!(),
     }
 }
 

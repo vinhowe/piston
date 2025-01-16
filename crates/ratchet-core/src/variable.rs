@@ -23,6 +23,16 @@ impl std::ops::Deref for Var {
 }
 
 impl Var {
+    pub fn zeros<T: TensorDType>(shape: &Shape, device: &Device) -> Self {
+        let inner = Tensor::zeros_impl::<T>(shape, device, true);
+        Self(inner)
+    }
+
+    pub fn ones<T: TensorDType>(shape: &Shape, device: &Device) -> Self {
+        let inner = Tensor::ones_impl::<T>(shape, device, true);
+        Self(inner)
+    }
+
     // Convert a tensor to a variable, if the tensor is already a variable then it is returned as is.
     pub fn from_tensor(t: &Tensor) -> Result<Self> {
         if t.is_variable() {
