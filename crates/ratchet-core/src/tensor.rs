@@ -730,6 +730,22 @@ impl Tensor {
         Ok(Tensor::lazy(LazyOp::Concat(cat), new_view, device, false))
     }
 
+    pub fn stack(tensors: RVec<Tensor>, dim: usize) -> anyhow::Result<Tensor> {
+        match tensors.len() {
+            0 => anyhow::bail!("Cannot stack empty list of tensors"),
+            1 => Ok(tensors[0].clone().unsqueeze(dim)?),
+            _ => {
+                let device = tensors[0].device.clone();
+                assert!(tensors.iter().all(|t| t.device == device), "Mixed devices");
+                let tensors = tensors
+                    .iter()
+                    .map(|t| t.clone().unsqueeze(dim))
+                    .collect::<anyhow::Result<_>>()?;
+                Tensor::cat(tensors, dim)
+            }
+        }
+    }
+
     pub fn permute(self, dims: &[usize]) -> anyhow::Result<Tensor> {
         let device = self.device.clone();
         let permute = Permute::new(self, dims.to_vec());
