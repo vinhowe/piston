@@ -1,3 +1,5 @@
+#[cfg(feature = "debug")]
+use crate::gpu::BufferUsagesExt;
 use crate::gpu::{
     BindGroupLayoutDescriptor, ComputePipelineDescriptor, CpuUniform, PipelineLayoutDescriptor,
     PoolError, WgpuDevice,
@@ -6,8 +8,15 @@ use crate::{
     ops::*, rvec, CompiledOp, InvariantError, Kernel, KernelBuildError, KernelMetadata,
     KernelModuleDesc, RVec, StorageView, Tensor, WgslFragment, WorkgroupSize,
 };
+#[cfg(feature = "debug")]
+use crate::{TensorId, MIN_STORAGE_BUFFER_SIZE};
+#[cfg(feature = "debug")]
+use smallvec::SmallVec;
 use std::borrow::Cow;
+use std::cmp::max;
 use std::fmt::Debug;
+#[cfg(feature = "debug")]
+use std::sync::Arc;
 
 #[derive(Clone, Debug)]
 #[non_exhaustive]
@@ -368,12 +377,37 @@ pub trait GPUOperation: Operation {
 
         #[cfg(feature = "debug")]
         let debug_buffer = if debug {
-            Some(Arc::new(device.create_buffer(&wgpu::BufferDescriptor {
+            Some((
+                dst.id(),
+                Arc::new(device.create_buffer(&wgpu::BufferDescriptor {
                 label: Some("debug buffer"),
                 size: dst.num_bytes() as _,
                 usage: wgpu::BufferUsages::standard(),
                 mapped_at_creation: false,
-            })))
+                })),
+            ))
+        } else {
+            None
+        };
+
+        #[cfg(feature = "debug")]
+        let debug_input_buffers = if debug {
+            Some(
+                self.srcs()
+                    .iter()
+                    .map(|s| {
+                        (
+                            s.id(),
+                            Arc::new(device.create_buffer(&wgpu::BufferDescriptor {
+                                label: Some("debug input buffer"),
+                                size: max(s.num_bytes(), MIN_STORAGE_BUFFER_SIZE) as _,
+                                usage: wgpu::BufferUsages::standard(),
+                                mapped_at_creation: false,
+                            })),
+                        )
+                    })
+                    .collect::<SmallVec<[(TensorId, Arc<wgpu::Buffer>); 4]>>(),
+            )
         } else {
             None
         };
@@ -386,6 +420,8 @@ pub trait GPUOperation: Operation {
             kernel_src_desc.key,
             #[cfg(feature = "debug")]
             debug_buffer,
+            #[cfg(feature = "debug")]
+            debug_input_buffers,
         ))
     }
 }

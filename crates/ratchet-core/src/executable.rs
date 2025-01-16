@@ -1,5 +1,7 @@
 use crate::gpu::{GpuUniform, PoolError, StaticResourcePoolAccessor, WgpuDevice};
 use crate::CompiledOp;
+#[cfg(feature = "debug")]
+use crate::Tensor;
 use derive_new::new;
 #[cfg(not(feature = "debug"))]
 use std::marker::PhantomData;
@@ -101,13 +103,38 @@ impl Executable<'_> {
                 .map_err(|_| ExecutionError::DebuggingError("Failed to get result buf."))?
                 .inner;
 
-            let debug_buffer = step
-                .debug_buffer
-                .as_ref()
-                .ok_or(ExecutionError::DebuggingError(
-                    "Failed to get debug buffer.",
-                ))?;
-            encoder.copy_buffer_to_buffer(result_buf, 0, debug_buffer, 0, debug_buffer.size());
+            let input_storage_list = result_t
+                .op()
+                .srcs()
+                .iter()
+                .map(|s| {
+                    s.storage()
+                        .as_ref()
+                        .unwrap()
+                        .try_gpu()
+                        .unwrap()
+                        .inner
+                        .clone()
+                })
+                .collect::<Vec<_>>();
+            let debug_input_buffers =
+                step.debug_input_buffers
+                    .as_ref()
+                    .ok_or(ExecutionError::DebuggingError(
+                        "Failed to get input buffers.",
+                    ))?;
+            for (i, buf) in input_storage_list.iter().enumerate() {
+                let debug_input_buffer = debug_input_buffers[i].clone().1;
+                encoder.copy_buffer_to_buffer(buf, 0, &debug_input_buffer, 0, buf.size());
+            }
+
+            let (_, debug_buffer) =
+                step.debug_buffer
+                    .as_ref()
+                    .ok_or(ExecutionError::DebuggingError(
+                        "Failed to get debug buffer.",
+                    ))?;
+            encoder.copy_buffer_to_buffer(result_buf, 0, &debug_buffer, 0, debug_buffer.size());
 
             let index = device.queue().submit(Some(encoder.finish()));
             last_index = Some(index);
@@ -117,14 +144,37 @@ impl Executable<'_> {
         for (si, step) in self.steps.iter().enumerate() {
             let d = device.clone();
             let dt = self.debug_list[si].dt();
-            let debug_buffer = step.debug_buffer.clone().unwrap();
+            let (id, debug_buffer) = step.debug_buffer.clone().unwrap();
+            let debug_input_buffers = step.debug_input_buffers.clone().unwrap();
             let alignment = dt.size_of();
             let kernel_key = step.kernel_key.clone();
             #[cfg(target_arch = "wasm32")]
             {
                 wasm_bindgen_futures::spawn_local(async move {
-                    let cpu_buf = wgpu_buffer_to_cpu_buffer(&debug_buffer, alignment, d).await;
-                    log::debug!("{}: {}\n {:?}\n", si, kernel_key, cpu_buf.dump(dt, false));
+                    let cpu_buf = wgpu_buffer_to_cpu_buffer(&debug_buffer, alignment, &d).await;
+                    let mut input_bufs = vec![];
+                    for (id, buf) in debug_input_buffers.iter() {
+                        let cpu_buf = wgpu_buffer_to_cpu_buffer(buf, alignment, &d).await;
+                        input_bufs.push((id, cpu_buf));
+                    }
+                    let mut debug_str = format!(
+                        "\x1b[1m{} ({:?}): {}\x1b[0m\n {:?}\n\n",
+                        si,
+                        id,
+                        kernel_key,
+                        cpu_buf.dump(dt, false)
+                    );
+
+                    for (i, (id, cpu_buf)) in input_bufs.iter().enumerate() {
+                        debug_str.push_str(&format!(
+                            "\x1b[32;1minput {} ({:?})\x1b[0m: {:?}\n\n",
+                            i,
+                            id,
+                            cpu_buf.dump(dt, false)
+                        ));
+                    }
+
+                    log::debug!("{}", debug_str);
                 });
             }
             #[cfg(not(target_arch = "wasm32"))]

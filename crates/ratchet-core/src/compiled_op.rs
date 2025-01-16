@@ -2,8 +2,12 @@ use crate::gpu::{
     BindGroupDescriptor, BindGroupLayoutHandle, ComputePipelineHandle, GpuBindGroup, WgpuDevice,
     WorkgroupCount,
 };
+#[cfg(feature = "debug")]
+use crate::TensorId;
 use crate::{drvec, rvec, KernelKey, OperationError, RVec, Tensor};
 use derive_new::new;
+#[cfg(feature = "debug")]
+use std::sync::Arc;
 use wgpu::DynamicOffset;
 
 //Compiled op represents a single kernel invocation
@@ -17,7 +21,9 @@ pub struct CompiledOp {
     offset: DynamicOffset, //offset into the metadata uniform buffer
     pub kernel_key: KernelKey,
     #[cfg(feature = "debug")]
-    pub debug_buffer: Option<Arc<wgpu::Buffer>>,
+    pub debug_buffer: Option<(TensorId, Arc<wgpu::Buffer>)>,
+    #[cfg(feature = "debug")]
+    pub debug_input_buffers: Option<RVec<(TensorId, Arc<wgpu::Buffer>)>>,
 }
 
 impl CompiledOp {
