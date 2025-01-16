@@ -423,7 +423,7 @@ impl Tensor {
     }
 
     /// Cast a tensor to full precision (IEEE 754 32-bit floating point).
-    pub fn full(self) -> anyhow::Result<Tensor> {
+    pub fn float(self) -> anyhow::Result<Tensor> {
         self.cast(DType::F32)
     }
 
