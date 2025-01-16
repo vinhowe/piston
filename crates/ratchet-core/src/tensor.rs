@@ -2024,6 +2024,7 @@ impl<'data> safetensors::View for &'data Tensor {
     }
 }
 
+#[cfg(all(test, not(target_arch = "wasm32")))]
 mod tests {
     use crate::{rvec, shape, Device, Tensor};
 
