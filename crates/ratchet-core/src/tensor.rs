@@ -572,6 +572,14 @@ impl Tensor {
     /// Creates a new tensor with the same data, but a different shape.
     /// The new shape must have the same number of elements as the original shape.
     pub fn view(self, shape: Shape) -> anyhow::Result<Tensor> {
+        if self.shape().numel() != shape.numel() {
+            anyhow::bail!(
+                "Cannot reshape tensor with {} elements to shape {:?} ({} elements)",
+                self.shape().numel(),
+                shape,
+                shape.numel()
+            );
+        }
         let device = self.device.clone();
         let storage = self.storage.clone();
         let op = View::new(self, shape);
