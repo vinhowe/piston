@@ -174,7 +174,7 @@ pub struct StorageView {
 
 impl StorageView {
     pub fn is_contiguous(&self) -> bool {
-        todo!()
+        self.shape.is_contiguous(&self.strides)
     }
 }
 
@@ -838,6 +838,29 @@ impl Tensor {
 
     pub fn ones_like<T: TensorDType>(&self) -> Tensor {
         Self::ones::<T>(self.shape(), self.device())
+    }
+    /// Returns true if the data is stored in a C contiguous (aka row major) way.
+    pub fn is_contiguous(&self) -> bool {
+        self.view.is_contiguous()
+    }
+
+    /// Returns a tensor that is in row major order. This is the same as the original tensor if it
+    /// was already contiguous, otherwise a copy is triggered.
+    pub fn contiguous(self) -> Tensor {
+        if self.is_contiguous() {
+            self.clone()
+        } else {
+            let storage_guard = self.storage();
+            let storage = storage_guard.as_ref().unwrap();
+            let cloned_storage = storage.deep_clone(self.device()).unwrap();
+            Tensor::new_impl(
+                LazyOp::Const,
+                self.view.clone(),
+                Some(cloned_storage),
+                self.device.clone(),
+                false,
+            )
+        }
     }
 
     pub fn has_nan<T: TensorDType + num_traits::Float>(&self) -> bool {
