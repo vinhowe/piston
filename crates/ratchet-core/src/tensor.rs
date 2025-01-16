@@ -1,6 +1,6 @@
 use crate::gpu::{BindGroupEntry, CpuUniform, WgpuDevice};
 use crate::{
-    cpu, ops::*, rvec, BufferSegment, CPUBuffer, CompiledOp, DType, Device, DeviceStorage,
+    cpu, ops::*, rvec, shape, BufferSegment, CPUBuffer, CompiledOp, DType, Device, DeviceStorage,
     Executable, GPUBuffer, GPUOperation, InvariantError, LazyOp, Operation, OperationError, RVec,
     RawCPUBuffer, Shape, Storage, Strides, TensorDType, TensorId,
 };
@@ -606,6 +606,50 @@ impl Tensor {
 
     pub fn norm(self) -> anyhow::Result<Tensor> {
         self.square()?.sum_all()?.sqrt()
+    }
+
+    fn flatten_impl(
+        &self,
+        start_dim: Option<usize>,
+        end_dim: Option<usize>,
+    ) -> anyhow::Result<Tensor> {
+        if self.rank() == 0 {
+            self.clone().view(shape![1])
+        } else {
+            let start_dim = start_dim.unwrap_or(0);
+            let end_dim = end_dim.unwrap_or(self.rank() - 1);
+            if start_dim < end_dim {
+                let dims = self.shape();
+                let mut dst_dims = dims[..start_dim].to_vec();
+                dst_dims.push(
+                    dims.to_vec()[start_dim..end_dim + 1]
+                        .iter()
+                        .product::<usize>(),
+                );
+                if end_dim + 1 < dims.len() {
+                    dst_dims.extend(&dims[end_dim + 1..]);
+                }
+                self.clone().view(Shape::from(dst_dims))
+            } else {
+                Ok(self.clone())
+            }
+        }
+    }
+
+    pub fn flatten(&self, start_dim: usize, end_dim: usize) -> anyhow::Result<Tensor> {
+        self.flatten_impl(Some(start_dim), Some(end_dim))
+    }
+
+    pub fn flatten_to(&self, end_dim: usize) -> anyhow::Result<Tensor> {
+        self.flatten_impl(None::<usize>, Some(end_dim))
+    }
+
+    pub fn flatten_from(&self, start_dim: usize) -> anyhow::Result<Tensor> {
+        self.flatten_impl(Some(start_dim), None::<usize>)
+    }
+
+    pub fn flatten_all(&self) -> anyhow::Result<Tensor> {
+        self.flatten_impl(None::<usize>, None::<usize>)
     }
 
     /// # Slice
