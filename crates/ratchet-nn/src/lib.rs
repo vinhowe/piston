@@ -1,3 +1,4 @@
+mod activation;
 mod embedding;
 mod groupnorm;
 mod init;
@@ -11,6 +12,7 @@ mod util;
 mod var_builder;
 mod var_map;
 
+pub use activation::*;
 pub use embedding::*;
 pub use groupnorm::*;
 pub use init::*;
