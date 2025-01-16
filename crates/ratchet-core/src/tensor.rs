@@ -1182,6 +1182,10 @@ impl Tensor {
                 continue;
             }
 
+            if t.op().is_const() {
+                Err(TensorError::NotResolved)?;
+            }
+
             let id = t.id();
             let inner = allocations.remove(&id).ok_or(TensorError::NoStorage(id))?;
             t.update_storage(Storage::GPU(GPUBuffer {
@@ -1289,6 +1293,7 @@ impl Tensor {
     #[maybe_async]
     async fn to_cpu(&self) -> Result<Tensor, TensorError> {
         if self.device().is_cpu() || !self.resolved() {
+            log::error!("Tensor may not have been resolved, try calling `resolve()` first.");
             return Ok(self.clone());
         }
         let storage_guard = self.storage();
