@@ -91,6 +91,26 @@ impl LazyOp {
         }
     }
 
+    pub fn supports_out_of_place(&self) -> bool {
+        match self {
+            LazyOp::Binary(b) => b.supports_out_of_place(),
+            LazyOp::Cast(c) => c.supports_out_of_place(),
+            LazyOp::Matmul(m) => m.supports_out_of_place(),
+            LazyOp::RoPE(r) => r.supports_out_of_place(),
+            LazyOp::Softmax(s) => s.supports_out_of_place(),
+            LazyOp::Unary(u) => u.supports_out_of_place(),
+            LazyOp::Reindex(r) => r.supports_out_of_place(),
+            LazyOp::Concat(c) => c.supports_out_of_place(),
+            LazyOp::Norm(n) => n.supports_out_of_place(),
+            LazyOp::Conv(c) => c.supports_out_of_place(),
+            LazyOp::Select(s) => s.supports_out_of_place(),
+            LazyOp::IndexWrite(iw) => iw.supports_out_of_place(),
+            LazyOp::Cache(c) => c.supports_out_of_place(),
+            LazyOp::View(v) => false,
+            LazyOp::Const => false,
+        }
+    }
+
     pub fn is_const(&self) -> bool {
         matches!(self, LazyOp::Const)
     }
@@ -257,6 +277,13 @@ pub trait Operation: OpGuards + Debug + 'static {
     /// Determine if the operation can be performed in-place.
     fn supports_inplace(&self) -> bool {
         false
+    }
+
+    /// # Supports Out-Of-Place
+    ///
+    /// Determine if the operation can be performed out-of-place.
+    fn supports_out_of_place(&self) -> bool {
+        true
     }
 }
 

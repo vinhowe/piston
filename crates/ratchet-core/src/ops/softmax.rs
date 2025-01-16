@@ -196,6 +196,10 @@ impl Operation for Softmax {
     fn supports_inplace(&self) -> bool {
         true
     }
+
+    fn supports_out_of_place(&self) -> bool {
+        false
+    }
 }
 
 impl Kernel for SoftmaxKernels {
