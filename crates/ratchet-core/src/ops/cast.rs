@@ -210,6 +210,15 @@ impl Kernel for CastKernels {
             (DType::F16, KernelElement::Vec4) => {
                 self.render::<Vec4<f16>>(inplace, dst, workgroup_size)
             }
+            (DType::I32, KernelElement::Scalar) => {
+                self.render::<Scalar<i32>>(inplace, dst, workgroup_size)
+            }
+            (DType::I32, KernelElement::Vec2) => {
+                self.render::<Vec2<i32>>(inplace, dst, workgroup_size)
+            }
+            (DType::I32, KernelElement::Vec4) => {
+                self.render::<Vec4<i32>>(inplace, dst, workgroup_size)
+            }
             _ => unimplemented!("Cannot cast {:?} -> {:?}", inner.input.dt(), inner.dst_dt),
         }
     }
