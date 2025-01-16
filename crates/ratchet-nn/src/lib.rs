@@ -1,5 +1,6 @@
 mod embedding;
 mod groupnorm;
+mod init;
 mod kv_cache;
 mod linear;
 mod loss;
@@ -10,6 +11,7 @@ mod var_map;
 
 pub use embedding::*;
 pub use groupnorm::*;
+pub use init::*;
 pub use kv_cache::*;
 pub use linear::*;
 pub use loss::*;
