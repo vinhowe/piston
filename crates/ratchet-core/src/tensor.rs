@@ -818,6 +818,39 @@ impl Tensor {
         ))
     }
 
+    pub fn gather(self, indices: Tensor, dim: usize) -> anyhow::Result<Tensor> {
+        let self_dims = self.shape().to_vec();
+        let indices_dims = indices.shape().to_vec();
+        let mismatch = if indices_dims.len() != self_dims.len() {
+            true
+        } else {
+            let mut mismatch = false;
+            for (i, (&d1, &d2)) in self_dims.iter().zip(indices_dims.iter()).enumerate() {
+                if i != dim && d1 != d2 {
+                    mismatch = true;
+                    break;
+                }
+            }
+            mismatch
+        };
+        if mismatch {
+            Err(InvariantError::ShapeMismatchBinaryOp {
+                op: "gather",
+                lhs: self.shape().clone(),
+                rhs: indices.shape().clone(),
+            })?
+        }
+        let device = self.device.clone();
+        let gather = Gather::new(self, indices, dim);
+        let new_view = gather.compute_view()?;
+        Ok(Tensor::lazy(
+            LazyOp::Gather(gather),
+            new_view,
+            device,
+            false,
+        ))
+    }
+
     pub fn arange(start: i32, end: i32, device: Device) -> anyhow::Result<Tensor> {
         Self::arange_step(start, end, 1i32, device)
     }
@@ -1341,6 +1374,7 @@ impl Tensor {
             LazyOp::Cache(c) => c.compile_gpu(self, uniform, device, can_ip, debug).ok(),
             LazyOp::Reduce(s) => s.compile_gpu(self, uniform, device, can_ip, debug).ok(),
             LazyOp::Detach(d) => self.compile_gpu_for_op(d, uniform, device, can_ip, debug),
+            LazyOp::Gather(g) => g.compile_gpu(self, uniform, device, can_ip, debug).ok(),
             LazyOp::FillConstant(f) => f.compile_gpu(self, uniform, device, can_ip, debug).ok(),
             LazyOp::FillRandn(f) => f.compile_gpu(self, uniform, device, can_ip, debug).ok(),
             LazyOp::Const => None,

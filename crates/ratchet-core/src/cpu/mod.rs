@@ -40,6 +40,7 @@ pub fn apply_operation(op: LazyOp, dst: Tensor) -> Result<Tensor, OperationError
         LazyOp::View(_) => todo!(),
         LazyOp::WhereCond(_w) => todo!(),
         LazyOp::Reduce(_r) => todo!(),
+        LazyOp::Gather(_g) => todo!(),
         LazyOp::FillConstant(_f) => todo!(),
         LazyOp::FillRandn(_f) => todo!(),
         LazyOp::Detach(_d) => todo!(),
