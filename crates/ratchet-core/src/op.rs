@@ -45,6 +45,7 @@ pub enum LazyOp {
     Select(IndexSelect),    //Can probably be Reindex
     IndexWrite(IndexWrite), //Above 2 should be merged
     Cache(Cache),           //Should be a general class
+    IndexAdd(IndexAdd),
     Trilu(Trilu),
     Detach(Box<LazyOp>), //Because the entire graph is lazy, you can't actually detach something without computing the graph in parts
 }
@@ -69,6 +70,7 @@ impl LazyOp {
             LazyOp::Conv(c) => c.name(),
             LazyOp::Select(s) => s.name(),
             LazyOp::IndexWrite(iw) => iw.name(),
+            LazyOp::IndexAdd(ia) => ia.name(),
             LazyOp::Trilu(t) => t.name(),
             LazyOp::FillConstant(f) => f.name(),
             LazyOp::FillRandn(f) => f.name(),
@@ -101,6 +103,7 @@ impl LazyOp {
             LazyOp::Conv(c) => c.srcs(),
             LazyOp::Select(s) => s.srcs(),
             LazyOp::IndexWrite(iw) => iw.srcs(),
+            LazyOp::IndexAdd(ia) => ia.srcs(),
             LazyOp::Trilu(t) => t.srcs(),
             LazyOp::Cache(c) => c.srcs(),
             LazyOp::Detach(d) => d.srcs(),
@@ -128,6 +131,7 @@ impl LazyOp {
             LazyOp::Conv(c) => c.supports_inplace(),
             LazyOp::Select(s) => s.supports_inplace(),
             LazyOp::IndexWrite(iw) => iw.supports_inplace(),
+            LazyOp::IndexAdd(ia) => ia.supports_inplace(),
             LazyOp::Trilu(t) => t.supports_inplace(),
             LazyOp::FillConstant(fc) => fc.supports_inplace(),
             LazyOp::FillRandn(fr) => fr.supports_inplace(),
@@ -158,6 +162,7 @@ impl LazyOp {
             LazyOp::Conv(c) => c.supports_out_of_place(),
             LazyOp::Select(s) => s.supports_out_of_place(),
             LazyOp::IndexWrite(iw) => iw.supports_out_of_place(),
+            LazyOp::IndexAdd(ia) => ia.supports_out_of_place(),
             LazyOp::Trilu(t) => t.supports_out_of_place(),
             LazyOp::FillConstant(fc) => fc.supports_out_of_place(),
             LazyOp::FillRandn(fr) => fr.supports_out_of_place(),
@@ -197,6 +202,7 @@ impl LazyOp {
             LazyOp::Conv(c) => c.check_invariants(),
             LazyOp::Select(s) => s.check_invariants(),
             LazyOp::IndexWrite(iw) => iw.check_invariants(),
+            LazyOp::IndexAdd(ia) => ia.check_invariants(),
             LazyOp::Trilu(t) => t.check_invariants(),
             LazyOp::FillConstant(f) => f.check_invariants(),
             LazyOp::FillRandn(f) => f.check_invariants(),

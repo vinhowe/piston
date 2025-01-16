@@ -818,6 +818,53 @@ impl Tensor {
         ))
     }
 
+    pub fn index_add(self, indices: Tensor, source: Tensor, dim: usize) -> anyhow::Result<Tensor> {
+        let source_dims = source.shape().to_vec();
+        let self_dims = self.shape().to_vec();
+        let mismatch = if source_dims.len() != self_dims.len() {
+            true
+        } else {
+            let mut mismatch = false;
+            for (i, (&d1, &d2)) in self_dims.iter().zip(source_dims.iter()).enumerate() {
+                if i != dim && d1 != d2 {
+                    mismatch = true;
+                    break;
+                }
+            }
+            mismatch
+        };
+        if mismatch {
+            Err(InvariantError::ShapeMismatchBinaryOp {
+                op: "index_add",
+                lhs: self.shape().clone(),
+                rhs: source.shape().clone(),
+            })?
+        }
+        if indices.rank() != 1 {
+            Err(InvariantError::RankMismatch {
+                accepted: 1..=1,
+                actual: indices.rank(),
+            })?
+        }
+        let indices_len = indices.shape()[0];
+        if source_dims[dim] != indices_len {
+            Err(InvariantError::ShapeMismatchBinaryOp {
+                op: "index_add",
+                lhs: indices.shape().clone(),
+                rhs: source.shape().clone(),
+            })?
+        }
+        let device = self.device.clone();
+        let index_add = IndexAdd::new(self, source, indices, dim);
+        let new_view = index_add.compute_view()?;
+        Ok(Tensor::lazy(
+            LazyOp::IndexAdd(index_add),
+            new_view,
+            device,
+            false,
+        ))
+    }
+
     pub fn gather(self, indices: Tensor, dim: usize) -> anyhow::Result<Tensor> {
         let self_dims = self.shape().to_vec();
         let indices_dims = indices.shape().to_vec();
@@ -1370,6 +1417,7 @@ impl Tensor {
             LazyOp::Conv(c) => c.compile_gpu(self, uniform, device, can_ip, debug).ok(),
             LazyOp::Select(i) => i.compile_gpu(self, uniform, device, can_ip, debug).ok(),
             LazyOp::IndexWrite(i) => i.compile_gpu(self, uniform, device, can_ip, debug).ok(),
+            LazyOp::IndexAdd(i) => i.compile_gpu(self, uniform, device, can_ip, debug).ok(),
             LazyOp::Trilu(t) => t.compile_gpu(self, uniform, device, can_ip, debug).ok(),
             LazyOp::Cache(c) => c.compile_gpu(self, uniform, device, can_ip, debug).ok(),
             LazyOp::Reduce(s) => s.compile_gpu(self, uniform, device, can_ip, debug).ok(),
