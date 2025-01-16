@@ -1,5 +1,5 @@
+use crate::HashMap;
 use crate::{gpu::*, DType, Tensor, TensorId};
-use rustc_hash::FxHashMap;
 use std::{borrow::Cow, sync::Arc};
 use wgpu::{Adapter, Limits};
 
@@ -268,7 +268,7 @@ impl WgpuDevice {
         &self,
         execution_order: &[&Tensor],
         device: &WgpuDevice,
-    ) -> Result<FxHashMap<TensorId, PooledGPUBuffer>, DeviceError> {
+    ) -> Result<HashMap<TensorId, PooledGPUBuffer>, DeviceError> {
         self.buffer_allocator.allocate_cfg(execution_order, device)
     }
 

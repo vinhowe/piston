@@ -8,8 +8,8 @@ use std::{
     sync::{atomic::AtomicU64, Arc},
 };
 
+use crate::HashMap;
 use parking_lot::RwLock;
-use rustc_hash::FxHashMap;
 use slotmap::{Key, SlotMap};
 
 pub trait DynamicResourcesDesc {
@@ -47,7 +47,7 @@ struct DynamicResourcePoolProtectedState<Handle: Key, Desc: Debug, Res> {
     all_resources: SlotMap<Handle, Arc<DynamicResource<Handle, Desc, Res>>>,
 
     /// Any resource that has been deallocated last pass, potentially to be re-used in the next pass.
-    last_pass_deallocated: FxHashMap<Desc, RVec<Handle>>,
+    last_pass_deallocated: HashMap<Desc, RVec<Handle>>,
 }
 
 /// Generic resource pool for all resources that have varying contents beyond their description.

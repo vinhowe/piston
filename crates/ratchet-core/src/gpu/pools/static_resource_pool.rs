@@ -1,8 +1,8 @@
 //Adapted from https://github.com/rerun-io/rerun MIT licensed.
 use std::hash::Hash;
 
+use crate::HashMap;
 use parking_lot::{RwLock, RwLockReadGuard};
-use rustc_hash::FxHashMap;
 use slotmap::{Key, SlotMap};
 
 #[derive(thiserror::Error, Debug, PartialEq, Eq, Clone)]
@@ -25,7 +25,7 @@ pub enum PoolError {
 /// Lookup is queried to determine if a resource with the given descriptor already exists.
 pub(super) struct StaticResourcePool<Handle: Key, Descriptor, Resource> {
     resources: RwLock<SlotMap<Handle, Resource>>,
-    lookup: RwLock<FxHashMap<Descriptor, Handle>>,
+    lookup: RwLock<HashMap<Descriptor, Handle>>,
 }
 
 /// We cannot #derive(Default) as that would require Handle/Desc/Res to implement Default too.

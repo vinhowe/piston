@@ -1,5 +1,5 @@
+use crate::HashMap;
 use crate::TensorId;
-use rustc_hash::FxHashMap;
 use std::cmp::Reverse;
 
 /// Records the interval for which a tensor is used
@@ -31,8 +31,8 @@ impl std::ops::IndexMut<usize> for TensorUsageRecords {
 #[derive(Debug, Clone)]
 pub struct TensorUsageRecords(pub Vec<TensorUsageRecord>);
 
-impl From<FxHashMap<TensorId, TensorUsageRecord>> for TensorUsageRecords {
-    fn from(mut map: FxHashMap<TensorId, TensorUsageRecord>) -> Self {
+impl From<HashMap<TensorId, TensorUsageRecord>> for TensorUsageRecords {
+    fn from(mut map: HashMap<TensorId, TensorUsageRecord>) -> Self {
         let mut records = map.drain().map(|(_, v)| v).collect::<Vec<_>>();
         records.sort_unstable_by_key(|r| Reverse(r.size));
         TensorUsageRecords(records)

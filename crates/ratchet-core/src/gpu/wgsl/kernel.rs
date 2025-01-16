@@ -1,4 +1,4 @@
-use rustc_hash::FxHashMap;
+use crate::HashMap;
 use std::fmt::Debug;
 
 use crate::{
@@ -39,7 +39,7 @@ impl From<u32> for DynMetaField {
 #[derive(Debug)]
 pub struct DynKernelMetadata {
     //Can't use a trait object here, ShaderType has assoc type
-    fields: FxHashMap<String, DynMetaField>,
+    fields: HashMap<String, DynMetaField>,
 }
 
 impl Default for DynKernelMetadata {
@@ -51,7 +51,7 @@ impl Default for DynKernelMetadata {
 impl DynKernelMetadata {
     pub fn new() -> Self {
         Self {
-            fields: FxHashMap::default(),
+            fields: HashMap::default(),
         }
     }
 

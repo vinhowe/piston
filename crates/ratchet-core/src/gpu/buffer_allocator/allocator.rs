@@ -1,4 +1,5 @@
 use super::TensorUsageRecord;
+use crate::HashMap;
 use crate::{
     gpu::{
         BufferDescriptor, BufferPool, BufferUsagesExt, CpuUniform, GpuBufferHandle,
@@ -7,7 +8,6 @@ use crate::{
     DeviceError, Tensor, TensorId,
 };
 use parking_lot::RwLock;
-use rustc_hash::FxHashMap;
 use std::num::NonZero;
 use std::{borrow::Cow, sync::Arc};
 use wgpu::BufferUsages;
@@ -183,9 +183,9 @@ impl BufferAllocator {
     //3. When we encounter the producer of a tensor, we stop recording the interval.
     fn calculate_usage_records(
         execution_order: &[&Tensor],
-    ) -> FxHashMap<TensorId, TensorUsageRecord> {
+    ) -> HashMap<TensorId, TensorUsageRecord> {
         let mut records =
-            FxHashMap::with_capacity_and_hasher(execution_order.len(), Default::default());
+            HashMap::with_capacity_and_hasher(execution_order.len(), Default::default());
         let topo_len = execution_order.len() - 1;
         for (iter, t) in execution_order.iter().rev().enumerate() {
             if t.resolved() {
@@ -225,7 +225,7 @@ impl BufferAllocator {
     pub fn greedy_by_size(
         &self,
         execution_order: &[&Tensor],
-        assignments: &mut FxHashMap<TensorId, PooledGPUBuffer>,
+        assignments: &mut HashMap<TensorId, PooledGPUBuffer>,
         device: &WgpuDevice,
     ) -> Result<(), DeviceError> {
         let record_map = Self::calculate_usage_records(execution_order);
@@ -302,10 +302,10 @@ impl BufferAllocator {
         &self,
         execution_order: &[&Tensor],
         device: &WgpuDevice,
-    ) -> Result<FxHashMap<TensorId, PooledGPUBuffer>, DeviceError> {
+    ) -> Result<HashMap<TensorId, PooledGPUBuffer>, DeviceError> {
         let mut free = Vec::with_capacity(execution_order.len()); //TODO: switch to BTreeMap
         let mut assignments =
-            FxHashMap::with_capacity_and_hasher(execution_order.len(), Default::default());
+            HashMap::with_capacity_and_hasher(execution_order.len(), Default::default());
         //Assignments already needs all of the constants in it.
         for t in execution_order.iter().rev().filter(|t| t.resolved()) {
             //Consts are immediately resolved

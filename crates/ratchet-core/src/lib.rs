@@ -28,6 +28,7 @@ pub use ndarray_ext::*;
 pub use op::*;
 pub use ops::*;
 pub use quant::*;
+use rustc_hash::{FxHashMap, FxHashSet};
 pub use shape::*;
 pub use storage::*;
 pub use strides::*;
@@ -41,6 +42,8 @@ use smallvec::SmallVec;
 pub type RVec<T> = SmallVec<[T; 4]>;
 pub type DRVec<T> = SmallVec<[T; 8]>; //Double RVec
 pub type RawGPUBuffer = wgpu::Buffer;
+pub type HashMap<K, V> = FxHashMap<K, V>;
+pub type HashSet<T> = FxHashSet<T>;
 
 //https://github.com/sonos/tract/blob/main/data/src/macros.rs#L2
 #[macro_export]
