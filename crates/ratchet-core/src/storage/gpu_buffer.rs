@@ -2,7 +2,7 @@ use crate::{
     gpu::{BufferDescriptor, WgpuDevice},
     gpu::{BufferUsagesExt, PooledGPUBuffer},
     storage::{CPUBuffer, DeviceStorage},
-    Device, DeviceError, Shape, TensorDType,
+    Device, DeviceError, Shape, TensorDType, MIN_STORAGE_BUFFER_SIZE,
 };
 
 use bytemuck::NoUninit;
@@ -15,6 +15,7 @@ use crate::DType;
 pub struct GPUBuffer {
     pub(crate) inner: PooledGPUBuffer,
     pub(crate) alignment: usize,
+    pub(crate) cpu_size: Option<usize>,
 }
 
 impl GPUBuffer {
@@ -48,15 +49,33 @@ impl GPUBuffer {
     }
 
     pub(crate) fn from_bytes(bytes: &[u8], alignment: usize, device: &WgpuDevice) -> Self {
+        let num_bytes = bytes.len();
+        let mut min_bytes = [0; MIN_STORAGE_BUFFER_SIZE];
+        let bytes = if num_bytes < MIN_STORAGE_BUFFER_SIZE {
+            min_bytes[..num_bytes].copy_from_slice(bytes);
+            &min_bytes
+        } else {
+            bytes
+        };
+        let cpu_size = if num_bytes < MIN_STORAGE_BUFFER_SIZE {
+            Some(num_bytes)
+        } else {
+            None
+        };
+
         let inner = device
             .get_or_create_buffer_init(
-                &BufferDescriptor::new(bytes.len() as _, BufferUsages::standard(), false),
+                &BufferDescriptor::new(num_bytes as _, BufferUsages::standard(), false),
                 bytes.into(),
             )
             .unwrap();
         device.queue().submit(None);
         device.poll(wgpu::Maintain::Wait);
-        Self { inner, alignment }
+        Self {
+            inner,
+            alignment,
+            cpu_size,
+        }
     }
 
     /// Returns true if the buffer has all the given usages.
@@ -91,6 +110,7 @@ impl GPUBuffer {
         Self {
             inner: clone,
             alignment: self.alignment,
+            cpu_size: self.cpu_size,
         }
     }
 
@@ -129,7 +149,8 @@ impl DeviceStorage for GPUBuffer {
     async fn to_cpu(&self, device: &Device) -> Result<CPUBuffer, DeviceError> {
         self.validate_usages(BufferUsages::COPY_SRC)?;
         let device = device.try_gpu()?;
-        let storage = wgpu_buffer_to_cpu_buffer(&self.inner, self.alignment, device).await;
+        let storage =
+            wgpu_buffer_to_cpu_buffer(&self.inner, self.alignment, self.cpu_size, device).await;
         Ok(storage)
     }
 
@@ -150,6 +171,7 @@ impl DeviceStorage for GPUBuffer {
 pub async fn wgpu_buffer_to_cpu_buffer(
     src_buf: &wgpu::Buffer,
     alignment: usize,
+    cpu_size: Option<usize>,
     device: &WgpuDevice,
 ) -> CPUBuffer {
     assert!(src_buf.usage().contains(wgpu::BufferUsages::COPY_SRC));
@@ -159,13 +181,15 @@ pub async fn wgpu_buffer_to_cpu_buffer(
     #[cfg(not(target_arch = "wasm32"))]
     let (tx, rx) = std::sync::mpsc::channel();
 
+    let buffer_size = cpu_size.unwrap_or(src_buf.size() as usize);
+
     wgpu::util::DownloadBuffer::read_buffer(
         &device,
         device.queue(),
         &buffer_slice,
         move |buffer| {
             tx.send(match buffer {
-                Ok(db) => Ok(CPUBuffer::from_bytes(&db, alignment)),
+                Ok(db) => Ok(CPUBuffer::from_bytes(&db[..buffer_size], alignment)),
                 Err(error) => Err(error),
             })
             .expect("Failed to send result of read_buffer");

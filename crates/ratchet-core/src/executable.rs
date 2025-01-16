@@ -151,10 +151,11 @@ impl Executable<'_> {
             #[cfg(target_arch = "wasm32")]
             {
                 wasm_bindgen_futures::spawn_local(async move {
-                    let cpu_buf = wgpu_buffer_to_cpu_buffer(&debug_buffer, alignment, &d).await;
+                    let cpu_buf =
+                        wgpu_buffer_to_cpu_buffer(&debug_buffer, alignment, None, &d).await;
                     let mut input_bufs = vec![];
                     for (id, buf) in debug_input_buffers.iter() {
-                        let cpu_buf = wgpu_buffer_to_cpu_buffer(buf, alignment, &d).await;
+                        let cpu_buf = wgpu_buffer_to_cpu_buffer(buf, alignment, None, &d).await;
                         input_bufs.push((id, cpu_buf));
                     }
                     let mut debug_str = format!(
@@ -179,7 +180,7 @@ impl Executable<'_> {
             }
             #[cfg(not(target_arch = "wasm32"))]
             {
-                let cpu_buf = wgpu_buffer_to_cpu_buffer(&debug_buffer, alignment, &d);
+                let cpu_buf = wgpu_buffer_to_cpu_buffer(&debug_buffer, alignment, None, &d);
                 log::debug!("{}: {}\n {:?}\n", si, kernel_key, cpu_buf.dump(dt, false));
             }
         }

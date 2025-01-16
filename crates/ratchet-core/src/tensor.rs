@@ -819,6 +819,7 @@ impl Tensor {
             t.update_storage(Storage::GPU(GPUBuffer {
                 inner,
                 alignment: t.dt().size_of(),
+                cpu_size: Some(t.num_bytes()),
             }));
 
             let srcs = t.op().srcs();
