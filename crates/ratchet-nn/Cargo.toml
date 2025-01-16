@@ -7,11 +7,13 @@ edition = "2021"
 
 [features]
 pyo3 = ["ratchet/pyo3"]
+debug = ["ratchet/debug"]
 
 [dependencies]
 anyhow.workspace = true
 log.workspace = true
 derive-new = { workspace = true }
+half = { workspace = true }
 ratchet = { path = "../ratchet-core" }
 wasm-bindgen = { workspace = true }
 wasm-bindgen-futures = { workspace = true }
