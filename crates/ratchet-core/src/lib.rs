@@ -1,4 +1,5 @@
 #![allow(non_snake_case)]
+mod backprop;
 mod compiled_op;
 mod cpu;
 mod device;
@@ -19,6 +20,7 @@ mod tensor_id;
 pub mod test_utils;
 mod variable;
 
+pub use backprop::*;
 pub use compiled_op::*;
 pub use cpu::*;
 pub use device::*;

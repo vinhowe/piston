@@ -1,5 +1,5 @@
 #![cfg(feature = "plotting")]
-use crate::{Tensor, TensorId};
+use crate::{GradStore, Tensor, TensorId};
 use derive_new::new;
 use std::{
     borrow::Cow,
@@ -64,6 +64,11 @@ impl PlotNode {
 
     fn style_as_output(&mut self) {
         self.add_attribute(("fillcolor", "lightgray"));
+        self.add_attribute(("shape", "ellipse"));
+    }
+
+    fn style_as_grad(&mut self) {
+        self.add_attribute(("fillcolor", "lightblue"));
         self.add_attribute(("shape", "ellipse"));
     }
 
@@ -142,6 +147,47 @@ impl RenderableGraph {
         let label = leaf.op().name().to_string();
         g.create_node(leaf.id(), Cow::Owned(label))
             .style_as_output();
+
+        Ok(g)
+    }
+
+    fn build_backward_graph(store: &GradStore) -> anyhow::Result<RenderableGraph> {
+        log::warn!("Rendering plot");
+        let mut g = RenderableGraph::new();
+
+        let mut graph_index_map = HashMap::new();
+        for (id, grad) in store.iter() {
+            let execution_order = grad.execution_order();
+            for t in execution_order.iter() {
+                if graph_index_map.contains_key(&t.id()) {
+                    continue;
+                }
+                let renderable_node = g.create_node(t.id(), Cow::Owned(t.op().name().to_string()));
+                let can_inplace = t.op().supports_inplace() && Arc::strong_count(&t.inner) == 1;
+                match t.op() {
+                    crate::LazyOp::Const => renderable_node.style_as_const(),
+                    _ => renderable_node.style_as_op(),
+                }
+                if can_inplace {
+                    renderable_node.style_as_inplace()
+                }
+
+                let node_graph_id = renderable_node.plot_id;
+                graph_index_map.insert(t.id(), renderable_node.plot_id);
+                t.op().srcs().iter().for_each(|src_t| {
+                    if let Some(src_id) = graph_index_map.get(&src_t.id()) {
+                        let e = g.create_edge(Cow::Owned(src_t.plot_fmt()), *src_id, node_graph_id);
+                    } else {
+                        panic!("Source tensor not found in graph index map");
+                    }
+                });
+            }
+            g.create_node(
+                grad.id(),
+                Cow::Owned(format!("{}\nGrad for #{:?}", grad.op().name(), *id)),
+            )
+            .style_as_grad();
+        }
 
         Ok(g)
     }
@@ -226,4 +272,8 @@ impl<'a> dot3::GraphWalk<'a, Nd, PlotEdge> for RenderableGraph {
 
 pub fn render_to_file(t: &Tensor, fname: impl AsRef<Path>) -> anyhow::Result<()> {
     RenderableGraph::plot_to_file(RenderableGraph::build_graph(t)?, fname)
+}
+
+pub fn render_backward_to_file(g: &GradStore, fname: impl AsRef<Path>) -> anyhow::Result<()> {
+    RenderableGraph::plot_to_file(RenderableGraph::build_backward_graph(&g)?, fname)
 }
