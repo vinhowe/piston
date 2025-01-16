@@ -604,6 +604,10 @@ impl Tensor {
         self.reduce_impl(dim, false, ReduceOp::ArgMin)
     }
 
+    pub fn norm(self) -> anyhow::Result<Tensor> {
+        self.square()?.sum_all()?.sqrt()
+    }
+
     /// # Slice
     ///
     /// Current slice implementation requires specification of all dimensions.
