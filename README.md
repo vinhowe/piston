@@ -10,4 +10,4 @@ This is a fork of [Ratchet](https://github.com/huggingface/ratchet), hacked and 
 
 Currently this project is a proof-of-concept—it is possible to slowly train a small GPT-2-like language model, in Chrome, from scratch, on an M1 Pro MacBook.
 
-Much of my implementation beyond Ratchet is adapted from the [Candle](https://github.com/huggingface/candle) project. I picked Ratchet because it is simple enough to reason about, but it thoughtfully supports WebGPU's lazy execution model.
+I picked Ratchet because it is simple enough to reason about, but it thoughtfully supports WebGPU's lazy execution model. Much of my implementation beyond Ratchet is adapted from the [Candle](https://github.com/huggingface/candle) project.
