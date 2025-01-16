@@ -679,6 +679,10 @@ impl Tensor {
         Self::zeros_impl::<T>(shape, device, false)
     }
 
+    pub fn zeros_like<T: TensorDType>(self) -> Tensor {
+        Self::zeros::<T>(self.shape(), self.device())
+    }
+
     pub(crate) fn ones_impl<T: TensorDType>(
         shape: &Shape,
         device: &Device,
@@ -702,6 +706,10 @@ impl Tensor {
 
     pub fn ones<T: TensorDType>(shape: &Shape, device: &Device) -> Tensor {
         Self::ones_impl::<T>(&shape, &device, false)
+    }
+
+    pub fn ones_like<T: TensorDType>(&self) -> Tensor {
+        Self::ones::<T>(self.shape(), self.device())
     }
 
     pub fn has_nan<T: TensorDType + num_traits::Float>(&self) -> bool {
