@@ -1,6 +1,7 @@
 mod binary;
 mod cache;
 mod cast;
+mod cmp;
 mod concat;
 mod conv;
 mod fill_constant;
@@ -18,6 +19,7 @@ mod view;
 pub use binary::*;
 pub use cache::*;
 pub use cast::*;
+pub use cmp::*;
 pub use concat::*;
 pub use conv::*;
 pub use fill_constant::*;

@@ -335,6 +335,39 @@ macro_rules! impl_binary_op {
     };
 }
 
+macro_rules! impl_cmp_op {
+    ($method_name:ident, $op:expr) => {
+        #[allow(clippy::should_implement_trait)]
+        pub fn $method_name(self, other: Tensor) -> anyhow::Result<Tensor> {
+            let device = self.device.clone();
+            //TODO: avoid broadcasting if either operand is scalar
+            let (mut lhs, mut rhs) = (self, other);
+            let shapes = &[lhs.shape(), rhs.shape()];
+            let broadcasted = Shape::multi_broadcast(shapes);
+            if broadcasted.is_none() {
+                let failed = shapes.iter().map(|s| (*s).clone()).collect::<Vec<_>>();
+                return Err(InvariantError::BroadcastingFailed(failed).into());
+            }
+            let broadcasted = broadcasted.unwrap();
+            let left_required = shapes[0] != &broadcasted;
+            let right_required = shapes[1] != &broadcasted;
+
+            (lhs, rhs) = if left_required {
+                (lhs.broadcast_to(broadcasted.clone())?, rhs.clone())
+            } else if right_required {
+                (lhs, rhs.broadcast_to(broadcasted.clone())?)
+            } else {
+                (lhs, rhs)
+            };
+
+            let cmp = Cmp::new(lhs, rhs, $op);
+            let new_view = cmp.compute_view()?;
+
+            Ok(Tensor::lazy(LazyOp::Cmp(cmp), new_view, device, false))
+        }
+    };
+}
+
 macro_rules! impl_unary_op {
     ($method_name:ident, $op:expr) => {
         #[allow(clippy::should_implement_trait)]
@@ -352,6 +385,13 @@ impl Tensor {
     impl_binary_op!(sub, BinaryOp::Sub);
     impl_binary_op!(mul, BinaryOp::Mul);
     impl_binary_op!(div, BinaryOp::Div);
+
+    impl_cmp_op!(eq, CmpOp::Eq);
+    impl_cmp_op!(ne, CmpOp::Ne);
+    impl_cmp_op!(le, CmpOp::Le);
+    impl_cmp_op!(ge, CmpOp::Ge);
+    impl_cmp_op!(lt, CmpOp::Lt);
+    impl_cmp_op!(gt, CmpOp::Gt);
 
     impl_unary_op!(gelu, UnaryOp::Gelu);
     impl_unary_op!(tanh, UnaryOp::Tanh);
@@ -1010,6 +1050,7 @@ impl Tensor {
             LazyOp::Reindex(r) => r.compile_gpu(self, uniform, device, can_ip, debug).ok(),
             LazyOp::Concat(c) => c.compile_gpu(self, uniform, device, can_ip, debug).ok(),
             LazyOp::Norm(n) => n.compile_gpu(self, uniform, device, can_ip, debug).ok(),
+            LazyOp::Cmp(c) => c.compile_gpu(self, uniform, device, can_ip, debug).ok(),
             LazyOp::Conv(c) => c.compile_gpu(self, uniform, device, can_ip, debug).ok(),
             LazyOp::Select(i) => i.compile_gpu(self, uniform, device, can_ip, debug).ok(),
             LazyOp::IndexWrite(i) => i.compile_gpu(self, uniform, device, can_ip, debug).ok(),

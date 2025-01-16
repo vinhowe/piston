@@ -29,6 +29,7 @@ pub enum LazyOp {
     Reindex(Reindex),
     Concat(Concat),
     Norm(NormOp),
+    Cmp(Cmp),
     Cast(Cast),
     // ---- Everything below this line shouldn't exist ----
     FillConstant(FillConstant),
@@ -52,6 +53,7 @@ impl LazyOp {
             LazyOp::Reindex(r) => r.name(),
             LazyOp::Concat(c) => c.name(),
             LazyOp::Norm(n) => n.name(),
+            LazyOp::Cmp(c) => c.name(),
             LazyOp::Conv(c) => c.name(),
             LazyOp::Select(s) => s.name(),
             LazyOp::IndexWrite(iw) => iw.name(),
@@ -76,6 +78,7 @@ impl LazyOp {
             LazyOp::Reindex(r) => r.srcs(),
             LazyOp::Concat(c) => c.srcs(),
             LazyOp::Norm(n) => n.srcs(),
+            LazyOp::Cmp(c) => c.srcs(),
             LazyOp::Conv(c) => c.srcs(),
             LazyOp::Select(s) => s.srcs(),
             LazyOp::IndexWrite(iw) => iw.srcs(),
@@ -95,6 +98,7 @@ impl LazyOp {
             LazyOp::Reindex(r) => r.supports_inplace(),
             LazyOp::Concat(c) => c.supports_inplace(),
             LazyOp::Norm(n) => n.supports_inplace(),
+            LazyOp::Cmp(c) => c.supports_inplace(),
             LazyOp::Conv(c) => c.supports_inplace(),
             LazyOp::Select(s) => s.supports_inplace(),
             LazyOp::IndexWrite(iw) => iw.supports_inplace(),
@@ -117,6 +121,7 @@ impl LazyOp {
             LazyOp::Reindex(r) => r.supports_out_of_place(),
             LazyOp::Concat(c) => c.supports_out_of_place(),
             LazyOp::Norm(n) => n.supports_out_of_place(),
+            LazyOp::Cmp(c) => c.supports_out_of_place(),
             LazyOp::Conv(c) => c.supports_out_of_place(),
             LazyOp::Select(s) => s.supports_out_of_place(),
             LazyOp::IndexWrite(iw) => iw.supports_out_of_place(),
@@ -148,6 +153,7 @@ impl LazyOp {
             },
             LazyOp::Concat(c) => c.check_invariants(),
             LazyOp::Norm(n) => n.check_invariants(),
+            LazyOp::Cmp(c) => c.check_invariants(),
             LazyOp::Conv(c) => c.check_invariants(),
             LazyOp::Select(s) => s.check_invariants(),
             LazyOp::IndexWrite(iw) => iw.check_invariants(),
@@ -389,10 +395,10 @@ pub trait GPUOperation: Operation {
             Some((
                 dst.id(),
                 Arc::new(device.create_buffer(&wgpu::BufferDescriptor {
-                label: Some("debug buffer"),
-                size: dst.num_bytes() as _,
-                usage: wgpu::BufferUsages::standard(),
-                mapped_at_creation: false,
+                    label: Some("debug buffer"),
+                    size: dst.num_bytes() as _,
+                    usage: wgpu::BufferUsages::standard(),
+                    mapped_at_creation: false,
                 })),
             ))
         } else {
