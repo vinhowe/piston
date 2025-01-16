@@ -1,3 +1,4 @@
+mod affine;
 mod binary;
 mod cache;
 mod cast;
@@ -16,6 +17,7 @@ mod softmax;
 mod unary;
 mod view;
 
+pub use affine::*;
 pub use binary::*;
 pub use cache::*;
 pub use cast::*;

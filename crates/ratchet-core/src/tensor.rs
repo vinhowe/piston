@@ -524,6 +524,18 @@ impl Tensor {
         Ok(Tensor::lazy(LazyOp::Matmul(gemm), new_view, device, false))
     }
 
+    pub fn affine(self, mul: f32, add: f32) -> anyhow::Result<Tensor> {
+        let device = self.device.clone();
+        let affine = Affine::new(self, mul, add);
+        let new_view = affine.compute_view()?;
+        Ok(Tensor::lazy(
+            LazyOp::Affine(affine),
+            new_view,
+            device,
+            false,
+        ))
+    }
+
     /// # Slice
     ///
     /// Current slice implementation requires specification of all dimensions.
@@ -1050,6 +1062,7 @@ impl Tensor {
             LazyOp::Reindex(r) => r.compile_gpu(self, uniform, device, can_ip, debug).ok(),
             LazyOp::Concat(c) => c.compile_gpu(self, uniform, device, can_ip, debug).ok(),
             LazyOp::Norm(n) => n.compile_gpu(self, uniform, device, can_ip, debug).ok(),
+            LazyOp::Affine(a) => a.compile_gpu(self, uniform, device, can_ip, debug).ok(),
             LazyOp::Cmp(c) => c.compile_gpu(self, uniform, device, can_ip, debug).ok(),
             LazyOp::Conv(c) => c.compile_gpu(self, uniform, device, can_ip, debug).ok(),
             LazyOp::Select(i) => i.compile_gpu(self, uniform, device, can_ip, debug).ok(),
