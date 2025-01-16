@@ -56,6 +56,7 @@ macro_rules! impl_unary_ops {
             impl_cpu_unary_op!(sin, |x: $dtype| x.sin());
             impl_cpu_unary_op!(cos, |x: $dtype| x.cos());
             impl_cpu_unary_op!(abs, |x: $dtype| x.abs());
+            impl_cpu_unary_op!(square, |x: $dtype| x * x);
             impl_cpu_unary_op!(sqrt, |x: $dtype| x.sqrt());
             impl_cpu_unary_op!(relu, |x: $dtype| x.max($conv(0.0)));
             impl_cpu_unary_op!(floor, |x: $dtype| x.floor());
@@ -63,6 +64,7 @@ macro_rules! impl_unary_ops {
             impl_cpu_unary_op!(neg, |x: $dtype| -x);
             impl_cpu_unary_op!(silu, |x: $dtype| x / ($conv(1.0) + (-x).exp()));
             impl_cpu_unary_op!(sigmoid, |x: $dtype| $conv(1.0) / ($conv(1.0) + (-x).exp()));
+            impl_cpu_unary_op!(reciprocal, |x: $dtype| $conv(1.0) / x);
 
             fn apply(op: &Unary, dst: Tensor) -> Result<Tensor, OperationError> {
                 match op.op() {
@@ -73,11 +75,13 @@ macro_rules! impl_unary_ops {
                     UnaryOp::Sin => Self::sin(op.input(), dst),
                     UnaryOp::Cos => Self::cos(op.input(), dst),
                     UnaryOp::Abs => Self::abs(op.input(), dst),
+                    UnaryOp::Square => Self::square(op.input(), dst),
                     UnaryOp::Sqrt => Self::sqrt(op.input(), dst),
                     UnaryOp::Relu => Self::relu(op.input(), dst),
                     UnaryOp::Floor => Self::floor(op.input(), dst),
                     UnaryOp::Ceil => Self::ceil(op.input(), dst),
                     UnaryOp::Neg => Self::neg(op.input(), dst),
+                    UnaryOp::Reciprocal => Self::reciprocal(op.input(), dst),
                     UnaryOp::Silu => Self::silu(op.input(), dst),
                     UnaryOp::Sigmoid => Self::sigmoid(op.input(), dst),
                 }

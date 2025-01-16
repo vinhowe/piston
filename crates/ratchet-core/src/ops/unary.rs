@@ -28,11 +28,13 @@ pub enum UnaryOp {
     Sin,
     Cos,
     Abs,
+    Square,
     Sqrt,
     Relu,
     Floor,
     Ceil,
     Neg,
+    Reciprocal,
     Silu,
     Sigmoid,
 }
@@ -47,11 +49,13 @@ impl UnaryOp {
             UnaryOp::Sin => "sin".into(),
             UnaryOp::Cos => "cos".into(),
             UnaryOp::Abs => "abs".into(),
+            UnaryOp::Square => "square".into(),
             UnaryOp::Sqrt => "sqrt".into(),
             UnaryOp::Relu => "relu".into(),
             UnaryOp::Floor => "floor".into(),
             UnaryOp::Ceil => "ceil".into(),
             UnaryOp::Neg => "neg".into(),
+            UnaryOp::Reciprocal => "reciprocal".into(),
             UnaryOp::Silu => "silu".into(),
             UnaryOp::Sigmoid => "sigmoid".into(),
         }
@@ -61,6 +65,7 @@ impl UnaryOp {
         match self {
             UnaryOp::Tanh => "safe_tanh".into(),
             UnaryOp::Neg => "-".into(),
+            UnaryOp::Reciprocal => "1.0 / ".into(),
             _ => self.kernel_name(),
         }
     }
@@ -121,6 +126,9 @@ impl KernelRenderable for UnaryKernels {
             }
             UnaryOp::Sigmoid => {
                 kernel_builder.write_global(Unary::render_sigmoid::<P>());
+            }
+            UnaryOp::Square => {
+                kernel_builder.write_global(Unary::render_square::<P>());
             }
             UnaryOp::Silu => {
                 kernel_builder.write_global(Unary::render_sigmoid::<P>());
@@ -224,6 +232,16 @@ impl Unary {
             }
         }
     }
+
+    fn render_square<P: WgslPrimitive>() -> String {
+        let accessor = P::render_type();
+
+        wgsl! {
+            fn square(val: 'accessor) -> 'accessor {
+                return val * val;
+            }
+        }
+    }
 }
 
 #[derive(Debug, ShaderType, WgslMetadata)]
@@ -247,11 +265,13 @@ impl Operation for Unary {
             UnaryOp::Sin => "Sin",
             UnaryOp::Cos => "Cos",
             UnaryOp::Abs => "Abs",
+            UnaryOp::Square => "Square",
             UnaryOp::Sqrt => "Sqrt",
             UnaryOp::Relu => "Relu",
             UnaryOp::Floor => "Floor",
             UnaryOp::Ceil => "Ceil",
             UnaryOp::Neg => "Neg",
+            UnaryOp::Reciprocal => "Reciprocal",
             UnaryOp::Silu => "Silu",
             UnaryOp::Sigmoid => "Sigmoid",
         }
@@ -428,11 +448,13 @@ def {}(a):
             UnaryOp::Sin => a.sin()?,
             UnaryOp::Cos => a.cos()?,
             UnaryOp::Abs => a.abs()?,
+            UnaryOp::Square => a.square()?,
             UnaryOp::Sqrt => a.sqrt()?,
             UnaryOp::Relu => a.relu()?,
             UnaryOp::Floor => a.floor()?,
             UnaryOp::Ceil => a.ceil()?,
             UnaryOp::Neg => a.neg()?,
+            UnaryOp::Reciprocal => a.recip()?,
             UnaryOp::Silu => a.silu()?,
             UnaryOp::Sigmoid => a.sigmoid()?,
         }
