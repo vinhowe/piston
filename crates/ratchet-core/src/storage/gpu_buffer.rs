@@ -214,4 +214,3 @@ pub async fn wgpu_buffer_to_cpu_buffer(
     #[cfg(not(target_arch = "wasm32"))]
     return rx.recv().unwrap().unwrap();
 }
-
