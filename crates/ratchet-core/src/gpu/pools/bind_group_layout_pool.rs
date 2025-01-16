@@ -88,6 +88,16 @@ impl BindGroupLayoutDescriptor {
         }
     }
 
+    pub fn ternary_inplace() -> Self {
+        Self {
+            entries: rvec![
+                wgpu::BindGroupLayoutEntry::compute_storage_buffer(0, false),
+                wgpu::BindGroupLayoutEntry::compute_storage_buffer(1, true),
+                wgpu::BindGroupLayoutEntry::compute_storage_buffer(2, true)
+            ],
+        }
+    }
+
     pub fn nthary(ro: usize) -> Self {
         Self {
             entries: Self::entries(ro),

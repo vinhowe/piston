@@ -16,6 +16,7 @@ mod select;
 mod softmax;
 mod unary;
 mod view;
+mod where_cond;
 
 pub use affine::*;
 pub use binary::*;
@@ -35,6 +36,7 @@ pub use select::*;
 pub use softmax::*;
 pub use unary::*;
 pub use view::*;
+pub use where_cond::*;
 
 /// # KernelElement
 ///

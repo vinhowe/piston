@@ -638,6 +638,18 @@ impl Tensor {
         Ok(Tensor::lazy(op, new_view, device, false))
     }
 
+    pub fn where_cond(self, on_true: Tensor, on_false: Tensor) -> anyhow::Result<Tensor> {
+        let device = self.device.clone();
+        let where_cond = WhereCond::new(self, on_true, on_false);
+        let new_view = where_cond.compute_view()?;
+        Ok(Tensor::lazy(
+            LazyOp::WhereCond(where_cond),
+            new_view,
+            device,
+            false,
+        ))
+    }
+
     #[cfg(feature = "rand")]
     pub(crate) fn randint_impl<T: TensorDType + rand_distr::uniform::SampleUniform + PartialOrd>(
         low: T,
@@ -1064,6 +1076,7 @@ impl Tensor {
             LazyOp::Norm(n) => n.compile_gpu(self, uniform, device, can_ip, debug).ok(),
             LazyOp::Affine(a) => a.compile_gpu(self, uniform, device, can_ip, debug).ok(),
             LazyOp::Cmp(c) => c.compile_gpu(self, uniform, device, can_ip, debug).ok(),
+            LazyOp::WhereCond(w) => w.compile_gpu(self, uniform, device, can_ip, debug).ok(),
             LazyOp::Conv(c) => c.compile_gpu(self, uniform, device, can_ip, debug).ok(),
             LazyOp::Select(i) => i.compile_gpu(self, uniform, device, can_ip, debug).ok(),
             LazyOp::IndexWrite(i) => i.compile_gpu(self, uniform, device, can_ip, debug).ok(),
