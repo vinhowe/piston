@@ -100,6 +100,11 @@ impl Shape {
         self.0.retain(|x| *x != 1);
     }
 
+    #[inline]
+    pub fn unsqueeze(&mut self, dim: usize) {
+        self.0.insert(dim, 1);
+    }
+
     pub fn drain<R>(&mut self, range: R) -> smallvec::Drain<'_, [usize; 4]>
     where
         R: std::ops::RangeBounds<usize>,

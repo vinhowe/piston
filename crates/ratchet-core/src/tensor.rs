@@ -586,6 +586,19 @@ impl Tensor {
         ))
     }
 
+    // Use view to add a singleton dimension
+    pub fn unsqueeze(self, dim: usize) -> anyhow::Result<Tensor> {
+        let mut new_shape = self.shape().clone();
+        new_shape.unsqueeze(dim);
+        self.view(new_shape)
+    }
+
+    pub fn squeeze(self) -> anyhow::Result<Tensor> {
+        let mut new_shape = self.shape().clone();
+        new_shape.squeeze();
+        self.view(new_shape)
+    }
+
     pub fn cat(tensors: RVec<Tensor>, dim: usize) -> anyhow::Result<Tensor> {
         let device = tensors[0].device.clone();
         assert!(tensors.iter().all(|t| t.device == device), "Mixed devices");
