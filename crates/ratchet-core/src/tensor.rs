@@ -94,7 +94,7 @@ impl Tensor {
         Self::new_impl(op, meta, None, device, is_variable)
     }
 
-    fn shallow(
+    pub fn shallow(
         op: LazyOp,
         meta: StorageView,
         storage: Arc<RwLock<Option<Storage>>>,
@@ -269,7 +269,7 @@ impl Tensor {
         self.storage().is_some()
     }
 
-    pub(crate) fn op(&self) -> &LazyOp {
+    pub fn op(&self) -> &LazyOp {
         &self.inner.op
     }
 
@@ -584,7 +584,7 @@ impl Tensor {
     }
 
     #[cfg(feature = "rand")]
-    pub fn randint_impl<T: TensorDType + rand_distr::uniform::SampleUniform + PartialOrd>(
+    pub(crate) fn randint_impl<T: TensorDType + rand_distr::uniform::SampleUniform + PartialOrd>(
         low: T,
         high: T,
         shape: Shape,
@@ -722,7 +722,7 @@ impl Tensor {
     ///
     /// The Tensor is instantly resolved.
     /// If a non-CPU device is specified, the data will be copied to the device.
-    pub fn from_data_impl<T: TensorDType, U: AsRef<[T]>>(
+    pub(crate) fn from_data_impl<T: TensorDType, U: AsRef<[T]>>(
         data: U,
         shape: Shape,
         device: Device,
