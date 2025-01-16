@@ -1553,7 +1553,80 @@ impl<T: TensorDType> From<ArrayD<T>> for Tensor {
     }
 }
 
-#[cfg(test)]
+macro_rules! bin_trait {
+    ($trait:ident, $fn1:ident, $mul:expr, $add:expr) => {
+        impl std::ops::$trait<Tensor> for Tensor {
+            type Output = anyhow::Result<Tensor>;
+
+            fn $fn1(self, rhs: Tensor) -> Self::Output {
+                Tensor::$fn1(self, rhs)
+            }
+        }
+
+        impl std::ops::$trait<Tensor> for anyhow::Result<Tensor> {
+            type Output = anyhow::Result<Tensor>;
+
+            fn $fn1(self, rhs: Tensor) -> Self::Output {
+                Tensor::$fn1(self?, rhs)
+            }
+        }
+
+        impl std::ops::$trait<anyhow::Result<Tensor>> for Tensor {
+            type Output = anyhow::Result<Tensor>;
+
+            fn $fn1(self, rhs: anyhow::Result<Tensor>) -> Self::Output {
+                Tensor::$fn1(self, rhs?)
+            }
+        }
+
+        impl std::ops::$trait<f32> for Tensor {
+            type Output = anyhow::Result<Tensor>;
+
+            fn $fn1(self, rhs: f32) -> Self::Output {
+                self.affine($mul(rhs), $add(rhs))
+            }
+        }
+    };
+}
+
+bin_trait!(Add, add, |_| 1., |v| v);
+bin_trait!(Sub, sub, |_| 1., |v: f32| -v);
+bin_trait!(Mul, mul, |v| v, |_| 0.);
+bin_trait!(Div, div, |v| 1. / v, |_| 0.);
+
+impl std::ops::Add<Tensor> for f32 {
+    type Output = anyhow::Result<Tensor>;
+
+    fn add(self, rhs: Tensor) -> Self::Output {
+        rhs + self
+    }
+}
+
+impl std::ops::Mul<Tensor> for f32 {
+    type Output = anyhow::Result<Tensor>;
+
+    fn mul(self, rhs: Tensor) -> Self::Output {
+        rhs * self
+    }
+}
+
+impl std::ops::Sub<Tensor> for f32 {
+    type Output = anyhow::Result<Tensor>;
+
+    fn sub(self, rhs: Tensor) -> Self::Output {
+        rhs.affine(-1., self)
+    }
+}
+
+impl std::ops::Div<Tensor> for f32 {
+    type Output = anyhow::Result<Tensor>;
+
+    #[allow(clippy::suspicious_arithmetic_impl)]
+    fn div(self, rhs: Tensor) -> Self::Output {
+        rhs.recip()? * self
+    }
+}
+
 mod tests {
     use crate::{rvec, shape, Device, Tensor};
 
