@@ -762,6 +762,14 @@ impl Tensor {
         Ok(Tensor::lazy(LazyOp::Cache(cache), new_view, device, false))
     }
 
+    /// Returns a new tensor duplicating data from the original tensor. New dimensions are inserted
+    /// on the left.
+    pub fn broadcast_left(self, left_shape: Shape) -> anyhow::Result<Tensor> {
+        let mut dims = left_shape.to_vec();
+        dims.extend(self.shape().to_vec());
+        self.broadcast_to(Shape::from(dims))
+    }
+
     pub fn broadcast_to(self, shape: Shape) -> anyhow::Result<Tensor> {
         let device = self.device.clone();
         let broadcast = Broadcast::new(self, shape);
