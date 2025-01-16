@@ -10,6 +10,7 @@ pub use gpu_buffer::*;
 use crate::{Device, DeviceError, Shape, TensorDType};
 
 use crate::DType;
+use maybe_async::maybe_async;
 
 #[derive(Debug)]
 pub enum Storage {
@@ -118,15 +119,12 @@ impl Storage {
     }
 }
 
-#[cfg_attr(target_arch = "wasm32", async_trait::async_trait)]
+#[maybe_async]
 pub trait DeviceStorage: std::fmt::Debug + Clone + 'static {
     // To be expanded to other devices
     fn to_device(&self, device: &Device) -> Result<GPUBuffer, DeviceError>;
     /// Creates a copy of the device buffer on the CPU
-    #[cfg(target_arch = "wasm32")]
     async fn to_cpu(&self, device: &Device) -> Result<CPUBuffer, DeviceError>;
-    #[cfg(not(target_arch = "wasm32"))]
-    fn to_cpu(&self, device: &Device) -> Result<CPUBuffer, DeviceError>;
     fn n_bytes(&self) -> usize;
     fn dump(&self, dt: DType, full: bool) -> String;
 }

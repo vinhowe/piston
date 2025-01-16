@@ -3,6 +3,7 @@ use half::f16;
 
 use crate::{storage::DeviceStorage, DType, Device, DeviceError, GPUBuffer, Shape, TensorDType};
 
+use maybe_async::maybe_async;
 use std::{alloc::Layout, fmt::Debug, mem::MaybeUninit, sync::Arc};
 
 #[derive(derive_new::new, Debug, PartialEq, Eq)]
@@ -145,7 +146,7 @@ impl CPUBuffer {
     }
 }
 
-#[cfg_attr(target_arch = "wasm32", async_trait::async_trait)]
+#[maybe_async]
 impl DeviceStorage for CPUBuffer {
     fn to_device(&self, device: &Device) -> Result<GPUBuffer, DeviceError> {
         let gpu_device = device.try_gpu()?;
@@ -154,13 +155,7 @@ impl DeviceStorage for CPUBuffer {
         Ok(GPUBuffer::from_bytes(bytes, layout.align(), gpu_device))
     }
 
-    #[cfg(target_arch = "wasm32")]
     async fn to_cpu(&self, _device: &Device) -> Result<CPUBuffer, DeviceError> {
-        Ok(self.clone())
-    }
-
-    #[cfg(not(target_arch = "wasm32"))]
-    fn to_cpu(&self, _device: &Device) -> Result<CPUBuffer, DeviceError> {
         Ok(self.clone())
     }
 

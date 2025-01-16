@@ -5,6 +5,7 @@ use crate::{
     RawCPUBuffer, Shape, Storage, Strides, TensorDType, TensorId,
 };
 use derive_new::new;
+use maybe_async::maybe_async;
 use npyz::WriterBuilder;
 use parking_lot::{RwLock, RwLockReadGuard};
 use std::collections::HashSet;
@@ -913,8 +914,8 @@ impl Tensor {
     }
 }
 
-#[cfg(target_arch = "wasm32")]
 impl Tensor {
+    #[maybe_async]
     async fn to_cpu(&self) -> Result<Tensor, TensorError> {
         if self.device().is_cpu() || !self.resolved() {
             return Ok(self.clone());
@@ -939,48 +940,13 @@ impl Tensor {
     /// If the tensor is already on the specified device, it will be returned as-is,
     /// and the underlying storage will not be copied.
     /// If the tensor is on a different device, it will be copied to the specified device.
+    #[maybe_async]
     pub async fn to(&self, device: &Device) -> Result<Tensor, TensorError> {
         match (self.device(), device) {
             (Device::GPU(_), Device::CPU) => self.to_cpu().await,
             (Device::CPU, Device::GPU(_)) => self.to_gpu(device),
             _ => Ok(self.clone()),
         }
-    }
-}
-
-#[cfg(not(target_arch = "wasm32"))]
-impl Tensor {
-    /// Transfers the tensor to the specified device.
-    ///
-    /// If the tensor is already on the specified device, it will be returned as-is,
-    /// and the underlying storage will not be copied.
-    /// If the tensor is on a different device, it will be copied to the specified device.
-    pub fn to(&self, device: &Device) -> Result<Tensor, TensorError> {
-        match (self.device(), device) {
-            (Device::GPU(_), Device::CPU) => self.to_cpu(),
-            (Device::CPU, Device::GPU(_)) => self.to_gpu(device),
-            _ => Ok(self.clone()),
-        }
-    }
-
-    fn to_cpu(&self) -> Result<Tensor, TensorError> {
-        if self.device().is_cpu() || !self.resolved() {
-            log::error!("Tensor may not have been resolved, try calling `resolve()` first.");
-            return Ok(self.clone());
-        }
-        let storage_guard = self.storage();
-        let gpu_buf = storage_guard
-            .as_ref()
-            .ok_or(TensorError::TransferError)?
-            .try_gpu()?;
-        let cpu_buf = gpu_buf.to_cpu(&self.device)?;
-
-        Ok(Tensor::new(
-            LazyOp::Const,
-            self.view.clone(),
-            Some(Storage::CPU(cpu_buf)),
-            Device::CPU,
-        ))
     }
 
     #[cfg(feature = "pyo3")]
