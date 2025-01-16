@@ -30,6 +30,7 @@ pub fn apply_operation(op: LazyOp, dst: Tensor) -> Result<Tensor, OperationError
         LazyOp::Norm(n) => n.apply_cpu(dst),
         LazyOp::Affine(_a) => todo!(),
         LazyOp::Cmp(_c) => todo!(),
+        LazyOp::Powf(_p) => todo!(),
         LazyOp::Conv(_c) => todo!(),
         LazyOp::Select(i) => cpu_index_select(i, dst),
         LazyOp::IndexWrite(_i) => todo!(),

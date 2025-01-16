@@ -539,6 +539,13 @@ impl Tensor {
         ))
     }
 
+    pub fn powf(self, e: f32) -> anyhow::Result<Tensor> {
+        let device = self.device.clone();
+        let powf = Powf::new(self, e);
+        let new_view = powf.compute_view()?;
+        Ok(Tensor::lazy(LazyOp::Powf(powf), new_view, device, false))
+    }
+
     fn reduce_impl(self, dim: usize, keepdim: bool, op: ReduceOp) -> anyhow::Result<Tensor> {
         let device = self.device.clone();
         let reduce = Reduce::new(self, op, vec![dim], keepdim);
@@ -1325,6 +1332,7 @@ impl Tensor {
             LazyOp::Norm(n) => n.compile_gpu(self, uniform, device, can_ip, debug).ok(),
             LazyOp::Affine(a) => a.compile_gpu(self, uniform, device, can_ip, debug).ok(),
             LazyOp::Cmp(c) => c.compile_gpu(self, uniform, device, can_ip, debug).ok(),
+            LazyOp::Powf(p) => p.compile_gpu(self, uniform, device, can_ip, debug).ok(),
             LazyOp::WhereCond(w) => w.compile_gpu(self, uniform, device, can_ip, debug).ok(),
             LazyOp::Conv(c) => c.compile_gpu(self, uniform, device, can_ip, debug).ok(),
             LazyOp::Select(i) => i.compile_gpu(self, uniform, device, can_ip, debug).ok(),
