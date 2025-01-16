@@ -8,6 +8,7 @@ use crate::{
 };
 use parking_lot::RwLock;
 use rustc_hash::FxHashMap;
+use std::num::NonZero;
 use std::{borrow::Cow, sync::Arc};
 use wgpu::BufferUsages;
 
@@ -66,10 +67,17 @@ impl BufferAllocator {
             contents
         };
 
-        let buf = self.pool.write().get_or_create(desc, device, true);
-        device.queue().write_buffer(&buf.inner, 0, &contents);
-        device.queue().submit(None);
-        device.poll(wgpu::Maintain::Wait);
+        let buf = self.pool.write().get_or_create(desc, device, false);
+        let mut buffer_view = device.queue().write_buffer_with(
+            &buf.inner,
+            0,
+            NonZero::try_from(contents.len() as u64).unwrap(),
+        );
+        buffer_view
+            .as_mut()
+            .unwrap()
+            .copy_from_slice(contents.as_ref());
+        drop(buffer_view);
         buf
     }
 
@@ -85,10 +93,17 @@ impl BufferAllocator {
             false,
         );
 
-        let resource = self.pool.write().get_or_create(&desc, device, true);
-        device
-            .queue()
-            .write_buffer(&resource.inner, 0, uniform.as_slice());
+        let resource = self.pool.write().get_or_create(&desc, device, false);
+        let mut buffer_view = device.queue().write_buffer_with(
+            &resource.inner,
+            0,
+            NonZero::try_from(uniform.len() as u64).unwrap(),
+        );
+        buffer_view
+            .as_mut()
+            .unwrap()
+            .copy_from_slice(uniform.as_slice());
+        drop(buffer_view);
         resource
     }
 
@@ -124,7 +139,7 @@ impl BufferAllocator {
 
         match closest_index {
             Some(idx) => free.remove(idx),
-            None => self.create_buffer(&descriptor, device, true),
+            None => self.create_buffer(&descriptor, device, false),
         }
     }
 
@@ -141,7 +156,8 @@ impl BufferAllocator {
     fn determine_tensor_source(source: &Tensor) -> &Tensor {
         let mut true_source = source;
         loop {
-            if true_source.op().srcs().is_empty() || !true_source.op().supports_inplace() {
+            // vinhowe: we flip the inplace-by-default policy to make implementing training easier
+            if true_source.op().srcs().is_empty() || true_source.op().supports_out_of_place() {
                 //If no sources, we are at the root
                 //Or if the operation doesn't support inplace
                 break;
@@ -217,22 +233,24 @@ impl BufferAllocator {
         let mut shared_objects: Vec<PooledGPUBuffer> = Vec::with_capacity(records.0.len());
 
         for record in records.0.iter() {
-            let record_producer = record.producer.unwrap();
-            let mut best_obj = None;
-            for obj in shared_objects.iter() {
-                let mut suitable = true;
-                for inner_r in records.0.iter() {
-                    let max_first = std::cmp::max(record_producer, inner_r.producer.unwrap());
-                    let min_last = std::cmp::min(record.last_consumer, inner_r.last_consumer);
-                    if max_first <= min_last && assignments.get(&inner_r.id.unwrap()) == Some(obj) {
-                        suitable = false;
-                        break;
-                    }
-                }
-                if suitable {
-                    best_obj = Some(obj);
-                }
-            }
+            // let record_producer = record.producer.unwrap();
+            // let mut best_obj = None;
+            // for obj in shared_objects.iter() {
+            //     let mut suitable = true;
+            //     for inner_r in records.0.iter() {
+            //         let max_first = std::cmp::max(record_producer, inner_r.producer.unwrap());
+            //         let min_last = std::cmp::min(record.last_consumer, inner_r.last_consumer);
+            //         if max_first <= min_last && assignments.get(&inner_r.id.unwrap()) == Some(obj) {
+            //             suitable = false;
+            //             break;
+            //         }
+            //     }
+            //     if suitable {
+            //         best_obj = Some(obj);
+            //     }
+            // }
+
+            let best_obj: Option<&PooledGPUBuffer> = None;
             if let Some(obj) = best_obj {
                 assignments.insert(record.id.unwrap(), (*obj).clone());
             } else {
@@ -265,8 +283,8 @@ impl BufferAllocator {
 
         //We use `immediate` = false here in create_buffer
         //and submit the queue after all allocations are done.
-        device.queue().submit(None);
-        device.poll(wgpu::Maintain::Wait);
+        // device.queue().submit(None);
+        // device.poll(wgpu::Maintain::Wait);
         Ok(())
     }
 

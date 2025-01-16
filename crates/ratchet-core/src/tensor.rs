@@ -820,8 +820,17 @@ impl Tensor {
                 alignment: t.dt().size_of(),
             }));
 
-            let to_modify = t.op().srcs()[0];
-            let can_inplace = t.op().supports_inplace() && to_modify.strong_count() == 1;
+            let srcs = t.op().srcs();
+            let to_modify = srcs.first();
+            let can_inplace = match to_modify {
+                Some(to_modify_src) => {
+                    t.op().supports_inplace()
+                        // vinhowe: we flip the inplace-by-default policy to make implementing training easier
+                        && !t.op().supports_out_of_place()
+                        && to_modify_src.strong_count() == 1
+                }
+                None => false,
+            };
 
             if let Some(compiled_op) = t.compile_gpu(&mut uniform, gpu_device, can_inplace, debug) {
                 compiled_ops.push(compiled_op);
