@@ -12,11 +12,27 @@ pyo3 = ["ratchet/pyo3"]
 anyhow.workspace = true
 derive-new = { workspace = true }
 ratchet = { path = "../ratchet-core" }
-half = {workspace = true}
+wasm-bindgen = { workspace = true }
+wasm-bindgen-futures = { workspace = true }
+wasm-bindgen-test = { workspace = true }
+safetensors = { workspace = true }
+thiserror = { workspace = true }
+async-trait = { workspace = true }
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+maybe-async = { workspace = true, features = ["is_sync"] }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+maybe-async = { workspace = true }
 
 [dev-dependencies]
 proptest = { workspace = true }
 test-strategy = { workspace = true }
 hf-hub = { workspace = true }
 ratchet-loader = { path = "../ratchet-loader" }
-tokenizers.workspace = true
+[target.'cfg(target_arch = "wasm32")'.dependencies.web-sys]
+features = [
+    "Blob",
+    "HtmlAnchorElement",
+    "CssStyleDeclaration"
+]
+workspace = true

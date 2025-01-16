@@ -4,6 +4,8 @@ mod kv_cache;
 mod linear;
 mod norm;
 mod rope;
+mod var_builder;
+mod var_map;
 
 pub use embedding::*;
 pub use groupnorm::*;
@@ -11,6 +13,8 @@ pub use kv_cache::*;
 pub use linear::*;
 pub use norm::*;
 pub use rope::*;
+pub use var_builder::*;
+pub use var_map::*;
 
 use ratchet::Tensor;
 
