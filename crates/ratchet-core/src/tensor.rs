@@ -4,6 +4,7 @@ use crate::{
     Executable, GPUBuffer, GPUOperation, InvariantError, LazyOp, Operation, OperationError, RVec,
     RawCPUBuffer, Shape, Storage, Strides, TensorDType, TensorId,
 };
+use bitvec::prelude::*;
 use derive_new::new;
 use maybe_async::maybe_async;
 use npyz::WriterBuilder;
@@ -1058,8 +1059,8 @@ impl Tensor {
     }
 
     pub(crate) fn execution_order(&self) -> Vec<&Tensor> {
-        let mut done = HashSet::new();
-        let mut pending = HashSet::new();
+        let mut done = BitVec::<u32>::repeat(false, self.id().0 + 1);
+        let mut pending = BitVec::<u32>::repeat(false, self.id().0 + 1);
         let mut order = Vec::new();
 
         let mut stack: Vec<(&Tensor, usize)> = vec![(self, 0)];
@@ -1067,8 +1068,8 @@ impl Tensor {
             let all_deps_done = cur_src == cur_t.op().srcs().len();
 
             if all_deps_done {
-                done.insert(cur_t.id());
-                pending.remove(&cur_t.id());
+                done.set(cur_t.id().0, true);
+                pending.set(cur_t.id().0, false);
                 order.push(cur_t);
                 continue;
             }
@@ -1085,16 +1086,17 @@ impl Tensor {
                 .collect::<RVec<_>>();
 
             let precursor: &Tensor = all_srcs[cur_src];
+            let precursor_id = precursor.id().0;
 
-            if done.contains(&precursor.id()) {
+            if done[precursor_id] {
                 stack.push((cur_t, cur_src + 1));
-            } else if pending.contains(&precursor.id()) {
+            } else if pending[precursor_id] {
                 panic!(
                     "Cycle detected whilst computing topological order: {:?}. Try plotting with feature `plotting`.",
-                    precursor.id()
+                    precursor_id
                 );
             } else {
-                pending.insert(precursor.id());
+                pending.set(precursor_id, true);
                 stack.push((cur_t, cur_src));
                 stack.push((precursor, 0));
             }

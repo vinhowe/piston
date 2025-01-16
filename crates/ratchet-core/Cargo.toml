@@ -56,6 +56,8 @@ pyo3 = { workspace = true, features = ["auto-initialize"], optional = true }
 regex = { workspace = true, optional = true }
 numpy = { workspace = true, optional = true, features = ["half"] }
 gemm = { version = "0.18.0", features = ["nightly", "wasm-simd128-enable"] }
+bitvec = { workspace = true }
+
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 maybe-async = { workspace = true, features = ["is_sync"] }
 
