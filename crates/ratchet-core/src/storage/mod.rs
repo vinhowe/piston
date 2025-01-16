@@ -119,6 +119,15 @@ impl Storage {
     }
 }
 
+impl Clone for Storage {
+    fn clone(&self) -> Self {
+        match self {
+            Storage::CPU(c) => Storage::CPU(c.clone()),
+            Storage::GPU(g) => Storage::GPU(g.clone()),
+        }
+    }
+}
+
 #[maybe_async]
 pub trait DeviceStorage: std::fmt::Debug + Clone + 'static {
     // To be expanded to other devices
