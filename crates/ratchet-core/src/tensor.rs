@@ -1223,12 +1223,12 @@ impl Tensor {
         #[cfg(feature = "debug")]
         let index = if debug {
             if cfg!(feature = "debug") {
-                executable.dispatch_debugging(device).unwrap()
+                executable.dispatch_debugging(gpu_device).unwrap()
             } else {
                 panic!("Debugging is only available in debug builds. Call `resolve()` instead of `resolve_debug()`.")
             }
         } else {
-            executable.dispatch(device).unwrap()
+            executable.dispatch(gpu_device).unwrap()
         };
         #[cfg(not(feature = "debug"))]
         let index = executable.dispatch(gpu_device).unwrap();
