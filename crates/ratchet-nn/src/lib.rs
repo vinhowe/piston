@@ -7,6 +7,7 @@ mod loss;
 mod norm;
 mod optim;
 mod rope;
+mod util;
 mod var_builder;
 mod var_map;
 
@@ -19,6 +20,7 @@ pub use loss::*;
 pub use norm::*;
 pub use optim::*;
 pub use rope::*;
+pub use util::*;
 pub use var_builder::*;
 pub use var_map::*;
 
