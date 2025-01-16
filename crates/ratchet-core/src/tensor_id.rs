@@ -1,6 +1,6 @@
 /// Unique identifier for tensors.
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
-pub struct TensorId(usize);
+pub struct TensorId(pub(crate) usize);
 
 impl std::fmt::Debug for TensorId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
