@@ -23,6 +23,7 @@ num-traits = { workspace = true }
 log = { workspace = true }
 thiserror = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
+safetensors = { workspace = true }
 anyhow.workspace = true
 
 rustc-hash = { workspace = true }

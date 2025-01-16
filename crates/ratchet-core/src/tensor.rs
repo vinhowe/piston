@@ -9,7 +9,7 @@ use derive_new::new;
 use maybe_async::maybe_async;
 use npyz::WriterBuilder;
 use parking_lot::{RwLock, RwLockReadGuard};
-use std::collections::HashSet;
+use std::borrow::Cow;
 use std::io::{BufRead, Seek};
 use std::ops::Bound;
 use std::path::Path;
@@ -1988,6 +1988,39 @@ impl std::ops::Div<Tensor> for f32 {
     #[allow(clippy::suspicious_arithmetic_impl)]
     fn div(self, rhs: Tensor) -> Self::Output {
         rhs.recip()? * self
+    }
+}
+
+impl<'data> safetensors::View for &'data Tensor {
+    fn dtype(&self) -> safetensors::Dtype {
+        match self.dt() {
+            DType::F32 => safetensors::Dtype::F32,
+            DType::U32 => safetensors::Dtype::U32,
+            DType::I32 => safetensors::Dtype::I32,
+            DType::F16 => safetensors::Dtype::F16,
+            DType::Q8_0F(_) | DType::Q8_0H(_) => safetensors::Dtype::U8,
+            DType::BF16 => safetensors::Dtype::BF16,
+            DType::Q4_KF(_) | DType::Q4_KH(_) => todo!(),
+        }
+    }
+
+    fn shape(&self) -> &[usize] {
+        &Tensor::shape(&self).inner()
+    }
+
+    fn data(&self) -> Cow<'_, [u8]> {
+        assert!(
+            self.device().is_cpu(),
+            "Cannot convert non-CPU tensor to safetensors"
+        );
+        let storage_guard = self.storage();
+        let buffer = storage_guard.as_ref().unwrap().try_cpu().unwrap();
+        let (ptr, _) = buffer.inner().into_raw_parts();
+        Cow::from(unsafe { std::slice::from_raw_parts(ptr, self.num_bytes()) })
+    }
+
+    fn data_len(&self) -> usize {
+        self.num_bytes()
     }
 }
 
