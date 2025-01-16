@@ -1255,10 +1255,10 @@ impl Tensor {
         self.compile_gpu_for_op(&self.op, uniform, device, can_inplace, debug)
     }
 
-    fn resolve_inner(self, debug: bool) -> Result<Tensor, TensorError> {
+    fn resolve_inner(self, immediate: bool, debug: bool) -> Result<Tensor, TensorError> {
         match self.device().clone() {
             Device::CPU => self.resolve_cpu(),
-            Device::GPU(device) => self.resolve_gpu(&device, debug),
+            Device::GPU(device) => self.resolve_gpu(&device, immediate, debug),
         }
     }
 
@@ -1278,7 +1278,12 @@ impl Tensor {
         Ok(tensor.clone())
     }
 
-    fn resolve_gpu(self, gpu_device: &WgpuDevice, debug: bool) -> Result<Tensor, TensorError> {
+    fn resolve_gpu(
+        self,
+        gpu_device: &WgpuDevice,
+        immediate: bool,
+        debug: bool,
+    ) -> Result<Tensor, TensorError> {
         let execution_order = self.execution_order();
         let mut uniform = CpuUniform::new();
         let mut compiled_ops = Vec::with_capacity(execution_order.len());
@@ -1351,15 +1356,22 @@ impl Tensor {
         } else {
             executable.dispatch(gpu_device).unwrap()
         };
+
         #[cfg(not(feature = "debug"))]
         let index = executable.dispatch(gpu_device).unwrap();
-        gpu_device.poll(wgpu::MaintainBase::WaitForSubmissionIndex(index));
+        if immediate {
+            gpu_device.poll(wgpu::MaintainBase::WaitForSubmissionIndex(index));
+        }
 
         Ok(self)
     }
 
     pub fn resolve(self) -> Result<Tensor, TensorError> {
-        self.resolve_inner(false)
+        self.resolve_inner(true, false)
+    }
+
+    pub fn resolve_deferred(self) -> Result<Tensor, TensorError> {
+        self.resolve_inner(false, false)
     }
 
     /// Resolves the tensor computations and copies the output
@@ -1368,7 +1380,7 @@ impl Tensor {
     /// The copy calls are inserted between each operation, so inplace
     /// operations are captured.
     pub fn resolve_debug(self) -> Result<Tensor, TensorError> {
-        self.resolve_inner(true)
+        self.resolve_inner(true, true)
     }
 
     fn to_gpu(&self, dst_device: &Device) -> Result<Tensor, TensorError> {
