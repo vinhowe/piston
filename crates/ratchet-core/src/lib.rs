@@ -16,6 +16,7 @@ mod storage;
 mod strides;
 mod tensor;
 mod tensor_id;
+mod variable;
 
 pub use compiled_op::*;
 pub use cpu::*;
@@ -34,6 +35,7 @@ pub use storage::*;
 pub use strides::*;
 pub use tensor::*;
 pub use tensor_id::*;
+pub use variable::*;
 
 #[cfg(feature = "plotting")]
 pub use plot::render_to_file;
