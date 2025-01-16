@@ -55,6 +55,17 @@ impl Var {
     }
 
     #[cfg(feature = "rand")]
+    pub fn rand<T: TensorDType + num_traits::Float>(
+        lo: f32,
+        up: f32,
+        shape: Shape,
+        device: Device,
+    ) -> Self {
+        let inner = Tensor::rand_impl::<T>(lo, up, shape, device, true);
+        Self(inner)
+    }
+
+    #[cfg(feature = "rand")]
     pub fn randn<T: TensorDType + num_traits::Float>(
         mean: f32,
         std: f32,

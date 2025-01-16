@@ -35,6 +35,7 @@ pub fn apply_operation(op: LazyOp, dst: Tensor) -> Result<Tensor, OperationError
         LazyOp::Const => todo!(),
         LazyOp::View(_) => todo!(),
         LazyOp::FillConstant(_f) => todo!(),
+        LazyOp::FillRandn(_f) => todo!(),
     }
 }
 

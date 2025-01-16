@@ -330,7 +330,7 @@ def index_select(input, indices):
             input_shape,
             indices,
         } = problem;
-        let mut input = Tensor::randn::<f32>(input_shape, Device::CPU);
+        let mut input = Tensor::randn::<f32>(0., 1., input_shape, Device::CPU);
 
         let ground_truth = ground_truth(&input, &indices, 0).unwrap();
         if quant {

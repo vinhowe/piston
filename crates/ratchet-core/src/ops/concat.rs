@@ -320,11 +320,11 @@ def permute(*tensors):
 
     #[test]
     fn test_concat_gpu() {
-        let t0 = Tensor::randn::<f32>(shape![4, 2, 50, 128], Device::CPU);
-        let t1 = Tensor::randn::<f32>(shape![4, 2, 13, 128], Device::CPU);
-        let t2 = Tensor::randn::<f32>(shape![4, 2, 77, 128], Device::CPU);
-        let t3 = Tensor::randn::<f32>(shape![4, 2, 55, 128], Device::CPU);
-        let t4 = Tensor::randn::<f32>(shape![4, 2, 11, 128], Device::CPU);
+        let t0 = Tensor::randn::<f32>(0., 1., shape![4, 2, 50, 128], Device::CPU);
+        let t1 = Tensor::randn::<f32>(0., 1., shape![4, 2, 13, 128], Device::CPU);
+        let t2 = Tensor::randn::<f32>(0., 1., shape![4, 2, 77, 128], Device::CPU);
+        let t3 = Tensor::randn::<f32>(0., 1., shape![4, 2, 55, 128], Device::CPU);
+        let t4 = Tensor::randn::<f32>(0., 1., shape![4, 2, 11, 128], Device::CPU);
 
         let dim = 2;
         let device = Device::request_device(DeviceRequest::GPU).unwrap();
@@ -340,11 +340,11 @@ def permute(*tensors):
 
     #[test]
     fn test_concat_cpu() {
-        let t0 = Tensor::randn::<f32>(shape![4, 2, 50, 128], Device::CPU);
-        let t1 = Tensor::randn::<f32>(shape![4, 2, 13, 128], Device::CPU);
-        let t2 = Tensor::randn::<f32>(shape![4, 2, 77, 128], Device::CPU);
-        let t3 = Tensor::randn::<f32>(shape![4, 2, 55, 128], Device::CPU);
-        let t4 = Tensor::randn::<f32>(shape![4, 2, 11, 128], Device::CPU);
+        let t0 = Tensor::randn::<f32>(0., 1., shape![4, 2, 50, 128], Device::CPU);
+        let t1 = Tensor::randn::<f32>(0., 1., shape![4, 2, 13, 128], Device::CPU);
+        let t2 = Tensor::randn::<f32>(0., 1., shape![4, 2, 77, 128], Device::CPU);
+        let t3 = Tensor::randn::<f32>(0., 1., shape![4, 2, 55, 128], Device::CPU);
+        let t4 = Tensor::randn::<f32>(0., 1., shape![4, 2, 11, 128], Device::CPU);
 
         let dim = 2;
         let device = Device::request_device(DeviceRequest::CPU).unwrap();

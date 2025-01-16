@@ -304,7 +304,7 @@ def mlx_rope(input, dim, offset):
             offset,
         } = problem;
         let shape = shape![BS, NH, SL, HD];
-        let a = Tensor::randn::<f32>(shape, Device::CPU);
+        let a = Tensor::randn::<f32>(0., 1., shape, Device::CPU);
         let ground = ground_truth(&a, dim, offset).unwrap();
 
         let a = a.to(&device).unwrap();

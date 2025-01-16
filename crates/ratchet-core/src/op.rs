@@ -32,6 +32,7 @@ pub enum LazyOp {
     Cast(Cast),
     // ---- Everything below this line shouldn't exist ----
     FillConstant(FillConstant),
+    FillRandn(FillRandn),
     RoPE(RoPE),
     Softmax(Softmax),
     View(View),             //Should be general class, metadata modification
@@ -55,6 +56,7 @@ impl LazyOp {
             LazyOp::Select(s) => s.name(),
             LazyOp::IndexWrite(iw) => iw.name(),
             LazyOp::FillConstant(f) => f.name(),
+            LazyOp::FillRandn(f) => f.name(),
             LazyOp::RoPE(r) => r.name(),
             LazyOp::Cache(c) => c.name(),
             LazyOp::View(v) => v.name(),
@@ -78,8 +80,7 @@ impl LazyOp {
             LazyOp::Select(s) => s.srcs(),
             LazyOp::IndexWrite(iw) => iw.srcs(),
             LazyOp::Cache(c) => c.srcs(),
-            LazyOp::View(v) => rvec![v.input()],
-            LazyOp::FillConstant(_) | LazyOp::Const => rvec![], //end of the line kid
+            LazyOp::FillConstant(_) | LazyOp::FillRandn(_) | LazyOp::Const => rvec![], //end of the line kid
         }
     }
 
@@ -98,6 +99,7 @@ impl LazyOp {
             LazyOp::Select(s) => s.supports_inplace(),
             LazyOp::IndexWrite(iw) => iw.supports_inplace(),
             LazyOp::FillConstant(fc) => fc.supports_inplace(),
+            LazyOp::FillRandn(fr) => fr.supports_inplace(),
             LazyOp::Cache(c) => c.supports_inplace(),
             LazyOp::View(_v) => true,
             LazyOp::Const => false,
@@ -119,6 +121,7 @@ impl LazyOp {
             LazyOp::Select(s) => s.supports_out_of_place(),
             LazyOp::IndexWrite(iw) => iw.supports_out_of_place(),
             LazyOp::FillConstant(fc) => fc.supports_out_of_place(),
+            LazyOp::FillRandn(fr) => fr.supports_out_of_place(),
             LazyOp::Cache(c) => c.supports_out_of_place(),
             LazyOp::View(v) => false,
             LazyOp::Const => false,
@@ -149,6 +152,7 @@ impl LazyOp {
             LazyOp::Select(s) => s.check_invariants(),
             LazyOp::IndexWrite(iw) => iw.check_invariants(),
             LazyOp::FillConstant(f) => f.check_invariants(),
+            LazyOp::FillRandn(f) => f.check_invariants(),
             LazyOp::Cache(c) => c.check_invariants(),
             LazyOp::View(v) => v.check_invariants(),
             LazyOp::Const => {}

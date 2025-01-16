@@ -87,7 +87,7 @@ mod tests {
             Shape::arbitrary_with(ranges)
                 .prop_flat_map(|shape| (Just(shape.clone()), Just(vec![0, 1, 2, 3]).prop_shuffle()))
                 .prop_map(|(shape, perm)| {
-                    Permute::new(Tensor::randn::<f32>(shape, Device::CPU), perm)
+                    Permute::new(Tensor::randn::<f32>(0., 1., shape, Device::CPU), perm)
                 })
                 .boxed()
         }

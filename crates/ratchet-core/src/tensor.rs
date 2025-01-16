@@ -15,7 +15,10 @@ use std::path::Path;
 use std::sync::Arc;
 
 #[cfg(feature = "rand")]
-use {rand::prelude::*, rand_distr::StandardNormal};
+use {
+    rand::prelude::*,
+    rand_distr::{Normal, Uniform},
+};
 
 #[cfg(feature = "testing")]
 use ndarray::{ArrayD, ArrayViewD, Dimension};
@@ -617,16 +620,6 @@ impl Tensor {
     }
 
     #[cfg(feature = "rand")]
-    pub fn randn<T: TensorDType + num_traits::Float>(
-        mean: f32,
-        std: f32,
-        shape: Shape,
-        device: Device,
-    ) -> Tensor {
-        Self::randn_impl::<T>(mean, std, shape, device, false)
-    }
-
-    #[cfg(feature = "rand")]
     pub(crate) fn randn_impl<T: TensorDType + num_traits::Float>(
         mean: f32,
         std: f32,
@@ -640,15 +633,84 @@ impl Tensor {
         } else {
             StdRng::from_entropy()
         };
+
+        if device.is_cpu() {
+            let distr = Normal::new(mean as f64, std as f64).unwrap();
+            let data = (0..shape.numel())
+                .map(|_| {
+                    let sample: f64 = distr.sample(&mut rng);
+                    T::from(sample as f32).expect("Failed to convert sample")
+                })
+                .collect::<Vec<_>>();
+            let storage = Storage::from_slice(&data, &shape, &device);
+            let strides = Strides::from(&shape);
+            let meta = StorageView::new(shape, T::dt(), strides);
+            Self::new_impl(LazyOp::Const, meta, Some(storage), device, is_variable)
+        } else {
+            let meta = StorageView {
+                shape: shape.clone(),
+                dt: DType::F32,
+                strides: Strides::from(&shape.clone()),
+            };
+            Self::new_impl(
+                LazyOp::FillRandn(FillRandn {
+                    shape: shape.to_vec(),
+                    mean,
+                    std,
+                    seed: Some(rng.next_u32()),
+                }),
+                meta,
+                None,
+                device,
+                is_variable,
+            )
+        }
+    }
+
+    #[cfg(feature = "rand")]
+    pub fn randn<T: TensorDType + num_traits::Float>(
+        mean: f32,
+        std: f32,
+        shape: Shape,
+        device: Device,
+    ) -> Tensor {
+        Self::randn_impl::<T>(mean, std, shape, device, false)
+    }
+
+    #[cfg(feature = "rand")]
+    pub(crate) fn rand_impl<T: TensorDType + num_traits::Float>(
+        lo: f32,
+        up: f32,
+        shape: Shape,
+        device: Device,
+        is_variable: bool,
+    ) -> Self {
+        let mut rng = if let Ok(seed) = std::env::var("RATCHET_SEED") {
+            let seed = seed.parse::<u64>().unwrap();
+            StdRng::seed_from_u64(seed)
+        } else {
+            StdRng::from_entropy()
+        };
+        let distr = Uniform::new(lo, up);
         //TODO: fix copy on CPU
         let data = (0..shape.numel())
             .map(|_| {
-                let sample: f32 = StandardNormal.sample(&mut rng);
+                let sample: f32 = distr.sample(&mut rng) as f32;
                 T::from(sample).expect("Failed to convert sample")
             })
             .collect::<Vec<_>>();
 
         Self::from_data_impl(data, shape, device, is_variable)
+    }
+
+    #[cfg(feature = "rand")]
+    pub fn rand<T: TensorDType + num_traits::Float>(
+        lo: f32,
+        up: f32,
+        shape: Shape,
+        device: Device,
+    ) -> Tensor {
+        Self::rand_impl::<T>(lo, up, shape, device, false)
     }
 
     pub(crate) fn zeros_impl<T: TensorDType>(
@@ -953,6 +1015,7 @@ impl Tensor {
             LazyOp::IndexWrite(i) => i.compile_gpu(self, uniform, device, can_ip, debug).ok(),
             LazyOp::Cache(c) => c.compile_gpu(self, uniform, device, can_ip, debug).ok(),
             LazyOp::FillConstant(f) => f.compile_gpu(self, uniform, device, can_ip, debug).ok(),
+            LazyOp::FillRandn(f) => f.compile_gpu(self, uniform, device, can_ip, debug).ok(),
             LazyOp::Const => None,
             LazyOp::View(_) => None,
         }
@@ -1379,7 +1442,7 @@ mod tests {
     #[test]
     fn has_nan_works() {
         let device = Device::request_device(crate::DeviceRequest::GPU).unwrap();
-        let rand = Tensor::randn::<f32>(shape![1, 1500, 384], device.clone());
+        let rand = Tensor::randn::<f32>(0., 1., shape![1, 1500, 384], device.clone());
         let nans = Tensor::from_data(vec![f32::NAN; 1500 * 384], shape![1, 1500, 384], device);
 
         let bingo = Tensor::cat(rvec![rand, nans], 2)
