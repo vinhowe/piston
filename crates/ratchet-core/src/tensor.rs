@@ -539,6 +539,71 @@ impl Tensor {
         ))
     }
 
+    fn reduce_impl(self, dim: usize, keepdim: bool, op: ReduceOp) -> anyhow::Result<Tensor> {
+        let device = self.device.clone();
+        let reduce = Reduce::new(self, op, vec![dim], keepdim);
+        let new_view = reduce.compute_view()?;
+        Ok(Tensor::lazy(
+            LazyOp::Reduce(reduce),
+            new_view,
+            device,
+            false,
+        ))
+    }
+
+    fn sum_impl(self, sum_dims: &[usize], keepdim: bool) -> anyhow::Result<Tensor> {
+        let device = self.device.clone();
+        let sum = Reduce::new(self, ReduceOp::Sum, sum_dims.to_vec(), keepdim);
+        let new_view = sum.compute_view()?;
+        Ok(Tensor::lazy(LazyOp::Reduce(sum), new_view, device, false))
+    }
+
+    pub fn sum_keepdim(self, sum_dims: &[usize]) -> anyhow::Result<Tensor> {
+        self.sum_impl(sum_dims, true)
+    }
+
+    pub fn sum(self, sum_dims: &[usize]) -> anyhow::Result<Tensor> {
+        self.sum_impl(sum_dims, false)
+    }
+
+    pub fn sum_all(self) -> anyhow::Result<Tensor> {
+        let dims: Vec<_> = (0..self.rank()).collect();
+        self.sum(&dims)
+    }
+
+    pub fn max_keepdim(self, dim: usize) -> anyhow::Result<Tensor> {
+        self.reduce_impl(dim, true, ReduceOp::Max)
+    }
+
+    pub fn max(self, dim: usize) -> anyhow::Result<Tensor> {
+        self.reduce_impl(dim, false, ReduceOp::Max)
+    }
+
+    pub fn min_keepdim(self, dim: usize) -> anyhow::Result<Tensor> {
+        self.reduce_impl(dim, true, ReduceOp::Min)
+    }
+
+    pub fn min(self, dim: usize) -> anyhow::Result<Tensor> {
+        self.reduce_impl(dim, false, ReduceOp::Min)
+    }
+
+    pub fn argmax_keepdim(self, dim: usize) -> anyhow::Result<Tensor> {
+        self.reduce_impl(dim, true, ReduceOp::ArgMax)
+    }
+
+    pub fn argmax(self, dim: usize) -> anyhow::Result<Tensor> {
+        self.reduce_impl(dim, false, ReduceOp::ArgMax)
+    }
+
+    pub fn argmin_keepdim(self, dim: usize) -> anyhow::Result<Tensor> {
+        self.reduce_impl(dim, true, ReduceOp::ArgMin)
+    }
+
+    /// Similar to `argmin_keepdim` but the target dimension is squeezed.
+    pub fn argmin(self, dim: usize) -> anyhow::Result<Tensor> {
+        self.reduce_impl(dim, false, ReduceOp::ArgMin)
+    }
+
     /// # Slice
     ///
     /// Current slice implementation requires specification of all dimensions.
@@ -1167,6 +1232,7 @@ impl Tensor {
             LazyOp::IndexWrite(i) => i.compile_gpu(self, uniform, device, can_ip, debug).ok(),
             LazyOp::Trilu(t) => t.compile_gpu(self, uniform, device, can_ip, debug).ok(),
             LazyOp::Cache(c) => c.compile_gpu(self, uniform, device, can_ip, debug).ok(),
+            LazyOp::Reduce(s) => s.compile_gpu(self, uniform, device, can_ip, debug).ok(),
             LazyOp::Detach(d) => self.compile_gpu_for_op(d, uniform, device, can_ip, debug),
             LazyOp::FillConstant(f) => f.compile_gpu(self, uniform, device, can_ip, debug).ok(),
             LazyOp::FillRandn(f) => f.compile_gpu(self, uniform, device, can_ip, debug).ok(),
