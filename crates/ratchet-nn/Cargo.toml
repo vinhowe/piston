@@ -10,6 +10,7 @@ pyo3 = ["ratchet/pyo3"]
 
 [dependencies]
 anyhow.workspace = true
+log.workspace = true
 derive-new = { workspace = true }
 ratchet = { path = "../ratchet-core" }
 wasm-bindgen = { workspace = true }

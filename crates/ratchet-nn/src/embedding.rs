@@ -1,5 +1,5 @@
 use crate::Module;
-use ratchet::{shape, Tensor};
+use ratchet::{shape, Shape, Tensor};
 
 /// # Embedding
 ///
@@ -7,22 +7,67 @@ use ratchet::{shape, Tensor};
 #[derive(Debug, derive_new::new)]
 pub struct Embedding {
     pub weight: Tensor,
+    hidden_size: usize,
+}
+
+impl Embedding {
+    pub fn weight(&self) -> &Tensor {
+        &self.weight
+    }
+
+    /// Get the hidden size of the embedding matrix
+    pub fn hidden_size(&self) -> usize {
+        self.hidden_size
+    }
 }
 
 impl Module for Embedding {
     type Input = Tensor;
 
     fn schedule(&self, input: Self::Input) -> anyhow::Result<Tensor> {
-        let mut output_shape = input.shape().clone();
-        let weight_rank = self.weight.rank();
-        let weight_dim = weight_rank - 1;
-        output_shape.push(self.weight.shape()[weight_dim]);
-
-        let flat_shape = shape![input.shape().numel()];
-        let flat = input.view(flat_shape)?;
-        let indexed = self.weight.clone().index_select(flat, 0)?;
-        indexed.view(output_shape)
+        let mut final_dims = input.shape().to_vec();
+        final_dims.push(self.hidden_size);
+        let indexes = input.flatten_all()?;
+        let values = self.weight.clone().index_select(indexes.clone(), 0)?;
+        let values = values.view(Shape::from(final_dims))?;
+        Ok(values)
     }
+}
+
+#[cfg(target_arch = "wasm32")]
+pub async fn embedding(
+    in_size: usize,
+    out_size: usize,
+    vb: crate::VarBuilder<'_>,
+) -> anyhow::Result<Embedding> {
+    let embeddings = vb
+        .get_with_hints(
+            shape![in_size, out_size],
+            "weight",
+            crate::Init::Randn {
+                mean: 0.,
+                stdev: 1.,
+            },
+        )
+        .await?;
+    Ok(Embedding::new(embeddings, out_size))
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub fn embedding(
+    in_size: usize,
+    out_size: usize,
+    vb: crate::VarBuilder,
+) -> anyhow::Result<Embedding> {
+    let embeddings = vb.get_with_hints(
+        shape![in_size, out_size],
+        "weight",
+        crate::Init::Randn {
+            mean: 0.,
+            stdev: 1.,
+        },
+    )?;
+    Ok(Embedding::new(embeddings, out_size))
 }
 
 #[cfg(all(test, feature = "pyo3"))]
