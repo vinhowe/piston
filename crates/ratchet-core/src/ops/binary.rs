@@ -172,6 +172,7 @@ impl Operation for Binary {
         Ok(StorageView::new(broadcasted, lhs.dt(), ostrides))
     }
 
+    #[inline]
     fn srcs(&self) -> RVec<&Tensor> {
         rvec![&self.lhs, &self.rhs]
     }

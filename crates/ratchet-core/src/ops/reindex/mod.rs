@@ -288,6 +288,7 @@ impl Operation for Reindex {
         }
     }
 
+    #[inline]
     fn srcs(&self) -> RVec<&Tensor> {
         match self {
             Reindex::Permute(p) => p.srcs(),

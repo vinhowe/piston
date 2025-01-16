@@ -42,6 +42,7 @@ impl Operation for IndexWrite {
         Ok(self.dst.storage_view().clone())
     }
 
+    #[inline]
     fn srcs(&self) -> RVec<&Tensor> {
         rvec![&self.dst, &self.src]
     }

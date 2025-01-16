@@ -176,6 +176,7 @@ impl Operation for Conv {
         Ok(StorageView::new(out_shape, input_t.dt(), out_strides))
     }
 
+    #[inline]
     fn srcs(&self) -> RVec<&Tensor> {
         rvec![&self.input, &self.weight, self.bias.as_ref().unwrap()]
     }

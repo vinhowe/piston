@@ -61,6 +61,7 @@ impl Operation for NormOp {
         Ok(input.storage_view().clone())
     }
 
+    #[inline]
     fn srcs(&self) -> RVec<&Tensor> {
         match self {
             NormOp::LayerNorm(Norm {

@@ -59,6 +59,7 @@ impl Operation for IndexSelect {
         ))
     }
 
+    #[inline]
     fn srcs(&self) -> RVec<&Tensor> {
         rvec![&self.src, &self.indices]
     }

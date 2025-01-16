@@ -32,6 +32,7 @@ impl Operation for View {
         Ok(StorageView::new(self.shape.clone(), self.src.dt(), strides))
     }
 
+    #[inline]
     fn srcs(&self) -> crate::RVec<&Tensor> {
         rvec![&self.src]
     }

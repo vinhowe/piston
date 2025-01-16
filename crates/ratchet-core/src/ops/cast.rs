@@ -121,6 +121,7 @@ impl Operation for Cast {
         Ok(StorageView::new(shape, self.dst_dt, strides))
     }
 
+    #[inline]
     fn srcs(&self) -> RVec<&Tensor> {
         rvec![&self.input]
     }

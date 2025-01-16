@@ -122,6 +122,7 @@ impl Operation for Concat {
         Ok(StorageView::new(output_shape, first.dt(), output_strides))
     }
 
+    #[inline]
     fn srcs(&self) -> RVec<&Tensor> {
         self.inputs.iter().collect()
     }

@@ -132,6 +132,7 @@ impl Operation for Cache {
         "Cache"
     }
 
+    #[inline]
     fn srcs(&self) -> RVec<&Tensor> {
         rvec![&self.cache, &self.source]
     }

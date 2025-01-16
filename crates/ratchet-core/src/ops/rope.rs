@@ -73,6 +73,7 @@ impl Operation for RoPE {
         Ok(self.input.storage_view().clone())
     }
 
+    #[inline]
     fn srcs(&self) -> RVec<&Tensor> {
         rvec![&self.input]
     }

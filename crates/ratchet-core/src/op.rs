@@ -51,6 +51,7 @@ impl LazyOp {
         }
     }
 
+    #[inline(always)]
     pub fn srcs(&self) -> RVec<&Tensor> {
         match self {
             LazyOp::Binary(b) => b.srcs(),

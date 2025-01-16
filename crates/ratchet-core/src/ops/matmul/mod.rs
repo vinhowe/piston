@@ -494,6 +494,7 @@ impl Operation for Matmul {
         Ok(StorageView::new(dst_shape, self.rhs.dt(), dst_strides))
     }
 
+    #[inline]
     fn srcs(&self) -> RVec<&Tensor> {
         if let Some(bias) = &self.bias {
             rvec![&self.lhs, &self.rhs, bias]
