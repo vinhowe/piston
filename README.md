@@ -1,4 +1,6 @@
-For the time being, I don't have instructions on how to run this. You're on your own for a tiny bit :)
+<p align="center">
+  <b>For the time being, I don't have instructions on how to run this. You're on your own for a tiny bit :)</b>
+</p>
 
 <div align="center">
 <img width="200px" src="https://github.com/vinhowe/ratchet-backward/raw/master/.github/ratchet.png">
