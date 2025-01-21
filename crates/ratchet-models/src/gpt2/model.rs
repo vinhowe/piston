@@ -414,9 +414,9 @@ mod tests {
             let loss = cross_entropy(logits.flatten_to(1)?, tgt.flatten_to(1)?)?;
 
             // This is something of a hack; we add references to all tensors that need to be backpropped
-            let mut grads = loss.backward()?;
+            let grads = loss.backward()?;
 
-            opt.step(&mut grads)?;
+            opt.step(&grads)?;
 
             let loss_vec = loss.resolve_deferred()?.to(&Device::CPU)?.to_vec::<f32>()?;
 

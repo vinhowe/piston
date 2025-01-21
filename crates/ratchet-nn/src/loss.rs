@@ -115,7 +115,7 @@ def cross_entropy(input, target):
         let mut grads = our_loss.backward()?;
         grads.resolve(device.try_gpu()?)?;
         let our_grad = grads
-            .get(&input_var.as_tensor())
+            .get(input_var.as_tensor())
             .unwrap()
             .clone()
             .resolve()?;
