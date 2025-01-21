@@ -7,6 +7,7 @@ edition = "2021"
 
 [features]
 pyo3 = ["ratchet/pyo3"]
+plotting = ["ratchet/plotting"]
 debug = ["ratchet/debug"]
 
 [dependencies]
@@ -20,7 +21,9 @@ wasm-bindgen-futures = { workspace = true }
 wasm-bindgen-test = { workspace = true }
 safetensors = { workspace = true }
 thiserror = { workspace = true }
+ndarray = { workspace = true }
 async-trait = { workspace = true }
+
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 maybe-async = { workspace = true, features = ["is_sync"] }
 
@@ -30,8 +33,12 @@ maybe-async = { workspace = true }
 [dev-dependencies]
 proptest = { workspace = true }
 test-strategy = { workspace = true }
-hf-hub = { workspace = true }
+# hf-hub = { workspace = true }
 ratchet-loader = { path = "../ratchet-loader" }
+tokenizers = { version = "0.19.1", default-features = false, features = [
+    "unstable_wasm",
+] }
+
 [target.'cfg(target_arch = "wasm32")'.dependencies.web-sys]
 features = [
     "Blob",

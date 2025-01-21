@@ -5,8 +5,11 @@ edition = "2021"
 resolver = "2"
 
 [features]
+default = ["pyo3"]
 ci = []
 pyo3 = []
+plotting = ["ratchet/plotting"]
+debug = ["ratchet-nn/debug", "ratchet/debug"]
 
 [lib]
 crate-type = ["cdylib", "lib"]
@@ -23,6 +26,7 @@ wasm-opt = ['-O3', '--enable-simd']
 ratchet = { path = "../ratchet-core" }
 ratchet-nn = { path = "../ratchet-nn" }
 ratchet-loader = { path = "../ratchet-loader" }
+ratchet-datasets = { path = "../ratchet-datasets" }
 byteorder.workspace = true
 anyhow.workspace = true
 thiserror.workspace = true
@@ -50,9 +54,11 @@ serde-wasm-bindgen = "0.4.5"
 ratchet-hub = { path = "../ratchet-hub" }
 tsify = "0.4.5"
 js-sys = { workspace = true } 
+maybe-async = { workspace = true }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 ratchet = { path = "../ratchet-core", features = ["pyo3"] }
+maybe-async = { workspace = true, features = ["is_sync"] }
 hf-hub.workspace = true
 
 [dev-dependencies]
@@ -65,6 +71,7 @@ wasm-bindgen-futures = { workspace = true }
 npyz = { workspace = true }
 hound = { workspace = true }
 env_logger = { workspace = true }
+rand = { workspace = true }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
 ratchet = { path = "../ratchet-core", features = ["pyo3"] }
