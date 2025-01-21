@@ -531,7 +531,11 @@ mod tests {
 
     use super::ReduceOp;
 
-    fn ground_truth(a: &Tensor, op: &ReduceOp, dim: Option<usize>) -> anyhow::Result<Tensor> {
+    fn ground_truth_forward(
+        a: &Tensor,
+        op: &ReduceOp,
+        dim: Option<usize>,
+    ) -> anyhow::Result<Tensor> {
         let dim_str = match dim {
             Some(d) => format!(", dim={}", d),
             None => "".to_string(),
@@ -563,7 +567,7 @@ def reduce(a):
         run_py_prg(prg.to_string(), &[a], &[], DType::F32)
     }
 
-    fn run_reduce_trial(
+    fn run_reduce_forward_trial(
         B: usize,
         M: usize,
         N: usize,
@@ -572,7 +576,7 @@ def reduce(a):
         device: Device,
     ) -> anyhow::Result<()> {
         let a = Tensor::randn::<f32>(0., 1., shape![B, M, N], Device::CPU);
-        let ground = ground_truth(&a, op, dim)?;
+        let ground = ground_truth_forward(&a, op, dim)?;
 
         let a_gpu = a.to(&device)?;
         let b_gpu = match dim {
@@ -636,7 +640,7 @@ def reduce(a):
             dim
         );
         let device = Device::request_device(DeviceRequest::GPU).unwrap();
-        run_reduce_trial(B, M, N, op, Some(dim), device).unwrap();
+        run_reduce_forward_trial(B, M, N, op, Some(dim), device).unwrap();
     }
 
     #[derive(Arbitrary, Debug)]
@@ -654,6 +658,60 @@ def reduce(a):
         let SumAllProblem { B, M, N } = prob;
         println!("B = {}, M = {}, N = {}", B, M, N);
         let device = Device::request_device(DeviceRequest::GPU).unwrap();
-        run_reduce_trial(B, M, N, &ReduceOp::Sum, None, device).unwrap();
+        run_reduce_forward_trial(B, M, N, &ReduceOp::Sum, None, device).unwrap();
+    }
+
+    #[derive(Arbitrary, Debug)]
+    struct ReduceBackwardProblem {
+        #[strategy(1..=3usize)]
+        B: usize,
+        #[strategy(1..=64usize)]
+        M: usize,
+        #[strategy(1..=64usize)]
+        N: usize,
+    }
+
+    fn ground_truth_backward(a: &Tensor) -> anyhow::Result<Tensor> {
+        let prg = r#"
+    import torch
+    def reduce_backward(a):
+        a_tensor = torch.tensor(torch.from_numpy(a), requires_grad=True)
+        result = torch.sum(a_tensor)
+        result.backward(torch.ones_like(result))
+        return a_tensor.grad.numpy()
+    "#
+        .to_string();
+        run_py_prg(prg.to_string(), &[a], &[], DType::F32)
+    }
+
+    fn run_sum_backward_trial(
+        problem: ReduceBackwardProblem,
+        device: Device,
+    ) -> anyhow::Result<()> {
+        let ReduceBackwardProblem { B, M, N } = problem;
+        let a = Tensor::randn::<f32>(0., 1., shape![B, M, N], Device::CPU);
+        let ground = ground_truth_backward(&a)?;
+
+        let a_gpu = a.to(&device)?;
+        let a_var = Var::from_tensor(&a_gpu)?;
+        let b_gpu = a_var.as_tensor().clone().sum_all()?;
+
+        let mut grads = b_gpu.backward()?;
+        grads.resolve(device.try_gpu()?)?;
+        let a_grad = grads.get(a_var.as_tensor()).unwrap().clone();
+
+        let ours = a_grad.to(&Device::CPU)?;
+        println!("ours = {:?}", ours);
+        println!("ground = {:?}", ground);
+        ground.all_close(&ours, 1e-5, 1e-5)?;
+        Ok(())
+    }
+
+    #[proptest(cases = 8)]
+    fn test_reduce_backward(prob: ReduceBackwardProblem) {
+        let ReduceBackwardProblem { B, M, N } = prob;
+        println!("B = {}, M = {}, N = {}", B, M, N);
+        let device = Device::request_device(DeviceRequest::GPU).unwrap();
+        run_sum_backward_trial(prob, device).unwrap();
     }
 }
