@@ -196,18 +196,13 @@ pub async fn wgpu_buffer_to_cpu_buffer(
 
     let buffer_size = cpu_size.unwrap_or(src_buf.size() as usize);
 
-    wgpu::util::DownloadBuffer::read_buffer(
-        &device,
-        device.queue(),
-        &buffer_slice,
-        move |buffer| {
-            tx.send(match buffer {
-                Ok(db) => Ok(CPUBuffer::from_bytes(&db[..buffer_size], alignment)),
-                Err(error) => Err(error),
-            })
-            .expect("Failed to send result of read_buffer");
-        },
-    );
+    wgpu::util::DownloadBuffer::read_buffer(device, device.queue(), &buffer_slice, move |buffer| {
+        tx.send(match buffer {
+            Ok(db) => Ok(CPUBuffer::from_bytes(&db[..buffer_size], alignment)),
+            Err(error) => Err(error),
+        })
+        .expect("Failed to send result of read_buffer");
+    });
     device.poll(wgpu::Maintain::Wait);
     #[cfg(target_arch = "wasm32")]
     return rx.receive().await.unwrap().unwrap();

@@ -70,9 +70,9 @@ impl Storage {
         }
     }
 
-    pub unsafe fn into_bytes(self) -> Vec<u8> {
+    pub fn into_bytes(self) -> Vec<u8> {
         match self {
-            Storage::CPU(c) => unsafe { c.into_bytes() },
+            Storage::CPU(c) => c.into_bytes(),
             _ => todo!(),
         }
     }

@@ -7,8 +7,7 @@ use crate::{
     gpu::{dtype::WgslDType, BindGroupLayoutDescriptor},
     rvec, wgc, wgs, Array, BindingMode, BuiltIn, DType, GPUOperation, Kernel, KernelElement,
     KernelRenderable, KernelSource, OpGuards, Operation, OperationError, RVec, Scalar, Shape,
-    StorageView, Strides, Tensor, Vec2, Vec4, WgslKernelBuilder, WgslPrimitive, WgslVec,
-    WorkgroupSize, Workload,
+    StorageView, Strides, Tensor, WgslKernelBuilder, WgslPrimitive, WorkgroupSize, Workload,
 };
 
 #[cfg(test)]
@@ -84,7 +83,7 @@ impl Reduce {
 
         Self {
             input,
-            reduce_dims: reduce_dims.into(),
+            reduce_dims,
             reduced_shape: Shape::from(reduced_shape_vec),
             op,
             keepdim,
@@ -573,7 +572,7 @@ def reduce(a):
         device: Device,
     ) -> anyhow::Result<()> {
         let a = Tensor::randn::<f32>(0., 1., shape![B, M, N], Device::CPU);
-        let ground = ground_truth(&a, &op, dim)?;
+        let ground = ground_truth(&a, op, dim)?;
 
         let a_gpu = a.to(&device)?;
         let b_gpu = match dim {

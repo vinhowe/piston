@@ -211,8 +211,6 @@ impl Kernel for FillRandnKernels {
 
 #[cfg(all(test, feature = "pyo3"))]
 mod tests {
-    use std::env;
-
     use test_strategy::{proptest, Arbitrary};
 
     use crate::{shape, test_util::run_py_prg, DType, Device, DeviceRequest, Tensor};

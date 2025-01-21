@@ -123,6 +123,7 @@ impl KernelRenderable for ConvKernels {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 #[derive(Debug, derive_new::new, ShaderType, WgslMetadata)]
 pub struct ConvMeta {
     stride: u32,

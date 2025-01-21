@@ -13,6 +13,7 @@ use crate::{TensorId, MIN_STORAGE_BUFFER_SIZE};
 #[cfg(feature = "debug")]
 use smallvec::SmallVec;
 use std::borrow::Cow;
+#[cfg(feature = "debug")]
 use std::cmp::max;
 use std::fmt::Debug;
 #[cfg(feature = "debug")]

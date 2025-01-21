@@ -1155,7 +1155,7 @@ impl Tensor {
     }
 
     pub fn ones<T: TensorDType>(shape: &Shape, device: &Device) -> Tensor {
-        Self::ones_impl::<T>(&shape, &device, false)
+        Self::ones_impl::<T>(shape, device, false)
     }
 
     pub fn ones_like<T: TensorDType>(&self) -> Tensor {
@@ -1273,7 +1273,7 @@ impl Tensor {
             LazyOp::Const if !self.is_variable => self.clone(),
             _ => {
                 let storage_guard = self.storage();
-                let storage = storage_guard.as_ref().and_then(|s| Some(s.clone()));
+                let storage = storage_guard.as_ref().map(|s| s.clone());
                 Self::new(
                     LazyOp::Detach(Box::new(self.op().clone())),
                     self.view.clone(),
@@ -2010,7 +2010,7 @@ impl<'data> safetensors::View for &'data Tensor {
     }
 
     fn shape(&self) -> &[usize] {
-        &Tensor::shape(&self).inner()
+        Tensor::shape(self).inner()
     }
 
     fn data(&self) -> Cow<'_, [u8]> {
