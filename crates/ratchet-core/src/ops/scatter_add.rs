@@ -58,10 +58,6 @@ impl Operation for ScatterAdd {
     fn supports_inplace(&self) -> bool {
         true
     }
-
-    fn supports_out_of_place(&self) -> bool {
-        false
-    }
 }
 
 pub enum ScatterAddKernels {

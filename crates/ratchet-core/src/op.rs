@@ -147,38 +147,6 @@ impl LazyOp {
         }
     }
 
-    pub fn supports_out_of_place(&self) -> bool {
-        match self {
-            LazyOp::Binary(b) => b.supports_out_of_place(),
-            LazyOp::Cast(c) => c.supports_out_of_place(),
-            LazyOp::Matmul(m) => m.supports_out_of_place(),
-            LazyOp::RoPE(r) => r.supports_out_of_place(),
-            LazyOp::Softmax(s) => s.supports_out_of_place(),
-            LazyOp::Unary(u) => u.supports_out_of_place(),
-            LazyOp::Reindex(r) => r.supports_out_of_place(),
-            LazyOp::Concat(c) => c.supports_out_of_place(),
-            LazyOp::Norm(n) => n.supports_out_of_place(),
-            LazyOp::Affine(a) => a.supports_out_of_place(),
-            LazyOp::Cmp(c) => c.supports_out_of_place(),
-            LazyOp::Powf(p) => p.supports_out_of_place(),
-            LazyOp::WhereCond(w) => w.supports_out_of_place(),
-            LazyOp::Reduce(s) => s.supports_out_of_place(),
-            LazyOp::Gather(g) => g.supports_out_of_place(),
-            LazyOp::Conv(c) => c.supports_out_of_place(),
-            LazyOp::Select(s) => s.supports_out_of_place(),
-            LazyOp::IndexWrite(iw) => iw.supports_out_of_place(),
-            LazyOp::IndexAdd(ia) => ia.supports_out_of_place(),
-            LazyOp::ScatterAdd(sa) => sa.supports_out_of_place(),
-            LazyOp::Trilu(t) => t.supports_out_of_place(),
-            LazyOp::FillConstant(fc) => fc.supports_out_of_place(),
-            LazyOp::FillRandn(fr) => fr.supports_out_of_place(),
-            LazyOp::Cache(c) => c.supports_out_of_place(),
-            LazyOp::View(_v) => false,
-            LazyOp::Const => false,
-            LazyOp::Detach(d) => d.supports_out_of_place(),
-        }
-    }
-
     pub fn is_const(&self) -> bool {
         matches!(self, LazyOp::Const)
     }
@@ -357,14 +325,6 @@ pub trait Operation: OpGuards + Debug + 'static {
     /// Determine if the operation can be performed in-place.
     fn supports_inplace(&self) -> bool {
         false
-    }
-
-    /// # Supports Out-Of-Place
-    ///
-    /// Determine if the operation can be performed out-of-place.
-    fn supports_out_of_place(&self) -> bool {
-        // We assume that all operations can be done out-of-place.
-        true
     }
 }
 

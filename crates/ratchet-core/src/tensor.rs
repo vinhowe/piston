@@ -1560,8 +1560,9 @@ impl Tensor {
             let can_inplace = match to_modify {
                 Some(to_modify_src) => {
                     t.op().supports_inplace()
-                        // vinhowe: we flip the inplace-by-default policy to make implementing training easier
-                        && !t.op().supports_out_of_place()
+                        // vinhowe: we need to check if the src is a variable, because we can't inplace
+                        // variables unless we've disabled gradient tracking.
+                        && !t.is_variable()
                         && to_modify_src.strong_count() == 1
                 }
                 None => false,

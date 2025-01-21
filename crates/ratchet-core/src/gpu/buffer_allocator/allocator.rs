@@ -157,7 +157,10 @@ impl BufferAllocator {
         let mut true_source = source;
         loop {
             // vinhowe: we flip the inplace-by-default policy to make implementing training easier
-            if true_source.op().srcs().is_empty() || true_source.op().supports_out_of_place() {
+            if true_source.op().srcs().is_empty()
+                || !true_source.op().supports_inplace()
+                || true_source.is_variable()
+            {
                 //If no sources, we are at the root
                 //Or if the operation doesn't support inplace
                 break;

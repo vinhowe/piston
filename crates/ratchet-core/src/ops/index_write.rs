@@ -50,10 +50,6 @@ impl Operation for IndexWrite {
     fn supports_inplace(&self) -> bool {
         true
     }
-
-    fn supports_out_of_place(&self) -> bool {
-        false
-    }
 }
 
 impl GPUOperation for IndexWrite {
