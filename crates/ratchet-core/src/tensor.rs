@@ -1102,16 +1102,20 @@ impl Tensor {
         device: &Device,
         is_variable: bool,
     ) -> Tensor {
-        let storage = Storage::zeros::<T>(shape, device);
-        let strides = Strides::from(shape);
-        let meta = StorageView::new(shape.clone(), T::dt(), strides);
-        Tensor::new_impl(
-            LazyOp::Const,
-            meta,
-            Some(storage),
-            device.clone(),
-            is_variable,
-        )
+        if device.is_cpu() {
+            let storage = Storage::zeros::<T>(shape, device);
+            let strides = Strides::from(shape);
+            let meta = StorageView::new(shape.clone(), T::dt(), strides);
+            Tensor::new_impl(
+                LazyOp::Const,
+                meta,
+                Some(storage),
+                device.clone(),
+                is_variable,
+            )
+        } else {
+            Self::full_impl(shape, 0.0, device, is_variable)
+        }
     }
 
     pub fn range<T: TensorDType + num_traits::Float>(shape: &Shape, device: Device) -> Tensor {
