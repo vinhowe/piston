@@ -254,6 +254,15 @@ impl Kernel for ConcatKernels {
             (DType::F16, KernelElement::Vec4) => {
                 self.render::<Vec4<f16>>(inplace, dst, workgroup_size)
             }
+            (DType::I32, KernelElement::Scalar) => {
+                self.render::<Scalar<i32>>(inplace, dst, workgroup_size)
+            }
+            (DType::I32, KernelElement::Vec2) => {
+                self.render::<Vec2<i32>>(inplace, dst, workgroup_size)
+            }
+            (DType::I32, KernelElement::Vec4) => {
+                self.render::<Vec4<i32>>(inplace, dst, workgroup_size)
+            }
             _ => Err(OperationError::CompileError(format!(
                 "Unsupported dtype {:?} or kernel element {:?}",
                 dst.dt(),
