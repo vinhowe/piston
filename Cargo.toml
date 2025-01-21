@@ -9,6 +9,7 @@ members = [
     "crates/ratchet-hub", 
     "crates/ratchet-cli", 
     "crates/ratchet-macros", 
+    "crates/ratchet-datasets",
 ]
 resolver = "2"
 edition = "2021"
