@@ -218,7 +218,7 @@ mod tests {
     use test_strategy::{proptest, Arbitrary};
 
     use crate::test_util::run_py_prg;
-    use crate::{shape, Device, DeviceRequest, Tensor};
+    use crate::{shape, DType, Device, DeviceRequest, Tensor, Var};
 
     fn ground_truth(src: &Tensor, ids: &Tensor, dim: usize) -> anyhow::Result<Tensor> {
         let prg = format!(
@@ -275,5 +275,77 @@ def gather(src, ids, dim):
         log::info!("B = {}, M = {}, N = {}, dim = {}", B, M, N, dim);
         let device = Device::request_device(DeviceRequest::GPU).unwrap();
         run_gather_trial(prob, device);
+    }
+
+    #[derive(Arbitrary, Debug)]
+    struct GatherBackwardProblem {
+        #[strategy(1..=3usize)]
+        B: usize,
+        #[strategy(1..=64usize)]
+        M: usize,
+        #[strategy(1..=64usize)]
+        N: usize,
+        #[strategy(0..=2usize)]
+        dim: usize,
+    }
+
+    fn ground_truth_backward(src: &Tensor, ids: &Tensor, dim: usize) -> anyhow::Result<Tensor> {
+        let prg = format!(
+            r#"
+import torch
+def gather_backward(src, ids):
+    src_tensor = torch.tensor(torch.from_numpy(src), requires_grad=True)
+    ids_tensor = torch.from_numpy(ids).long()
+    result = torch.gather(src_tensor, {}, ids_tensor)
+    result.backward(torch.ones_like(result))
+    return src_tensor.grad.numpy()
+"#,
+            dim
+        );
+        run_py_prg(prg.to_string(), &[src, ids], &[], DType::F32)
+    }
+
+    fn run_gather_backward_trial(problem: GatherBackwardProblem) -> anyhow::Result<()> {
+        let device = Device::request_device(DeviceRequest::GPU).unwrap();
+        let GatherBackwardProblem { B, M, N, dim } = problem;
+        let src = Tensor::randn::<f32>(0., 1., shape![B, M, N], Device::CPU);
+
+        // Create the shape for ids tensor
+        let mut ids_shape = vec![B, M, N];
+        ids_shape[dim] = 1;
+        let ids = Tensor::randint::<i32>(0, src.shape()[dim] as i32, ids_shape.into(), Device::CPU);
+
+        let ground = ground_truth_backward(&src, &ids, dim)?;
+
+        let src_gpu = src.to(&device)?;
+        let ids_gpu = ids.to(&device)?;
+        let src_var = Var::from_tensor(&src_gpu)?;
+        let result_gpu = src_var
+            .as_tensor()
+            .clone()
+            .gather(ids_gpu, dim)?
+            .resolve_deferred()?;
+
+        let mut grads = result_gpu.backward()?;
+        grads.resolve(device.try_gpu()?)?;
+        let src_grad = grads.get(src_var.as_tensor()).unwrap().clone();
+
+        let ours = src_grad.to(&Device::CPU)?;
+        let src_cpu = src.to(&Device::CPU)?;
+        let ids_cpu = ids.to(&Device::CPU)?;
+
+        println!("src = {:?}", src_cpu);
+        println!("ids = {:?}", ids_cpu);
+        println!("ours = {:?}", ours);
+        println!("ground = {:?}", ground);
+        ground.all_close(&ours, 1e-5, 1e-5)?;
+        Ok(())
+    }
+
+    #[proptest(cases = 8)]
+    fn test_gather_backward(prob: GatherBackwardProblem) {
+        let GatherBackwardProblem { B, M, N, dim } = prob;
+        println!("B = {}, M = {}, N = {}, dim = {}", B, M, N, dim);
+        run_gather_backward_trial(prob).unwrap();
     }
 }
