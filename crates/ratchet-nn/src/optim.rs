@@ -2,7 +2,7 @@
 use async_trait::async_trait;
 use half::{bf16, f16};
 use maybe_async::maybe_async;
-use ratchet::{DType, GradStore, Tensor, Var, WgpuDevice};
+use ratchet::{DType, GradStore, Var, WgpuDevice};
 
 #[maybe_async(AFIT)]
 #[cfg_attr(target_arch = "wasm32", async_trait::async_trait)]
@@ -21,17 +21,13 @@ pub trait Optimizer: Sized {
         Self::new(vec![], config)
     }
 
-    fn schedule_backward_step(&mut self, loss: &Tensor) -> anyhow::Result<GradStore> {
-        loss.backward()
-    }
-
     async fn backward_step(
         &mut self,
         grads: &mut GradStore,
         device: &WgpuDevice,
     ) -> anyhow::Result<()> {
         grads.resolve(device).unwrap();
-        self.step(&grads).await
+        self.step(grads).await
     }
 
     fn from_slice(vars: &[&Var], config: Self::Config) -> anyhow::Result<Self> {

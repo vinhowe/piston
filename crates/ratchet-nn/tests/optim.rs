@@ -46,7 +46,7 @@ fn adamw_linear_regression() -> anyhow::Result<()> {
         let ys = lin.schedule(sample_xs.clone())?;
         let loss = ys.sub(sample_ys.clone())?.square()?.sum(&[0])?;
         // ratchet::plot::render_to_file(&loss, "forward-pre-schedule.svg").unwrap();
-        let mut grads = opt.schedule_backward_step(&loss)?;
+        let mut grads = loss.backward()?;
         // ratchet::plot::render_to_file(&loss, "forward-post-schedule.svg").unwrap();
         let loss_cpu = loss.clone().resolve()?.to(&Device::CPU)?;
         let loss_vec = loss_cpu.to_vec::<f32>()?;
