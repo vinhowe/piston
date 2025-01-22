@@ -5,13 +5,9 @@ use ratchet::{
 };
 use ratchet_nn::{AdamW, Linear, Module, Optimizer, ParamsAdamW};
 
-thread_local! {
-    static GPU_DEVICE: Device = Device::request_device(DeviceRequest::GPU).unwrap();
-}
-
 #[test]
 fn adamw_linear_regression() -> anyhow::Result<()> {
-    let device = GPU_DEVICE.with(|d| d.clone());
+    let device = Device::request_device(DeviceRequest::GPU).unwrap();
     let w_gen = Tensor::from_data(vec![3f32, 1.], shape![1, 2], Device::CPU).to(&device)?;
     let b_gen = Tensor::from_data(vec![-2f32], shape![1, 1], Device::CPU).to(&device)?;
     let gen = Linear::new(w_gen, Some(b_gen));
@@ -66,7 +62,7 @@ fn adamw_linear_regression() -> anyhow::Result<()> {
 
 #[test]
 fn test_intermediate() -> anyhow::Result<()> {
-    let device = GPU_DEVICE.with(|d| d.clone());
+    let device = Device::request_device(DeviceRequest::GPU).unwrap();
     let w_gen = Tensor::from_data(vec![3f32, 1.], shape![1, 2], Device::CPU).to(&device)?;
     let b_gen = Tensor::from_data(vec![-2f32], shape![1, 1], Device::CPU).to(&device)?;
     let gen = Linear::new(w_gen.clone(), Some(b_gen.clone()));
