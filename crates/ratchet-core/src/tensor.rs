@@ -71,16 +71,21 @@ impl Tensor {
         Self::new_impl(op, meta, storage, device, false)
     }
 
-    pub(crate) fn full_impl(shape: &Shape, value: f32, device: &Device, is_variable: bool) -> Self {
+    pub(crate) fn full_impl<T: TensorDType + num_traits::AsPrimitive<f32>>(
+        shape: &Shape,
+        value: T,
+        device: &Device,
+        is_variable: bool,
+    ) -> Self {
         let meta = StorageView {
             shape: shape.clone(),
-            dt: DType::F32,
+            dt: T::dt(),
             strides: Strides::from(&shape.clone()),
         };
         Self::new_impl(
             LazyOp::FillConstant(FillConstant {
                 shape: shape.to_vec(),
-                value,
+                value: value.as_(),
             }),
             meta,
             None,
@@ -89,8 +94,12 @@ impl Tensor {
         )
     }
 
-    pub fn full(shape: &Shape, value: f32, device: &Device) -> Self {
-        Self::full_impl(shape, value, device, false)
+    pub fn full<T: TensorDType + num_traits::AsPrimitive<f32>>(
+        shape: &Shape,
+        value: T,
+        device: &Device,
+    ) -> Self {
+        Self::full_impl::<T>(shape, value, device, false)
     }
 
     #[track_caller]
@@ -1122,7 +1131,7 @@ impl Tensor {
         Self::rand_impl::<T>(lo, up, shape, device, false)
     }
 
-    pub(crate) fn zeros_impl<T: TensorDType>(
+    pub(crate) fn zeros_impl<T: TensorDType + num_traits::AsPrimitive<f32>>(
         shape: &Shape,
         device: &Device,
         is_variable: bool,
@@ -1139,7 +1148,7 @@ impl Tensor {
                 is_variable,
             )
         } else {
-            Self::full_impl(shape, 0.0, device, is_variable)
+            Self::full_impl(shape, T::zero(), device, is_variable)
         }
     }
 
@@ -1150,15 +1159,18 @@ impl Tensor {
         Tensor::from_data(data, shape.clone(), device)
     }
 
-    pub fn zeros<T: TensorDType>(shape: &Shape, device: &Device) -> Tensor {
+    pub fn zeros<T: TensorDType + num_traits::AsPrimitive<f32>>(
+        shape: &Shape,
+        device: &Device,
+    ) -> Tensor {
         Self::zeros_impl::<T>(shape, device, false)
     }
 
-    pub fn zeros_like<T: TensorDType>(self) -> Tensor {
+    pub fn zeros_like<T: TensorDType + num_traits::AsPrimitive<f32>>(self) -> Tensor {
         Self::zeros::<T>(self.shape(), self.device())
     }
 
-    pub(crate) fn ones_impl<T: TensorDType>(
+    pub(crate) fn ones_impl<T: TensorDType + num_traits::AsPrimitive<f32>>(
         shape: &Shape,
         device: &Device,
         is_variable: bool,
@@ -1175,15 +1187,18 @@ impl Tensor {
                 is_variable,
             )
         } else {
-            Self::full_impl(shape, 1.0, device, is_variable)
+            Self::full_impl(shape, T::one(), device, is_variable)
         }
     }
 
-    pub fn ones<T: TensorDType>(shape: &Shape, device: &Device) -> Tensor {
+    pub fn ones<T: TensorDType + num_traits::AsPrimitive<f32>>(
+        shape: &Shape,
+        device: &Device,
+    ) -> Tensor {
         Self::ones_impl::<T>(shape, device, false)
     }
 
-    pub fn ones_like<T: TensorDType>(&self) -> Tensor {
+    pub fn ones_like<T: TensorDType + num_traits::AsPrimitive<f32>>(&self) -> Tensor {
         Self::ones::<T>(self.shape(), self.device())
     }
 

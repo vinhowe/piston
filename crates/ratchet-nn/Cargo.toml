@@ -23,6 +23,7 @@ safetensors = { workspace = true }
 thiserror = { workspace = true }
 ndarray = { workspace = true }
 async-trait = { workspace = true }
+num-traits = { workspace = true }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 maybe-async = { workspace = true, features = ["is_sync"] }

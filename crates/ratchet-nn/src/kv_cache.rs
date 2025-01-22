@@ -1,3 +1,4 @@
+use num_traits::AsPrimitive;
 use ratchet::{shape, Device, HashMap, Shape, Tensor, TensorDType};
 
 #[derive(Clone, Debug)]
@@ -8,7 +9,7 @@ pub struct KVEntry {
 }
 
 impl KVEntry {
-    pub fn allocate<T: TensorDType>(shape: &Shape, device: &Device) -> Self {
+    pub fn allocate<T: TensorDType + AsPrimitive<f32>>(shape: &Shape, device: &Device) -> Self {
         KVEntry {
             k_cache: Tensor::zeros::<T>(shape, device),
             v_cache: Tensor::zeros::<T>(shape, device),
@@ -34,7 +35,7 @@ impl std::ops::Index<usize> for KVCache {
 }
 
 impl KVCache {
-    pub fn new<T: TensorDType>(
+    pub fn new<T: TensorDType + AsPrimitive<f32>>(
         n_layers: i32,
         use_kv_cache: bool,
         shape: Shape,

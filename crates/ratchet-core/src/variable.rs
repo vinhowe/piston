@@ -8,6 +8,7 @@ use core::panic;
 // tensor within a variable is actually with `is_variable` set to `true`.
 use crate::{Device, GPUBuffer, Inner, LazyOp, Shape, Storage, StorageView, Tensor, TensorDType};
 use anyhow::Result;
+use num_traits::AsPrimitive;
 
 /// A variable is a wrapper around a tensor, however variables can have their content modified
 /// whereas tensors are immutable.
@@ -23,12 +24,12 @@ impl std::ops::Deref for Var {
 }
 
 impl Var {
-    pub fn zeros<T: TensorDType>(shape: &Shape, device: &Device) -> Self {
+    pub fn zeros<T: TensorDType + AsPrimitive<f32>>(shape: &Shape, device: &Device) -> Self {
         let inner = Tensor::zeros_impl::<T>(shape, device, true);
         Self(inner)
     }
 
-    pub fn ones<T: TensorDType>(shape: &Shape, device: &Device) -> Self {
+    pub fn ones<T: TensorDType + AsPrimitive<f32>>(shape: &Shape, device: &Device) -> Self {
         let inner = Tensor::ones_impl::<T>(shape, device, true);
         Self(inner)
     }
