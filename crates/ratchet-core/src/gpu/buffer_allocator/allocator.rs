@@ -126,7 +126,7 @@ impl BufferAllocator {
             if current_size >= required_size {
                 let size_diff = usize::abs_diff(current_size, required_size);
 
-                if closest_size_diff.map_or(true, |diff| size_diff < diff) {
+                if closest_size_diff.is_none_or(|diff| size_diff < diff) {
                     closest_index = Some(idx);
                     closest_size_diff = Some(size_diff);
                 }

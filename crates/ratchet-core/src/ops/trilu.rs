@@ -187,7 +187,7 @@ impl Kernel for TriluKernels {
         let shape = inner.src.shape();
         let ndim = shape.len();
         Ok(TriluMeta {
-            numel: Shape::from(shape.clone()).numel() as u32,
+            numel: shape.clone().numel() as u32,
             k: inner.k.unwrap_or(0),
             rows: shape[ndim - 2] as u32,
             cols: shape[ndim - 1] as u32,
