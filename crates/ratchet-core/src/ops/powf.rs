@@ -113,6 +113,12 @@ impl KernelRenderable for PowfKernels {
             let val = X[index];
         });
 
+        // pow(x, e) is undefined for x < 0 in Dawn, but apparently not in wgpu,
+        // but only when the compiler doesn't have enough information to coerce
+        // e into an integer. We supply e through the metadata, so, at compile-time,
+        // its type is unknown.
+        //
+        // Multiplying by the sign is a fix to make this shader work correctly in Chrome.
         let apply = if inplace {
             wgsl! {
                 X[index] = sign(val) * pow(abs(val), 'dt(metadata.e));
