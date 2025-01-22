@@ -184,10 +184,6 @@ impl KernelRenderable for WhereCondKernels {
             arr,
         );
 
-        let WhereCondKernels::Standard(inner) = self;
-
-        let output_dt = inner.on_true.dt();
-
         builder.register_storage("B", BindingMode::ReadOnly, Array::<P>::default());
         builder.register_storage("C", BindingMode::ReadOnly, Array::<P>::default());
 
