@@ -747,20 +747,55 @@ impl Tensor {
         Ok(Tensor::lazy(LazyOp::Concat(cat), new_view, device, false))
     }
 
-    pub fn stack(tensors: RVec<Tensor>, dim: usize) -> anyhow::Result<Tensor> {
+    fn stack_impl(tensors: RVec<Tensor>, dim: usize, root: bool) -> anyhow::Result<Tensor> {
         match tensors.len() {
             0 => anyhow::bail!("Cannot stack empty list of tensors"),
-            1 => Ok(tensors[0].clone().unsqueeze(dim)?),
-            _ => {
+            1 => {
+                if root {
+                    Ok(tensors[0].clone().unsqueeze(dim)?)
+                } else {
+                    Ok(tensors[0].clone())
+                }
+            }
+            len => {
+                let tensors = if root {
+                    tensors
+                        .iter()
+                        .map(|t| t.clone().unsqueeze(dim))
+                        .collect::<anyhow::Result<RVec<Tensor>>>()?
+                } else {
+                    tensors
+                };
+
                 let device = tensors[0].device.clone();
                 assert!(tensors.iter().all(|t| t.device == device), "Mixed devices");
-                let tensors = tensors
-                    .iter()
-                    .map(|t| t.clone().unsqueeze(dim))
-                    .collect::<anyhow::Result<_>>()?;
-                Tensor::cat(tensors, dim)
+
+                if len <= 4 {
+                    return Self::cat(tensors, dim);
+                }
+
+                // Process tensors in chunks of 4 recursively
+                let mut current_level = tensors;
+
+                while current_level.len() > 1 {
+                    let mut next_level = RVec::with_capacity((current_level.len() + 3) / 4);
+
+                    for chunk in current_level.chunks(4) {
+                        let chunk_vec = chunk.iter().cloned().collect();
+                        let reduced = Self::stack_impl(chunk_vec, dim, false)?;
+                        next_level.push(reduced);
+                    }
+
+                    current_level = next_level;
+                }
+
+                Ok(current_level.into_iter().next().unwrap())
             }
         }
+    }
+
+    pub fn stack(tensors: RVec<Tensor>, dim: usize) -> anyhow::Result<Tensor> {
+        Self::stack_impl(tensors, dim, true)
     }
 
     pub fn permute(self, dims: &[usize]) -> anyhow::Result<Tensor> {

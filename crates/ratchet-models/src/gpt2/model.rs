@@ -290,7 +290,7 @@ mod tests {
 
         let model = GPT2::new(&config, vb)?;
 
-        const BATCH_SIZE: usize = 1;
+        const BATCH_SIZE: usize = 10;
 
         for batch_index in 0..10 {
             let input = Tensor::zeros::<i32>(&shape![BATCH_SIZE, config.block_size], &device);
@@ -318,7 +318,7 @@ mod tests {
 
         const VOCAB_SIZE: usize = 256;
 
-        const BATCH_SIZE: usize = 4;
+        const BATCH_SIZE: usize = 8;
         const SEQUENCE_LENGTH: usize = 24;
 
         let config = Config {
