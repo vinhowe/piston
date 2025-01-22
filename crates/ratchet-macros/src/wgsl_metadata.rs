@@ -43,8 +43,7 @@ pub fn derive(input: TokenStream) -> TokenStream {
     });
 
     let expanded = quote! (
-        use crate::StaticKernelMetadata;
-        impl StaticKernelMetadata for #struct_name {}
+        impl crate::StaticKernelMetadata for #struct_name {}
 
         impl crate::KernelMetadata for #struct_name {
             fn render_meta(&self) -> crate::WgslFragment {
@@ -60,7 +59,7 @@ pub fn derive(input: TokenStream) -> TokenStream {
             }
 
             fn write(&self, uniform: &mut crate::CpuUniform) -> Result<u64, crate::OperationError> {
-                self.write_static(uniform)
+                <Self as crate::StaticKernelMetadata>::write_static(self, uniform)
             }
         }
     );
