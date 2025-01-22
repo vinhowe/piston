@@ -203,7 +203,7 @@ mod tests {
 
     #[test]
     #[cfg_attr(feature = "ci", ignore)]
-    fn initialize_gpt2() -> anyhow::Result<()> {
+    fn train_zeros() -> anyhow::Result<()> {
         let _ = env_logger::builder().is_test(true).try_init();
 
         let device = Device::request_device(DeviceRequest::GPU).unwrap();
@@ -242,31 +242,20 @@ mod tests {
 
         const BATCH_SIZE: usize = 1;
 
-        for step in 0..500 {
-            let input = Tensor::from_data(
-                vec![0i32; BATCH_SIZE * config.block_size],
-                shape![BATCH_SIZE, config.block_size],
-                device.clone(),
-            );
+        for step in 0..100 {
+            let input = Tensor::zeros::<i32>(&shape![BATCH_SIZE, config.block_size], &device);
+            let tgt = Tensor::zeros::<i32>(&shape![BATCH_SIZE, config.block_size], &device);
 
             let logits = model.schedule(GPT2Input {
                 x: input,
                 index_pos: 0,
             })?;
 
-            let target = Tensor::from_data(
-                vec![0i32; BATCH_SIZE * config.block_size],
-                shape![BATCH_SIZE, config.block_size],
-                device.clone(),
-            );
-
-            let loss = cross_entropy(logits.flatten_to(1)?, target.flatten_to(1)?)?;
+            let loss = cross_entropy(logits.flatten_to(1)?, tgt.flatten_to(1)?)?;
 
             let grads = loss.backward()?;
 
             // clip_grad_norm(&mut grads, 1.0f32, &device)?;
-
-            println!("stepping");
 
             opt.step(&grads)?;
 
@@ -280,20 +269,64 @@ mod tests {
 
     #[test]
     #[cfg_attr(feature = "ci", ignore)]
+    fn n_forward_passes() -> anyhow::Result<()> {
+        let _ = env_logger::builder().is_test(true).try_init();
+
+        let device = Device::request_device(DeviceRequest::GPU).unwrap();
+
+        const VOCAB_SIZE: usize = 10;
+
+        let config = Config {
+            vocab_size: VOCAB_SIZE,
+            hidden_act: ratchet_nn::Activation::Gelu,
+            n_embd: 128,
+            n_layer: 1,
+            n_head: 1,
+            block_size: 64,
+        };
+
+        let varmap = VarMap::new();
+        let vb = VarBuilder::from_varmap(&varmap, ratchet::DType::F32, &device.clone());
+
+        let model = GPT2::new(&config, vb)?;
+
+        const BATCH_SIZE: usize = 1;
+
+        for batch_index in 0..10 {
+            let input = Tensor::zeros::<i32>(&shape![BATCH_SIZE, config.block_size], &device);
+            let tgt = Tensor::zeros::<i32>(&shape![BATCH_SIZE, config.block_size], &device);
+
+            let logits = model.schedule(GPT2Input {
+                x: input,
+                index_pos: 0,
+            })?;
+
+            let loss = cross_entropy(logits.flatten_to(1)?, tgt.flatten_to(1)?)?;
+
+            let loss_vec = loss.clone().resolve()?.to(&Device::CPU)?.to_vec::<f32>()?;
+
+            println!("{:?} loss: {:?}", batch_index, loss_vec[0]);
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    #[cfg_attr(feature = "ci", ignore)]
     fn train_2_sum() -> anyhow::Result<()> {
         let _ = env_logger::builder().is_test(true).try_init();
 
         const VOCAB_SIZE: usize = 256;
 
-        const BATCH_SIZE: usize = 1;
+        const BATCH_SIZE: usize = 4;
         const SEQUENCE_LENGTH: usize = 24;
 
         let config = Config {
             vocab_size: VOCAB_SIZE,
             hidden_act: ratchet_nn::Activation::Gelu,
             n_embd: 768,
-            n_layer: 6,
-            n_head: 6,
+            n_layer: 4,
+            n_head: 4,
             block_size: SEQUENCE_LENGTH,
         };
 
@@ -326,7 +359,7 @@ mod tests {
         let batch_iter = Batcher::new_r2(dataset_iter).batch_size(BATCH_SIZE);
 
         for (batch_index, batch) in batch_iter.enumerate() {
-            if batch_index > 100 {
+            if batch_index > 10 {
                 break;
             }
 
