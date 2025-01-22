@@ -24,11 +24,7 @@ impl GPT2SelfAttention {
             linear_gpt2_residual(cfg.n_embd, cfg.n_embd, cfg.n_layer, vb.pp("c_proj")).await?;
         let h_dim = cfg.head_dim();
 
-        let softmax_scale = Tensor::from_data(
-            [1.0 / (h_dim as f32).sqrt()],
-            shape![1],
-            vb.device().clone(),
-        );
+        let softmax_scale = Tensor::full(&shape![1], 1.0 / (h_dim as f32).sqrt(), vb.device());
 
         Ok(Self {
             c_attn,
