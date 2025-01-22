@@ -185,6 +185,7 @@ impl Tensor {
                     })
                     | LazyOp::FillConstant(_)
                     | LazyOp::FillRandn(_)
+                    | LazyOp::Arange(_)
                     | LazyOp::Cache(_)
                     | LazyOp::Trilu(_) => nodes,
                 }
@@ -560,7 +561,8 @@ impl Tensor {
                     ..
                 })
                 | LazyOp::FillConstant(_)
-                | LazyOp::FillRandn(_) => {}
+                | LazyOp::FillRandn(_)
+                | LazyOp::Arange(_) => {}
                 LazyOp::View(View { src: arg, .. }) => {
                     let arg_grad = grad.clone().view(arg.shape().clone())?;
                     let sum_grad = grads.or_insert(arg.clone())?;

@@ -49,6 +49,7 @@ pub enum LazyOp {
     IndexAdd(IndexAdd),
     ScatterAdd(ScatterAdd),
     Trilu(Trilu),
+    Arange(Arange),
     Detach(Box<LazyOp>), //Because the entire graph is lazy, you can't actually detach something without computing the graph in parts
 }
 
@@ -77,6 +78,7 @@ impl LazyOp {
             LazyOp::Trilu(t) => t.name(),
             LazyOp::FillConstant(f) => f.name(),
             LazyOp::FillRandn(f) => f.name(),
+            LazyOp::Arange(a) => a.name(),
             LazyOp::RoPE(r) => r.name(),
             LazyOp::Cache(c) => c.name(),
             LazyOp::View(v) => v.name(),
@@ -112,7 +114,9 @@ impl LazyOp {
             LazyOp::Cache(c) => c.srcs(),
             LazyOp::Detach(d) => d.srcs(),
             LazyOp::View(v) => v.srcs(),
-            LazyOp::FillConstant(_) | LazyOp::FillRandn(_) | LazyOp::Const => rvec![], //end of the line kid
+            LazyOp::FillConstant(_) | LazyOp::FillRandn(_) | LazyOp::Arange(_) | LazyOp::Const => {
+                rvec![]
+            } //end of the line kid
         }
     }
 
@@ -141,6 +145,7 @@ impl LazyOp {
             LazyOp::Trilu(t) => t.supports_inplace(),
             LazyOp::FillConstant(fc) => fc.supports_inplace(),
             LazyOp::FillRandn(fr) => fr.supports_inplace(),
+            LazyOp::Arange(a) => a.supports_inplace(),
             LazyOp::Cache(c) => c.supports_inplace(),
             LazyOp::View(_v) => true,
             LazyOp::Const => false,
@@ -182,6 +187,7 @@ impl LazyOp {
             LazyOp::Trilu(t) => t.check_invariants(),
             LazyOp::FillConstant(f) => f.check_invariants(),
             LazyOp::FillRandn(f) => f.check_invariants(),
+            LazyOp::Arange(a) => a.check_invariants(),
             LazyOp::Cache(c) => c.check_invariants(),
             LazyOp::View(v) => v.check_invariants(),
             LazyOp::Const => {}

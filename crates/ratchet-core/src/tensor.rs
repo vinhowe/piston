@@ -8,6 +8,7 @@ use bitvec::prelude::*;
 use derive_new::new;
 use maybe_async::maybe_async;
 use npyz::WriterBuilder;
+use num_traits::AsPrimitive;
 use parking_lot::{RwLock, RwLockReadGuard};
 use std::borrow::Cow;
 use std::io::{BufRead, Seek};
@@ -943,31 +944,55 @@ impl Tensor {
         ))
     }
 
-    pub fn arange(start: i32, end: i32, device: Device) -> anyhow::Result<Tensor> {
-        Self::arange_step(start, end, 1i32, device)
+    pub fn arange<T: TensorDType + PartialOrd + AsPrimitive<f32>>(
+        start: T,
+        end: T,
+        device: &Device,
+    ) -> anyhow::Result<Tensor> {
+        Self::arange_step::<T>(start, end, T::one(), device)
     }
 
     /// Creates a new 1D tensor with values from the interval `[start, end)` taken with a common
     /// difference `step` from `start`.
-    pub fn arange_step(start: i32, end: i32, step: i32, device: Device) -> anyhow::Result<Tensor> {
-        if step == 0 {
+    pub fn arange_step<T: TensorDType + PartialOrd + AsPrimitive<f32>>(
+        start: T,
+        end: T,
+        step: T,
+        device: &Device,
+    ) -> anyhow::Result<Tensor> {
+        if step == T::zero() {
             anyhow::bail!("step cannot be zero")
         }
-        let mut data = vec![];
-        let mut current = start;
-        if step >= 0i32 {
-            while current < end {
-                data.push(current);
-                current += step;
+
+        if device.is_cpu() {
+            let mut data = vec![];
+            let mut current = start;
+            if step >= T::zero() {
+                while current < end {
+                    data.push(current);
+                    current = current + step;
+                }
+            } else {
+                while current > end {
+                    data.push(current);
+                    current = current + step;
+                }
             }
+            let len = data.len();
+            Ok(Tensor::from_data(data, shape![len], device.clone()))
         } else {
-            while current > end {
-                data.push(current);
-                current += step;
-            }
+            let arange = Arange::new(start.as_(), end.as_(), step.as_());
+            let numel = arange.numel();
+            let op = LazyOp::Arange(arange);
+
+            let meta = StorageView {
+                shape: shape![numel],
+                dt: T::dt(),
+                strides: Strides::from(&shape![numel]),
+            };
+
+            Ok(Tensor::lazy(op, meta, device.clone(), false))
         }
-        let len = data.len();
-        Ok(Tensor::from_data(data, shape![len], device))
     }
 
     #[cfg(feature = "rand")]
@@ -1475,6 +1500,7 @@ impl Tensor {
             LazyOp::Gather(g) => g.compile_gpu(self, uniform, device, can_ip, debug).ok(),
             LazyOp::FillConstant(f) => f.compile_gpu(self, uniform, device, can_ip, debug).ok(),
             LazyOp::FillRandn(f) => f.compile_gpu(self, uniform, device, can_ip, debug).ok(),
+            LazyOp::Arange(a) => a.compile_gpu(self, uniform, device, can_ip, debug).ok(),
             LazyOp::Const => None,
             LazyOp::View(_) => None,
         }

@@ -1,4 +1,5 @@
 mod affine;
+mod arange;
 mod binary;
 mod cache;
 mod cast;
@@ -25,6 +26,7 @@ mod view;
 mod where_cond;
 
 pub use affine::*;
+pub use arange::*;
 pub use binary::*;
 pub use cache::*;
 pub use cast::*;

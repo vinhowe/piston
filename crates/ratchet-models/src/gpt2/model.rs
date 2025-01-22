@@ -121,7 +121,7 @@ impl Module for GPT2 {
         let GPT2Input { x, index_pos } = input;
         let [b_size, seq_len]: [usize; 2] = x.shape().try_into()?;
 
-        let pos = Tensor::arange(0, seq_len as i32, x.device().clone())?;
+        let pos = Tensor::arange(0, seq_len as i32, x.device())?;
         let pos = pos.unsqueeze(0)?.broadcast_to(shape![b_size, seq_len])?;
         let input_embeds = self.wte.schedule(x)?;
         let position_embeds = self.wpe.schedule(pos)?;
