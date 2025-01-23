@@ -626,12 +626,12 @@ impl Tensor {
     }
 
     fn flatten_impl(
-        &self,
+        self,
         start_dim: Option<usize>,
         end_dim: Option<usize>,
     ) -> anyhow::Result<Tensor> {
         if self.rank() == 0 {
-            self.clone().view(shape![1])
+            self.view(shape![1])
         } else {
             let start_dim = start_dim.unwrap_or(0);
             let end_dim = end_dim.unwrap_or(self.rank() - 1);
@@ -646,26 +646,26 @@ impl Tensor {
                 if end_dim + 1 < dims.len() {
                     dst_dims.extend(&dims[end_dim + 1..]);
                 }
-                self.clone().view(Shape::from(dst_dims))
+                self.view(Shape::from(dst_dims))
             } else {
                 Ok(self.clone())
             }
         }
     }
 
-    pub fn flatten(&self, start_dim: usize, end_dim: usize) -> anyhow::Result<Tensor> {
+    pub fn flatten(self, start_dim: usize, end_dim: usize) -> anyhow::Result<Tensor> {
         self.flatten_impl(Some(start_dim), Some(end_dim))
     }
 
-    pub fn flatten_to(&self, end_dim: usize) -> anyhow::Result<Tensor> {
+    pub fn flatten_to(self, end_dim: usize) -> anyhow::Result<Tensor> {
         self.flatten_impl(None::<usize>, Some(end_dim))
     }
 
-    pub fn flatten_from(&self, start_dim: usize) -> anyhow::Result<Tensor> {
+    pub fn flatten_from(self, start_dim: usize) -> anyhow::Result<Tensor> {
         self.flatten_impl(Some(start_dim), None::<usize>)
     }
 
-    pub fn flatten_all(&self) -> anyhow::Result<Tensor> {
+    pub fn flatten_all(self) -> anyhow::Result<Tensor> {
         self.flatten_impl(None::<usize>, None::<usize>)
     }
 
