@@ -16,6 +16,7 @@ mod storage;
 mod strides;
 mod tensor;
 mod tensor_id;
+pub mod test_utils;
 mod variable;
 
 pub use compiled_op::*;
