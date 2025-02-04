@@ -181,7 +181,7 @@ impl KernelRenderable for SubgroupGEMV {
         let edge_tgp_load = (0..TN)
             .map(|tn| {
                 wgsl! {
-                    tgpMemory[inVecBlockOffset + 'tn] = select(inVec[inVecBatchOffset + bn + 'tn], 'dt(0.0), bn + 'tn < metadata.IVL);
+                    tgpMemory[inVecBlockOffset + 'tn] = select('dt(0.0), inVec[inVecBatchOffset + bn + 'tn], bn + 'tn < metadata.IVL);
                 }
                 .into()
             })
