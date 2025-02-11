@@ -411,8 +411,6 @@ mod tests {
         B: usize,
         #[strategy(1..=128usize)]
         M: usize,
-        #[strategy(1..=128usize)]
-        N: usize,
     }
 
     fn ground_truth(a: &Tensor, op: &UnaryOp, args: &str) -> anyhow::Result<Tensor> {
@@ -445,7 +443,7 @@ def {}(a):
     }
 
     fn run_unary_trial(prob: UnaryProblem, device: Device) -> anyhow::Result<()> {
-        let UnaryProblem { op, B, M, N: _ } = prob;
+        let UnaryProblem { op, B, M } = prob;
         let a = Tensor::randn::<f32>(0., 1., shape![B, M], Device::CPU);
 
         let args = match op {
