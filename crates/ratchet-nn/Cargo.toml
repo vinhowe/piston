@@ -24,6 +24,7 @@ thiserror = { workspace = true }
 ndarray = { workspace = true }
 async-trait = { workspace = true }
 num-traits = { workspace = true }
+env_logger = { workspace = true }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 maybe-async = { workspace = true, features = ["is_sync"] }
@@ -41,9 +42,5 @@ tokenizers = { version = "0.19.1", default-features = false, features = [
 ] }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies.web-sys]
-features = [
-    "Blob",
-    "HtmlAnchorElement",
-    "CssStyleDeclaration"
-]
+features = ["Blob", "HtmlAnchorElement", "CssStyleDeclaration"]
 workspace = true

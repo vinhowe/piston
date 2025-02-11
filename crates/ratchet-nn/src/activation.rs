@@ -18,7 +18,7 @@ impl Module for Activation {
         match self {
             Self::Gelu => input.gelu(),
             Self::Relu => input.relu(),
-            Self::Relu2 => input.relu()?.square(),
+            Self::Relu2 => input.relu2(),
             Self::Silu => input.silu(),
             Self::Sigmoid => input.sigmoid(),
         }

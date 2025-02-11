@@ -141,7 +141,7 @@ where
         add(&mut x, &bias_b);
     }
 
-    cpu_store_result(&dst, &x);
+    cpu_store_result(dst, &x);
 
     Ok(())
 }
@@ -207,7 +207,7 @@ where
     let scale_b = broadcast(&scale, &shape!(N), src_shape);
     mul(&mut x, &scale_b);
 
-    cpu_store_result(&dst, &x);
+    cpu_store_result(dst, &x);
 
     Ok(())
 }

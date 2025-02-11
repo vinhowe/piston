@@ -2,7 +2,7 @@ use derive_new::new;
 use encase::ShaderType;
 use half::f16;
 use inline_wgsl::wgsl;
-use ratchet_macros::WgslMetadata;
+use ratchet_macros::{IrFields, WgslMetadata};
 
 use crate::{
     gpu::BindGroupLayoutDescriptor, rvec, Array, BindingMode, BuiltIn, DType, GPUOperation, Kernel,
@@ -11,7 +11,7 @@ use crate::{
     WorkgroupSize, Workload,
 };
 
-#[derive(new, Debug, Clone)]
+#[derive(new, Debug, Clone, IrFields)]
 pub struct Cast {
     input: Tensor,
     dst_dt: DType,
@@ -265,7 +265,7 @@ def cast(a):
         let ground = ground_truth(&input, dst_dt)?;
 
         let input = input.to(&device)?;
-        let casted = input.cast(dst_dt)?.resolve()?;
+        let casted = input.cast(dst_dt)?;
 
         let casted = casted.to(&Device::CPU)?;
         match dst_dt {

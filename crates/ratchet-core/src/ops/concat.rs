@@ -2,6 +2,7 @@ use derive_new::new;
 use glam::UVec4;
 use half::f16;
 use inline_wgsl::wgsl;
+use ratchet_macros::IrFields;
 
 use crate::{
     gpu::BindGroupLayoutDescriptor, rvec, Array, BindingMode, BuiltIn, DType, DynKernelMetadata,
@@ -10,11 +11,13 @@ use crate::{
     WgslKernelBuilder, WgslPrimitive, WorkgroupSize, Workload,
 };
 
-#[derive(new, Debug, Clone)]
+#[derive(new, Debug, Clone, IrFields)]
 pub struct Concat {
     pub inputs: RVec<Tensor>,
     pub dim: usize,
 }
+
+const MAX_INPUTS: usize = 8;
 
 impl Concat {
     pub fn inputs(&self) -> &[Tensor] {
@@ -131,7 +134,7 @@ impl Operation for Concat {
 impl OpGuards for Concat {
     fn check_shapes(&self) {
         assert!(self.inputs.len() > 1);
-        assert!(self.inputs.len() <= 8); //We only generate kernels for up to 8 inputs
+        assert!(self.inputs.len() <= MAX_INPUTS); //We only generate kernels for up to 8 inputs
         let first = &self.inputs[0];
         assert!(self
             .inputs
@@ -319,7 +322,7 @@ def permute(*tensors):
             t.to(&device)?;
         }
         let t_rvec = RVec::from(tensors);
-        let ours = Tensor::cat(t_rvec, dim)?.resolve()?;
+        let ours = Tensor::cat(t_rvec, dim)?;
         let result = ours.to(&Device::CPU)?;
         println!("Ground: {:?}\n", ground);
         println!("Ours: {:?}", result);

@@ -1,7 +1,7 @@
 use encase::ShaderType;
 use half::f16;
 use inline_wgsl::wgsl;
-use ratchet_macros::WgslMetadata;
+use ratchet_macros::{IrFields, WgslMetadata};
 
 use crate::{
     gpu::{dtype::WgslDType, BindGroupLayoutDescriptor},
@@ -14,7 +14,7 @@ use crate::{
 use test_strategy::Arbitrary;
 
 #[cfg_attr(test, derive(Arbitrary))]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Hash, IrFields)]
 pub enum ReduceOp {
     Sum,
     Min,
@@ -35,29 +35,29 @@ impl ReduceOp {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, IrFields)]
 pub struct Reduce {
     pub input: Tensor,
     pub reduced_shape: Shape,
     pub keepdim: bool,
     pub op: ReduceOp,
-    reduce_dims: Vec<usize>,
+    reduce_dims: RVec<usize>,
     src_numel: usize,
     dst_numel: usize,
-    dims: Vec<usize>,
-    strides: Vec<usize>,
+    dims: RVec<usize>,
+    strides: RVec<usize>,
     el_to_reduce_per_block: usize,
 }
 
 impl Reduce {
-    pub fn new(input: Tensor, op: ReduceOp, reduce_dims: Vec<usize>, keepdim: bool) -> Self {
+    pub fn new(input: Tensor, op: ReduceOp, reduce_dims: RVec<usize>, keepdim: bool) -> Self {
         // TODO: These are common to all reduce operations; we should make this more general
         let src_stride = input.strides().to_vec();
         let src_dims = input.shape().to_vec();
         let src_numel = src_dims.iter().product();
 
-        let mut dims = vec![];
-        let mut strides = vec![];
+        let mut dims = rvec![];
+        let mut strides = rvec![];
         let mut dst_numel: usize = 1;
 
         for (dim_idx, &d) in src_dims.iter().enumerate() {
@@ -576,7 +576,11 @@ def reduce(a):
         device: Device,
     ) -> anyhow::Result<()> {
         let a = Tensor::randn::<f32>(0., 1., shape![B, M, N], Device::CPU);
-        let ground = ground_truth_forward(&a, op, dim)?;
+        let mut ground = ground_truth_forward(&a, op, dim)?;
+
+        if dim.is_none() {
+            ground = ground.view(shape![1])?;
+        }
 
         let a_gpu = a.to(&device)?;
         let b_gpu = match dim {
@@ -591,10 +595,9 @@ def reduce(a):
                 ReduceOp::Sum => a_gpu.sum_all(),
                 _ => panic!("All * not supported"),
             },
-        }?
-        .resolve()?;
+        }?;
 
-        let ours = b_gpu.to(&Device::CPU)?.cast(DType::F32)?.resolve()?;
+        let ours = b_gpu.to(&Device::CPU)?.cast(DType::F32)?;
         // println!("input = {:?}", a);
         // println!("input strides = {:?}", a.strides());
         // println!("ours = {:?}", ours);
@@ -673,12 +676,12 @@ def reduce(a):
 
     fn ground_truth_backward(a: &Tensor) -> anyhow::Result<Tensor> {
         let prg = r#"
-    import torch
-    def reduce_backward(a):
-        a_tensor = torch.tensor(torch.from_numpy(a), requires_grad=True)
-        result = torch.sum(a_tensor)
-        result.backward(torch.ones_like(result))
-        return a_tensor.grad.numpy()
+import torch
+def reduce_backward(a):
+    a_tensor = torch.tensor(torch.from_numpy(a), requires_grad=True)
+    result = torch.sum(a_tensor)
+    result.backward(torch.ones_like(result))
+    return a_tensor.grad.numpy()
     "#
         .to_string();
         run_py_prg(prg.to_string(), &[a], &[], DType::F32)
@@ -689,6 +692,7 @@ def reduce(a):
         device: Device,
     ) -> anyhow::Result<()> {
         let ReduceBackwardProblem { B, M, N } = problem;
+        let gpu_device = device.try_gpu()?;
         let a = Tensor::randn::<f32>(0., 1., shape![B, M, N], Device::CPU);
         let ground = ground_truth_backward(&a)?;
 
@@ -696,8 +700,8 @@ def reduce(a):
         let a_var = Var::from_tensor(&a_gpu)?;
         let b_gpu = a_var.as_tensor().clone().sum_all()?;
 
-        let mut grads = b_gpu.backward()?;
-        grads.resolve(device.try_gpu()?)?;
+        let grads = b_gpu.backward()?;
+        gpu_device.mark_step()?;
         let a_grad = grads.get(a_var.as_tensor()).unwrap().clone();
 
         let ours = a_grad.to(&Device::CPU)?;

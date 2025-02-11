@@ -5,7 +5,7 @@ use crate::ops::{BinaryOp, UnaryOp};
 use crate::{
     rvec, Affine, Binary, Broadcast, Cmp, Concat, Conv, DType, Gather, GroupNorm, IndexAdd,
     IndexSelect, LazyOp, Matmul, Norm, NormOp, Permute, Powf, Reduce, ReduceOp, Reindex,
-    ScatterAdd, Shape, Slice, Softmax, Tensor, TensorId, Unary, View, WgpuDevice, WhereCond,
+    ScatterAdd, Shape, Slice, Softmax, Tensor, TensorId, Unary, View, WhereCond,
 };
 use crate::{HashMap, Trilu};
 use anyhow::Result;
@@ -175,7 +175,7 @@ impl Tensor {
                     }
                     LazyOp::IndexWrite(_) => todo!(),
                     LazyOp::Cast(_) => todo!(),
-                    // LazyOp::Copy(_) => todo!(),
+                    LazyOp::Copy(_) => todo!(),
                     LazyOp::Detach(_)
                     | LazyOp::Const
                     | LazyOp::RoPE(_)
@@ -508,6 +508,18 @@ impl Tensor {
                     op: UnaryOp::Relu,
                 }) => {
                     let sum_grad = grads.or_insert(arg.clone())?;
+                    let relu_grad = arg.clone().affine(2.0, 0.0)?.mul(
+                        arg.clone()
+                            .ge(arg.clone().zeros_like::<f32>())?
+                            .cast(arg.dt())?,
+                    )?;
+                    *sum_grad = sum_grad.clone().add((grad * relu_grad)?)?;
+                }
+                LazyOp::Unary(Unary {
+                    input: arg,
+                    op: UnaryOp::Relu2,
+                }) => {
+                    let sum_grad = grads.or_insert(arg.clone())?;
                     let relu_grad = arg
                         .clone()
                         .ge(arg.clone().zeros_like::<f32>())?
@@ -694,6 +706,7 @@ impl Tensor {
                 LazyOp::IndexWrite(_) => todo!(),
                 LazyOp::IndexAdd(_) => todo!(),
                 LazyOp::Cache(_) => todo!(),
+                LazyOp::Copy(_) => todo!(),
             };
         }
         #[cfg(feature = "plotting")]
@@ -740,21 +753,6 @@ impl GradStore {
 
     pub fn iter_mut(&mut self) -> impl Iterator<Item = (&TensorId, &mut Tensor)> {
         self.0.iter_mut()
-    }
-
-    pub fn resolve(&mut self, device: &WgpuDevice) -> Result<()> {
-        // TODO(vinhowe): device is currently unused, but we expect to use it once it manages
-        // order/graph caching state. execution_order is one of the most expensive things we're doing
-        // —not GPU operations.
-
-        // Replace each gradient tensor with its resolved version
-        for (_, grad) in self.iter_mut() {
-            if !grad.resolved() {
-                *grad = grad.clone().resolve_deferred()?;
-            }
-        }
-        // device.poll(wgpu::MaintainBase::Wait);
-        Ok(())
     }
 
     /// Get the gradient tensor associated with the given tensor, or, if it does not exist,

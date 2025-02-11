@@ -2,7 +2,7 @@ use derive_new::new;
 use encase::ShaderType;
 use half::f16;
 use inline_wgsl::wgsl;
-use ratchet_macros::WgslMetadata;
+use ratchet_macros::{IrFields, WgslMetadata};
 
 use crate::{
     gpu::{dtype::WgslDType, BindGroupLayoutDescriptor},
@@ -11,7 +11,7 @@ use crate::{
     Tensor, Vec2, Vec4, WgslKernelBuilder, WgslPrimitive, WorkgroupSize, Workload,
 };
 
-#[derive(new, Debug, Clone)]
+#[derive(new, Debug, Clone, IrFields)]
 pub struct Affine {
     pub src: Tensor,
     pub mul: f32,
@@ -225,13 +225,12 @@ mod tests {
     use crate::{shape, test_util::run_py_prg, Device, DeviceRequest, Tensor};
 
     fn ground_truth(a: &Tensor, mul: f32, add: f32) -> anyhow::Result<Tensor> {
-        let prg = format!(
-            r#"
+        let prg = r#"
 import torch
 def affine(a, mul, add):
     return (torch.from_numpy(a) * mul + add).numpy()
-"#,
-        );
+"#
+        .to_string();
 
         run_py_prg(prg.to_string(), &[a], &[&mul, &add], a.dt())
     }
@@ -242,7 +241,7 @@ def affine(a, mul, add):
         let ground = ground_truth(&a, mul, add).unwrap();
 
         let a_gpu = a.to(&device).unwrap();
-        let b = a_gpu.affine(mul, add).unwrap().resolve().unwrap();
+        let b = a_gpu.affine(mul, add).unwrap();
 
         let ours = b.to(&Device::CPU).unwrap();
         println!("ours = {:?}", ours);

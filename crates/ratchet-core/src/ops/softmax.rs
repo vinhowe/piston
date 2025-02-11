@@ -2,7 +2,7 @@ use derive_new::new;
 use encase::ShaderType;
 use half::f16;
 use inline_wgsl::wgsl;
-use ratchet_macros::WgslMetadata;
+use ratchet_macros::{IrFields, WgslMetadata};
 
 use crate::{
     gpu::{dtype::WgslDType, BindGroupLayoutDescriptor},
@@ -11,7 +11,7 @@ use crate::{
     Tensor, Vec2, Vec4, WgslKernelBuilder, WgslPrimitive, WorkgroupSize, Workload,
 };
 
-#[derive(new, Debug, Clone)]
+#[derive(new, Debug, Clone, IrFields)]
 pub struct Softmax {
     pub(crate) input: Tensor,
     pub(crate) dim: usize,
@@ -329,7 +329,7 @@ def softmax(a):
         let ground = ground_truth(&a).unwrap();
 
         let a_gpu = a.to(&device).unwrap();
-        let b = a_gpu.softmax(2).unwrap().resolve().unwrap();
+        let b = a_gpu.softmax(2).unwrap();
 
         let ours = b.to(&Device::CPU).unwrap();
         ground.all_close(&ours, 1e-6, 1e-6).unwrap();

@@ -34,7 +34,7 @@ pub fn cross_entropy(inp: Tensor, target: Tensor) -> anyhow::Result<Tensor> {
     nll(inp, target)
 }
 
-#[cfg(all(test))]
+#[cfg(all(test, feature = "pyo3"))]
 mod tests {
     use super::*;
     use anyhow::Result;
@@ -112,16 +112,12 @@ def cross_entropy(input, target):
         let our_loss = cross_entropy(input_var.as_tensor().clone(), target_gpu)?;
 
         // Compute gradients
-        let mut grads = our_loss.backward()?;
-        grads.resolve(device.try_gpu()?)?;
-        let our_grad = grads
-            .get(input_var.as_tensor())
-            .unwrap()
-            .clone()
-            .resolve()?;
+        let grads = our_loss.backward()?;
+        device.try_gpu()?.mark_step()?;
+        let our_grad = grads.get(input_var.as_tensor()).unwrap().clone();
 
         // Compare results
-        let our_loss_cpu = our_loss.resolve()?.to(&Device::CPU)?;
+        let our_loss_cpu = our_loss.to(&Device::CPU)?;
         let our_grad_cpu = our_grad.to(&Device::CPU)?;
         let ground_grad = ground_grad.to(&Device::CPU)?;
         let ground_loss = ground_loss.to(&Device::CPU)?;

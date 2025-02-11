@@ -59,6 +59,7 @@ macro_rules! impl_unary_ops {
             impl_cpu_unary_op!(square, |x: $dtype| x * x);
             impl_cpu_unary_op!(sqrt, |x: $dtype| x.sqrt());
             impl_cpu_unary_op!(relu, |x: $dtype| x.max($conv(0.0)));
+            impl_cpu_unary_op!(relu2, |x: $dtype| x.max($conv(0.0)) * x.max($conv(0.0)));
             impl_cpu_unary_op!(floor, |x: $dtype| x.floor());
             impl_cpu_unary_op!(ceil, |x: $dtype| x.ceil());
             impl_cpu_unary_op!(neg, |x: $dtype| -x);
@@ -78,6 +79,7 @@ macro_rules! impl_unary_ops {
                     UnaryOp::Square => Self::square(op.input(), dst),
                     UnaryOp::Sqrt => Self::sqrt(op.input(), dst),
                     UnaryOp::Relu => Self::relu(op.input(), dst),
+                    UnaryOp::Relu2 => Self::relu2(op.input(), dst),
                     UnaryOp::Floor => Self::floor(op.input(), dst),
                     UnaryOp::Ceil => Self::ceil(op.input(), dst),
                     UnaryOp::Neg => Self::neg(op.input(), dst),

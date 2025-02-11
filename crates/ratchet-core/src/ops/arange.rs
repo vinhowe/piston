@@ -1,5 +1,6 @@
 use derive_new::new;
 use inline_wgsl::wgsl;
+use ratchet_macros::IrFields;
 
 use crate::{
     gpu::BindGroupLayoutDescriptor, rvec, shape, wgc, wgs, Array, BindingMode, BuiltIn, DType,
@@ -8,7 +9,7 @@ use crate::{
     WgslKernelBuilder, WgslPrimitive, WorkgroupCount, WorkgroupSize, Workload,
 };
 
-#[derive(new, Debug, Clone)]
+#[derive(new, Debug, Clone, IrFields)]
 pub struct Arange {
     pub start: f32,
     pub end: f32,
@@ -261,8 +262,6 @@ def arange(start, stop, step):
         let a = Tensor::arange_step(start, stop, step, device)
             .unwrap()
             .cast(DType::F32)
-            .unwrap()
-            .resolve_deferred()
             .unwrap();
         let ground = ground_truth(&start, &stop, &step).unwrap();
 

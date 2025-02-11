@@ -13,8 +13,9 @@ use crate::{
 };
 use derive_new::new;
 use inline_wgsl::wgsl;
+use ratchet_macros::IrFields;
 
-#[derive(new, Debug, Clone)]
+#[derive(new, Debug, Clone, IrFields)]
 pub struct Norm {
     pub(crate) input: Tensor,
     pub(crate) scale: Tensor,
@@ -84,7 +85,7 @@ impl Operation for NormOp {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, IrFields)]
 pub enum NormOp {
     LayerNorm(Norm),
     RMSNorm(Norm),
@@ -460,8 +461,8 @@ def manual_rms_norm(input, scale):
         let bias_gpu = bias.map(|b| b.to(device)).transpose()?;
 
         let result = match var {
-            NormVariant::LayerNorm => input_gpu.layer_norm(scale_gpu, bias_gpu, 1e-5)?.resolve()?,
-            NormVariant::RMSNorm => input_gpu.rms_norm(scale_gpu, 1e-5)?.resolve()?,
+            NormVariant::LayerNorm => input_gpu.layer_norm(scale_gpu, bias_gpu, 1e-5)?,
+            NormVariant::RMSNorm => input_gpu.rms_norm(scale_gpu, 1e-5)?,
         };
 
         let ours = result.to(&Device::CPU)?;

@@ -2,7 +2,7 @@ use derive_new::new;
 use encase::ShaderType;
 use half::f16;
 use inline_wgsl::wgsl;
-use ratchet_macros::WgslMetadata;
+use ratchet_macros::{IrFields, WgslMetadata};
 
 use crate::{
     gpu::{dtype::WgslDType, BindGroupLayoutDescriptor},
@@ -15,7 +15,7 @@ use crate::{
 use test_strategy::Arbitrary;
 
 #[cfg_attr(test, derive(Arbitrary))]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Hash, IrFields)]
 pub enum BinaryOp {
     Add,
     Sub,
@@ -43,7 +43,7 @@ impl BinaryOp {
     }
 }
 
-#[derive(new, Debug, Clone)]
+#[derive(new, Debug, Clone, IrFields)]
 pub struct Binary {
     pub lhs: Tensor,
     pub rhs: Tensor,
@@ -313,8 +313,7 @@ def {}(a, b):
             BinaryOp::Sub => a.sub(b)?,
             BinaryOp::Mul => a.mul(b)?,
             BinaryOp::Div => a.div(b)?,
-        }
-        .resolve()?;
+        };
 
         let d = c.to(&Device::CPU)?;
         ground.all_close(&d, 1e-4, 1e-4)?;

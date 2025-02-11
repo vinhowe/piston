@@ -83,9 +83,7 @@ mod tests {
 
     use super::{linear, linear_no_bias, Linear};
     use ratchet::{
-        prelude::shape,
-        test_util::{run_py_prg, run_py_prg_multiple},
-        Device, DeviceRequest, Tensor, Var,
+        prelude::shape, test_util::run_py_prg_multiple, Device, DeviceRequest, Tensor, Var,
     };
     use test_strategy::{proptest, Arbitrary};
 
@@ -148,7 +146,7 @@ def linear(x, w):
             linear.w.to(&device)?,
             linear.b.map(|b| b.to(&device)).transpose()?,
         );
-        let result_gpu = linear_gpu.schedule(x_gpu)?.resolve()?;
+        let result_gpu = linear_gpu.schedule(x_gpu)?;
 
         let ours = result_gpu.to(&Device::CPU)?;
         println!("x = {:?}", x);
@@ -257,10 +255,10 @@ def linear_backward(x, w):
 
         let result_gpu = linear.schedule(x_var.as_tensor().clone())?;
 
-        let mut grads = result_gpu.backward()?;
-        grads.resolve(device.try_gpu()?)?;
+        let grads = result_gpu.backward()?;
+        device.try_gpu()?.mark_step()?;
 
-        let x_grad = grads.get(&x_var.as_tensor()).unwrap().to(&Device::CPU)?;
+        let x_grad = grads.get(x_var.as_tensor()).unwrap().to(&Device::CPU)?;
         let w_grad = grads.get(&linear.w).unwrap().to(&Device::CPU)?;
         let b_grad = match &linear.b {
             Some(b) => Some(grads.get(b).unwrap().to(&Device::CPU)?),

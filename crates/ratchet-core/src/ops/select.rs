@@ -1,7 +1,7 @@
 use derive_new::new;
 use encase::ShaderType;
 use half::f16;
-use ratchet_macros::WgslMetadata;
+use ratchet_macros::{IrFields, WgslMetadata};
 
 use crate::{
     gpu::{BindGroupLayoutDescriptor, WorkgroupCount},
@@ -11,7 +11,7 @@ use crate::{
 };
 use inline_wgsl::wgsl;
 
-#[derive(new, Debug, Clone)]
+#[derive(new, Debug, Clone, IrFields)]
 pub struct IndexSelect {
     pub src: Tensor,
     pub indices: Tensor,
@@ -340,7 +340,7 @@ def index_select(input, indices):
         let input = input.to(&device).unwrap();
         let indices = indices.to(&device).unwrap();
 
-        let result = input.index_select(indices, 0).unwrap().resolve().unwrap();
+        let result = input.index_select(indices, 0).unwrap();
         let x = result.to(&Device::CPU).unwrap();
         println!("X: {:?}", x);
         println!("Ground Truth: {:?}", ground_truth);

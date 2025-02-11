@@ -1,8 +1,8 @@
 use crate::gpu::{BindGroupEntry, CpuUniform, WgpuDevice};
 use crate::{
-    cpu, ops::*, rvec, shape, BufferSegment, CPUBuffer, CompiledOp, DType, Device, DeviceStorage,
-    Executable, GPUBuffer, GPUOperation, InvariantError, LazyOp, Operation, OperationError, RVec,
-    RawCPUBuffer, Shape, Storage, Strides, TensorDType, TensorId,
+    cpu, ops::*, rvec, shape, BufferSegment, CPUBuffer, Compiled, CompiledOp, ComputeCompileKey,
+    DType, Device, DeviceStorage, GPUOperation, GpuCompileKey, InvariantError, LazyOp, Operation,
+    OperationError, RVec, RawCPUBuffer, Shape, Storage, Strides, TensorDType, TensorId,
 };
 use bitvec::prelude::*;
 use derive_new::new;
@@ -12,6 +12,7 @@ use num_traits::AsPrimitive;
 use parking_lot::{RwLock, RwLockReadGuard};
 use std::borrow::Cow;
 use std::io::{BufRead, Seek};
+use std::mem::ManuallyDrop;
 use std::ops::Bound;
 use std::path::Path;
 use std::sync::Arc;
@@ -54,7 +55,24 @@ pub struct Tensor {
 
 unsafe impl Send for Tensor {}
 
+macro_rules! ensure_resolved {
+    ($self:ident) => {
+        if !$self.resolved() {
+            $self
+                .apply_pending_graph()
+                .expect("Failed to apply pending graph");
+        }
+    };
+}
+
 impl Tensor {
+    fn register_with_device(&self) {
+        if let Device::GPU(inner) = self.device() {
+            log::trace!("Attempting to register tensor {:?}", self.id());
+            inner.register_tensor(self);
+        }
+    }
+
     pub(crate) fn new_impl(
         op: LazyOp,
         meta: StorageView,
@@ -62,9 +80,11 @@ impl Tensor {
         device: Device,
         is_variable: bool,
     ) -> Self {
-        Self {
-            inner: Arc::new(Inner::new(op, meta, storage, device, is_variable)),
-        }
+        let value = Self {
+            inner: Arc::new(Inner::new(op, meta, storage, device.clone(), is_variable)),
+        };
+        value.register_with_device();
+        value
     }
 
     pub fn new(op: LazyOp, meta: StorageView, storage: Option<Storage>, device: Device) -> Self {
@@ -84,7 +104,7 @@ impl Tensor {
         };
         Self::new_impl(
             LazyOp::FillConstant(FillConstant {
-                shape: shape.to_vec(),
+                shape: shape.clone(),
                 value: value.as_(),
             }),
             meta,
@@ -115,9 +135,11 @@ impl Tensor {
         device: Device,
         is_variable: bool,
     ) -> Self {
-        Self {
+        let value = Self {
             inner: Arc::new(Inner::from_shallow(op, meta, storage, device, is_variable)),
-        }
+        };
+        value.register_with_device();
+        value
     }
 
     pub fn strong_count(&self) -> usize {
@@ -189,6 +211,19 @@ impl StorageView {
     }
 }
 
+impl Drop for Inner {
+    fn drop(&mut self) {
+        if let Device::GPU(inner) = &self.device {
+            log::trace!("Attempting to unregister tensor {:?}", self.id);
+            inner.unregister_tensor(self.id);
+        }
+
+        unsafe {
+            ManuallyDrop::drop(&mut self.storage);
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct Inner {
     id: TensorId,
@@ -196,7 +231,7 @@ pub struct Inner {
     device: Device,
     view: StorageView,
     is_variable: bool,
-    storage: Arc<RwLock<Option<Storage>>>,
+    storage: ManuallyDrop<Arc<RwLock<Option<Storage>>>>,
 }
 
 impl AsRef<Inner> for Inner {
@@ -218,7 +253,7 @@ impl Inner {
             view: meta,
             op,
             device,
-            storage: Arc::new(RwLock::new(storage)),
+            storage: ManuallyDrop::new(Arc::new(RwLock::new(storage))),
             is_variable,
         }
     }
@@ -235,7 +270,7 @@ impl Inner {
             view: meta,
             op,
             device,
-            storage,
+            storage: ManuallyDrop::new(storage),
             is_variable,
         }
     }
@@ -304,7 +339,17 @@ impl Tensor {
             .as_ref()
             .map(|s| s.plot_fmt())
             .unwrap_or_else(|| "Unresolved".to_string());
-        format!("#{:?}-{:?}-{:?}\n{}", self.id(), dt, shape, storage_fmt)
+        let references = self.strong_count();
+        format!(
+            "#{:?}-{:?}-{:?}{}\n{:#?}\n{}\n{:?} references",
+            self.id(),
+            dt,
+            shape,
+            if self.is_variable() { " (var)" } else { "" },
+            self.op().ir().fields(),
+            storage_fmt,
+            references
+        )
     }
 }
 
@@ -413,6 +458,7 @@ impl Tensor {
     impl_unary_op!(abs, UnaryOp::Abs);
     impl_unary_op!(sqrt, UnaryOp::Sqrt);
     impl_unary_op!(relu, UnaryOp::Relu);
+    impl_unary_op!(relu2, UnaryOp::Relu2);
     impl_unary_op!(floor, UnaryOp::Floor);
     impl_unary_op!(ceil, UnaryOp::Ceil);
     impl_unary_op!(neg, UnaryOp::Neg);
@@ -558,7 +604,7 @@ impl Tensor {
 
     fn reduce_impl(self, dim: usize, keepdim: bool, op: ReduceOp) -> anyhow::Result<Tensor> {
         let device = self.device.clone();
-        let reduce = Reduce::new(self, op, vec![dim], keepdim);
+        let reduce = Reduce::new(self, op, rvec![dim], keepdim);
         let new_view = reduce.compute_view()?;
         Ok(Tensor::lazy(
             LazyOp::Reduce(reduce),
@@ -570,7 +616,7 @@ impl Tensor {
 
     fn sum_impl(self, sum_dims: &[usize], keepdim: bool) -> anyhow::Result<Tensor> {
         let device = self.device.clone();
-        let sum = Reduce::new(self, ReduceOp::Sum, sum_dims.to_vec(), keepdim);
+        let sum = Reduce::new(self, ReduceOp::Sum, sum_dims.into(), keepdim);
         let new_view = sum.compute_view()?;
         Ok(Tensor::lazy(LazyOp::Reduce(sum), new_view, device, false))
     }
@@ -712,7 +758,7 @@ impl Tensor {
             );
         }
         let device = self.device.clone();
-        let storage = self.storage.clone();
+        let storage = Arc::clone(&self.storage);
         let op = View::new(self, shape);
         let out_view = op.compute_view()?;
 
@@ -800,7 +846,7 @@ impl Tensor {
 
     pub fn permute(self, dims: &[usize]) -> anyhow::Result<Tensor> {
         let device = self.device.clone();
-        let permute = Permute::new(self, dims.to_vec());
+        let permute = Permute::new(self, dims.into());
         let out_view = permute.compute_view()?;
 
         let op = LazyOp::Reindex(Reindex::Permute(permute));
@@ -1107,7 +1153,7 @@ impl Tensor {
             };
             Self::new_impl(
                 LazyOp::FillRandn(FillRandn {
-                    shape: shape.to_vec(),
+                    shape,
                     mean,
                     std,
                     seed: Some(rng.next_u32()),
@@ -1359,6 +1405,19 @@ impl Tensor {
         }
     }
 
+    pub fn copy(&self, dst: &Self) -> Tensor {
+        Tensor::new_impl(
+            LazyOp::Copy(TensorCopy {
+                src: self.clone(),
+                dst: dst.clone(),
+            }),
+            self.view.clone(),
+            None,
+            self.device.clone(),
+            false,
+        )
+    }
+
     pub(crate) fn same_storage(&self, rhs: &Self) -> bool {
         match (self.storage().as_ref(), rhs.storage().as_ref()) {
             (Some(lhs), Some(rhs)) => std::ptr::eq(lhs, rhs),
@@ -1370,21 +1429,16 @@ impl Tensor {
     ///
     /// If the tensor has more than 1 reference, you die.
     /// If the tensor has no storage, you die.
-    pub unsafe fn into_bytes(self) -> anyhow::Result<Vec<u8>> {
-        let inner = Arc::try_unwrap(self.inner).map_err(|_| {
+    pub fn into_bytes(self) -> anyhow::Result<Vec<u8>> {
+        let mut inner = Arc::try_unwrap(self.inner).map_err(|_| {
             anyhow::anyhow!("Cannot convert tensor into bytes with multiple references.")
         })?;
-        let storage = Arc::try_unwrap(inner.storage)
-            .unwrap()
-            .into_inner()
-            .unwrap();
+        let storage = unsafe { ManuallyDrop::take(&mut inner.storage) };
+        let storage = Arc::try_unwrap(storage).unwrap().into_inner().unwrap();
         Ok(storage.into_bytes())
     }
 
-    /// # Safety
-    ///
-    /// Inherited from `Storage::from_quantized`.
-    pub unsafe fn from_quantized<T: TensorDType, U: AsRef<[T]>>(
+    pub fn from_quantized<T: TensorDType, U: AsRef<[T]>>(
         data: U,
         dt: DType,
         shape: Shape,
@@ -1400,7 +1454,6 @@ impl Tensor {
         reader: &mut R,
         shape: Shape,
         device: Device,
-        is_variable: bool,
     ) -> anyhow::Result<Tensor> {
         let storage = Storage::from_disk::<T, R>(reader, &shape, &device)?;
         let strides = Strides::from(&shape);
@@ -1410,13 +1463,13 @@ impl Tensor {
             meta,
             Some(storage),
             device,
-            is_variable,
+            false,
         ))
     }
 
     pub fn item<T: TensorDType>(&self) -> T {
         assert!(self.is_scalar());
-        assert!(self.device().is_cpu());
+        ensure_resolved!(self);
         let storage_guard = self.storage();
         let buffer = storage_guard.as_ref().unwrap().try_cpu().unwrap();
         buffer.to_slice::<T>(self.shape())[0]
@@ -1462,7 +1515,7 @@ impl Tensor {
     ///
     /// The 1D vector contains the data from the tensor, as it was laid out in memory.
     pub fn to_vec<T: TensorDType>(&self) -> anyhow::Result<Vec<T>> {
-        assert!(self.device().is_cpu());
+        ensure_resolved!(self);
         let storage_guard = self.storage();
         let buffer = storage_guard.as_ref().unwrap().try_cpu()?;
         let slice = buffer.to_slice::<T>(self.shape());
@@ -1516,64 +1569,77 @@ impl Tensor {
         order
     }
 
-    pub fn compile_gpu_for_op(
-        &self,
-        op: &LazyOp,
-        uniform: &mut CpuUniform,
-        device: &WgpuDevice,
-        can_ip: bool,
-        debug: bool,
-    ) -> Option<CompiledOp> {
-        match op {
-            LazyOp::Binary(b) => b.compile_gpu(self, uniform, device, can_ip, debug).ok(),
-            LazyOp::Cast(c) => c.compile_gpu(self, uniform, device, can_ip, debug).ok(),
-            LazyOp::Matmul(m) => m.compile_gpu(self, uniform, device, can_ip, debug).ok(),
-            LazyOp::Softmax(s) => s.compile_gpu(self, uniform, device, can_ip, debug).ok(),
-            LazyOp::RoPE(r) => r.compile_gpu(self, uniform, device, can_ip, debug).ok(),
-            LazyOp::Unary(u) => u.compile_gpu(self, uniform, device, can_ip, debug).ok(),
-            LazyOp::Reindex(r) => r.compile_gpu(self, uniform, device, can_ip, debug).ok(),
-            LazyOp::Concat(c) => c.compile_gpu(self, uniform, device, can_ip, debug).ok(),
-            LazyOp::Norm(n) => n.compile_gpu(self, uniform, device, can_ip, debug).ok(),
-            LazyOp::Affine(a) => a.compile_gpu(self, uniform, device, can_ip, debug).ok(),
-            LazyOp::Cmp(c) => c.compile_gpu(self, uniform, device, can_ip, debug).ok(),
-            LazyOp::Powf(p) => p.compile_gpu(self, uniform, device, can_ip, debug).ok(),
-            LazyOp::WhereCond(w) => w.compile_gpu(self, uniform, device, can_ip, debug).ok(),
-            LazyOp::Conv(c) => c.compile_gpu(self, uniform, device, can_ip, debug).ok(),
-            LazyOp::Select(i) => i.compile_gpu(self, uniform, device, can_ip, debug).ok(),
-            LazyOp::IndexWrite(i) => i.compile_gpu(self, uniform, device, can_ip, debug).ok(),
-            LazyOp::IndexAdd(i) => i.compile_gpu(self, uniform, device, can_ip, debug).ok(),
-            LazyOp::ScatterAdd(s) => s.compile_gpu(self, uniform, device, can_ip, debug).ok(),
-            LazyOp::Trilu(t) => t.compile_gpu(self, uniform, device, can_ip, debug).ok(),
-            LazyOp::Cache(c) => c.compile_gpu(self, uniform, device, can_ip, debug).ok(),
-            LazyOp::Reduce(s) => s.compile_gpu(self, uniform, device, can_ip, debug).ok(),
-            LazyOp::Detach(d) => self.compile_gpu_for_op(d, uniform, device, can_ip, debug),
-            LazyOp::Gather(g) => g.compile_gpu(self, uniform, device, can_ip, debug).ok(),
-            LazyOp::FillConstant(f) => f.compile_gpu(self, uniform, device, can_ip, debug).ok(),
-            LazyOp::FillRandn(f) => f.compile_gpu(self, uniform, device, can_ip, debug).ok(),
-            LazyOp::Arange(a) => a.compile_gpu(self, uniform, device, can_ip, debug).ok(),
-            LazyOp::Const => None,
-            LazyOp::View(_) => None,
-        }
-    }
-
     pub fn cpu_apply(self, dst: Tensor) -> Option<Tensor> {
         cpu::apply_operation(self.op().clone(), dst).ok()
     }
 
-    pub fn compile_gpu(
-        &self,
-        uniform: &mut CpuUniform,
-        device: &WgpuDevice,
+    fn gpu_compile_key_for_op<'a>(
+        &'a self,
+        op: &'a LazyOp,
         can_inplace: bool,
-        debug: bool,
-    ) -> Option<CompiledOp> {
-        self.compile_gpu_for_op(&self.op, uniform, device, can_inplace, debug)
+        uniform: &mut CpuUniform,
+    ) -> Option<ComputeCompileKey<'a>> {
+        match op {
+            LazyOp::Binary(b) => b.create_gpu_compile_key(self, can_inplace, uniform).ok(),
+            LazyOp::Cast(c) => c.create_gpu_compile_key(self, can_inplace, uniform).ok(),
+            LazyOp::Matmul(m) => m.create_gpu_compile_key(self, can_inplace, uniform).ok(),
+            LazyOp::Softmax(s) => s.create_gpu_compile_key(self, can_inplace, uniform).ok(),
+            LazyOp::RoPE(r) => r.create_gpu_compile_key(self, can_inplace, uniform).ok(),
+            LazyOp::Unary(u) => u.create_gpu_compile_key(self, can_inplace, uniform).ok(),
+            LazyOp::Reindex(r) => r.create_gpu_compile_key(self, can_inplace, uniform).ok(),
+            LazyOp::Concat(c) => c.create_gpu_compile_key(self, can_inplace, uniform).ok(),
+            LazyOp::Norm(n) => n.create_gpu_compile_key(self, can_inplace, uniform).ok(),
+            LazyOp::Affine(a) => a.create_gpu_compile_key(self, can_inplace, uniform).ok(),
+            LazyOp::Cmp(c) => c.create_gpu_compile_key(self, can_inplace, uniform).ok(),
+            LazyOp::Powf(p) => p.create_gpu_compile_key(self, can_inplace, uniform).ok(),
+            LazyOp::WhereCond(w) => w.create_gpu_compile_key(self, can_inplace, uniform).ok(),
+            LazyOp::Conv(c) => c.create_gpu_compile_key(self, can_inplace, uniform).ok(),
+            LazyOp::Select(i) => i.create_gpu_compile_key(self, can_inplace, uniform).ok(),
+            LazyOp::IndexWrite(i) => i.create_gpu_compile_key(self, can_inplace, uniform).ok(),
+            LazyOp::IndexAdd(i) => i.create_gpu_compile_key(self, can_inplace, uniform).ok(),
+            LazyOp::ScatterAdd(s) => s.create_gpu_compile_key(self, can_inplace, uniform).ok(),
+            LazyOp::Trilu(t) => t.create_gpu_compile_key(self, can_inplace, uniform).ok(),
+            LazyOp::Cache(c) => c.create_gpu_compile_key(self, can_inplace, uniform).ok(),
+            LazyOp::Reduce(s) => s.create_gpu_compile_key(self, can_inplace, uniform).ok(),
+            LazyOp::Detach(d) => self.gpu_compile_key_for_op(d, can_inplace, uniform),
+            LazyOp::Gather(g) => g.create_gpu_compile_key(self, can_inplace, uniform).ok(),
+            LazyOp::FillConstant(f) => f.create_gpu_compile_key(self, can_inplace, uniform).ok(),
+            LazyOp::FillRandn(f) => f.create_gpu_compile_key(self, can_inplace, uniform).ok(),
+            LazyOp::Arange(a) => a.create_gpu_compile_key(self, can_inplace, uniform).ok(),
+            LazyOp::Copy(_) | LazyOp::View(_) | LazyOp::Const => None,
+        }
     }
 
-    fn resolve_inner(self, immediate: bool, debug: bool) -> Result<Tensor, TensorError> {
-        match self.device().clone() {
-            Device::CPU => self.resolve_cpu(),
-            Device::GPU(device) => self.resolve_gpu(&device, immediate, debug),
+    pub fn gpu_compile_key(
+        &self,
+        can_inplace: bool,
+        uniform: &mut CpuUniform,
+    ) -> Option<GpuCompileKey> {
+        match self.op() {
+            LazyOp::Copy(c) => Some(GpuCompileKey::Copy(c.create_gpu_compile_key())),
+            _ => self
+                .gpu_compile_key_for_op(self.op(), can_inplace, uniform)
+                .map(GpuCompileKey::Compute),
+    }
+    }
+
+    pub fn compile_gpu<'a>(
+        &'a self,
+        gpu_compile_key: &GpuCompileKey<'a>,
+        gpu_device: &'a WgpuDevice,
+        debug: bool,
+    ) -> Option<Compiled> {
+        match gpu_compile_key {
+            GpuCompileKey::Copy(_) => {
+                if let LazyOp::Copy(c) = self.op() {
+                    c.compile_gpu().ok()
+                } else {
+                    None
+                }
+            }
+            GpuCompileKey::Compute(compute_key) => {
+                compile_gpu_for_op(self.op(), compute_key, gpu_device, debug).map(Compiled::Compute)
+            }
         }
     }
 
@@ -1593,116 +1659,23 @@ impl Tensor {
         Ok(tensor.clone())
     }
 
-    fn resolve_gpu(
-        self,
-        gpu_device: &WgpuDevice,
-        immediate: bool,
-        debug: bool,
-    ) -> Result<Tensor, TensorError> {
-        let execution_order = self.execution_order();
-        let mut uniform = CpuUniform::new();
-        let mut compiled_ops = Vec::with_capacity(execution_order.len());
-
-        gpu_device.begin_pass();
-        let mut allocations = gpu_device.allocate_cfg(&execution_order, gpu_device)?;
-
-        #[cfg(feature = "plotting")]
-        crate::plot::render_to_file(execution_order.last().unwrap(), "prealloc.svg").unwrap();
-
-        #[cfg(feature = "debug")]
-        let mut compute_dsts = Vec::new();
-
-        for t in execution_order.iter() {
-            log::debug!("Compiling: {:?}", t.op().name());
-            assert!(t.device().is_gpu());
-            if t.resolved() {
-                continue;
-            }
-
-            if t.op().is_const() {
-                Err(TensorError::NotResolved)?;
-            }
-
-            let id = t.id();
-            let inner = allocations.remove(&id).ok_or(TensorError::NoStorage(id))?;
-            t.update_storage(Storage::GPU(GPUBuffer {
-                inner,
-                alignment: t.dt().size_of(),
-                cpu_size: Some(t.num_bytes()),
-            }));
-
-            let srcs = t.op().srcs();
-            let to_modify = srcs.first();
-            let can_inplace = match to_modify {
-                Some(to_modify_src) => {
-                    t.op().supports_inplace()
-                        // vinhowe: we need to check if the src is a variable, because we can't inplace
-                        // variables unless we've disabled gradient tracking.
-                        && !t.is_variable()
-                        && to_modify_src.strong_count() == 1
-                }
-                None => false,
-            };
-
-            if let Some(compiled_op) = t.compile_gpu(&mut uniform, gpu_device, can_inplace, debug) {
-                compiled_ops.push(compiled_op);
-                #[cfg(feature = "debug")]
-                compute_dsts.push(*t);
-            } else {
-                log::warn!("Compilation failed for operation: {:?}", t.op().name());
-            }
-        }
-        #[cfg(feature = "plotting")]
-        crate::plot::render_to_file(execution_order.last().unwrap(), "alloc.svg").unwrap();
-
-        let executable = Executable::new(
-            compiled_ops,
-            uniform.into_gpu(gpu_device)?,
-            #[cfg(feature = "debug")]
-            compute_dsts,
-        );
-
-        #[cfg(feature = "debug")]
-        let index = if debug {
-            if cfg!(feature = "debug") {
-                executable.dispatch_debugging(gpu_device).unwrap()
-            } else {
-                panic!("Debugging is only available in debug builds. Call `resolve()` instead of `resolve_debug()`.")
-            }
-        } else {
-            executable.dispatch(gpu_device).unwrap()
-        };
-
-        #[cfg(not(feature = "debug"))]
-        let index = executable.dispatch(gpu_device).unwrap();
-        if immediate {
-            gpu_device.poll(wgpu::MaintainBase::WaitForSubmissionIndex(index));
+    /// Applies the pending graph to the tensor.
+    fn apply_pending_graph(&self) -> Result<Tensor, TensorError> {
+        if self.resolved() {
+            return Ok(self.clone());
         }
 
-        Ok(self)
+        match self.device() {
+            Device::GPU(gpu_device) => {
+                gpu_device.sync_tensors_graph(vec![&self])?;
+                Ok(self.clone())
     }
-
-    pub fn resolve(self) -> Result<Tensor, TensorError> {
-        self.resolve_inner(true, false)
-    }
-
-    pub fn resolve_deferred(self) -> Result<Tensor, TensorError> {
-        self.resolve_inner(false, false)
-    }
-
-    /// Resolves the tensor computations and copies the output
-    /// from each operation to a debug buffer.
-    ///
-    /// The copy calls are inserted between each operation, so inplace
-    /// operations are captured.
-    pub fn resolve_debug(self) -> Result<Tensor, TensorError> {
-        self.resolve_inner(true, true)
+            Device::CPU => self.clone().resolve_cpu(),
+        }
     }
 
     fn to_gpu(&self, dst_device: &Device) -> Result<Tensor, TensorError> {
-        if self.device().is_gpu() || !self.resolved() {
-            return Ok(self.clone());
-        }
+        ensure_resolved!(self);
         let storage_guard = self.storage();
         let cpu_buf = storage_guard
             .as_ref()
@@ -1721,6 +1694,7 @@ impl Tensor {
     }
 
     pub fn deep_clone(&self) -> Tensor {
+        ensure_resolved!(self);
         let storage_guard = self.storage();
         let storage = storage_guard.as_ref().unwrap();
         let cloned_storage = storage.deep_clone(self.device()).unwrap();
@@ -1731,14 +1705,13 @@ impl Tensor {
             self.device.clone(),
             false,
         )
-    }
 }
 
-impl Tensor {
     #[maybe_async]
     async fn to_cpu(&self) -> Result<Tensor, TensorError> {
-        if self.device().is_cpu() || !self.resolved() {
-            log::error!("Tensor may not have been resolved, try calling `resolve()` first.");
+        ensure_resolved!(self);
+
+        if self.device().is_cpu() {
             return Ok(self.clone());
         }
         let storage_guard = self.storage();
@@ -1775,13 +1748,51 @@ impl Tensor {
     pub fn to_py<'s, 'p: 's, T: TensorDType + numpy::Element>(
         &'s self,
         py: &'p pyo3::Python<'p>,
-    ) -> &PyArrayDyn<T> {
+    ) -> &'s PyArrayDyn<T> {
         use numpy::PyArray;
         assert!(
             self.device().is_cpu(),
             "Cannot convert non-CPU tensor to numpy array"
         );
         PyArray::from_owned_array(*py, self.deep_clone().into_ndarray::<T>())
+    }
+}
+
+pub fn compile_gpu_for_op(
+    op: &LazyOp,
+    gpu_compile_key: &ComputeCompileKey,
+    gpu_device: &WgpuDevice,
+    debug: bool,
+) -> Option<CompiledOp> {
+    match op {
+        LazyOp::Binary(b) => b.compile_gpu(gpu_compile_key, gpu_device, debug).ok(),
+        LazyOp::Cast(c) => c.compile_gpu(gpu_compile_key, gpu_device, debug).ok(),
+        LazyOp::Matmul(m) => m.compile_gpu(gpu_compile_key, gpu_device, debug).ok(),
+        LazyOp::Softmax(s) => s.compile_gpu(gpu_compile_key, gpu_device, debug).ok(),
+        LazyOp::RoPE(r) => r.compile_gpu(gpu_compile_key, gpu_device, debug).ok(),
+        LazyOp::Unary(u) => u.compile_gpu(gpu_compile_key, gpu_device, debug).ok(),
+        LazyOp::Reindex(r) => r.compile_gpu(gpu_compile_key, gpu_device, debug).ok(),
+        LazyOp::Concat(c) => c.compile_gpu(gpu_compile_key, gpu_device, debug).ok(),
+        LazyOp::Norm(n) => n.compile_gpu(gpu_compile_key, gpu_device, debug).ok(),
+        LazyOp::Affine(a) => a.compile_gpu(gpu_compile_key, gpu_device, debug).ok(),
+        LazyOp::Cmp(c) => c.compile_gpu(gpu_compile_key, gpu_device, debug).ok(),
+        LazyOp::Powf(p) => p.compile_gpu(gpu_compile_key, gpu_device, debug).ok(),
+        LazyOp::WhereCond(w) => w.compile_gpu(gpu_compile_key, gpu_device, debug).ok(),
+        LazyOp::Conv(c) => c.compile_gpu(gpu_compile_key, gpu_device, debug).ok(),
+        LazyOp::Select(i) => i.compile_gpu(gpu_compile_key, gpu_device, debug).ok(),
+        LazyOp::IndexWrite(i) => i.compile_gpu(gpu_compile_key, gpu_device, debug).ok(),
+        LazyOp::IndexAdd(i) => i.compile_gpu(gpu_compile_key, gpu_device, debug).ok(),
+        LazyOp::ScatterAdd(s) => s.compile_gpu(gpu_compile_key, gpu_device, debug).ok(),
+        LazyOp::Trilu(t) => t.compile_gpu(gpu_compile_key, gpu_device, debug).ok(),
+        LazyOp::Cache(c) => c.compile_gpu(gpu_compile_key, gpu_device, debug).ok(),
+        LazyOp::Reduce(s) => s.compile_gpu(gpu_compile_key, gpu_device, debug).ok(),
+        LazyOp::Detach(d) => compile_gpu_for_op(d, gpu_compile_key, gpu_device, debug),
+        LazyOp::Gather(g) => g.compile_gpu(gpu_compile_key, gpu_device, debug).ok(),
+        LazyOp::FillConstant(f) => f.compile_gpu(gpu_compile_key, gpu_device, debug).ok(),
+        LazyOp::FillRandn(f) => f.compile_gpu(gpu_compile_key, gpu_device, debug).ok(),
+        LazyOp::Arange(a) => a.compile_gpu(gpu_compile_key, gpu_device, debug).ok(),
+        LazyOp::View(_) | LazyOp::Const => None,
+        LazyOp::Copy(_) => panic!("Copy should not have a gpu_compile_key"),
     }
 }
 
@@ -1904,9 +1915,7 @@ impl Tensor {
     }
 
     pub fn to_ndarray_view<T: TensorDType>(&self) -> ArrayViewD<T> {
-        if !self.resolved() {
-            panic!("Tensor is not resolved");
-        }
+        ensure_resolved!(self);
         assert!(self.device().is_cpu());
         assert!(self.dt() == T::dt());
         let shape = self.shape().to_vec();
@@ -2072,7 +2081,7 @@ impl std::ops::Div<Tensor> for f32 {
     }
 }
 
-impl<'data> safetensors::View for &'data Tensor {
+impl safetensors::View for &Tensor {
     fn dtype(&self) -> safetensors::Dtype {
         match self.dt() {
             DType::F32 => safetensors::Dtype::F32,
@@ -2115,10 +2124,7 @@ mod tests {
         let rand = Tensor::randn::<f32>(0., 1., shape![1, 1500, 384], device.clone());
         let nans = Tensor::from_data(vec![f32::NAN; 1500 * 384], shape![1, 1500, 384], device);
 
-        let bingo = Tensor::cat(rvec![rand, nans], 2)
-            .unwrap()
-            .resolve()
-            .unwrap();
+        let bingo = Tensor::cat(rvec![rand, nans], 2).unwrap();
 
         let result = bingo.to(&Device::CPU).unwrap();
         println!("RESULT: {:?}", result);

@@ -8,6 +8,18 @@ impl std::fmt::Debug for TensorId {
     }
 }
 
+impl Ord for TensorId {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.0.cmp(&other.0)
+    }
+}
+
+impl PartialOrd for TensorId {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
 impl TensorId {
     pub(crate) fn new() -> Self {
         // https://users.rust-lang.org/t/idiomatic-rust-way-to-generate-unique-id/33805

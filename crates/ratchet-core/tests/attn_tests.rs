@@ -77,7 +77,7 @@ def scaled_dot_product_attention(input, qw, kw, vw) -> torch.Tensor:
 
         let device = Device::request_device(DeviceRequest::GPU)?;
         let gpu_test_case = cpu_test_case.to_gpu(device.clone());
-        let out = sdpa_cfg(&gpu_test_case, device.clone())?.resolve()?;
+        let out = sdpa_cfg(&gpu_test_case, device.clone())?;
         let out_cpu = out.to(&Device::CPU)?;
         println!("OURS: {:?}\n", out_cpu);
         println!("GROUND: {:?}", ground);
@@ -167,7 +167,7 @@ def qkv_attention(input, qw, kw, vw, n_heads):
 
         let device = Device::request_device(DeviceRequest::GPU)?;
         let gpu_test_case = cpu_test_case.to_gpu(device.clone());
-        let out = mha_cfg(&gpu_test_case, device.clone())?.resolve()?;
+        let out = mha_cfg(&gpu_test_case, device.clone())?;
         let out_cpu = out.to(&Device::CPU)?;
         println!("OURS: {:?}\n", out_cpu);
         println!("GROUND: {:?}", ground);

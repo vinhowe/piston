@@ -1,7 +1,7 @@
 use derive_new::new;
 use encase::ShaderType;
 use half::f16;
-use ratchet_macros::WgslMetadata;
+use ratchet_macros::{IrFields, WgslMetadata};
 
 use crate::gpu::dtype::WgslDType;
 use crate::{
@@ -13,7 +13,7 @@ use crate::{
 use crate::{GPUOperation, Kernel, KernelRenderable};
 use inline_wgsl::wgsl;
 
-#[derive(new, Debug, Clone)]
+#[derive(new, Debug, Clone, IrFields)]
 pub struct RoPE {
     input: Tensor,
     dim: usize,
@@ -304,7 +304,7 @@ def mlx_rope(input, dim, offset):
         let ground = ground_truth(&a, dim, offset).unwrap();
 
         let a = a.to(&device).unwrap();
-        let b = a.rope(dim, 10000.0, offset).unwrap().resolve().unwrap();
+        let b = a.rope(dim, 10000.0, offset).unwrap();
 
         let ours = b.to(&Device::CPU).unwrap();
         //println!("ours = \n{:#?}\n", ours.to_ndarray_view::<f32>());

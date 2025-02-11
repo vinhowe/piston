@@ -8,9 +8,9 @@ use derive_new::new;
 use encase::ShaderType;
 use half::f16;
 use inline_wgsl::wgsl;
-use ratchet_macros::WgslMetadata;
+use ratchet_macros::{IrFields, WgslMetadata};
 
-#[derive(new, Debug, Clone)]
+#[derive(new, Debug, Clone, IrFields)]
 pub struct Gather {
     pub src: Tensor,
     pub ids: Tensor,
@@ -247,7 +247,7 @@ def gather(src, ids, dim):
         let src_gpu = src.to(&device).unwrap();
         let ids_gpu = ids.to(&device).unwrap();
 
-        let result = src_gpu.gather(ids_gpu, dim).unwrap().resolve_debug().unwrap();
+        let result = src_gpu.gather(ids_gpu, dim).unwrap();
 
         let ours = result.to(&Device::CPU).unwrap();
         log::debug!("src = {:?}", src);
@@ -271,6 +271,7 @@ def gather(src, ids, dim):
 
     #[proptest(cases = 8)]
     fn test_gather(prob: GatherProblem) {
+        let _ = env_logger::builder().is_test(true).try_init();
         let GatherProblem { B, M, N, dim } = prob;
         log::info!("B = {}, M = {}, N = {}, dim = {}", B, M, N, dim);
         let device = Device::request_device(DeviceRequest::GPU).unwrap();
@@ -323,11 +324,11 @@ def gather_backward(src, ids):
         let result_gpu = src_var
             .as_tensor()
             .clone()
-            .gather(ids_gpu, dim)?
-            .resolve_deferred()?;
+            .gather(ids_gpu, dim)?;
 
-        let mut grads = result_gpu.backward()?;
-        grads.resolve(device.try_gpu()?)?;
+        let grads = result_gpu.backward()?;
+        device.try_gpu()?.mark_step()?;
+
         let src_grad = grads.get(src_var.as_tensor()).unwrap().clone();
 
         let ours = src_grad.to(&Device::CPU)?;
@@ -344,6 +345,7 @@ def gather_backward(src, ids):
 
     #[proptest(cases = 8)]
     fn test_gather_backward(prob: GatherBackwardProblem) {
+        let _ = env_logger::builder().is_test(true).try_init();
         let GatherBackwardProblem { B, M, N, dim } = prob;
         println!("B = {}, M = {}, N = {}, dim = {}", B, M, N, dim);
         run_gather_backward_trial(prob).unwrap();

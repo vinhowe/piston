@@ -3,12 +3,11 @@ use encase::ShaderType;
 use glam::UVec4;
 use half::f16;
 use inline_wgsl::wgsl;
-use ratchet_macros::WgslMetadata;
-use wgpu::BindGroupLayoutEntry;
+use ratchet_macros::{IrFields, WgslMetadata};
 
 use crate::{
-    gpu::{BindGroupLayoutDescriptor, BindGroupLayoutEntryExt},
-    rvec, Array, BindingMode, BuiltIn, DType, GPUOperation, Kernel, KernelElement,
+    gpu::BindGroupLayoutDescriptor, rvec, Array, BindGroupLayoutEntryDescriptor,
+    BindGroupLayoutEntryExt, BindingMode, BuiltIn, DType, GPUOperation, Kernel, KernelElement,
     KernelRenderable, KernelSource, OpGuards, Operation, OperationError, RVec, Scalar, Shape,
     StorageView, Strides, Tensor, Vec2, Vec4, WgslKernelBuilder, WgslPrimitive, WorkgroupSize,
     Workload,
@@ -22,7 +21,7 @@ use crate::{
 /// 1. Cache, large partially filled tensors. E.g [1, 512, 1024], with [1, 5, 1024] filled.
 /// 2. Source, new K or V tensor, e.g [1, 1, 1024]
 /// 3. offset, where to start the write in the cache tensor, e.g [1, 5, 1024], [1, 1, 1024], offset = 5 -> [1, 6, 1024]
-#[derive(new, Debug, Clone)]
+#[derive(new, Debug, Clone, IrFields)]
 pub struct Cache {
     cache: Tensor,
     source: Tensor,
@@ -175,9 +174,9 @@ impl Kernel for CacheKernels {
         // Custom layout because of funky mutability requirements
         Ok(BindGroupLayoutDescriptor {
             entries: rvec![
-                BindGroupLayoutEntry::compute_storage_buffer(0, false),
-                BindGroupLayoutEntry::compute_storage_buffer(1, true),
-                BindGroupLayoutEntry::compute_storage_buffer(2, false)
+                BindGroupLayoutEntryDescriptor::compute_storage_buffer(0, false),
+                BindGroupLayoutEntryDescriptor::compute_storage_buffer(1, true),
+                BindGroupLayoutEntryDescriptor::compute_storage_buffer(2, false)
             ],
         })
     }
@@ -274,7 +273,7 @@ mod tests {
         println!("PREVIOUS CACHE\n {:?}\n", dst0.to_ndarray_view::<f32>());
         dst0 = dst0.to(&device)?;
         let dst1 = Tensor::zeros::<f32>(&shape![1, 2, 4, 16], &device);
-        let cur_cache = Tensor::cat(rvec![dst0.clone(), dst1], 2)?.resolve()?;
+        let cur_cache = Tensor::cat(rvec![dst0.clone(), dst1], 2)?;
 
         //This is the k or v vector we write
         let mut src = Tensor::randn::<f32>(0., 1., shape![1, 2, 1, 16], Device::CPU);
@@ -282,12 +281,10 @@ mod tests {
         src = src.to(&device)?;
 
         //The result should be the concatenation of the cache and the source
-        let ground_truth = Tensor::cat(rvec![dst0.clone(), src.clone()], 2)?
-            .resolve()?
-            .to(&Device::CPU)?;
+        let ground_truth = Tensor::cat(rvec![dst0.clone(), src.clone()], 2)?.to(&Device::CPU)?;
 
         let dim = 2;
-        let b = cur_cache.clone().cache(src, dim, populated)?.resolve()?;
+        let b = cur_cache.clone().cache(src, dim, populated)?;
 
         let cur_cache_cpu = cur_cache.to(&Device::CPU)?;
         println!(

@@ -8,9 +8,9 @@ use derive_new::new;
 use encase::ShaderType;
 use half::f16;
 use inline_wgsl::wgsl;
-use ratchet_macros::WgslMetadata;
+use ratchet_macros::{IrFields, WgslMetadata};
 
-#[derive(new, Debug, Clone)]
+#[derive(new, Debug, Clone, IrFields)]
 pub struct IndexAdd {
     pub dst: Tensor,
     pub src: Tensor,
@@ -263,14 +263,10 @@ def index_add(input, source, indices):
         source_shape[0] = indices.shape()[0];
 
         let input = Tensor::randn::<f32>(0., 1., input_shape.clone(), device.clone())
-            .resolve()
-            .unwrap()
             .to(&Device::CPU)
             .unwrap();
 
         let source = Tensor::randn::<f32>(0., 1., source_shape.clone(), device.clone())
-            .resolve()
-            .unwrap()
             .to(&Device::CPU)
             .unwrap();
 
@@ -292,11 +288,7 @@ def index_add(input, source, indices):
         let indices = indices.to(&device).unwrap();
         let source = source.to(&device).unwrap();
 
-        let result = input
-            .index_add(indices.clone(), source.clone(), 0)
-            .unwrap()
-            .resolve()
-            .unwrap();
+        let result = input.index_add(indices.clone(), source.clone(), 0).unwrap();
         let x = result.to(&Device::CPU).unwrap();
 
         log::debug!("x = {:?}", x);

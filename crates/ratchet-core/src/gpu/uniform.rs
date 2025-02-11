@@ -52,6 +52,7 @@ impl CpuUniform {
     }
 }
 
+#[derive(Debug)]
 pub struct GpuUniform {
     buf: PooledGPUBuffer,
     bind_group: GpuBindGroup,

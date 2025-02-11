@@ -2,7 +2,7 @@
 use async_trait::async_trait;
 use half::{bf16, f16};
 use maybe_async::maybe_async;
-use ratchet::{DType, GradStore, Var, WgpuDevice};
+use ratchet::{DType, Device, GradStore, Var};
 
 #[maybe_async(AFIT)]
 #[cfg_attr(target_arch = "wasm32", async_trait::async_trait)]
@@ -11,7 +11,7 @@ pub trait Optimizer: Sized {
 
     fn new(vars: Vec<(Option<String>, Var)>, config: Self::Config) -> anyhow::Result<Self>;
 
-    async fn step(&mut self, grads: &ratchet::GradStore) -> anyhow::Result<()>;
+    async fn step(&mut self, grads: &ratchet::GradStore, device: &Device) -> anyhow::Result<()>;
 
     fn learning_rate(&self) -> f64;
 
@@ -24,15 +24,62 @@ pub trait Optimizer: Sized {
     async fn backward_step(
         &mut self,
         grads: &mut GradStore,
-        device: &WgpuDevice,
+        device: &Device,
     ) -> anyhow::Result<()> {
-        grads.resolve(device).unwrap();
-        self.step(grads).await
+        self.step(grads, device).await
     }
 
     fn from_slice(vars: &[&Var], config: Self::Config) -> anyhow::Result<Self> {
         let vars: Vec<_> = vars.iter().map(|&v| (None, v.clone())).collect();
         Self::new(vars, config)
+    }
+}
+
+#[derive(Debug)]
+pub struct SGD {
+    vars: Vec<(Option<String>, Var)>,
+    learning_rate: f64,
+}
+
+#[maybe_async(AFIT)]
+#[cfg_attr(target_arch = "wasm32", async_trait::async_trait)]
+impl Optimizer for SGD {
+    type Config = f64;
+
+    fn new(vars: Vec<(Option<String>, Var)>, learning_rate: f64) -> anyhow::Result<Self> {
+        let vars = vars
+            .into_iter()
+            .filter(|(_, v)| v.as_tensor().dt().is_float())
+            .collect();
+        Ok(Self {
+            vars,
+            learning_rate,
+        })
+    }
+
+    fn learning_rate(&self) -> f64 {
+        self.learning_rate
+    }
+
+    fn set_learning_rate(&mut self, lr: f64) {
+        self.learning_rate = lr;
+    }
+
+    async fn step(&mut self, grads: &ratchet::GradStore, device: &Device) -> anyhow::Result<()> {
+        let mut updates = Vec::new();
+        for (_, var) in &self.vars {
+            if let Some(grad) = grads.get(var.as_tensor()) {
+                let update =
+                    (var.as_tensor().clone() - (grad.clone() * self.learning_rate as f32)?)?;
+                updates.push(var.set(update));
+            }
+        }
+
+        if let Ok(gpu_device) = device.try_gpu() {
+            gpu_device.mark_step()?;
+        }
+
+        Ok(())
     }
 }
 
@@ -123,7 +170,7 @@ impl Optimizer for AdamW {
         self.params.lr = lr
     }
 
-    async fn step(&mut self, grads: &ratchet::GradStore) -> anyhow::Result<()> {
+    async fn step(&mut self, grads: &ratchet::GradStore, device: &Device) -> anyhow::Result<()> {
         self.step_t += 1;
         let lr = self.params.lr;
         let lambda = self.params.weight_decay;
@@ -132,20 +179,22 @@ impl Optimizer for AdamW {
         let beta2 = self.params.beta2;
         let scale_m = 1f64 / (1f64 - beta1.powi(self.step_t as i32));
         let scale_v = 1f64 / (1f64 - beta2.powi(self.step_t as i32));
+
+        // This makes sure we keep references to the copy tensors.
+        let mut updates = Vec::new();
+
         for var in self.vars.iter_mut() {
             let theta = &var.var;
             let m = &var.first_moment;
             let v = &var.second_moment;
-            let grad = grads.get(theta.as_tensor());
 
             // println!("Optimizer stepping: {:?}", var.label);
             // println!("Theta op: {:?}", theta.as_tensor().op());
             // println!("Theta id: {:?}", theta.as_tensor().id());
 
-            if let Some(g) = grad {
+            if let Some(g) = grads.get(theta.as_tensor()) {
                 let next_m = ((m.as_tensor().clone() * beta1 as f32)?
                     + (g.clone() * (1.0 - beta1 as f32))?)?;
-                // let next_m = (m.as_tensor().clone() * beta1 as f32)?;
                 let next_v = ((v.as_tensor().clone() * beta2 as f32)?
                     + (g.clone().square()? * (1.0 - beta2 as f32))?)?;
                 let m_hat = (next_m.clone() * scale_m as f32)?;
@@ -154,25 +203,16 @@ impl Optimizer for AdamW {
                 let adjusted_grad = (m_hat / (v_hat.sqrt()? + self.params.eps as f32)?)?;
                 let next_theta = (next_theta - (adjusted_grad.clone() * lr as f32)?)?;
 
-                #[cfg(feature = "debug")]
-                let next_m = next_m.resolve_debug()?;
-                #[cfg(feature = "debug")]
-                let next_v = next_v.resolve_debug()?;
-                #[cfg(feature = "debug")]
-                let next_theta = next_theta.resolve_debug()?;
-
-                #[cfg(not(feature = "debug"))]
-                let next_m = next_m.resolve_deferred()?;
-                #[cfg(not(feature = "debug"))]
-                let next_v = next_v.resolve_deferred()?;
-                #[cfg(not(feature = "debug"))]
-                let next_theta = next_theta.resolve_deferred()?;
-
-                theta.set(next_theta.clone())?;
-                m.set(next_m.clone())?;
-                v.set(next_v.clone())?;
+                // This ensures we keep references to the copy tensors.
+                updates.push((theta.set(next_theta), m.set(next_m), v.set(next_v)));
             }
         }
+
+        // Finalize all the tensors we just built above.
+        if let Ok(gpu) = device.try_gpu() {
+            gpu.mark_step()?;
+        }
+
         Ok(())
     }
 }
