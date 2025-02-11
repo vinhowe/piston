@@ -17,6 +17,8 @@ pub struct Concat {
     pub dim: usize,
 }
 
+const MAX_INPUTS: usize = 8;
+
 impl Concat {
     pub fn inputs(&self) -> &[Tensor] {
         &self.inputs
@@ -132,7 +134,7 @@ impl Operation for Concat {
 impl OpGuards for Concat {
     fn check_shapes(&self) {
         assert!(self.inputs.len() > 1);
-        assert!(self.inputs.len() <= 8); //We only generate kernels for up to 8 inputs
+        assert!(self.inputs.len() <= MAX_INPUTS); //We only generate kernels for up to 8 inputs
         let first = &self.inputs[0];
         assert!(self
             .inputs
