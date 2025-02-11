@@ -487,12 +487,14 @@ def {}(a):
 
     #[proptest(cases = 256)]
     fn test_unary_gpu(prob: UnaryProblem) {
+        let _ = env_logger::builder().try_init();
         let device = Device::request_device(DeviceRequest::GPU).unwrap();
         run_unary_trial(prob, device).unwrap();
     }
 
     #[proptest(cases = 256)]
     fn test_unary_cpu(prob: UnaryProblem) {
+        let _ = env_logger::builder().try_init();
         let device = Device::request_device(DeviceRequest::CPU).unwrap();
         run_unary_trial(prob, device).unwrap();
     }
