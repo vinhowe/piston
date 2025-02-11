@@ -212,7 +212,7 @@ mod tests {
 
         let config = Config {
             vocab_size: VOCAB_SIZE,
-            hidden_act: ratchet_nn::Activation::Gelu,
+            hidden_act: ratchet_nn::Activation::Relu2,
             n_embd: 128,
             n_layer: 4,
             n_head: 4,
@@ -278,7 +278,7 @@ mod tests {
 
         let config = Config {
             vocab_size: VOCAB_SIZE,
-            hidden_act: ratchet_nn::Activation::Gelu,
+            hidden_act: ratchet_nn::Activation::Relu2,
             n_embd: 128,
             n_layer: 1,
             n_head: 1,
@@ -325,7 +325,7 @@ mod tests {
 
         let config = Config {
             vocab_size: VOCAB_SIZE,
-            hidden_act: ratchet_nn::Activation::Gelu,
+            hidden_act: ratchet_nn::Activation::Relu2,
             n_embd: 768,
             n_layer: 4,
             n_head: 4,
@@ -411,7 +411,7 @@ mod tests {
         // distilgpt2-sized
         let config = Config {
             vocab_size: VOCAB_SIZE,
-            hidden_act: ratchet_nn::Activation::Gelu,
+            hidden_act: ratchet_nn::Activation::Relu2,
             n_embd: 768,
             n_layer: 12,
             n_head: 12,
