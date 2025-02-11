@@ -576,7 +576,11 @@ def reduce(a):
         device: Device,
     ) -> anyhow::Result<()> {
         let a = Tensor::randn::<f32>(0., 1., shape![B, M, N], Device::CPU);
-        let ground = ground_truth_forward(&a, op, dim)?;
+        let mut ground = ground_truth_forward(&a, op, dim)?;
+
+        if dim.is_none() {
+            ground = ground.view(shape![1])?;
+        }
 
         let a_gpu = a.to(&device)?;
         let b_gpu = match dim {
@@ -672,12 +676,12 @@ def reduce(a):
 
     fn ground_truth_backward(a: &Tensor) -> anyhow::Result<Tensor> {
         let prg = r#"
-    import torch
-    def reduce_backward(a):
-        a_tensor = torch.tensor(torch.from_numpy(a), requires_grad=True)
-        result = torch.sum(a_tensor)
-        result.backward(torch.ones_like(result))
-        return a_tensor.grad.numpy()
+import torch
+def reduce_backward(a):
+    a_tensor = torch.tensor(torch.from_numpy(a), requires_grad=True)
+    result = torch.sum(a_tensor)
+    result.backward(torch.ones_like(result))
+    return a_tensor.grad.numpy()
     "#
         .to_string();
         run_py_prg(prg.to_string(), &[a], &[], DType::F32)
