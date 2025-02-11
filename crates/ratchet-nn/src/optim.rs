@@ -35,6 +35,54 @@ pub trait Optimizer: Sized {
     }
 }
 
+#[derive(Debug)]
+pub struct SGD {
+    vars: Vec<(Option<String>, Var)>,
+    learning_rate: f64,
+}
+
+#[maybe_async(AFIT)]
+#[cfg_attr(target_arch = "wasm32", async_trait::async_trait)]
+impl Optimizer for SGD {
+    type Config = f64;
+
+    fn new(vars: Vec<(Option<String>, Var)>, learning_rate: f64) -> anyhow::Result<Self> {
+        let vars = vars
+            .into_iter()
+            .filter(|(_, v)| v.as_tensor().dt().is_float())
+            .collect();
+        Ok(Self {
+            vars,
+            learning_rate,
+        })
+    }
+
+    fn learning_rate(&self) -> f64 {
+        self.learning_rate
+    }
+
+    fn set_learning_rate(&mut self, lr: f64) {
+        self.learning_rate = lr;
+    }
+
+    async fn step(&mut self, grads: &ratchet::GradStore, device: &Device) -> anyhow::Result<()> {
+        let mut updates = Vec::new();
+        for (_, var) in &self.vars {
+            if let Some(grad) = grads.get(var.as_tensor()) {
+                let update =
+                    (var.as_tensor().clone() - (grad.clone() * self.learning_rate as f32)?)?;
+                updates.push(var.set(update));
+            }
+        }
+
+        if let Ok(gpu_device) = device.try_gpu() {
+            gpu_device.mark_step()?;
+        }
+
+        Ok(())
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct ParamsAdamW {
     pub lr: f64,
