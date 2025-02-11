@@ -2,7 +2,7 @@ use derive_new::new;
 use encase::ShaderType;
 use half::f16;
 use inline_wgsl::wgsl;
-use ratchet_macros::WgslMetadata;
+use ratchet_macros::{IrFields, WgslMetadata};
 
 use crate::{
     gpu::BindGroupLayoutDescriptor, rvec, Array, BindingMode, BuiltIn, DType, GPUOperation, Kernel,
@@ -11,7 +11,7 @@ use crate::{
     Workload,
 };
 
-#[derive(new, Debug, Clone)]
+#[derive(new, Debug, Clone, IrFields)]
 pub struct ScatterAdd {
     pub dst: Tensor,
     pub src: Tensor,

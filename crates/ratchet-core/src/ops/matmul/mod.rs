@@ -5,6 +5,7 @@ mod workgroup_gemv;
 
 pub use gemm::*;
 pub use quantized::*;
+use ratchet_macros::IrFields;
 pub use subgroup_gemv::*;
 pub use workgroup_gemv::*;
 
@@ -378,7 +379,7 @@ impl MatmulSpec {
     }
 }
 
-#[derive(derive_new::new, Debug, Clone)]
+#[derive(derive_new::new, Debug, Clone, IrFields)]
 pub struct Matmul {
     pub(crate) lhs: Tensor,
     pub(crate) rhs: Tensor,

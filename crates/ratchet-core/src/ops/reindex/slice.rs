@@ -1,5 +1,5 @@
 use encase::ShaderType;
-use ratchet_macros::WgslMetadata;
+use ratchet_macros::{IrFields, WgslMetadata};
 
 use crate::{prelude::*, OpGuards, OperationError, StorageView, Strides};
 use crate::{Operation, RVec};
@@ -19,7 +19,7 @@ pub struct SliceMeta {
 /// # Slice
 ///
 /// This is a temporary, user hostile implementation.
-#[derive(derive_new::new, Debug, Clone)]
+#[derive(derive_new::new, Debug, Clone, IrFields)]
 pub struct Slice {
     pub src: Tensor,
     pub indices: RVec<Range<usize>>,

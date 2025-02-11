@@ -2,7 +2,7 @@
 use derive_new::new;
 use encase::ShaderType;
 use half::f16;
-use ratchet_macros::WgslMetadata;
+use ratchet_macros::{IrFields, WgslMetadata};
 
 use crate::{
     gpu::{dtype::WgslDType, BindGroupLayoutDescriptor, WorkgroupCount},
@@ -12,7 +12,7 @@ use crate::{
 };
 use inline_wgsl::wgsl;
 
-#[derive(new, Debug, Clone)]
+#[derive(new, Debug, Clone, IrFields)]
 pub struct Conv {
     pub input: Tensor,
     pub weight: Tensor,

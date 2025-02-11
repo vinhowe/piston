@@ -7,6 +7,7 @@ use broadcast::BroadcastMeta;
 use half::f16;
 pub use permute::Permute;
 use permute::PermuteMeta;
+use ratchet_macros::IrFields;
 pub use slice::Slice;
 
 use derive_new::new;
@@ -21,7 +22,7 @@ use crate::{
 };
 use glam::UVec4;
 
-#[derive(new, Debug, Clone)]
+#[derive(new, Debug, Clone, IrFields)]
 pub enum Reindex {
     Permute(Permute),
     Slice(Slice),

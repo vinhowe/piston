@@ -2,7 +2,7 @@ use std::collections::HashSet;
 
 use derive_new::new;
 use encase::ShaderType;
-use ratchet_macros::WgslMetadata;
+use ratchet_macros::{IrFields, WgslMetadata};
 
 use crate::{
     rvec, InvariantError, OpGuards, Operation, OperationError, RVec, StorageView, Strides, Tensor,
@@ -19,14 +19,14 @@ pub struct PermuteMeta {
     perm: glam::UVec4,
 }
 
-#[derive(new, Debug, Clone)]
+#[derive(new, Debug, Clone, IrFields)]
 pub struct Permute {
     pub src: Tensor,
-    pub dims: Vec<usize>,
+    pub dims: RVec<usize>,
 }
 
 impl Permute {
-    pub fn promote(&self) -> Vec<usize> {
+    pub fn promote(&self) -> RVec<usize> {
         let pad_len = 4 - self.dims.len();
 
         let mut perm = self.dims.clone();
@@ -87,7 +87,10 @@ mod tests {
             Shape::arbitrary_with(ranges)
                 .prop_flat_map(|shape| (Just(shape.clone()), Just(vec![0, 1, 2, 3]).prop_shuffle()))
                 .prop_map(|(shape, perm)| {
-                    Permute::new(Tensor::randn::<f32>(0., 1., shape, Device::CPU), perm)
+                    Permute::new(
+                        Tensor::randn::<f32>(0., 1., shape, Device::CPU),
+                        perm.into(),
+                    )
                 })
                 .boxed()
         }

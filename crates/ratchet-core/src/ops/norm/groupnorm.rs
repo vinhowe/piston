@@ -1,8 +1,9 @@
 use derive_new::new;
+use ratchet_macros::IrFields;
 
 use super::*;
 
-#[derive(new, Debug, Clone)]
+#[derive(new, Debug, Clone, IrFields)]
 pub struct GroupNorm {
     pub norm: Norm,
     pub num_groups: usize,

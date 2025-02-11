@@ -2,6 +2,7 @@ use derive_new::new;
 use glam::UVec4;
 use half::f16;
 use inline_wgsl::wgsl;
+use ratchet_macros::IrFields;
 
 use crate::{
     gpu::BindGroupLayoutDescriptor, rvec, Array, BindingMode, BuiltIn, DType, DynKernelMetadata,
@@ -10,7 +11,7 @@ use crate::{
     WgslKernelBuilder, WgslPrimitive, WorkgroupSize, Workload,
 };
 
-#[derive(new, Debug, Clone)]
+#[derive(new, Debug, Clone, IrFields)]
 pub struct Concat {
     pub inputs: RVec<Tensor>,
     pub dim: usize,

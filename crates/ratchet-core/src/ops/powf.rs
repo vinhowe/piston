@@ -2,7 +2,7 @@ use derive_new::new;
 use encase::ShaderType;
 use half::f16;
 use inline_wgsl::wgsl;
-use ratchet_macros::WgslMetadata;
+use ratchet_macros::{IrFields, WgslMetadata};
 
 use crate::{
     gpu::{dtype::WgslDType, BindGroupLayoutDescriptor},
@@ -11,7 +11,7 @@ use crate::{
     Tensor, Vec2, Vec4, WgslKernelBuilder, WgslPrimitive, WorkgroupSize, Workload,
 };
 
-#[derive(new, Debug, Clone)]
+#[derive(new, Debug, Clone, IrFields)]
 pub struct Powf {
     pub src: Tensor,
     pub e: f32,

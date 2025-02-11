@@ -2,7 +2,7 @@ use derive_new::new;
 use encase::ShaderType;
 use half::f16;
 use inline_wgsl::wgsl;
-use ratchet_macros::WgslMetadata;
+use ratchet_macros::{IrFields, WgslMetadata};
 
 use crate::{
     gpu::BindGroupLayoutDescriptor, rvec, Array, BindingMode, BuiltIn, DType, GPUOperation, Kernel,
@@ -11,9 +11,9 @@ use crate::{
     WorkgroupSize, Workload,
 };
 
-#[derive(new, Debug, Clone)]
+#[derive(new, Debug, Clone, IrFields)]
 pub struct FillRandn {
-    pub shape: Vec<usize>,
+    pub shape: Shape,
     pub mean: f32,
     pub std: f32,
     pub seed: Option<u32>,
@@ -33,7 +33,7 @@ impl Operation for FillRandn {
     }
 
     fn compute_view(&self) -> Result<StorageView, OperationError> {
-        let shape: Shape = self.shape.clone().into();
+        let shape: Shape = self.shape.clone();
         let strides = Strides::from(&shape);
         Ok(StorageView::new(shape, crate::DType::F32, strides))
     }
@@ -167,7 +167,7 @@ impl Kernel for FillRandnKernels {
     fn metadata(&self, _: &Tensor, _: &KernelElement) -> Result<Self::Metadata, OperationError> {
         let FillRandnKernels::Standard(inner) = self;
         Ok(FillRandnMeta {
-            numel: Shape::from(inner.shape.clone()).numel() as u32,
+            numel: inner.shape.clone().numel() as u32,
             mean: inner.mean,
             stddev: inner.std,
             seed: inner.seed.unwrap_or(0),

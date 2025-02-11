@@ -3,6 +3,7 @@ use encase::ShaderType;
 use ratchet_macros::WgslMetadata;
 
 use crate::{rvec, OpGuards, Operation, OperationError, RVec, Shape, StorageView, Strides, Tensor};
+use ratchet_macros::IrFields;
 
 #[derive(Debug, WgslMetadata, ShaderType, derive_new::new)]
 pub struct BroadcastMeta {
@@ -14,7 +15,7 @@ pub struct BroadcastMeta {
     dst_numel: u32,
 }
 
-#[derive(new, Debug, Clone)]
+#[derive(new, Debug, Clone, IrFields)]
 pub struct Broadcast {
     pub src: Tensor,
     to: Shape,

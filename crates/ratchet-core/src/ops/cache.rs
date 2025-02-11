@@ -3,8 +3,7 @@ use encase::ShaderType;
 use glam::UVec4;
 use half::f16;
 use inline_wgsl::wgsl;
-use ratchet_macros::WgslMetadata;
-use wgpu::BindGroupLayoutEntry;
+use ratchet_macros::{IrFields, WgslMetadata};
 
 use crate::{
     gpu::BindGroupLayoutDescriptor, rvec, Array, BindGroupLayoutEntryDescriptor,
@@ -22,7 +21,7 @@ use crate::{
 /// 1. Cache, large partially filled tensors. E.g [1, 512, 1024], with [1, 5, 1024] filled.
 /// 2. Source, new K or V tensor, e.g [1, 1, 1024]
 /// 3. offset, where to start the write in the cache tensor, e.g [1, 5, 1024], [1, 1, 1024], offset = 5 -> [1, 6, 1024]
-#[derive(new, Debug, Clone)]
+#[derive(new, Debug, Clone, IrFields)]
 pub struct Cache {
     cache: Tensor,
     source: Tensor,

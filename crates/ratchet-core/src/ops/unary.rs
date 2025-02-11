@@ -5,7 +5,7 @@ use derive_new::new;
 use encase::ShaderType;
 use half::f16;
 use inline_wgsl::wgsl;
-use ratchet_macros::WgslMetadata;
+use ratchet_macros::{IrFields, WgslMetadata};
 use strum_macros::EnumIter;
 
 use crate::{
@@ -19,7 +19,7 @@ use crate::{
 use test_strategy::Arbitrary;
 
 #[cfg_attr(test, derive(Arbitrary))]
-#[derive(Debug, Clone, EnumIter)]
+#[derive(Debug, Clone, EnumIter, Hash, IrFields)]
 pub enum UnaryOp {
     Gelu,
     Tanh,
@@ -73,7 +73,7 @@ impl UnaryOp {
     }
 }
 
-#[derive(new, Debug, Clone)]
+#[derive(new, Debug, Clone, IrFields)]
 pub struct Unary {
     pub input: Tensor,
     pub op: UnaryOp,

@@ -1,6 +1,8 @@
 use crate::{rvec, OpGuards, Operation, Shape, StorageView, Strides, Tensor};
 
-#[derive(Debug, derive_new::new, Clone)]
+use ratchet_macros::IrFields;
+
+#[derive(Debug, derive_new::new, Clone, IrFields)]
 pub struct View {
     pub(crate) src: Tensor,
     pub(crate) shape: Shape,

@@ -2,7 +2,7 @@ use derive_new::new;
 use encase::ShaderType;
 use half::f16;
 use inline_wgsl::wgsl;
-use ratchet_macros::WgslMetadata;
+use ratchet_macros::{IrFields, WgslMetadata};
 
 use crate::{
     gpu::{dtype::WgslDType, BindGroupLayoutDescriptor},
@@ -12,9 +12,9 @@ use crate::{
     Workload,
 };
 
-#[derive(new, Debug, Clone)]
+#[derive(new, Debug, Clone, IrFields)]
 pub struct FillConstant {
-    pub shape: Vec<usize>,
+    pub shape: Shape,
     pub value: f32,
 }
 
@@ -29,7 +29,7 @@ impl Operation for FillConstant {
         "FillConstant"
     }
     fn compute_view(&self) -> Result<StorageView, OperationError> {
-        let shape: Shape = self.shape.clone().into();
+        let shape: Shape = self.shape.clone();
         let strides = Strides::from(&shape);
         Ok(StorageView::new(shape, DType::F32, strides))
     }
@@ -148,7 +148,7 @@ impl Kernel for FillConstantKernels {
     fn metadata(&self, _: &Tensor, _: &KernelElement) -> Result<Self::Metadata, OperationError> {
         let FillConstantKernels::Standard(inner) = self;
         Ok(FillConstantMeta {
-            numel: Shape::from(inner.shape.clone()).numel() as u32,
+            numel: inner.shape.clone().numel() as u32,
             value: inner.value,
         })
     }

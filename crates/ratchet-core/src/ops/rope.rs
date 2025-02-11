@@ -1,7 +1,7 @@
 use derive_new::new;
 use encase::ShaderType;
 use half::f16;
-use ratchet_macros::WgslMetadata;
+use ratchet_macros::{IrFields, WgslMetadata};
 
 use crate::gpu::dtype::WgslDType;
 use crate::{
@@ -13,7 +13,7 @@ use crate::{
 use crate::{GPUOperation, Kernel, KernelRenderable};
 use inline_wgsl::wgsl;
 
-#[derive(new, Debug, Clone)]
+#[derive(new, Debug, Clone, IrFields)]
 pub struct RoPE {
     input: Tensor,
     dim: usize,

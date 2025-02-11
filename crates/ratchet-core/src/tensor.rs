@@ -84,7 +84,7 @@ impl Tensor {
         };
         Self::new_impl(
             LazyOp::FillConstant(FillConstant {
-                shape: shape.to_vec(),
+                shape: shape.clone(),
                 value: value.as_(),
             }),
             meta,
@@ -304,7 +304,17 @@ impl Tensor {
             .as_ref()
             .map(|s| s.plot_fmt())
             .unwrap_or_else(|| "Unresolved".to_string());
-        format!("#{:?}-{:?}-{:?}\n{}", self.id(), dt, shape, storage_fmt)
+        let references = self.strong_count();
+        format!(
+            "#{:?}-{:?}-{:?}{}\n{:#?}\n{}\n{:?} references",
+            self.id(),
+            dt,
+            shape,
+            if self.is_variable() { " (var)" } else { "" },
+            self.op().ir().fields(),
+            storage_fmt,
+            references
+        )
     }
 }
 
@@ -559,7 +569,7 @@ impl Tensor {
 
     fn reduce_impl(self, dim: usize, keepdim: bool, op: ReduceOp) -> anyhow::Result<Tensor> {
         let device = self.device.clone();
-        let reduce = Reduce::new(self, op, vec![dim], keepdim);
+        let reduce = Reduce::new(self, op, rvec![dim], keepdim);
         let new_view = reduce.compute_view()?;
         Ok(Tensor::lazy(
             LazyOp::Reduce(reduce),
@@ -571,7 +581,7 @@ impl Tensor {
 
     fn sum_impl(self, sum_dims: &[usize], keepdim: bool) -> anyhow::Result<Tensor> {
         let device = self.device.clone();
-        let sum = Reduce::new(self, ReduceOp::Sum, sum_dims.to_vec(), keepdim);
+        let sum = Reduce::new(self, ReduceOp::Sum, sum_dims.into(), keepdim);
         let new_view = sum.compute_view()?;
         Ok(Tensor::lazy(LazyOp::Reduce(sum), new_view, device, false))
     }
@@ -801,7 +811,7 @@ impl Tensor {
 
     pub fn permute(self, dims: &[usize]) -> anyhow::Result<Tensor> {
         let device = self.device.clone();
-        let permute = Permute::new(self, dims.to_vec());
+        let permute = Permute::new(self, dims.into());
         let out_view = permute.compute_view()?;
 
         let op = LazyOp::Reindex(Reindex::Permute(permute));
@@ -1108,7 +1118,7 @@ impl Tensor {
             };
             Self::new_impl(
                 LazyOp::FillRandn(FillRandn {
-                    shape: shape.to_vec(),
+                    shape,
                     mean,
                     std,
                     seed: Some(rng.next_u32()),

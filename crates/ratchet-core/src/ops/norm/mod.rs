@@ -13,8 +13,9 @@ use crate::{
 };
 use derive_new::new;
 use inline_wgsl::wgsl;
+use ratchet_macros::IrFields;
 
-#[derive(new, Debug, Clone)]
+#[derive(new, Debug, Clone, IrFields)]
 pub struct Norm {
     pub(crate) input: Tensor,
     pub(crate) scale: Tensor,
@@ -84,7 +85,7 @@ impl Operation for NormOp {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, IrFields)]
 pub enum NormOp {
     LayerNorm(Norm),
     RMSNorm(Norm),
