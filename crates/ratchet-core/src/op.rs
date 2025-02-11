@@ -56,6 +56,7 @@ pub enum LazyOp {
     ScatterAdd(ScatterAdd),
     Trilu(Trilu),
     Arange(Arange),
+    Copy(TensorCopy),
     Detach(Box<LazyOp>), //Because the entire graph is lazy, you can't actually detach something without computing the graph in parts
 }
 
@@ -88,6 +89,7 @@ impl LazyOp {
             LazyOp::RoPE(r) => r.name(),
             LazyOp::Cache(c) => c.name(),
             LazyOp::View(v) => v.name(),
+            LazyOp::Copy(c) => c.name(),
             LazyOp::Const => "Const",
             LazyOp::Detach(d) => Box::leak(format!("Detach<{}>", d.name()).into_boxed_str()),
         }
@@ -120,6 +122,7 @@ impl LazyOp {
             LazyOp::Cache(c) => c.srcs(),
             LazyOp::Detach(d) => d.srcs(),
             LazyOp::View(v) => v.srcs(),
+            LazyOp::Copy(c) => c.srcs(),
             LazyOp::FillConstant(_) | LazyOp::FillRandn(_) | LazyOp::Arange(_) | LazyOp::Const => {
                 rvec![]
             } //end of the line kid
@@ -156,6 +159,7 @@ impl LazyOp {
             LazyOp::View(_v) => true,
             LazyOp::Const => false,
             LazyOp::Detach(d) => d.supports_inplace(),
+            LazyOp::Copy(c) => c.supports_inplace(),
         }
     }
 
@@ -198,6 +202,7 @@ impl LazyOp {
             LazyOp::View(v) => v.check_invariants(),
             LazyOp::Const => {}
             LazyOp::Detach(d) => d.check_invariants(),
+            LazyOp::Copy(c) => c.check_invariants(),
         }
     }
 

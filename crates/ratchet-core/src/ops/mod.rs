@@ -25,6 +25,8 @@ mod unary;
 mod view;
 mod where_cond;
 
+use std::sync::Arc;
+
 pub use affine::*;
 pub use arange::*;
 pub use binary::*;
@@ -41,6 +43,7 @@ pub use index_write::*;
 pub use matmul::*;
 pub use norm::*;
 pub use powf::*;
+use ratchet_macros::IrFields;
 pub use reduce::*;
 pub use reindex::*;
 pub use rope::*;
@@ -51,6 +54,11 @@ pub use trilu::*;
 pub use unary::*;
 pub use view::*;
 pub use where_cond::*;
+
+use crate::{
+    rvec, Compiled, CompiledCopy, CopyCompileKey, OpGuards, Operation, OperationError, RVec,
+    Storage, StorageView, Tensor,
+};
 
 /// # KernelElement
 ///
@@ -84,5 +92,80 @@ impl From<&KernelElement> for usize {
             KernelElement::Vec2 => 2,
             KernelElement::Scalar => 1,
         }
+    }
+}
+
+#[derive(Debug, derive_new::new, Clone, IrFields)]
+pub struct TensorCopy {
+    pub src: Tensor,
+    pub dst: Tensor,
+}
+
+impl TensorCopy {
+    pub fn src(&self) -> &Tensor {
+        &self.src
+    }
+
+    pub fn dst(&self) -> &Tensor {
+        &self.dst
+    }
+
+    pub fn compile_gpu(&self) -> Result<Compiled, OperationError> {
+        // Ensure we are running on GPU.
+        if !self.src.device().is_gpu() || !self.dst.device().is_gpu() {
+            panic!("copy_from only supported for GPU tensors");
+        }
+        // Sanity check: shape and dtype should match.
+        if self.src.shape() != self.dst.shape() || self.src.dt() != self.dst.dt() {
+            panic!("Shape or dtype mismatch for copy_from");
+        }
+        // Retrieve the underlying GPU buffers.
+        let src_buffer = match self.src.storage().as_ref() {
+            Some(Storage::GPU(gpu_buf)) => gpu_buf.inner.clone(),
+            _ => panic!("Source tensor has no GPU storage"),
+        };
+        let dst_buffer = match self.dst.storage().as_ref() {
+            Some(Storage::GPU(gpu_buf)) => gpu_buf.inner.clone(),
+            _ => panic!("Destination tensor has no GPU storage"),
+        };
+
+        let size = self.src.num_bytes() as u64;
+
+        Ok(Compiled::Copy(CompiledCopy::new(
+            Arc::new(src_buffer),
+            Arc::new(dst_buffer),
+            size,
+        )))
+    }
+
+    pub fn create_gpu_compile_key(&self) -> CopyCompileKey {
+        CopyCompileKey {
+            src: &self.src,
+            dst: &self.dst,
+        }
+    }
+}
+
+impl OpGuards for TensorCopy {
+    fn check_shapes(&self) {
+        let (src_shape, dst_shape) = (self.src.shape(), self.dst.shape());
+        assert_eq!(src_shape.rank(), dst_shape.rank());
+        assert_eq!(src_shape.numel(), dst_shape.numel());
+    }
+
+    fn check_dtypes(&self) {}
+}
+
+impl Operation for TensorCopy {
+    fn name(&self) -> &'static str {
+        "TensorCopy"
+    }
+
+    fn srcs(&self) -> RVec<&Tensor> {
+        rvec![&self.src]
+    }
+
+    fn compute_view(&self) -> Result<StorageView, crate::OperationError> {
+        Ok(self.src.storage_view().clone())
     }
 }

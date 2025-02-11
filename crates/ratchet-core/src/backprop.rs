@@ -175,7 +175,7 @@ impl Tensor {
                     }
                     LazyOp::IndexWrite(_) => todo!(),
                     LazyOp::Cast(_) => todo!(),
-                    // LazyOp::Copy(_) => todo!(),
+                    LazyOp::Copy(_) => todo!(),
                     LazyOp::Detach(_)
                     | LazyOp::Const
                     | LazyOp::RoPE(_)
@@ -706,6 +706,7 @@ impl Tensor {
                 LazyOp::IndexWrite(_) => todo!(),
                 LazyOp::IndexAdd(_) => todo!(),
                 LazyOp::Cache(_) => todo!(),
+                LazyOp::Copy(_) => todo!(),
             };
         }
         #[cfg(feature = "plotting")]

@@ -47,6 +47,7 @@ pub fn apply_operation(op: LazyOp, dst: Tensor) -> Result<Tensor, OperationError
         LazyOp::IndexAdd(_i) => todo!(),
         LazyOp::ScatterAdd(_s) => todo!(),
         LazyOp::Detach(_d) => todo!(),
+        LazyOp::Copy(_c) => todo!(),
     }
 }
 

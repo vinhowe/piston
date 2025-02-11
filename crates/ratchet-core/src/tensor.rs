@@ -1370,6 +1370,19 @@ impl Tensor {
         }
     }
 
+    pub fn copy(&self, dst: &Self) -> Tensor {
+        Tensor::new_impl(
+            LazyOp::Copy(TensorCopy {
+                src: self.clone(),
+                dst: dst.clone(),
+            }),
+            self.view.clone(),
+            None,
+            self.device.clone(),
+            false,
+        )
+    }
+
     pub(crate) fn same_storage(&self, rhs: &Self) -> bool {
         match (self.storage().as_ref(), rhs.storage().as_ref()) {
             (Some(lhs), Some(rhs)) => std::ptr::eq(lhs, rhs),

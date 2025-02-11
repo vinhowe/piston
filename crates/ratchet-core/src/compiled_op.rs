@@ -4,11 +4,32 @@ use crate::gpu::{
 };
 #[cfg(feature = "debug")]
 use crate::TensorId;
-use crate::{drvec, rvec, KernelKey, OperationError, RVec, Tensor};
+use crate::{drvec, rvec, KernelKey, OperationError, PooledGPUBuffer, RVec, Tensor};
 use derive_new::new;
 #[cfg(feature = "debug")]
 use std::sync::Arc;
 use wgpu::DynamicOffset;
+
+#[derive(Debug, new)]
+pub struct CompiledCopy {
+    src: Arc<PooledGPUBuffer>,
+    dst: Arc<PooledGPUBuffer>,
+    size: u64,
+}
+
+impl CompiledCopy {
+    pub fn src(&self) -> &Arc<PooledGPUBuffer> {
+        &self.src
+    }
+
+    pub fn dst(&self) -> &Arc<PooledGPUBuffer> {
+        &self.dst
+    }
+
+    pub fn size(&self) -> u64 {
+        self.size
+    }
+}
 
 //Compiled op represents a single kernel invocation
 //TODO: We need to be more general here, enum with encoder.copy_buffer_to_buffer as a COPY, and
@@ -24,6 +45,11 @@ pub struct CompiledOp {
     pub debug_buffer: Option<(TensorId, Arc<wgpu::Buffer>)>,
     #[cfg(feature = "debug")]
     pub debug_input_buffers: Option<RVec<(TensorId, Arc<wgpu::Buffer>)>>,
+
+#[derive(Debug)]
+pub enum Compiled {
+    Copy(CompiledCopy),
+    Compute(CompiledOp),
 }
 
 impl CompiledOp {

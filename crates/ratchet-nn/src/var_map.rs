@@ -191,7 +191,7 @@ impl VarMap {
             //     }
             // }
             Some(var) => {
-                if let Err(err) = var.set(value.clone()) {
+                if let Err(err) = var.set_sync(value.clone()) {
                     panic!("error setting {name}: {err}")
                 }
             }
@@ -219,7 +219,7 @@ impl VarMap {
                 //     }
                 // }
                 Some(var) => {
-                    if let Err(err) = var.set(value.as_ref().clone()) {
+                    if let Err(err) = var.set_sync(value.as_ref().clone()) {
                         panic!("error setting {name}: {err}")
                     }
                 }

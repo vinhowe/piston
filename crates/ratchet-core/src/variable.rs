@@ -113,7 +113,7 @@ impl Var {
 
     /// Sets the content of the inner tensor, this does not require a mutable reference as inner
     /// mutability is used.
-    pub fn set(&self, src: Tensor) -> Result<()> {
+    pub fn set_sync(&self, src: Tensor) -> Result<()> {
         if self.as_tensor().same_storage(&src) {
             panic!("cannot set a variable to a tensor that is derived from its value");
         }
@@ -133,5 +133,9 @@ impl Var {
             cpu_size: Some(dst.num_bytes()),
         }));
         Ok(())
+    }
+
+    pub fn set(&self, src: Tensor) -> Tensor {
+        src.copy(self.as_tensor())
     }
 }
