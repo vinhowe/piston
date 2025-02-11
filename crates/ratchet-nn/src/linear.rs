@@ -260,7 +260,7 @@ def linear_backward(x, w):
         let grads = result_gpu.backward()?;
         device.try_gpu()?.mark_step()?;
 
-        let x_grad = grads.get(&x_var.as_tensor()).unwrap().to(&Device::CPU)?;
+        let x_grad = grads.get(x_var.as_tensor()).unwrap().to(&Device::CPU)?;
         let w_grad = grads.get(&linear.w).unwrap().to(&Device::CPU)?;
         let b_grad = match &linear.b {
             Some(b) => Some(grads.get(b).unwrap().to(&Device::CPU)?),
