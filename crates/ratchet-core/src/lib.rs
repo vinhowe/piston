@@ -148,4 +148,37 @@ pub mod test_util {
             Ok(result)
         })
     }
+
+    pub fn run_py_prg_multiple(
+        prg: String,
+        tensors: &[&Tensor],
+        args: &[&dyn ToPyObject],
+    ) -> anyhow::Result<Vec<Tensor>> {
+        let re = Regex::new(r"def\s+(\w+)\s*\(").unwrap();
+        let func = match re.captures(&prg) {
+            Some(caps) => caps.get(1).map(|m| m.as_str()).unwrap(),
+            None => return Err(anyhow::anyhow!("No function name found")),
+        };
+        Python::with_gil(|py| {
+            let prg = PyModule::from_code(py, &prg, "x.py", "x")?;
+            let py_tensors = tensors.iter().map(|t| match t.dt() {
+                DType::F32 => t.to_py::<f32>(&py).to_object(py),
+                DType::I32 => t.to_py::<i32>(&py).to_object(py),
+                _ => unimplemented!(),
+            });
+            let py_args = py_tensors
+                .chain(args.iter().map(|a| a.to_object(py)))
+                .collect::<Vec<_>>();
+            let py_args = PyTuple::new(py, py_args);
+            let py_result = prg.getattr(func)?.call1(py_args)?;
+
+            let tuple: &PyTuple = py_result.extract()?;
+            let mut tensors = Vec::new();
+            for item in tuple.iter() {
+                let array: &PyArrayDyn<f32> = item.extract()?;
+                tensors.push(Tensor::from(array));
+            }
+            Ok(tensors)
+        })
+    }
 }
