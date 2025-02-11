@@ -149,7 +149,12 @@ impl GPUBuffer {
     #[cfg(feature = "plotting")]
     pub fn plot_fmt(&self) -> String {
         let id_string = Self::trim_id(self.inner().global_id()).unwrap_or_default();
-        format!("GPU:#{}\n{} bytes", id_string, self.inner.size())
+        format!(
+            "GPU:#{}\n({:?})\n{} bytes",
+            id_string,
+            self.inner.handle,
+            self.inner.size()
+        )
     }
 }
 
