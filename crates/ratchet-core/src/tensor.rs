@@ -1454,7 +1454,6 @@ impl Tensor {
         reader: &mut R,
         shape: Shape,
         device: Device,
-        is_variable: bool,
     ) -> anyhow::Result<Tensor> {
         let storage = Storage::from_disk::<T, R>(reader, &shape, &device)?;
         let strides = Strides::from(&shape);
@@ -1464,7 +1463,7 @@ impl Tensor {
             meta,
             Some(storage),
             device,
-            is_variable,
+            false,
         ))
     }
 
