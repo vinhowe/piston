@@ -413,6 +413,7 @@ impl Tensor {
     impl_unary_op!(abs, UnaryOp::Abs);
     impl_unary_op!(sqrt, UnaryOp::Sqrt);
     impl_unary_op!(relu, UnaryOp::Relu);
+    impl_unary_op!(relu2, UnaryOp::Relu2);
     impl_unary_op!(floor, UnaryOp::Floor);
     impl_unary_op!(ceil, UnaryOp::Ceil);
     impl_unary_op!(neg, UnaryOp::Neg);

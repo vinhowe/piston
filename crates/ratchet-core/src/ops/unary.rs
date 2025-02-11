@@ -31,6 +31,7 @@ pub enum UnaryOp {
     Square,
     Sqrt,
     Relu,
+    Relu2,
     Floor,
     Ceil,
     Neg,
@@ -52,6 +53,7 @@ impl UnaryOp {
             UnaryOp::Square => "square".into(),
             UnaryOp::Sqrt => "sqrt".into(),
             UnaryOp::Relu => "relu".into(),
+            UnaryOp::Relu2 => "relu2".into(),
             UnaryOp::Floor => "floor".into(),
             UnaryOp::Ceil => "ceil".into(),
             UnaryOp::Neg => "neg".into(),
@@ -137,6 +139,9 @@ impl KernelRenderable for UnaryKernels {
             UnaryOp::Relu => {
                 kernel_builder.write_global(Unary::render_relu::<P>());
             }
+            UnaryOp::Relu2 => {
+                kernel_builder.write_global(Unary::render_relu2::<P>());
+            }
             _ => {}
         };
 
@@ -212,6 +217,15 @@ impl Unary {
         }
     }
 
+    fn render_relu2<P: WgslPrimitive>() -> String {
+        let accessor = P::render_type();
+
+        wgsl! {
+            fn relu2(val: 'accessor) -> 'accessor {
+                return max(val, 'accessor(0.0)) * max(val, 'accessor(0.0));
+            }
+        }
+    }
     fn render_silu<P: WgslPrimitive>() -> String {
         let accessor = P::render_type();
 
@@ -268,6 +282,7 @@ impl Operation for Unary {
             UnaryOp::Square => "Square",
             UnaryOp::Sqrt => "Sqrt",
             UnaryOp::Relu => "Relu",
+            UnaryOp::Relu2 => "Relu2",
             UnaryOp::Floor => "Floor",
             UnaryOp::Ceil => "Ceil",
             UnaryOp::Neg => "Neg",
@@ -451,6 +466,7 @@ def {}(a):
             UnaryOp::Square => a.square()?,
             UnaryOp::Sqrt => a.sqrt()?,
             UnaryOp::Relu => a.relu()?,
+            UnaryOp::Relu2 => a.relu2()?,
             UnaryOp::Floor => a.floor()?,
             UnaryOp::Ceil => a.ceil()?,
             UnaryOp::Neg => a.neg()?,

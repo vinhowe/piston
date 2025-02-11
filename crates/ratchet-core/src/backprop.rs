@@ -508,6 +508,18 @@ impl Tensor {
                     op: UnaryOp::Relu,
                 }) => {
                     let sum_grad = grads.or_insert(arg.clone())?;
+                    let relu_grad = arg.clone().affine(2.0, 0.0)?.mul(
+                        arg.clone()
+                            .ge(arg.clone().zeros_like::<f32>())?
+                            .cast(arg.dt())?,
+                    )?;
+                    *sum_grad = sum_grad.clone().add((grad * relu_grad)?)?;
+                }
+                LazyOp::Unary(Unary {
+                    input: arg,
+                    op: UnaryOp::Relu2,
+                }) => {
+                    let sum_grad = grads.or_insert(arg.clone())?;
                     let relu_grad = arg
                         .clone()
                         .ge(arg.clone().zeros_like::<f32>())?
