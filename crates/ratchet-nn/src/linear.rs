@@ -83,9 +83,7 @@ mod tests {
 
     use super::{linear, linear_no_bias, Linear};
     use ratchet::{
-        prelude::shape,
-        test_util::{run_py_prg, run_py_prg_multiple},
-        Device, DeviceRequest, Tensor, Var,
+        prelude::shape, test_util::run_py_prg_multiple, Device, DeviceRequest, Tensor, Var,
     };
     use test_strategy::{proptest, Arbitrary};
 
