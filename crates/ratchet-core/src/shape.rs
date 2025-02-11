@@ -285,6 +285,12 @@ impl From<Shape> for glam::IVec3 {
     }
 }
 
+impl From<Shape> for RVec<usize> {
+    fn from(shape: Shape) -> Self {
+        shape.0
+    }
+}
+
 macro_rules! impl_try_into_arr_for_shape {
     ($($N:expr),*) => {
         $(
