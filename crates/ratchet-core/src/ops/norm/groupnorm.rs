@@ -67,7 +67,7 @@ def manual_group_norm(input, scale, bias, num_groups):
 
     #[derive(Arbitrary, Debug)]
     struct GroupNormProblem {
-        #[map(|num_groups: u32| #C/2 )]
+        #[map(|_num_groups: u32| #C/2 )]
         num_groups: usize,
         #[strategy(1..=1usize)]
         B: usize,

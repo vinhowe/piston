@@ -94,8 +94,8 @@ fn to_pool_error<T>(get_result: Option<T>, handle: impl Key) -> Result<T, PoolEr
     })
 }
 
-impl<'a, Handle: Key, Res> StaticResourcePoolAccessor<Handle, Res>
-    for StaticResourcePoolReadLockAccessor<'a, Handle, Res>
+impl<Handle: Key, Res> StaticResourcePoolAccessor<Handle, Res>
+    for StaticResourcePoolReadLockAccessor<'_, Handle, Res>
 {
     fn get(&self, handle: Handle) -> Result<&Res, PoolError> {
         to_pool_error(self.resources.get(handle), handle)

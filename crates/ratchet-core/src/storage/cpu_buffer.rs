@@ -130,7 +130,9 @@ impl CPUBuffer {
         let buf_slice =
             unsafe { std::slice::from_raw_parts_mut(buf.as_mut_ptr() as *mut u8, n_bytes) };
         reader.read_exact(buf_slice).unwrap();
-        let buf = unsafe { std::mem::transmute::<_, Vec<u8>>(buf) };
+        let buf = unsafe {
+            std::mem::transmute::<std::vec::Vec<std::mem::MaybeUninit<u8>>, std::vec::Vec<u8>>(buf)
+        };
         Ok(Self::from_bytes(&buf, dt.size_of()))
     }
 

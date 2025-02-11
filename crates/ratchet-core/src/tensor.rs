@@ -1775,7 +1775,7 @@ impl Tensor {
     pub fn to_py<'s, 'p: 's, T: TensorDType + numpy::Element>(
         &'s self,
         py: &'p pyo3::Python<'p>,
-    ) -> &PyArrayDyn<T> {
+    ) -> &'s PyArrayDyn<T> {
         use numpy::PyArray;
         assert!(
             self.device().is_cpu(),
@@ -2072,7 +2072,7 @@ impl std::ops::Div<Tensor> for f32 {
     }
 }
 
-impl<'data> safetensors::View for &'data Tensor {
+impl safetensors::View for &Tensor {
     fn dtype(&self) -> safetensors::Dtype {
         match self.dt() {
             DType::F32 => safetensors::Dtype::F32,
