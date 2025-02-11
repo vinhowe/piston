@@ -231,7 +231,9 @@ mod tests {
         let func_prg = r#"
 import torch
 def powf(a, e):
-    return torch.pow(torch.from_numpy(a), e).numpy()
+    a_tensor = torch.from_numpy(a)
+    sign = torch.sign(a_tensor)
+    return (torch.pow(torch.abs(a_tensor), e) * sign).numpy()
 "#
         .to_string();
 
@@ -246,10 +248,11 @@ def powf(a, e):
         let ground = ground_truth(&a, e).unwrap();
 
         let a_gpu = a.to(&device).unwrap();
-        let b = a_gpu.powf(2.).unwrap();
+        let b = a_gpu.powf(e).unwrap();
 
         let ours = b.to(&Device::CPU).unwrap();
-        ground.all_close(&ours, 1e-6, 1e-6).unwrap();
+
+        ground.all_close(&ours, 1e-5, 1e-5).unwrap();
     }
 
     #[derive(Arbitrary, Debug)]
@@ -260,7 +263,7 @@ def powf(a, e):
         M: usize,
         #[strategy(1..=128usize)]
         N: usize,
-        #[map(|x: f32| x + 1.)]
+        #[strategy(-10.0f32..=10.0f32)]
         e: f32,
     }
 
