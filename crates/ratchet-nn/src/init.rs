@@ -112,11 +112,9 @@ impl Init {
     /// Creates a new tensor with the specified shape, device, and initialization.
     pub fn var(&self, s: &Shape, device: Device) -> anyhow::Result<Var> {
         match self {
-            Self::Const(v) if *v == 0. => Ok(Var::zeros::<f32>(&s, &device)),
-            Self::Const(v) if *v == 1. => Ok(Var::ones::<f32>(&s, &device)),
-            Self::Const(cst) => {
-                Var::from_tensor(&Tensor::ones::<f32>(&s, &device).affine(*cst as f32, 0.)?)
-            }
+            Self::Const(v) if *v == 0. => Ok(Var::zeros::<f32>(s, &device)),
+            Self::Const(v) if *v == 1. => Ok(Var::ones::<f32>(s, &device)),
+            Self::Const(cst) => Ok(Var::full(s, *cst, &device)),
             Self::Uniform { lo, up } => Ok(Var::rand::<f32>(*lo, *up, s.clone(), device)),
             Self::Randn { mean, stdev } => Ok(Var::randn::<f32>(*mean, *stdev, s.clone(), device)),
             Self::Kaiming {

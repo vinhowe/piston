@@ -34,6 +34,15 @@ impl Var {
         Self(inner)
     }
 
+    pub fn full<T: TensorDType + AsPrimitive<f32>>(
+        shape: &Shape,
+        value: T,
+        device: &Device,
+    ) -> Self {
+        let inner = Tensor::full_impl::<T>(shape, value, device, true);
+        Self(inner)
+    }
+
     // Convert a tensor to a variable, if the tensor is already a variable then it is returned as is.
     pub fn from_tensor(t: &Tensor) -> Result<Self> {
         if t.is_variable() {
