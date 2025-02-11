@@ -83,7 +83,7 @@ impl LazyOp {
             LazyOp::Cache(c) => c.name(),
             LazyOp::View(v) => v.name(),
             LazyOp::Const => "Const",
-            LazyOp::Detach(_) => "Detach",
+            LazyOp::Detach(d) => Box::leak(format!("Detach<{}>", d.name()).into_boxed_str()),
         }
     }
 
