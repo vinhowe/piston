@@ -340,7 +340,7 @@ def index_select(input, indices):
         let input = input.to(&device).unwrap();
         let indices = indices.to(&device).unwrap();
 
-        let result = input.index_select(indices, 0).unwrap().resolve().unwrap();
+        let result = input.index_select(indices, 0).unwrap();
         let x = result.to(&Device::CPU).unwrap();
         println!("X: {:?}", x);
         println!("Ground Truth: {:?}", ground_truth);

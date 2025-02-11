@@ -473,8 +473,7 @@ def {}(a):
             UnaryOp::Reciprocal => a.recip()?,
             UnaryOp::Silu => a.silu()?,
             UnaryOp::Sigmoid => a.sigmoid()?,
-        }
-        .resolve()?;
+        };
 
         let (atol, rtol) = match op {
             UnaryOp::Gelu | UnaryOp::Tanh => (5e-2, 5e-2),

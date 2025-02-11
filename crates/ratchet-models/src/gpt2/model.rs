@@ -257,9 +257,9 @@ mod tests {
 
             // clip_grad_norm(&mut grads, 1.0f32, &device)?;
 
-            opt.step(&grads)?;
+            opt.step(&grads, &device)?;
 
-            let loss_vec = loss.clone().resolve()?.to(&Device::CPU)?.to_vec::<f32>()?;
+            let loss_vec = loss.clone().to(&Device::CPU)?.to_vec::<f32>()?;
 
             println!("{:?} loss: {:?}", step, loss_vec[0]);
         }
@@ -303,7 +303,9 @@ mod tests {
 
             let loss = cross_entropy(logits.flatten_to(1)?, tgt.flatten_to(1)?)?;
 
-            let loss_vec = loss.clone().resolve()?.to(&Device::CPU)?.to_vec::<f32>()?;
+            device.try_gpu()?.mark_step()?;
+
+            let loss_vec = loss.clone().to(&Device::CPU)?.to_vec::<f32>()?;
 
             println!("{:?} loss: {:?}", batch_index, loss_vec[0]);
         }
@@ -374,9 +376,9 @@ mod tests {
 
             let grads = loss.backward()?;
 
-            opt.step(&grads)?;
+            opt.step(&grads, &device)?;
 
-            let loss_vec = loss.clone().resolve()?.to(&Device::CPU)?.to_vec::<f32>()?;
+            let loss_vec = loss.clone().to(&Device::CPU)?.to_vec::<f32>()?;
 
             println!("{:?} loss: {:?}, norm: {:?}", batch_index, loss_vec[0], "?");
         }
@@ -449,9 +451,9 @@ mod tests {
             // This is something of a hack; we add references to all tensors that need to be backpropped
             let grads = loss.backward()?;
 
-            opt.step(&grads)?;
+            opt.step(&grads, &device)?;
 
-            let loss_vec = loss.resolve_deferred()?.to(&Device::CPU)?.to_vec::<f32>()?;
+            let loss_vec = loss.to(&Device::CPU)?.to_vec::<f32>()?;
 
             println!("{:?} loss: {:?}", batch_index, loss_vec[0]);
         }

@@ -313,8 +313,7 @@ def {}(a, b):
             BinaryOp::Sub => a.sub(b)?,
             BinaryOp::Mul => a.mul(b)?,
             BinaryOp::Div => a.div(b)?,
-        }
-        .resolve()?;
+        };
 
         let d = c.to(&Device::CPU)?;
         ground.all_close(&d, 1e-4, 1e-4)?;

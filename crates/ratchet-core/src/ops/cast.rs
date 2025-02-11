@@ -265,7 +265,7 @@ def cast(a):
         let ground = ground_truth(&input, dst_dt)?;
 
         let input = input.to(&device)?;
-        let casted = input.cast(dst_dt)?.resolve()?;
+        let casted = input.cast(dst_dt)?;
 
         let casted = casted.to(&Device::CPU)?;
         match dst_dt {

@@ -165,7 +165,7 @@ def slice(a):
 
         let a_gpu = a.to(&device)?;
         let ground = ground_truth(&a, &op.as_torch())?;
-        let ours = a_gpu.slice(&op.indices)?.resolve()?;
+        let ours = a_gpu.slice(&op.indices)?;
         let d_gpu = ours.to(&Device::CPU)?;
         ground.all_close(&d_gpu, 1e-5, 1e-5)?;
         Ok(())

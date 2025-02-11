@@ -291,7 +291,7 @@ def layer_norm_backward(x, weight, bias = None):
             eps,
             remove_mean: true,
         };
-        let result_gpu = layer_norm_gpu.schedule(x_gpu)?.resolve()?;
+        let result_gpu = layer_norm_gpu.schedule(x_gpu)?;
 
         let ours = result_gpu.to(&Device::CPU)?;
         ground.all_close(&ours, 1e-4, 1e-4)?;
@@ -334,8 +334,8 @@ def layer_norm_backward(x, weight, bias = None):
 
         let result_gpu = layer_norm.schedule(x_var.as_tensor().clone())?;
 
-        let mut grads = result_gpu.backward()?;
-        grads.resolve(device.try_gpu()?)?;
+        let grads = result_gpu.backward()?;
+        device.try_gpu()?.mark_step()?;
 
         let x_grad = grads.get(&x_var.as_tensor()).unwrap().to(&Device::CPU)?;
         let weight_grad = grads.get(weight).unwrap().to(&Device::CPU)?;

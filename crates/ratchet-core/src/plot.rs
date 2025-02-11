@@ -1,13 +1,14 @@
 #![cfg(feature = "plotting")]
-use crate::{GradStore, Tensor, TensorId};
+use crate::{
+    CPUBuffer, DeviceStorage, GpuCompileKey, GradStore, HashSet, LazyOp, Tensor, TensorId,
+};
 use derive_new::new;
 use std::{
     borrow::Cow,
-    collections::HashMap,
+    collections::{BTreeMap, HashMap},
     io::Write,
     path::{Path, PathBuf},
     process::Command,
-    sync::Arc,
 };
 use tempfile::NamedTempFile;
 
@@ -63,8 +64,8 @@ impl PlotNode {
     }
 
     fn style_as_output(&mut self) {
-        self.add_attribute(("fillcolor", "lightgray"));
-        self.add_attribute(("shape", "ellipse"));
+        self.add_attribute(("fillcolor", "white"));
+        self.add_attribute(("shape", "box"));
     }
 
     fn style_as_grad(&mut self) {
@@ -115,38 +116,88 @@ impl RenderableGraph {
         &mut self.edges[self.current_edge_id - 1]
     }
 
-    fn build_graph(leaf: &Tensor) -> anyhow::Result<RenderableGraph> {
+    fn build_graph(
+        post_order: &Vec<&Tensor>,
+        outputs: &BTreeMap<TensorId, &Tensor>,
+        strong_counts_inplace: &crate::HashMap<TensorId, (usize, bool)>,
+        cpu_bufs: Option<&crate::HashMap<TensorId, CPUBuffer>>,
+    ) -> anyhow::Result<RenderableGraph> {
         log::warn!("Rendering plot");
         let mut g = RenderableGraph::new();
-
         let mut graph_index_map = HashMap::new();
-        let leaf_cl = leaf.clone();
-        let execution_order = leaf_cl.execution_order();
-        for t in execution_order.iter() {
-            let renderable_node = g.create_node(t.id(), Cow::Owned(t.op().name().to_string()));
-            let can_inplace = t.op().supports_inplace() && Arc::strong_count(&t.inner) == 1;
+        // Create hashset to track output tensor ids
+        let output_ids: HashSet<TensorId> = outputs.iter().map(|(id, _)| *id).collect();
+
+        // Process all tensors in the provided post-order
+        let mut i = 0;
+        for t in post_order {
+            if !matches!(t.op(), LazyOp::View(_) | LazyOp::Const) {
+                i += 1;
+            }
+            let strong_count = strong_counts_inplace.get(&t.id()).map(|k| k.0).unwrap_or(0);
+
+            // Use plot_fmt() for outputs while keeping the old format for non-outputs.
+            let label = if output_ids.contains(&t.id()) {
+                format!(
+                    "{} ({:?}): {}\n{}\n[OUTPUT]\n{}",
+                    i,
+                    t.id(),
+                    t.op().name(),
+                    t.plot_fmt(),
+                    cpu_bufs
+                        .and_then(|bufs| bufs.get(&t.id()))
+                        .map(|buf| buf.dump(t.dt(), (buf.n_bytes() / 4) <= 8))
+                        .unwrap_or_default()
+                )
+            } else {
+                format!("{} ({:?}): {} ({})", i, t.id(), t.op().name(), strong_count)
+            };
+
+            let renderable_node = g.create_node(t.id(), Cow::Owned(label));
+            let can_inplace = strong_counts_inplace
+                .get(&t.id())
+                .map(|k| k.1)
+                .unwrap_or(false);
             match t.op() {
                 crate::LazyOp::Const => renderable_node.style_as_const(),
-                _ => renderable_node.style_as_op(),
+                _ => {
+                    if output_ids.contains(&t.id()) {
+                        renderable_node.style_as_output();
+                    } else {
+                        renderable_node.style_as_op();
+                    }
+                }
             }
             if can_inplace {
                 renderable_node.style_as_inplace()
             }
 
             let node_graph_id = renderable_node.plot_id;
-            graph_index_map.insert(t.id(), renderable_node.plot_id);
+            graph_index_map.insert(t.id(), node_graph_id);
             t.op().srcs().iter().for_each(|src_t| {
                 if let Some(src_id) = graph_index_map.get(&src_t.id()) {
-                    let e = g.create_edge(Cow::Owned(src_t.plot_fmt()), *src_id, node_graph_id);
+                    let strong_count = strong_counts_inplace
+                        .get(&src_t.id())
+                        .map(|k| k.0)
+                        .unwrap_or(0);
+                    let e = g.create_edge(
+                        Cow::Owned(format!(
+                            "{} -> {:?}\n{}",
+                            src_t.plot_fmt(),
+                            strong_count,
+                            cpu_bufs
+                                .and_then(|bufs| bufs.get(&src_t.id()))
+                                .map(|buf| buf.dump(src_t.dt(), (buf.n_bytes() / 4) <= 8))
+                                .unwrap_or_default()
+                        )),
+                        *src_id,
+                        node_graph_id,
+                    );
                 } else {
                     panic!("Source tensor not found in graph index map");
                 }
             });
         }
-
-        let label = leaf.op().name().to_string();
-        g.create_node(leaf.id(), Cow::Owned(label))
-            .style_as_output();
 
         Ok(g)
     }
@@ -163,7 +214,7 @@ impl RenderableGraph {
                     continue;
                 }
                 let renderable_node = g.create_node(t.id(), Cow::Owned(t.op().name().to_string()));
-                let can_inplace = t.op().supports_inplace() && Arc::strong_count(&t.inner) == 1;
+                let can_inplace = t.op().supports_inplace() && t.strong_count() == 2;
                 match t.op() {
                     crate::LazyOp::Const => renderable_node.style_as_const(),
                     _ => renderable_node.style_as_op(),
@@ -197,12 +248,30 @@ impl RenderableGraph {
         d.push(fname.as_ref());
         let mut f = NamedTempFile::new().expect("Failed to create temp file.");
         render_to(&mut f, self)?;
-        Command::new("dot")
+
+        let mut dot_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        dot_path.push(fname.as_ref());
+        dot_path.set_extension("dot");
+
+        // Copy the temporary dot file to our desired .dot output file.
+        std::fs::copy(f.path(), &dot_path)?;
+
+        // Call the dot command to generate an SVG file.
+        let mut svg_path = d.clone();
+        svg_path.set_extension("svg");
+        dbg!(&svg_path);
+        let output = Command::new("dot")
             .arg("-Tsvg")
-            .arg(f.path())
+            .arg(dot_path)
             .arg("-o")
-            .arg(d)
+            .arg(svg_path)
             .output()?;
+        if !output.status.success() {
+            eprintln!(
+                "dot command failed with stderr: {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+        }
         Ok(())
     }
 }
@@ -270,8 +339,17 @@ impl<'a> dot3::GraphWalk<'a, Nd, PlotEdge> for RenderableGraph {
     }
 }
 
-pub fn render_to_file(t: &Tensor, fname: impl AsRef<Path>) -> anyhow::Result<()> {
-    RenderableGraph::plot_to_file(RenderableGraph::build_graph(t)?, fname)
+pub fn render_to_file(
+    post_order: &Vec<&Tensor>,
+    outputs: &BTreeMap<TensorId, &Tensor>,
+    strong_counts_inplace: &crate::HashMap<TensorId, (usize, bool)>,
+    cpu_bufs: Option<&crate::HashMap<TensorId, CPUBuffer>>,
+    fname: impl AsRef<Path>,
+) -> anyhow::Result<()> {
+    RenderableGraph::plot_to_file(
+        RenderableGraph::build_graph(post_order, outputs, strong_counts_inplace, cpu_bufs)?,
+        fname,
+    )
 }
 
 pub fn render_backward_to_file(g: &GradStore, fname: impl AsRef<Path>) -> anyhow::Result<()> {

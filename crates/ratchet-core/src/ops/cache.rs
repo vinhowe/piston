@@ -273,7 +273,7 @@ mod tests {
         println!("PREVIOUS CACHE\n {:?}\n", dst0.to_ndarray_view::<f32>());
         dst0 = dst0.to(&device)?;
         let dst1 = Tensor::zeros::<f32>(&shape![1, 2, 4, 16], &device);
-        let cur_cache = Tensor::cat(rvec![dst0.clone(), dst1], 2)?.resolve()?;
+        let cur_cache = Tensor::cat(rvec![dst0.clone(), dst1], 2)?;
 
         //This is the k or v vector we write
         let mut src = Tensor::randn::<f32>(0., 1., shape![1, 2, 1, 16], Device::CPU);
@@ -281,12 +281,10 @@ mod tests {
         src = src.to(&device)?;
 
         //The result should be the concatenation of the cache and the source
-        let ground_truth = Tensor::cat(rvec![dst0.clone(), src.clone()], 2)?
-            .resolve()?
-            .to(&Device::CPU)?;
+        let ground_truth = Tensor::cat(rvec![dst0.clone(), src.clone()], 2)?.to(&Device::CPU)?;
 
         let dim = 2;
-        let b = cur_cache.clone().cache(src, dim, populated)?.resolve()?;
+        let b = cur_cache.clone().cache(src, dim, populated)?;
 
         let cur_cache_cpu = cur_cache.to(&Device::CPU)?;
         println!(

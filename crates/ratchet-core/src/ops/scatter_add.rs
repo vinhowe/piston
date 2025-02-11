@@ -262,8 +262,6 @@ def scatter_add(dst, src, ids):
 
         let result = dst_gpu
             .scatter_add(ids_gpu.clone(), src_gpu.clone(), dim)
-            .unwrap()
-            .resolve()
             .unwrap();
 
         let ours = result.to(&Device::CPU).unwrap();

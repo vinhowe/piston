@@ -32,7 +32,7 @@ pub async fn generate(
             shape![1, tokens.len()],
             model.device.clone(),
         );
-        let result = model.schedule(input)?.resolve()?;
+        let result = model.schedule(input)?;
         let logits = result.to(&Device::CPU).await?;
         model.cache_mut().update(tokens.len());
 

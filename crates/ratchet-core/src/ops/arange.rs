@@ -262,8 +262,6 @@ def arange(start, stop, step):
         let a = Tensor::arange_step(start, stop, step, device)
             .unwrap()
             .cast(DType::F32)
-            .unwrap()
-            .resolve_deferred()
             .unwrap();
         let ground = ground_truth(&start, &stop, &step).unwrap();
 

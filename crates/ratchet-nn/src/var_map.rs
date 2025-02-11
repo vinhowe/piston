@@ -154,12 +154,7 @@ impl VarMap {
             let t = var.as_tensor().clone();
             let data_ref = Arc::clone(&data);
             futures.push(future_to_promise(async move {
-                let t_cpu = t
-                    .resolve_deferred()
-                    .unwrap()
-                    .to(&Device::CPU)
-                    .await
-                    .unwrap();
+                let t_cpu = t.to(&Device::CPU).await.unwrap();
                 data_ref.lock().unwrap().push((k, t_cpu));
                 Ok(JsValue::undefined())
             }));

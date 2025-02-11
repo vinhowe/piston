@@ -942,9 +942,7 @@ def matmul(a, b{}):
         let a_gpu = a.to(device)?;
         let b_gpu = b.to(device)?;
         let bias_gpu = bias.as_ref().map(|b| b.to(device)).transpose()?;
-        let c_gpu = a_gpu
-            .gemm(b_gpu, bias_gpu, trans_lhs, trans_rhs, trans_dst)?
-            .resolve()?;
+        let c_gpu = a_gpu.gemm(b_gpu, bias_gpu, trans_lhs, trans_rhs, trans_dst)?;
 
         let d_gpu = c_gpu.to(&Device::CPU)?;
         println!("RATCHET SGEMM\n{:?}\n", d_gpu);
@@ -965,7 +963,7 @@ def matmul(a, b{}):
         let aq = quantize::<Q8_0F>(&a);
         let a_gpu = aq.to(&device)?;
         let b_gpu = b.to(&device)?;
-        let c_gpu = a_gpu.matmul(b_gpu, false, false)?.resolve()?;
+        let c_gpu = a_gpu.matmul(b_gpu, false, false)?;
         let ours = c_gpu.to(&Device::CPU)?;
 
         println!("RATCHET QUANT\n{:?}\n", ours);
@@ -1007,9 +1005,7 @@ def matmul(a, b{}):
 
         let b_gpu = b.to(&device)?;
         let bias_gpu = bias.as_ref().map(|b| b.to(&device)).transpose()?;
-        let c_gpu = a_gpu
-            .gemm(b_gpu, bias_gpu, TRANS_LHS, TRANS_RHS, TRANS_DST)?
-            .resolve()?;
+        let c_gpu = a_gpu.gemm(b_gpu, bias_gpu, TRANS_LHS, TRANS_RHS, TRANS_DST)?;
         let ours = c_gpu.to(&Device::CPU)?;
 
         println!("RATCHET\n{:?}\n", ours.to_ndarray_view::<f32>());
@@ -1044,9 +1040,7 @@ def matmul(a, b{}):
         };
 
         let b_gpu = b.to(&device)?;
-        let c_gpu = a_gpu
-            .gemm(b_gpu, None, TRANS_LHS, TRANS_RHS, TRANS_DST)?
-            .resolve()?;
+        let c_gpu = a_gpu.gemm(b_gpu, None, TRANS_LHS, TRANS_RHS, TRANS_DST)?;
         let ours = c_gpu.to(&Device::CPU)?;
 
         println!("RATCHET\n{:?}\n", ours.to_ndarray_view::<f32>());

@@ -715,31 +715,17 @@ pub trait GPUOperation: Operation {
 
     fn select_kernel(&self) -> Self::KernelEnum;
 
-    fn compile_gpu(
+    fn create_gpu_compile_key<'a>(
         &self,
-        dst: &Tensor,
-        uniform: &mut CpuUniform,
-        device: &WgpuDevice,
+        dst: &'a Tensor,
         can_inplace: bool,
-        #[cfg(feature = "debug")] debug: bool,
-        #[cfg(not(feature = "debug"))] _debug: bool,
-    ) -> Result<CompiledOp, OperationError> {
+        uniform: &mut CpuUniform,
+    ) -> Result<ComputeCompileKey<'a>, OperationError> {
         let kernel = self.select_kernel();
 
         let kernel_element = kernel.kernel_element(dst);
-        let metadata = kernel.metadata(dst, &kernel_element)?;
-        let offset = metadata.write(uniform)?;
 
         let workload = kernel.calculate_dispatch(dst)?;
-
-        let storage_layout = device
-            .get_or_create_bind_group_layout(&kernel.storage_bind_group_layout(can_inplace)?)?;
-
-        let uniform_layout =
-            device.get_or_create_bind_group_layout(&BindGroupLayoutDescriptor::uniform())?;
-        let pipeline_layout = device.get_or_create_pipeline_layout(&PipelineLayoutDescriptor {
-            entries: rvec![storage_layout, uniform_layout],
-        })?;
 
         let key = kernel.kernel_key(
             &workload.workgroup_size,
@@ -748,14 +734,56 @@ pub trait GPUOperation: Operation {
             dst,
             &kernel_element,
         );
+
+        let metadata = kernel.metadata(dst, &kernel_element)?;
+        let offset = metadata.write(uniform)?;
+
         log::debug!("Kernel key: {}", key);
+        log::debug!("Can inplace: {}", can_inplace);
+
+        Ok(ComputeCompileKey {
+            dst,
+            key,
+            can_inplace,
+            workload,
+            offset,
+        })
+    }
+
+    fn compile_gpu<'a>(
+        &self,
+        gpu_compile_key: &ComputeCompileKey<'a>,
+        device: &'a WgpuDevice,
+        #[cfg(feature = "debug")] debug: bool,
+        #[cfg(not(feature = "debug"))] _debug: bool,
+    ) -> Result<CompiledOp, OperationError> {
+        let ComputeCompileKey {
+            dst,
+            key,
+            can_inplace,
+            workload,
+            offset,
+        } = gpu_compile_key;
+
+        let kernel = self.select_kernel();
+
+        let storage_bind_group_layout_desc = kernel.storage_bind_group_layout(*can_inplace)?;
+
+        let storage_layout =
+            device.get_or_create_bind_group_layout(&storage_bind_group_layout_desc)?;
+
+        let uniform_layout =
+            device.get_or_create_bind_group_layout(&BindGroupLayoutDescriptor::uniform())?;
+        let pipeline_layout = device.get_or_create_pipeline_layout(&PipelineLayoutDescriptor {
+            entries: rvec![storage_layout, uniform_layout],
+        })?;
 
         let kernel_src_desc = KernelModuleDesc { key: key.clone() };
 
         let kernel_module = device.get_or_create_compute_module(
             &kernel_src_desc,
             &kernel,
-            can_inplace,
+            *can_inplace,
             dst,
             &workload.workgroup_size,
             dst.device().try_gpu().unwrap(),
@@ -774,8 +802,45 @@ pub trait GPUOperation: Operation {
             dst,
             rvec![storage_layout],
             device,
-            can_inplace,
+            *can_inplace,
         )?;
+
+        #[cfg(feature = "debug")]
+        let storage_bind_group_layout_entries = storage_bind_group_layout_desc.entries;
+        #[cfg(feature = "debug")]
+        {
+            let storage_bind_group = &storage_bind_groups[0];
+            // Assert that no two or more of the storage bind group entries with the same handle have different read_only values
+            for (i, (bind_group_entry, layout_entry)) in storage_bind_group
+                .descriptor()
+                .entries
+                .iter()
+                .zip(storage_bind_group_layout_entries.iter())
+                .enumerate()
+            {
+                for (j, (other_bind_group_entry, other_layout_entry)) in storage_bind_group
+                    .descriptor()
+                    .entries
+                    .iter()
+                    .zip(storage_bind_group_layout_entries.iter())
+                    .enumerate()
+                {
+                    if bind_group_entry.handle == other_bind_group_entry.handle {
+                        assert_eq!(
+                            layout_entry.read_only, other_layout_entry.read_only,
+                            "Found conflicting read_only values for the same buffer handle: {:?} at index {} has read_only={} but {:?} at index {} has read_only={} ({:?})",
+                            bind_group_entry.handle,
+                            i,
+                            layout_entry.read_only,
+                            other_bind_group_entry.handle,
+                            j,
+                            other_layout_entry.read_only,
+                            storage_bind_group.descriptor().entries.iter().map(|e| e.handle.data()).collect::<RVec<_>>()
+                        );
+                    }
+                }
+            }
+        }
 
         #[cfg(feature = "debug")]
         let debug_buffer = if debug {
@@ -816,14 +881,16 @@ pub trait GPUOperation: Operation {
 
         Ok(CompiledOp::new(
             pipeline_handle,
-            workload.workgroup_count,
+            workload.workgroup_count.clone(),
             storage_bind_groups,
-            offset as _,
+            *offset as _,
             kernel_src_desc.key,
             #[cfg(feature = "debug")]
             debug_buffer,
             #[cfg(feature = "debug")]
             debug_input_buffers,
+            #[cfg(feature = "debug")]
+            storage_bind_group_layout_entries,
         ))
     }
 }

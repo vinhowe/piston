@@ -329,8 +329,6 @@ def trilu(shape, upper, k):
             false => src.tril(Some(k)),
         }
         .unwrap()
-        .resolve()
-        .unwrap()
         .to(&Device::CPU)
         .unwrap();
 

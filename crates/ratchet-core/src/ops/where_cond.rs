@@ -268,8 +268,6 @@ def where_cond(a, b, c):
         // Put through a ReLU so some of its entries are 0
         let a = Tensor::randn::<f32>(0., 1., shape![B, M, N], Device::CPU)
             .relu()
-            .unwrap()
-            .resolve()
             .unwrap();
         let b = Tensor::randn::<f32>(0., 1., shape![B, M, N], Device::CPU);
         let c = Tensor::randn::<f32>(0., 1., shape![B, M, N], Device::CPU);
@@ -278,7 +276,7 @@ def where_cond(a, b, c):
         let a_gpu = a.to(&device).unwrap();
         let b_gpu = b.to(&device).unwrap();
         let c_gpu = c.to(&device).unwrap();
-        let b = a_gpu.where_cond(b_gpu, c_gpu).unwrap().resolve().unwrap();
+        let b = a_gpu.where_cond(b_gpu, c_gpu).unwrap();
 
         let ours = b.to(&Device::CPU).unwrap();
 

@@ -1,5 +1,7 @@
-use crate::HashMap;
-use crate::{gpu::*, DType, Tensor, TensorId};
+use crate::{gpu::*, DType, GpuCompileKey, Tensor, TensorId};
+use crate::{HashMap, TensorError};
+use parking_lot::RwLock;
+use std::collections::BTreeMap;
 use std::{borrow::Cow, sync::Arc};
 use wgpu::{Adapter, Limits};
 
@@ -23,6 +25,7 @@ pub struct WgpuDevice {
     pipeline_layout_pool: Arc<PipelineLayoutPool>,
     compute_pipeline_pool: Arc<ComputePipelinePool>,
     kernel_module_pool: Arc<KernelModulePool>,
+    lazy_graph_executor: Arc<RwLock<LazyGraphExecutor>>,
     device_limits: DeviceLimits,
     device_features: DeviceFeatures,
     device: Arc<wgpu::Device>,
@@ -103,15 +106,19 @@ impl WgpuDevice {
 
         log::warn!("Device features: {:?}", features);
 
+        let buffer_allocator = Arc::new(BufferAllocator::new());
+
         Ok(Self {
             queue: Arc::new(queue),
             ordinal: 0,
-            buffer_allocator: Arc::new(BufferAllocator::new()),
+            buffer_allocator,
             bind_group_pool: Arc::new(BindGroupPool::new()),
             bind_group_layout_pool: Arc::new(BindGroupLayoutPool::new()),
             pipeline_layout_pool: Arc::new(PipelineLayoutPool::new()),
             kernel_module_pool: Arc::new(KernelModulePool::new()),
             compute_pipeline_pool: Arc::new(ComputePipelinePool::new()),
+            // TODO: Decide if we need some nice thing to encapsulate the lazy graph executor
+            lazy_graph_executor: Arc::new(RwLock::new(LazyGraphExecutor::new(true))),
             device: Arc::new(device),
             device_limits: limits,
             device_features: features,
@@ -267,13 +274,43 @@ impl WgpuDevice {
     pub fn allocate_cfg(
         &self,
         execution_order: &[&Tensor],
+        output_tensors: &BTreeMap<TensorId, &Tensor>,
+        gpu_compile_keys: &HashMap<TensorId, GpuCompileKey>,
+        use_shared_buffers: bool,
         device: &WgpuDevice,
     ) -> Result<HashMap<TensorId, PooledGPUBuffer>, DeviceError> {
-        self.buffer_allocator.allocate_cfg(execution_order, device)
+        self.buffer_allocator.allocate_cfg(
+            execution_order,
+            output_tensors,
+            gpu_compile_keys,
+            use_shared_buffers,
+            device,
+        )
     }
 
-    pub fn begin_pass(&self) {
-        self.buffer_allocator.begin_pass(0);
+    // TODO(vinhowe): Not sure if I like these calls here
+    pub fn register_tensor(&self, tensor: &Tensor) {
+        self.lazy_graph_executor.read().register_tensor(tensor);
+    }
+
+    pub fn unregister_tensor(&self, id: TensorId) {
+        self.lazy_graph_executor.read().unregister_tensor(id);
+    }
+
+    pub fn mark_step(&self) -> Result<(), TensorError> {
+        self.lazy_graph_executor
+            .write()
+            .sync_live_tensors_graph(self)
+    }
+
+    pub fn sync_tensors_graph(&self, tensors: Vec<&Tensor>) -> Result<(), TensorError> {
+        self.lazy_graph_executor
+            .write()
+            .sync_tensors_graph(tensors, self)
+    }
+
+    pub fn begin_pass(&self, pass_index: u64) {
+        self.buffer_allocator.begin_pass(pass_index);
     }
 
     pub fn compute_features(&self) -> &DeviceFeatures {

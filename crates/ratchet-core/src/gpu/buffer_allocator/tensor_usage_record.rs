@@ -9,9 +9,9 @@ pub struct TensorUsageRecord {
     pub id: Option<TensorId>,
     pub producer: Option<usize>,
     pub last_consumer: usize,
-    #[cfg(debug_assertions)]
     pub last_consumer_id: TensorId,
     pub size: usize,
+    pub is_variable: Option<bool>,
 }
 
 impl std::ops::Index<usize> for TensorUsageRecords {

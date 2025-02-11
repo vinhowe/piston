@@ -5,7 +5,7 @@ use crate::ops::{BinaryOp, UnaryOp};
 use crate::{
     rvec, Affine, Binary, Broadcast, Cmp, Concat, Conv, DType, Gather, GroupNorm, IndexAdd,
     IndexSelect, LazyOp, Matmul, Norm, NormOp, Permute, Powf, Reduce, ReduceOp, Reindex,
-    ScatterAdd, Shape, Slice, Softmax, Tensor, TensorId, Unary, View, WgpuDevice, WhereCond,
+    ScatterAdd, Shape, Slice, Softmax, Tensor, TensorId, Unary, View, WhereCond,
 };
 use crate::{HashMap, Trilu};
 use anyhow::Result;
@@ -753,21 +753,6 @@ impl GradStore {
 
     pub fn iter_mut(&mut self) -> impl Iterator<Item = (&TensorId, &mut Tensor)> {
         self.0.iter_mut()
-    }
-
-    pub fn resolve(&mut self, device: &WgpuDevice) -> Result<()> {
-        // TODO(vinhowe): device is currently unused, but we expect to use it once it manages
-        // order/graph caching state. execution_order is one of the most expensive things we're doing
-        // —not GPU operations.
-
-        // Replace each gradient tensor with its resolved version
-        for (_, grad) in self.iter_mut() {
-            if !grad.resolved() {
-                *grad = grad.clone().resolve_deferred()?;
-            }
-        }
-        // device.poll(wgpu::MaintainBase::Wait);
-        Ok(())
     }
 
     /// Get the gradient tensor associated with the given tensor, or, if it does not exist,

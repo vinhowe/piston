@@ -304,7 +304,7 @@ def mlx_rope(input, dim, offset):
         let ground = ground_truth(&a, dim, offset).unwrap();
 
         let a = a.to(&device).unwrap();
-        let b = a.rope(dim, 10000.0, offset).unwrap().resolve().unwrap();
+        let b = a.rope(dim, 10000.0, offset).unwrap();
 
         let ours = b.to(&Device::CPU).unwrap();
         //println!("ours = \n{:#?}\n", ours.to_ndarray_view::<f32>());

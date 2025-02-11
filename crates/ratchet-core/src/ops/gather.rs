@@ -247,7 +247,7 @@ def gather(src, ids, dim):
         let src_gpu = src.to(&device).unwrap();
         let ids_gpu = ids.to(&device).unwrap();
 
-        let result = src_gpu.gather(ids_gpu, dim).unwrap().resolve_debug().unwrap();
+        let result = src_gpu.gather(ids_gpu, dim).unwrap();
 
         let ours = result.to(&Device::CPU).unwrap();
         log::debug!("src = {:?}", src);
@@ -323,11 +323,11 @@ def gather_backward(src, ids):
         let result_gpu = src_var
             .as_tensor()
             .clone()
-            .gather(ids_gpu, dim)?
-            .resolve_deferred()?;
+            .gather(ids_gpu, dim)?;
 
-        let mut grads = result_gpu.backward()?;
-        grads.resolve(device.try_gpu()?)?;
+        let grads = result_gpu.backward()?;
+        device.try_gpu()?.mark_step()?;
+
         let src_grad = grads.get(src_var.as_tensor()).unwrap().clone();
 
         let ours = src_grad.to(&Device::CPU)?;

@@ -591,10 +591,9 @@ def reduce(a):
                 ReduceOp::Sum => a_gpu.sum_all(),
                 _ => panic!("All * not supported"),
             },
-        }?
-        .resolve()?;
+        }?;
 
-        let ours = b_gpu.to(&Device::CPU)?.cast(DType::F32)?.resolve()?;
+        let ours = b_gpu.to(&Device::CPU)?.cast(DType::F32)?;
         // println!("input = {:?}", a);
         // println!("input strides = {:?}", a.strides());
         // println!("ours = {:?}", ours);
@@ -689,6 +688,7 @@ def reduce(a):
         device: Device,
     ) -> anyhow::Result<()> {
         let ReduceBackwardProblem { B, M, N } = problem;
+        let gpu_device = device.try_gpu()?;
         let a = Tensor::randn::<f32>(0., 1., shape![B, M, N], Device::CPU);
         let ground = ground_truth_backward(&a)?;
 
@@ -696,8 +696,8 @@ def reduce(a):
         let a_var = Var::from_tensor(&a_gpu)?;
         let b_gpu = a_var.as_tensor().clone().sum_all()?;
 
-        let mut grads = b_gpu.backward()?;
-        grads.resolve(device.try_gpu()?)?;
+        let grads = b_gpu.backward()?;
+        gpu_device.mark_step()?;
         let a_grad = grads.get(a_var.as_tensor()).unwrap().clone();
 
         let ours = a_grad.to(&Device::CPU)?;

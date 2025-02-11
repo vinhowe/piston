@@ -151,7 +151,7 @@ def slice(a):
 
         let a_gpu = a.to(&device)?;
         let ground = ground_truth(&a, &op.to.as_torch())?;
-        let ours = a_gpu.broadcast_to(op.to.clone())?.resolve()?;
+        let ours = a_gpu.broadcast_to(op.to.clone())?;
         let d_gpu = ours.to(&Device::CPU)?;
         ground.all_close(&d_gpu, 1e-5, 1e-5)?;
         Ok(())

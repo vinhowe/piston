@@ -216,9 +216,7 @@ def fill_constant(shape, value):
     fn run_fill_constant_trial(problem: FillConstantProblem, device: Device) {
         let FillConstantProblem { B, M, N, value } = problem;
 
-        let a = Tensor::full(&shape![B, M, N], value, &device)
-            .resolve_deferred()
-            .unwrap();
+        let a = Tensor::full(&shape![B, M, N], value, &device);
         let ground = ground_truth(&[B, M, N], value).unwrap();
 
         let a_gpu = a.to(&device).unwrap();

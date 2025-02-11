@@ -241,7 +241,7 @@ def affine(a, mul, add):
         let ground = ground_truth(&a, mul, add).unwrap();
 
         let a_gpu = a.to(&device).unwrap();
-        let b = a_gpu.affine(mul, add).unwrap().resolve().unwrap();
+        let b = a_gpu.affine(mul, add).unwrap();
 
         let ours = b.to(&Device::CPU).unwrap();
         println!("ours = {:?}", ours);

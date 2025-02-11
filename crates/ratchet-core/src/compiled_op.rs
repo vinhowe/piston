@@ -1,3 +1,5 @@
+#[cfg(feature = "debug")]
+use crate::gpu::BindGroupLayoutEntryDescriptor;
 use crate::gpu::{
     BindGroupDescriptor, BindGroupLayoutHandle, ComputePipelineHandle, GpuBindGroup, WgpuDevice,
     WorkgroupCount,
@@ -6,7 +8,6 @@ use crate::gpu::{
 use crate::TensorId;
 use crate::{drvec, rvec, KernelKey, OperationError, PooledGPUBuffer, RVec, Tensor};
 use derive_new::new;
-#[cfg(feature = "debug")]
 use std::sync::Arc;
 use wgpu::DynamicOffset;
 
@@ -32,19 +33,20 @@ impl CompiledCopy {
 }
 
 //Compiled op represents a single kernel invocation
-//TODO: We need to be more general here, enum with encoder.copy_buffer_to_buffer as a COPY, and
-//compiledOp as compute
 #[derive(Debug, new)]
 pub struct CompiledOp {
-    pipeline_handle: ComputePipelineHandle,
-    workgroup_count: WorkgroupCount,
-    storage_groups: RVec<GpuBindGroup>,
-    offset: DynamicOffset, //offset into the metadata uniform buffer
+    pub(crate) pipeline_handle: ComputePipelineHandle,
+    pub(crate) workgroup_count: WorkgroupCount,
+    pub(crate) storage_groups: RVec<GpuBindGroup>,
+    pub(crate) offset: DynamicOffset, //offset into the metadata uniform buffer
     pub kernel_key: KernelKey,
     #[cfg(feature = "debug")]
     pub debug_buffer: Option<(TensorId, Arc<wgpu::Buffer>)>,
     #[cfg(feature = "debug")]
     pub debug_input_buffers: Option<RVec<(TensorId, Arc<wgpu::Buffer>)>>,
+    #[cfg(feature = "debug")]
+    pub storage_bind_group_layout_entries: RVec<BindGroupLayoutEntryDescriptor>,
+}
 
 #[derive(Debug)]
 pub enum Compiled {

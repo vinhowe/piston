@@ -136,7 +136,7 @@ def embedding(weight, indices):
         let indices = indices.to(&device).unwrap();
 
         let embedding = Embedding::new(weight);
-        let result = embedding.schedule(indices).unwrap().resolve().unwrap();
+        let result = embedding.schedule(indices).unwrap();
         let x = result.to(&Device::CPU).unwrap();
         ground_truth.all_close(&x, 1e-6, 1e-6).unwrap();
     }

@@ -320,7 +320,7 @@ def permute(*tensors):
             t.to(&device)?;
         }
         let t_rvec = RVec::from(tensors);
-        let ours = Tensor::cat(t_rvec, dim)?.resolve()?;
+        let ours = Tensor::cat(t_rvec, dim)?;
         let result = ours.to(&Device::CPU)?;
         println!("Ground: {:?}\n", ground);
         println!("Ours: {:?}", result);

@@ -246,7 +246,7 @@ def powf(a, e):
         let ground = ground_truth(&a, e).unwrap();
 
         let a_gpu = a.to(&device).unwrap();
-        let b = a_gpu.powf(2.).unwrap().resolve().unwrap();
+        let b = a_gpu.powf(2.).unwrap();
 
         let ours = b.to(&Device::CPU).unwrap();
         ground.all_close(&ours, 1e-6, 1e-6).unwrap();

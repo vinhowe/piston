@@ -308,7 +308,7 @@ def {}(a, b):
         let BinaryProblem { op, shape } = prob;
         let a = Tensor::randn::<f32>(0., 1., shape.clone(), cpu_device.clone());
         let b = Tensor::randn::<f32>(0., 1., shape, cpu_device.clone());
-        let ground = ground_truth(&a, &b, &op)?.cast(DType::F32)?.resolve()?;
+        let ground = ground_truth(&a, &b, &op)?.cast(DType::F32)?;
 
         let a_gpu = a.to(&device)?;
         let b_gpu = b.to(&device)?;
@@ -319,10 +319,9 @@ def {}(a, b):
             CmpOp::Ge => a_gpu.ge(b_gpu)?,
             CmpOp::Lt => a_gpu.le(b_gpu)?,
             CmpOp::Gt => a_gpu.gt(b_gpu)?,
-        }
-        .resolve()?;
+        };
 
-        let d_gpu = c_gpu.to(&Device::CPU)?.cast(DType::F32)?.resolve()?;
+        let d_gpu = c_gpu.to(&Device::CPU)?.cast(DType::F32)?;
         ground.all_close(&d_gpu, 1e-4, 1e-4)?;
         Ok(())
     }
