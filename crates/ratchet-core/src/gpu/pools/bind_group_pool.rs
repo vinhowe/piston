@@ -14,6 +14,13 @@ pub struct GpuBindGroup {
     _owned_buffers: RVec<PooledGPUBuffer>,
 }
 
+#[cfg(feature = "debug")]
+impl GpuBindGroup {
+    pub fn descriptor(&self) -> &BindGroupDescriptor {
+        &self.resource.descriptor
+    }
+}
+
 impl std::fmt::Debug for GpuBindGroup {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("GpuBindGroup")

@@ -7,8 +7,8 @@ use ratchet_macros::WgslMetadata;
 use wgpu::BindGroupLayoutEntry;
 
 use crate::{
-    gpu::{BindGroupLayoutDescriptor, BindGroupLayoutEntryExt},
-    rvec, Array, BindingMode, BuiltIn, DType, GPUOperation, Kernel, KernelElement,
+    gpu::BindGroupLayoutDescriptor, rvec, Array, BindGroupLayoutEntryDescriptor,
+    BindGroupLayoutEntryExt, BindingMode, BuiltIn, DType, GPUOperation, Kernel, KernelElement,
     KernelRenderable, KernelSource, OpGuards, Operation, OperationError, RVec, Scalar, Shape,
     StorageView, Strides, Tensor, Vec2, Vec4, WgslKernelBuilder, WgslPrimitive, WorkgroupSize,
     Workload,
@@ -175,9 +175,9 @@ impl Kernel for CacheKernels {
         // Custom layout because of funky mutability requirements
         Ok(BindGroupLayoutDescriptor {
             entries: rvec![
-                BindGroupLayoutEntry::compute_storage_buffer(0, false),
-                BindGroupLayoutEntry::compute_storage_buffer(1, true),
-                BindGroupLayoutEntry::compute_storage_buffer(2, false)
+                BindGroupLayoutEntryDescriptor::compute_storage_buffer(0, false),
+                BindGroupLayoutEntryDescriptor::compute_storage_buffer(1, true),
+                BindGroupLayoutEntryDescriptor::compute_storage_buffer(2, false)
             ],
         })
     }
