@@ -34,7 +34,7 @@ pub fn cross_entropy(inp: Tensor, target: Tensor) -> anyhow::Result<Tensor> {
     nll(inp, target)
 }
 
-#[cfg(all(test))]
+#[cfg(all(test, feature = "pyo3"))]
 mod tests {
     use super::*;
     use anyhow::Result;
