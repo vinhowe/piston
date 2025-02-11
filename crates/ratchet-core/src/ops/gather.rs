@@ -271,6 +271,7 @@ def gather(src, ids, dim):
 
     #[proptest(cases = 8)]
     fn test_gather(prob: GatherProblem) {
+        let _ = env_logger::builder().is_test(true).try_init();
         let GatherProblem { B, M, N, dim } = prob;
         log::info!("B = {}, M = {}, N = {}, dim = {}", B, M, N, dim);
         let device = Device::request_device(DeviceRequest::GPU).unwrap();
@@ -344,6 +345,7 @@ def gather_backward(src, ids):
 
     #[proptest(cases = 8)]
     fn test_gather_backward(prob: GatherBackwardProblem) {
+        let _ = env_logger::builder().is_test(true).try_init();
         let GatherBackwardProblem { B, M, N, dim } = prob;
         println!("B = {}, M = {}, N = {}, dim = {}", B, M, N, dim);
         run_gather_backward_trial(prob).unwrap();
