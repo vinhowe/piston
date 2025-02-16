@@ -10,6 +10,7 @@ pub enum Activation {
     Relu2,
     Silu,
     Sigmoid,
+    Swiglu,
 }
 
 impl Module for Activation {
@@ -21,6 +22,7 @@ impl Module for Activation {
             Self::Relu2 => input.relu2(),
             Self::Silu => input.silu(),
             Self::Sigmoid => input.sigmoid(),
+            Self::Swiglu => input.swiglu(),
         }
     }
 }

@@ -463,6 +463,7 @@ impl Tensor {
     impl_unary_op!(ceil, UnaryOp::Ceil);
     impl_unary_op!(neg, UnaryOp::Neg);
     impl_unary_op!(sigmoid, UnaryOp::Sigmoid);
+    impl_unary_op!(swiglu, UnaryOp::Swiglu);
     impl_unary_op!(silu, UnaryOp::Silu);
     impl_unary_op!(square, UnaryOp::Square);
     impl_unary_op!(recip, UnaryOp::Reciprocal);

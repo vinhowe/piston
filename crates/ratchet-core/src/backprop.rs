@@ -512,6 +512,35 @@ impl Tensor {
                 }
                 LazyOp::Unary(Unary {
                     input: arg,
+                    op: UnaryOp::Swiglu,
+                }) => {
+                    // swiglu(x) = x^2 * sigma(x)
+                    //
+                    // By product rule:
+                    // d/dx [x^2 * sigma(x)] = 2x * sigma(x) + x^2 * sigma(x)*(1 - sigma(x)).
+
+                    // 1) Compute sigma(x) = 1 / (1 + e^-x).
+                    let sigmoid_arg = (arg.clone().neg()?.exp()? + 1.)?.recip()?;
+
+                    // By product rule:
+                    // 2) term1 = 2x * sigma(x).
+                    let product_term_1 = (arg.clone() * 2.)?.mul(sigmoid_arg.clone())?;
+
+                    // 3) term2 = x^2 * sigma(x)*(1 - sigma(x)).
+                    let product_term_2 = arg
+                        .clone()
+                        .square()?
+                        .mul(sigmoid_arg.clone())?
+                        .mul((1. - sigmoid_arg.clone())?)?;
+
+                    // 4) Final derivative wrt x is term1 + term2; multiply by the chain-rule grad.
+                    let swiglu_grad = product_term_1.add(product_term_2)?;
+                    let arg_grad = grad.mul(swiglu_grad)?;
+
+                    grads.accumulate_add(arg, arg_grad)?;
+                }
+                LazyOp::Unary(Unary {
+                    input: arg,
                     op: UnaryOp::Square,
                 }) => {
                     let arg_grad = arg.clone().mul(grad)?.affine(2., 0.)?;

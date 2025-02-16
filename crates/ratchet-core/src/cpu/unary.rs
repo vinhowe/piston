@@ -66,6 +66,9 @@ macro_rules! impl_unary_ops {
             impl_cpu_unary_op!(silu, |x: $dtype| x / ($conv(1.0) + (-x).exp()));
             impl_cpu_unary_op!(sigmoid, |x: $dtype| $conv(1.0) / ($conv(1.0) + (-x).exp()));
             impl_cpu_unary_op!(reciprocal, |x: $dtype| $conv(1.0) / x);
+            impl_cpu_unary_op!(swiglu, |x: $dtype| x
+                * x
+                * ($conv(1.0) / ($conv(1.0) + (-x).exp())));
 
             fn apply(op: &Unary, dst: Tensor) -> Result<Tensor, OperationError> {
                 match op.op() {
@@ -86,6 +89,7 @@ macro_rules! impl_unary_ops {
                     UnaryOp::Reciprocal => Self::reciprocal(op.input(), dst),
                     UnaryOp::Silu => Self::silu(op.input(), dst),
                     UnaryOp::Sigmoid => Self::sigmoid(op.input(), dst),
+                    UnaryOp::Swiglu => Self::swiglu(op.input(), dst),
                 }
             }
         }

@@ -38,6 +38,7 @@ pub enum UnaryOp {
     Reciprocal,
     Silu,
     Sigmoid,
+    Swiglu,
 }
 
 impl UnaryOp {
@@ -60,6 +61,7 @@ impl UnaryOp {
             UnaryOp::Reciprocal => "reciprocal".into(),
             UnaryOp::Silu => "silu".into(),
             UnaryOp::Sigmoid => "sigmoid".into(),
+            UnaryOp::Swiglu => "swiglu".into(),
         }
     }
 
@@ -141,6 +143,10 @@ impl KernelRenderable for UnaryKernels {
             }
             UnaryOp::Relu2 => {
                 kernel_builder.write_global(Unary::render_relu2::<P>());
+            }
+            UnaryOp::Swiglu => {
+                kernel_builder.write_global(Unary::render_sigmoid::<P>());
+                kernel_builder.write_global(Unary::render_swiglu::<P>());
             }
             _ => {}
         };
@@ -247,6 +253,16 @@ impl Unary {
         }
     }
 
+    fn render_swiglu<P: WgslPrimitive>() -> String {
+        let accessor = P::render_type();
+
+        wgsl! {
+            fn swiglu(val: 'accessor) -> 'accessor {
+                return val * val * sigmoid(val);
+            }
+        }
+    }
+
     fn render_square<P: WgslPrimitive>() -> String {
         let accessor = P::render_type();
 
@@ -289,6 +305,7 @@ impl Operation for Unary {
             UnaryOp::Reciprocal => "Reciprocal",
             UnaryOp::Silu => "Silu",
             UnaryOp::Sigmoid => "Sigmoid",
+            UnaryOp::Swiglu => "Swiglu",
         }
     }
 
@@ -471,6 +488,7 @@ def {}(a):
             UnaryOp::Reciprocal => a.recip()?,
             UnaryOp::Silu => a.silu()?,
             UnaryOp::Sigmoid => a.sigmoid()?,
+            UnaryOp::Swiglu => a.swiglu()?,
         };
 
         let (atol, rtol) = match op {
