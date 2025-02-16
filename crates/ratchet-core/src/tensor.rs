@@ -1120,15 +1120,10 @@ impl Tensor {
         device: Device,
         is_variable: bool,
     ) -> Tensor {
-        let mut rng = if let Ok(seed) = std::env::var("RATCHET_SEED") {
-            let seed = seed.parse::<u64>().unwrap();
-            StdRng::seed_from_u64(seed)
-        } else {
-            StdRng::from_entropy()
-        };
+        let rng = device.get_rng();
         let data = (0..shape.numel())
             .map(|_| {
-                let sample: T = rng.gen_range(low..high);
+                let sample: T = rng.write().gen_range(low..high);
                 sample
             })
             .collect::<Vec<_>>();
@@ -1153,18 +1148,12 @@ impl Tensor {
         device: Device,
         is_variable: bool,
     ) -> Self {
-        let mut rng = if let Ok(seed) = std::env::var("RATCHET_SEED") {
-            let seed = seed.parse::<u64>().unwrap();
-            StdRng::seed_from_u64(seed)
-        } else {
-            StdRng::from_entropy()
-        };
-
+        let rng = device.get_rng();
         if device.is_cpu() {
             let distr = Normal::new(mean as f64, std as f64).unwrap();
             let data = (0..shape.numel())
                 .map(|_| {
-                    let sample: f64 = distr.sample(&mut rng);
+                    let sample: f64 = distr.sample(&mut *rng.write());
                     T::from(sample as f32).expect("Failed to convert sample")
                 })
                 .collect::<Vec<_>>();
@@ -1183,7 +1172,7 @@ impl Tensor {
                     shape,
                     mean,
                     std,
-                    seed: Some(rng.next_u32()),
+                    seed: Some(rng.write().next_u32()),
                 }),
                 meta,
                 None,
@@ -1211,17 +1200,11 @@ impl Tensor {
         device: Device,
         is_variable: bool,
     ) -> Self {
-        let mut rng = if let Ok(seed) = std::env::var("RATCHET_SEED") {
-            let seed = seed.parse::<u64>().unwrap();
-            StdRng::seed_from_u64(seed)
-        } else {
-            StdRng::from_entropy()
-        };
+        let rng = device.get_rng();
         let distr = Uniform::new(lo, up);
-        //TODO: fix copy on CPU
         let data = (0..shape.numel())
             .map(|_| {
-                let sample: f32 = distr.sample(&mut rng) as f32;
+                let sample: f32 = distr.sample(&mut *rng.write());
                 T::from(sample).expect("Failed to convert sample")
             })
             .collect::<Vec<_>>();
