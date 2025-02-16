@@ -44,7 +44,8 @@ impl GroupNorm {
 
 impl crate::Module for GroupNorm {
     type Input = Tensor;
-    fn schedule(&self, input: Self::Input) -> anyhow::Result<Tensor> {
+    type Output = Tensor;
+    fn schedule(&self, input: Self::Input) -> anyhow::Result<Self::Output> {
         input.group_norm(
             self.num_groups,
             self.weight.clone(),

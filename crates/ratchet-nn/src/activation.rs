@@ -15,7 +15,9 @@ pub enum Activation {
 
 impl Module for Activation {
     type Input = Tensor;
-    fn schedule(&self, input: Self::Input) -> anyhow::Result<Tensor> {
+    type Output = Tensor;
+
+    fn schedule(&self, input: Self::Input) -> anyhow::Result<Self::Output> {
         match self {
             Self::Gelu => input.gelu(),
             Self::Relu => input.relu(),

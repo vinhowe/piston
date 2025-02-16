@@ -31,8 +31,9 @@ impl SinusoidalEmbedding {
 
 impl Module for SinusoidalEmbedding {
     type Input = SinusoidalInput;
+    type Output = Tensor;
 
-    fn schedule(&self, input: Self::Input) -> anyhow::Result<Tensor> {
+    fn schedule(&self, input: Self::Input) -> anyhow::Result<Self::Output> {
         let SinusoidalInput { input, offset } = input;
 
         // Get sequence length from input shape

@@ -28,8 +28,9 @@ impl MLP {
 
 impl Module for MLP {
     type Input = Tensor;
+    type Output = Tensor;
 
-    fn schedule(&self, input: Self::Input) -> anyhow::Result<ratchet::Tensor> {
+    fn schedule(&self, input: Self::Input) -> anyhow::Result<Self::Output> {
         let x = self.c_fc.schedule(input)?;
         let x = self.hidden_act.schedule(x)?;
         self.c_proj.schedule(x)

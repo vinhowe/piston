@@ -44,7 +44,8 @@ use ratchet::Tensor;
 /// represents the result of the computation, but the computation itself has not been performed.
 pub trait Module {
     type Input;
-    fn schedule(&self, input: Self::Input) -> anyhow::Result<Tensor>;
+    type Output;
+    fn schedule(&self, input: Self::Input) -> anyhow::Result<Self::Output>;
 }
 
 /// # MutableModule

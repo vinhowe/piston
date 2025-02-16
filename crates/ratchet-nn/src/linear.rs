@@ -15,7 +15,9 @@ pub struct Linear {
 
 impl Module for Linear {
     type Input = Tensor;
-    fn schedule(&self, input: Self::Input) -> anyhow::Result<Tensor> {
+    type Output = Tensor;
+
+    fn schedule(&self, input: Self::Input) -> anyhow::Result<Self::Output> {
         let w = match *input.shape().to_vec() {
             [b1, b2, _, _] => self.w.clone().broadcast_left(shape![b1, b2])?,
             [bsize, _, _] => self.w.clone().broadcast_left(shape![bsize])?,

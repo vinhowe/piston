@@ -54,6 +54,7 @@ impl LayerNorm {
 
 impl crate::Module for LayerNorm {
     type Input = Tensor;
+    type Output = Tensor;
 
     // Shader-accelerated implementation that I don't know how to broadcast
     // correctly
@@ -123,7 +124,9 @@ impl RMSNorm {
 
 impl crate::Module for RMSNorm {
     type Input = Tensor;
-    fn schedule(&self, input: Self::Input) -> anyhow::Result<Tensor> {
+    type Output = Tensor;
+
+    fn schedule(&self, input: Self::Input) -> anyhow::Result<Self::Output> {
         let src_dt = input.dt();
         input
             .float()?

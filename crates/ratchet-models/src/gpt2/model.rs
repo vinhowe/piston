@@ -116,8 +116,9 @@ pub struct GPT2Input {
 
 impl Module for GPT2 {
     type Input = GPT2Input;
+    type Output = Tensor;
 
-    fn schedule(&self, input: Self::Input) -> anyhow::Result<Tensor> {
+    fn schedule(&self, input: Self::Input) -> anyhow::Result<Self::Output> {
         let GPT2Input { x, index_pos } = input;
         let [b_size, seq_len]: [usize; 2] = x.shape().try_into()?;
 

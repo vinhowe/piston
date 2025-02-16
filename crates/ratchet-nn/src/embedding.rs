@@ -23,8 +23,9 @@ impl Embedding {
 
 impl Module for Embedding {
     type Input = Tensor;
+    type Output = Tensor;
 
-    fn schedule(&self, input: Self::Input) -> anyhow::Result<Tensor> {
+    fn schedule(&self, input: Self::Input) -> anyhow::Result<Self::Output> {
         let mut final_dims = input.shape().to_vec();
         final_dims.push(self.hidden_size);
         let indexes = input.flatten_all()?;

@@ -46,8 +46,9 @@ pub struct GPT2AttnInput {
 
 impl Module for GPT2SelfAttention {
     type Input = GPT2AttnInput;
+    type Output = Tensor;
 
-    fn schedule(&self, input: Self::Input) -> anyhow::Result<Tensor> {
+    fn schedule(&self, input: Self::Input) -> anyhow::Result<Self::Output> {
         let GPT2AttnInput {
             input,
             index_pos,
