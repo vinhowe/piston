@@ -1,17 +1,31 @@
 /// This is not a true GPT2 model, in that we probably couldn't load the weights from a GGML file.
 use std::{cell::RefCell, rc::Rc};
 
-use maybe_async::maybe_async;
-use ratchet::{shape, Device, Tensor};
-use ratchet_nn::{
-    embedding, layer_norm, Embedding, KVCache, LayerNorm, Linear, Module, VarBuilder,
-};
-
 use super::{
     attn::{GPT2AttnInput, GPT2SelfAttention},
     linear::linear_no_bias_gpt2,
     mlp::MLP,
 };
+use maybe_async::maybe_async;
+use ratchet::{shape, Device, Tensor};
+use ratchet_nn::{
+    embedding, layer_norm, Embedding, KVCache, LayerNorm, Linear, Module, SinusoidalEmbedding,
+    SinusoidalInput, VarBuilder,
+};
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum PositionalEncoding {
+    Learned,
+    RoPE,
+    ALiBi,
+    Sinusoidal,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum LayerNormPosition {
+    Pre,
+    Post,
+}
 
 // https://huggingface.co/microsoft/Phi-3-mini-4k-instruct/blob/main/config.json
 #[derive(Debug, Clone)]
@@ -22,6 +36,9 @@ pub struct Config {
     pub n_layer: usize,
     pub n_head: usize,
     pub block_size: usize,
+    pub attention_only: bool,
+    pub positional_encoding: PositionalEncoding,
+    pub layernorm_position: LayerNormPosition,
 }
 
 impl Config {
@@ -36,6 +53,8 @@ pub struct DecoderLayer {
     self_attn: GPT2SelfAttention,
     ffn_norm: LayerNorm,
     mlp: MLP,
+    attention_only: bool,
+    layernorm_position: LayerNormPosition,
 }
 
 impl DecoderLayer {
@@ -59,6 +78,8 @@ impl DecoderLayer {
             mlp,
             input_norm,
             ffn_norm,
+            attention_only: cfg.attention_only,
+            layernorm_position: cfg.layernorm_position.clone(),
         })
     }
 }
@@ -73,35 +94,66 @@ pub struct DecoderLayerInput {
 
 impl Module for DecoderLayer {
     type Input = DecoderLayerInput;
+    type Output = (Tensor, Tensor);
 
-    fn schedule(&self, input: Self::Input) -> anyhow::Result<Tensor> {
+    fn schedule(&self, input: Self::Input) -> anyhow::Result<Self::Output> {
         let DecoderLayerInput {
             x,
             index_pos,
             block_idx,
             cache,
         } = input;
+
         let residual = x.clone();
-        let xs = self.input_norm.schedule(x)?;
-        let attn_output = self.self_attn.schedule(GPT2AttnInput {
-            input: xs.clone(),
-            index_pos,
-            block_idx,
-            cache,
-        })?;
-        let xs = residual.add(attn_output)?;
-        let residual = xs.clone();
-        let xs = self.ffn_norm.schedule(xs)?;
-        let xs = self.mlp.schedule(xs)?;
-        let xs = residual.add(xs)?;
-        Ok(xs)
+        let (attn_output, attn_masks) = match self.layernorm_position {
+            LayerNormPosition::Pre => {
+                let xs = self.input_norm.schedule(x)?;
+                let (attn_output, attn_masks) = self.self_attn.schedule(GPT2AttnInput {
+                    input: xs,
+                    index_pos,
+                    block_idx,
+                    cache,
+                })?;
+                (residual.add(attn_output)?, attn_masks)
+            }
+            LayerNormPosition::Post => {
+                let (attn_output, attn_masks) = self.self_attn.schedule(GPT2AttnInput {
+                    input: x,
+                    index_pos,
+                    block_idx,
+                    cache,
+                })?;
+                let xs = self.input_norm.schedule(residual.add(attn_output)?)?;
+                (xs, attn_masks)
+            }
+        };
+
+        // Skip the feed-forward network if attention_only is true
+        if !self.attention_only {
+            let residual = attn_output.clone();
+            let xs = match self.layernorm_position {
+                LayerNormPosition::Pre => {
+                    let xs = self.ffn_norm.schedule(attn_output)?;
+                    let xs = self.mlp.schedule(xs)?;
+                    residual.add(xs)?
+                }
+                LayerNormPosition::Post => {
+                    let xs = self.mlp.schedule(self.ffn_norm.schedule(attn_output)?)?;
+                    self.ffn_norm.schedule(residual.add(xs)?)?
+                }
+            };
+            Ok((xs, attn_masks))
+        } else {
+            Ok((attn_output, attn_masks))
+        }
     }
 }
 
 #[derive(Debug)]
 pub struct GPT2 {
     pub wte: Embedding,
-    pub wpe: Embedding,
+    pub wpe: Option<Embedding>,
+    pub sinusoidal: Option<SinusoidalEmbedding>,
     pub layers: Vec<DecoderLayer>,
     pub ln_post: LayerNorm,
     pub lm_head: Linear,
@@ -122,10 +174,23 @@ impl Module for GPT2 {
         let GPT2Input { x, index_pos } = input;
         let [b_size, seq_len]: [usize; 2] = x.shape().try_into()?;
 
-        let pos = Tensor::arange(0, seq_len as i32, x.device())?;
-        let pos = pos.unsqueeze(0)?.broadcast_to(shape![b_size, seq_len])?;
-        let input_embeds = self.wte.schedule(x)?;
-        let position_embeds = self.wpe.schedule(pos)?;
+        let mut x = self.wte.schedule(x)?;
+
+        // Add positional embeddings based on the type
+        if let Some(wpe) = &self.wpe {
+            // Learned embeddings
+            let pos = Tensor::arange(0, seq_len as i32, x.device())?;
+            let pos = pos.unsqueeze(0)?.broadcast_to(shape![b_size, seq_len])?;
+            let position_embeds = wpe.schedule(pos)?;
+            x = x.add(position_embeds)?;
+        } else if let Some(sinusoidal) = &self.sinusoidal {
+            // Sinusoidal embeddings
+            x = sinusoidal.schedule(SinusoidalInput {
+                input: x,
+                offset: index_pos,
+            })?;
+        }
+        // For RoPE and ALiBi, positional encoding is handled in the attention layer
 
         let mut x = input_embeds.add(position_embeds)?;
 
@@ -151,14 +216,25 @@ impl GPT2 {
     pub async fn new(cfg: &Config, vb: VarBuilder<'_>) -> anyhow::Result<Self> {
         let vb_m = vb.pp("model");
         let wte = embedding(cfg.vocab_size, cfg.n_embd, vb_m.pp("wte")).await?;
-        let wpe = embedding(cfg.block_size, cfg.n_embd, vb_m.pp("wpe")).await?;
+
+        // Initialize positional encoding based on the type
+        let (wpe, sinusoidal) = match cfg.positional_encoding {
+            PositionalEncoding::Learned => (
+                Some(embedding(cfg.block_size, cfg.n_embd, vb_m.pp("wpe")).await?),
+                None,
+            ),
+            PositionalEncoding::Sinusoidal => (
+                None,
+                Some(SinusoidalEmbedding::new(cfg.n_embd, vb.device())?),
+            ),
+            PositionalEncoding::RoPE | PositionalEncoding::ALiBi => (None, None),
+        };
 
         let n_layers = cfg.n_layer as _;
 
         let mut layers = Vec::with_capacity(n_layers);
         let vb_l = vb_m.pp("layers");
         for layer_idx in 0..n_layers {
-            // let layer = DecoderLayer::new(rotary_emb.clone(), cfg, vb_l.pp(layer_idx))?;
             let layer = DecoderLayer::new(cfg, vb_l.pp(layer_idx)).await?;
             layers.push(layer)
         }
@@ -171,6 +247,7 @@ impl GPT2 {
         Ok(Self {
             wte,
             wpe,
+            sinusoidal,
             layers,
             ln_post,
             lm_head,
@@ -196,11 +273,12 @@ mod tests {
         Batcher,
     };
     use ratchet_nn::{
-        clip_grad_norm, cross_entropy, AdamW, Module, Optimizer, ParamsAdamW, VarBuilder, VarMap,
+        clip_grad_norm, cross_entropy, AdamW, ConstantLR, LRScheduler, Module, Optimizer,
+        ParamsAdamW, VarBuilder, VarMap,
     };
 
     use super::GPT2;
-    use crate::gpt2::model::{Config, GPT2Input};
+    use crate::gpt2::model::{Config, GPT2Input, PositionalEncoding};
 
     #[test]
     #[cfg_attr(feature = "ci", ignore)]
@@ -218,6 +296,9 @@ mod tests {
             n_layer: 4,
             n_head: 4,
             block_size: 64,
+            attention_only: false,
+            positional_encoding: PositionalEncoding::Learned,
+            layernorm_position: LayerNormPosition::Pre,
         };
 
         let varmap = VarMap::new();
@@ -284,6 +365,9 @@ mod tests {
             n_layer: 1,
             n_head: 1,
             block_size: 64,
+            attention_only: false,
+            positional_encoding: PositionalEncoding::Learned,
+            layernorm_position: LayerNormPosition::Pre,
         };
 
         let varmap = VarMap::new();
@@ -331,6 +415,9 @@ mod tests {
             n_layer: 4,
             n_head: 4,
             block_size: SEQUENCE_LENGTH,
+            attention_only: false,
+            positional_encoding: PositionalEncoding::Sinusoidal,
+            layernorm_position: LayerNormPosition::Pre,
         };
 
         let device = Device::request_device(ratchet::DeviceRequest::GPU).unwrap();
@@ -347,15 +434,16 @@ mod tests {
             ..Default::default()
         };
 
-        let mut opt = AdamW::new(
+        let opt = AdamW::new(
             varmap
                 .all_labeled_vars()
                 .iter()
                 .map(|(label, var)| (Some(label.to_owned()), var.to_owned()))
                 .collect::<Vec<(Option<String>, Var)>>(),
             params,
-        )
-        .unwrap();
+        )?;
+
+        let mut lr_scheduler = ConstantLR::new(opt, 1.0, 100);
 
         let task = TwoSumTask::new(5, 5, Some(10));
         let dataset_iter = ToyTaskIter::new(task, device.clone());
@@ -377,7 +465,7 @@ mod tests {
 
             let grads = loss.backward()?;
 
-            opt.step(&grads, &device)?;
+            lr_scheduler.step(&grads, &device)?;
 
             let loss_vec = loss.clone().to(&Device::CPU)?.to_vec::<f32>()?;
 
@@ -417,6 +505,9 @@ mod tests {
             n_layer: 12,
             n_head: 12,
             block_size: 256,
+            attention_only: false,
+            positional_encoding: PositionalEncoding::Learned,
+            layernorm_position: LayerNormPosition::Pre,
         };
 
         let iter = DatasetRandomIter::new(&dataset, false, config.block_size, device.clone());

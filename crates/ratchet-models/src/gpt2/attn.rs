@@ -2,9 +2,15 @@ use std::{cell::RefCell, rc::Rc};
 
 use maybe_async::maybe_async;
 use ratchet::{prelude::shape, rvec, Tensor};
-use ratchet_nn::{KVCache, Linear, Module, VarBuilder};
+use ratchet_nn::{
+    AlibiEmbedding, AlibiInput, KVCache, Linear, Module, RotaryEmbedding, RotaryInput, VarBuilder,
+};
 
-use super::{linear::linear_gpt2, linear::linear_gpt2_residual, model::Config};
+use super::{
+    linear::linear_gpt2,
+    linear::linear_gpt2_residual,
+    model::{Config, PositionalEncoding},
+};
 
 #[derive(Debug)]
 pub struct GPT2SelfAttention {
@@ -14,6 +20,8 @@ pub struct GPT2SelfAttention {
     n_embd: usize,
     n_head: usize,
     h_dim: usize,
+    rope: Option<RotaryEmbedding>,
+    alibi: Option<AlibiEmbedding>,
 }
 
 impl GPT2SelfAttention {
@@ -26,6 +34,21 @@ impl GPT2SelfAttention {
 
         let softmax_scale = Tensor::full(&shape![1], 1.0 / (h_dim as f32).sqrt(), vb.device());
 
+        let (rope, alibi) = match cfg.positional_encoding {
+            PositionalEncoding::RoPE => {
+                let rope_base = 10000.0f32;
+                (
+                    Some(RotaryEmbedding::new(h_dim, false, rope_base, 1.0)),
+                    None,
+                )
+            }
+            PositionalEncoding::ALiBi => (
+                None,
+                Some(AlibiEmbedding::new(cfg.n_head, 8.0)), // max_bias=8.0 is a common default
+            ),
+            PositionalEncoding::Learned | PositionalEncoding::Sinusoidal => (None, None),
+        };
+
         Ok(Self {
             c_attn,
             c_proj,
@@ -33,6 +56,8 @@ impl GPT2SelfAttention {
             n_head: cfg.n_head,
             n_embd: cfg.n_embd,
             h_dim,
+            rope,
+            alibi,
         })
     }
 }
@@ -75,22 +100,36 @@ impl Module for GPT2SelfAttention {
 
         let qkv_shape = shape![batch_size as _, q_len, self.n_head, self.h_dim];
 
-        let k = k.view(qkv_shape.clone())?.permute(&[0, 2, 1, 3])?;
-        let q = q.view(qkv_shape.clone())?.permute(&[0, 2, 1, 3])?;
+        let mut k = k.view(qkv_shape.clone())?.permute(&[0, 2, 1, 3])?;
+        let mut q = q.view(qkv_shape.clone())?.permute(&[0, 2, 1, 3])?;
         let v = v.view(qkv_shape.clone())?.permute(&[0, 2, 1, 3])?;
 
-        let att = q.matmul(k, false, true)?.mul(self.softmax_scale.clone())?;
+        // Apply RoPE if enabled
+        if let Some(rope) = &self.rope {
+            q = rope.schedule(RotaryInput {
+                input: q,
+                offset: index_pos,
+            })?;
+            k = rope.schedule(RotaryInput {
+                input: k,
+                offset: index_pos,
+            })?;
+        }
+
+        let mut att = q.matmul(k, false, true)?.mul(self.softmax_scale.clone())?;
+
+        // Apply ALiBi if enabled
+        if let Some(alibi) = &self.alibi {
+            att = alibi.schedule(AlibiInput { input: att })?;
+        }
 
         let att = if q_len <= 1 {
             att
         } else {
-            // let mask = cache.mask(block_idx)?.broadcast_to(att.shape().clone())?;
             let mask = cache
                 .borrow_mut()
                 .mask(q_len)?
                 .broadcast_to(att.shape().clone())?;
-            // println!("mask: {:?}", mask);
-            // println!("MASK MASK MASK dt: {:?}", mask.dt());
             masked_fill(&att, &mask, -1e9)?
         };
 
