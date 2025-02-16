@@ -1631,7 +1631,7 @@ impl Tensor {
             _ => self
                 .gpu_compile_key_for_op(self.op(), can_inplace, uniform)
                 .map(GpuCompileKey::Compute),
-    }
+        }
     }
 
     pub fn compile_gpu<'a>(
@@ -1680,7 +1680,7 @@ impl Tensor {
             Device::GPU(gpu_device) => {
                 gpu_device.sync_tensors_graph(vec![&self])?;
                 Ok(self.clone())
-    }
+            }
             Device::CPU => self.clone().resolve_cpu(),
         }
     }
@@ -1716,7 +1716,7 @@ impl Tensor {
             self.device.clone(),
             false,
         )
-}
+    }
 
     #[maybe_async]
     async fn to_cpu(&self) -> Result<Tensor, TensorError> {

@@ -426,16 +426,16 @@ fn hash_ir_value<H: Hasher>(
             shape.hash(state);
         }
         IrValue::Ir(ir) => ir.shape_hash(state, tensor_hashes, compile_key),
-        // If list size changes, the IR changes. Can't think of a case where we wouldn't
-        // want this to be true...
+        // If list size changes, the IR changes. Can't think of a case where we wouldn't want this
+        // to be true...
         IrValue::Vec(vec) => {
             for (i, value) in vec.iter().enumerate() {
                 hash_key(&format!("{}", i), state);
                 hash_ir_value(value, state, tensor_hashes, compile_key);
             }
         }
-        // We don't hash scalar values or None values, relying on the compile key to
-        // differentiate them.
+        // We don't hash scalar values or None values, relying on the compile key to differentiate
+        // them.
         IrValue::Scalar(_) | IrValue::None => state.write_u64(0),
         IrValue::Fields(_) => panic!("Fields should not be present in finalized op"),
     }
