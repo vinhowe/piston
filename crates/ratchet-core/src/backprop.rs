@@ -4,7 +4,7 @@
 use crate::ops::{BinaryOp, UnaryOp};
 use crate::{
     rvec, Affine, Binary, Broadcast, Cmp, Concat, Conv, DType, Gather, GroupNorm, IndexAdd,
-    IndexSelect, LazyOp, Matmul, Norm, NormOp, Permute, Powf, Reduce, ReduceOp, Reindex,
+    IndexSelect, LazyOp, Matmul, Norm, NormOp, Permute, Powf, Reduce, ReduceOp, Reindex, RoPE,
     ScatterAdd, Shape, Slice, Softmax, Tensor, TensorId, Unary, View, WhereCond,
 };
 use crate::{HashMap, Trilu};
@@ -153,6 +153,7 @@ impl Tensor {
                     | LazyOp::Reindex(Reindex::Broadcast(Broadcast { src: node, .. }))
                     | LazyOp::Reindex(Reindex::Slice(Slice { src: node, .. }))
                     | LazyOp::Softmax(Softmax { input: node, .. })
+                    | LazyOp::RoPE(RoPE { input: node, .. })
                     | LazyOp::Powf(Powf { src: node, .. }) => {
                         let (tg, nodes) = walk(node, nodes, already_seen);
                         track_grad |= tg;
@@ -654,13 +655,25 @@ impl Tensor {
                     };
                     grads.accumulate_add(arg, masked_grad)?;
                 }
+                LazyOp::Alibi(Alibi { input, .. }) => {
+                    grads.accumulate_add(input, grad)?;
+                }
                 LazyOp::Norm(_) => todo!(),
                 LazyOp::Const => panic!("ratchet internal error - const node in backprop"),
                 LazyOp::Concat(_) => todo!(),
                 LazyOp::Cmp(_) => todo!(),
                 LazyOp::Powf(_) => todo!(),
                 LazyOp::Cast(_) => todo!(),
-                LazyOp::RoPE(_) => todo!(),
+                LazyOp::RoPE(RoPE {
+                    input: arg,
+                    dim,
+                    base,
+                    offset,
+                    ..
+                }) => {
+                    let arg_grad = grad.rope_backward(*dim, *base, *offset)?;
+                    grads.accumulate_add(arg, arg_grad)?;
+                }
                 LazyOp::Conv(_) => todo!(),
                 LazyOp::IndexWrite(_) => todo!(),
                 LazyOp::IndexAdd(_) => todo!(),

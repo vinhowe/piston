@@ -549,11 +549,30 @@ impl Tensor {
         ))
     }
 
-    pub fn rope(self, dim: usize, base: f32, offset: usize) -> anyhow::Result<Tensor> {
+    fn rope_impl(
+        self,
+        dim: usize,
+        base: f32,
+        offset: usize,
+        is_backward: bool,
+    ) -> anyhow::Result<Tensor> {
         let device = self.device.clone();
-        let rope = RoPE::new(self, dim, base, offset);
+        let rope = RoPE::new(self, dim, base, offset, is_backward);
         let new_view = rope.compute_view()?;
         Ok(Tensor::lazy(LazyOp::RoPE(rope), new_view, device, false))
+    }
+
+    pub fn rope(self, dim: usize, base: f32, offset: usize) -> anyhow::Result<Tensor> {
+        self.rope_impl(dim, base, offset, false)
+    }
+
+    pub(crate) fn rope_backward(
+        self,
+        dim: usize,
+        base: f32,
+        offset: usize,
+    ) -> anyhow::Result<Tensor> {
+        self.rope_impl(dim, base, offset, true)
     }
 
     //TODO: horrific interface
