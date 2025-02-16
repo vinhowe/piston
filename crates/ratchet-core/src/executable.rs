@@ -346,7 +346,7 @@ impl Executable {
                     wasm_bindgen_futures::spawn_local(log_fn(
                         si,
                         d,
-                        debug_buffer,
+                        debug_buffer.as_ref(),
                         debug_input_buffers,
                         kernel_key,
                         alignment,
