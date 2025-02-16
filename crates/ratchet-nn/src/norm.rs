@@ -135,17 +135,11 @@ impl crate::Module for RMSNorm {
     }
 }
 
-#[cfg(target_arch = "wasm32")]
+#[maybe_async]
 pub async fn rms_norm(size: usize, eps: f32, vb: crate::VarBuilder<'_>) -> anyhow::Result<RMSNorm> {
     let weight = vb
         .get_with_hints(shape![size], "weight", crate::Init::Const(1.))
         .await?;
-    Ok(RMSNorm::new(weight, eps))
-}
-
-#[cfg(not(target_arch = "wasm32"))]
-pub fn rms_norm(size: usize, eps: f32, vb: crate::VarBuilder) -> anyhow::Result<RMSNorm> {
-    let weight = vb.get_with_hints(shape![size], "weight", crate::Init::Const(1.))?;
     Ok(RMSNorm::new(weight, eps))
 }
 
