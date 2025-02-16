@@ -168,7 +168,7 @@ pub struct GPT2Input {
 
 impl Module for GPT2 {
     type Input = GPT2Input;
-    type Output = Tensor;
+    type Output = (Tensor, Tensor);
 
     fn schedule(&self, input: Self::Input) -> anyhow::Result<Self::Output> {
         let GPT2Input { x, index_pos } = input;
@@ -192,7 +192,7 @@ impl Module for GPT2 {
         }
         // For RoPE and ALiBi, positional encoding is handled in the attention layer
 
-        let mut x = input_embeds.add(position_embeds)?;
+        let mut attn_masks = vec![];
 
         for (block_idx, layer) in self.layers.iter().enumerate() {
             let input = DecoderLayerInput {
@@ -201,11 +201,15 @@ impl Module for GPT2 {
                 index_pos,
                 cache: self.kv_cache.clone(),
             };
-            x = layer.schedule(input)?;
+            let (layer_output, layer_attn_masks) = layer.schedule(input)?;
+            x = layer_output;
+            attn_masks.push(layer_attn_masks.flatten_from(2)?);
         }
+
+        let attn_masks = Tensor::stack(attn_masks.into(), 0)?;
         x = self.ln_post.schedule(x)?;
         let logits = self.lm_head.schedule(x)?;
-        Ok(logits)
+        Ok((logits, attn_masks))
     }
 }
 
@@ -328,7 +332,7 @@ mod tests {
             let input = Tensor::zeros::<i32>(&shape![BATCH_SIZE, config.block_size], &device);
             let tgt = Tensor::zeros::<i32>(&shape![BATCH_SIZE, config.block_size], &device);
 
-            let logits = model.schedule(GPT2Input {
+            let (logits, _) = model.schedule(GPT2Input {
                 x: input,
                 index_pos: 0,
             })?;
@@ -381,7 +385,7 @@ mod tests {
             let input = Tensor::zeros::<i32>(&shape![BATCH_SIZE, config.block_size], &device);
             let tgt = Tensor::zeros::<i32>(&shape![BATCH_SIZE, config.block_size], &device);
 
-            let logits = model.schedule(GPT2Input {
+            let (logits, _) = model.schedule(GPT2Input {
                 x: input,
                 index_pos: 0,
             })?;
@@ -456,7 +460,7 @@ mod tests {
 
             let (input, tgt) = batch?;
 
-            let logits = model.schedule(GPT2Input {
+            let (logits, _) = model.schedule(GPT2Input {
                 x: input,
                 index_pos: 0,
             })?;
@@ -533,7 +537,7 @@ mod tests {
 
         for (batch_index, batch) in batch_iter.enumerate() {
             let (input, tgt) = batch?;
-            let logits = model.schedule(GPT2Input {
+            let (logits, _) = model.schedule(GPT2Input {
                 x: input.clone(),
                 index_pos: 0,
             })?;

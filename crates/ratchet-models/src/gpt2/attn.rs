@@ -71,7 +71,7 @@ pub struct GPT2AttnInput {
 
 impl Module for GPT2SelfAttention {
     type Input = GPT2AttnInput;
-    type Output = Tensor;
+    type Output = (Tensor, Tensor);
 
     fn schedule(&self, input: Self::Input) -> anyhow::Result<Self::Output> {
         let GPT2AttnInput {
@@ -135,13 +135,14 @@ impl Module for GPT2SelfAttention {
 
         let att = att.softmax(3)?;
         let y = att
+            .clone()
             .matmul(v, false, false)?
             .permute(&[0, 2, 1, 3])?
             .view(shape![batch_size as _, q_len, self.n_embd])?;
 
         let y = self.c_proj.schedule(y)?;
 
-        Ok(y)
+        Ok((y, att))
     }
 }
 
