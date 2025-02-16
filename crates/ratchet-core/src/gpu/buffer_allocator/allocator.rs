@@ -440,4 +440,8 @@ impl BufferAllocator {
 
         Ok(assignments)
     }
+
+    pub fn usage_bytes(&self) -> u64 {
+        self.pool.read().total_gpu_size_in_bytes()
+    }
 }

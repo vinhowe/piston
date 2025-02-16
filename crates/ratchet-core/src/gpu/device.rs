@@ -320,6 +320,10 @@ impl WgpuDevice {
     pub fn compute_limits(&self) -> &DeviceLimits {
         &self.device_limits
     }
+
+    pub fn usage_bytes(&self) -> u64 {
+        self.buffer_allocator.usage_bytes()
+    }
 }
 
 #[derive(Clone)]
