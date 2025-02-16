@@ -1,3 +1,4 @@
+#![cfg(not(target_arch = "wasm32"))]
 use clap::{value_parser, Arg, ArgMatches, Command};
 use hf_hub::api::sync::Api;
 use ndarray::Axis;

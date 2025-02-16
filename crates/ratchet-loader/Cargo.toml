@@ -22,5 +22,7 @@ serde = { workspace = true, features = ["derive"] }
 
 [dev-dependencies]
 wasm-bindgen-test.workspace = true
-hf-hub.workspace = true
 tokio = { workspace = true, features = ["sync", "macros", "io-util", "rt", "time"] }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+hf-hub.workspace = true

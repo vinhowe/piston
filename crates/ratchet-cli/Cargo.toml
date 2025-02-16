@@ -7,7 +7,7 @@ edition = "2021"
 name = "ratchet"
 path = "src/bin/cli.rs"
 
-[dependencies]
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 ratchet = { path = "../ratchet-core" }
 ratchet-loader = { path = "../ratchet-loader" }
 ratchet-models = { path = "../ratchet-models" }
