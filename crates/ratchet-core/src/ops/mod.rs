@@ -1,4 +1,5 @@
 mod affine;
+mod alibi;
 mod arange;
 mod binary;
 mod cache;
@@ -28,6 +29,7 @@ mod where_cond;
 use std::sync::Arc;
 
 pub use affine::*;
+pub use alibi::*;
 pub use arange::*;
 pub use binary::*;
 pub use cache::*;

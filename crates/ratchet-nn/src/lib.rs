@@ -1,4 +1,5 @@
 mod activation;
+mod alibi;
 mod embedding;
 mod groupnorm;
 mod init;
@@ -13,6 +14,7 @@ mod var_builder;
 mod var_map;
 
 pub use activation::*;
+pub use alibi::*;
 pub use embedding::*;
 pub use groupnorm::*;
 pub use init::*;

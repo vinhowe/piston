@@ -3,7 +3,7 @@
 /// Methods for backpropagation of gradients.
 use crate::ops::{BinaryOp, UnaryOp};
 use crate::{
-    rvec, Affine, Binary, Broadcast, Cmp, Concat, Conv, DType, Gather, GroupNorm, IndexAdd,
+    rvec, Affine, Alibi, Binary, Broadcast, Cmp, Concat, Conv, DType, Gather, GroupNorm, IndexAdd,
     IndexSelect, LazyOp, Matmul, Norm, NormOp, Permute, Powf, Reduce, ReduceOp, Reindex, RoPE,
     ScatterAdd, Shape, Slice, Softmax, Tensor, TensorId, Unary, View, WhereCond,
 };
@@ -179,7 +179,7 @@ impl Tensor {
                     LazyOp::Copy(_) => todo!(),
                     LazyOp::Detach(_)
                     | LazyOp::Const
-                    | LazyOp::RoPE(_)
+                    | LazyOp::Alibi(_)
                     | LazyOp::Reduce(Reduce {
                         op: ReduceOp::ArgMax | ReduceOp::ArgMin,
                         ..

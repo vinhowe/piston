@@ -24,6 +24,7 @@ pub fn apply_operation(op: LazyOp, dst: Tensor) -> Result<Tensor, OperationError
         LazyOp::Matmul(m) => m.apply_cpu(dst),
         LazyOp::Softmax(s) => s.apply_cpu(dst),
         LazyOp::RoPE(r) => cpu_rope(r, dst),
+        LazyOp::Alibi(a) => todo!(),
         LazyOp::Unary(u) => u.apply_cpu(dst),
         LazyOp::Reindex(r) => r.apply_cpu(dst),
         LazyOp::Concat(c) => cpu_concat(c, dst),

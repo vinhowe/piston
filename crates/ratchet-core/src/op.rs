@@ -47,6 +47,7 @@ pub enum LazyOp {
     FillConstant(FillConstant),
     FillRandn(FillRandn),
     RoPE(RoPE),
+    Alibi(Alibi),
     Softmax(Softmax),
     View(View),             //Should be general class, metadata modification
     Select(IndexSelect),    //Can probably be Reindex
@@ -87,6 +88,7 @@ impl LazyOp {
             LazyOp::FillRandn(f) => f.name(),
             LazyOp::Arange(a) => a.name(),
             LazyOp::RoPE(r) => r.name(),
+            LazyOp::Alibi(a) => a.name(),
             LazyOp::Cache(c) => c.name(),
             LazyOp::View(v) => v.name(),
             LazyOp::Copy(c) => c.name(),
@@ -102,6 +104,7 @@ impl LazyOp {
             LazyOp::Cast(c) => c.srcs(),
             LazyOp::Matmul(m) => m.srcs(),
             LazyOp::RoPE(r) => r.srcs(),
+            LazyOp::Alibi(a) => a.srcs(),
             LazyOp::Softmax(s) => s.srcs(),
             LazyOp::Unary(u) => u.srcs(),
             LazyOp::Reindex(r) => r.srcs(),
@@ -135,6 +138,7 @@ impl LazyOp {
             LazyOp::Cast(c) => c.supports_inplace(),
             LazyOp::Matmul(m) => m.supports_inplace(),
             LazyOp::RoPE(r) => r.supports_inplace(),
+            LazyOp::Alibi(a) => a.supports_inplace(),
             LazyOp::Softmax(s) => s.supports_inplace(),
             LazyOp::Unary(u) => u.supports_inplace(),
             LazyOp::Reindex(r) => r.supports_inplace(),
@@ -174,6 +178,7 @@ impl LazyOp {
             LazyOp::Cast(c) => c.check_invariants(),
             LazyOp::Matmul(m) => m.check_invariants(),
             LazyOp::RoPE(r) => r.check_invariants(),
+            LazyOp::Alibi(a) => a.check_invariants(),
             LazyOp::Softmax(s) => s.check_invariants(),
             LazyOp::Unary(u) => u.check_invariants(),
             LazyOp::Reindex(r) => match r {
@@ -212,6 +217,7 @@ impl LazyOp {
             LazyOp::Cast(c) => c.ir(),
             LazyOp::Matmul(m) => m.ir(),
             LazyOp::RoPE(r) => r.ir(),
+            LazyOp::Alibi(a) => a.ir(),
             LazyOp::Softmax(s) => s.ir(),
             LazyOp::Unary(u) => u.ir(),
             LazyOp::Reindex(r) => r.ir(),

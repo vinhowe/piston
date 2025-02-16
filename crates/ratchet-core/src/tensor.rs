@@ -575,6 +575,13 @@ impl Tensor {
         self.rope_impl(dim, base, offset, true)
     }
 
+    pub fn alibi(self, max_bias: f32) -> anyhow::Result<Tensor> {
+        let device = self.device.clone();
+        let alibi = Alibi::new(self, max_bias);
+        let new_view = alibi.compute_view()?;
+        Ok(Tensor::lazy(LazyOp::Alibi(alibi), new_view, device, false))
+    }
+
     //TODO: horrific interface
     pub fn matmul(self, rhs: Tensor, trans_lhs: bool, trans_rhs: bool) -> anyhow::Result<Tensor> {
         let device = self.device.clone();
@@ -1604,6 +1611,7 @@ impl Tensor {
             LazyOp::Matmul(m) => m.create_gpu_compile_key(self, can_inplace, uniform).ok(),
             LazyOp::Softmax(s) => s.create_gpu_compile_key(self, can_inplace, uniform).ok(),
             LazyOp::RoPE(r) => r.create_gpu_compile_key(self, can_inplace, uniform).ok(),
+            LazyOp::Alibi(a) => a.create_gpu_compile_key(self, can_inplace, uniform).ok(),
             LazyOp::Unary(u) => u.create_gpu_compile_key(self, can_inplace, uniform).ok(),
             LazyOp::Reindex(r) => r.create_gpu_compile_key(self, can_inplace, uniform).ok(),
             LazyOp::Concat(c) => c.create_gpu_compile_key(self, can_inplace, uniform).ok(),
@@ -1789,6 +1797,7 @@ pub fn compile_gpu_for_op(
         LazyOp::Matmul(m) => m.compile_gpu(gpu_compile_key, gpu_device, debug).ok(),
         LazyOp::Softmax(s) => s.compile_gpu(gpu_compile_key, gpu_device, debug).ok(),
         LazyOp::RoPE(r) => r.compile_gpu(gpu_compile_key, gpu_device, debug).ok(),
+        LazyOp::Alibi(a) => a.compile_gpu(gpu_compile_key, gpu_device, debug).ok(),
         LazyOp::Unary(u) => u.compile_gpu(gpu_compile_key, gpu_device, debug).ok(),
         LazyOp::Reindex(r) => r.compile_gpu(gpu_compile_key, gpu_device, debug).ok(),
         LazyOp::Concat(c) => c.compile_gpu(gpu_compile_key, gpu_device, debug).ok(),
