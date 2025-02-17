@@ -5,9 +5,9 @@ install-pyo3:
     pyenv local 3.10.6
     echo $(python --version)
 wasm CRATE:
-    node_modules/.bin/wasm-pack build -s ratchet --target web -d `pwd`/target/pkg/{{CRATE}} --out-name {{CRATE}} ./crates/{{CRATE}} --release
+    node_modules/.bin/wasm-pack build -s ratchet --target bundler -d `pwd`/target/pkg/{{CRATE}} --out-name {{CRATE}} ./crates/{{CRATE}} --release
 wasm-dbg CRATE:
-    node_modules/.bin/wasm-pack build -s ratchet --target web -d `pwd`/target/pkg/{{CRATE}} --out-name {{CRATE}} ./crates/{{CRATE}} --dev
+    node_modules/.bin/wasm-pack build -s ratchet --target bundler -d `pwd`/target/pkg/{{CRATE}} --out-name {{CRATE}} ./crates/{{CRATE}} --dev
 wasm-test CRATE BROWSER:
     cp ./config/webdriver-macos.json ./crates/{{CRATE}}/webdriver.json
     node_modules/.bin/wasm-pack test --{{BROWSER}} --headless `pwd`/crates/{{CRATE}}
