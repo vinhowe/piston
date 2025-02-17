@@ -28,9 +28,9 @@ wasm-opt = ['-O3', '--enable-simd']
 ratchet = { path = "../ratchet-core" }
 ratchet-loader = { path = "../ratchet-loader" }
 log.workspace = true
-# tokenizers = { version = "0.19.1", default-features = false, features = [
-#     "unstable_wasm",
-# ] }
+tokenizers = { version = "0.19.1", default-features = false, features = [
+    "unstable_wasm",
+] }
 anyhow.workspace = true
 memmap2.workspace = true
 rand.workspace = true
