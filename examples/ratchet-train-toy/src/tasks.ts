@@ -192,50 +192,49 @@ export function tokensToString(tokens: number[]): string {
 	return tokens.map((t) => String.fromCharCode(t)).join('');
 }
 
-// Helper function to pad a number to 2 digits
-function pad2(num: number): string {
-	return num.toString().padStart(2, '0');
-}
-
-// Helper function to pad a number to 3 digits
-function pad3(num: number): string {
-	return num.toString().padStart(3, '0');
+// A helper function to pad a number to the given number of digits
+function pad(num: number, digits: number): string {
+	return num.toString().padStart(digits, '0');
 }
 
 // Task-specific sequence generators
 function twoSumSequence(config: NumberSequenceConfig): [string, string] {
 	const { maxNum, seqLen } = config;
+	const width = Math.floor(Math.log10(maxNum)) + 1;
 	const nums = Array.from({ length: seqLen }, () => Math.floor(Math.random() * maxNum));
 	const i = Math.floor(Math.random() * seqLen);
 	const j = Math.floor(Math.random() * seqLen);
 	const sum = nums[i] + nums[j];
 	return [
-		`${nums.map((n) => pad2(n)).join(',')}:${pad3(sum)}=`,
-		`${pad2(nums[i])},${pad2(nums[j])}`
+		`${nums.map((n) => pad(n, width)).join(',')}:${pad(sum, width)}=`,
+		`${pad(nums[i], width)},${pad(nums[j], width)}`
 	];
 }
 
 function sortSequence(config: NumberSequenceConfig): [string, string] {
 	const { maxNum, seqLen } = config;
+	const width = Math.floor(Math.log10(maxNum)) + 1;
 	const nums = Array.from({ length: seqLen }, () => Math.floor(Math.random() * maxNum));
 	const sorted = [...nums].sort((a, b) => a - b);
-	return [`${nums.map((n) => pad2(n)).join(',')}:`, `${sorted.map((n) => pad2(n)).join(',')}`];
+	return [`${nums.map((n) => pad(n, width)).join(',')}:`, `${sorted.map((n) => pad(n, width)).join(',')}`];
 }
 
 function addSequence(config: AdditionConfig): [string, string] {
 	const { maxNum } = config;
+	const width = Math.floor(Math.log10(maxNum)) + 1;
 	const num1 = Math.floor(Math.random() * maxNum);
 	const num2 = Math.floor(Math.random() * maxNum);
 	const sum = num1 + num2;
-	return [`${pad2(num1)}+${pad2(num2)}=`, `${pad3(sum)}`];
+	return [`${pad(num1, width)}+${pad(num2, width)}=`, `${pad(sum, width)}`];
 }
 
 function modAddSequence(config: ModAdditionConfig): [string, string] {
 	const { maxNum } = config;
+	const width = Math.floor(Math.log10(maxNum)) + 1;
 	const num1 = Math.floor(Math.random() * maxNum);
 	const num2 = Math.floor(Math.random() * maxNum);
 	const sum = (num1 + num2) % maxNum;
-	return [`${pad2(num1)}+${pad2(num2)}%${pad2(maxNum)}=`, `${pad2(sum)}`];
+	return [`${pad(num1, width)}+${pad(num2, width)}%${pad(maxNum, width)}=`, `${pad(sum, width)}`];
 }
 
 // function countSequence(config: NumberSequenceConfig): [string, string] {
