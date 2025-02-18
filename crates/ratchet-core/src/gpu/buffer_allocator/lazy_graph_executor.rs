@@ -153,7 +153,7 @@ impl LazyGraphExecutor {
             tensors.into_iter().map(|t| (t.id(), t.clone())).collect(),
             None,
             gpu_device,
-            false,
+            true,
         )
     }
 
