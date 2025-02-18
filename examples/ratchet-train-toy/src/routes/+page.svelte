@@ -15,10 +15,12 @@
 	let speedChart: Chart;
 	let memoryChart: Chart;
 	let lrChart: Chart;
+	let accuracyChart: Chart;
 	let canvas: HTMLCanvasElement;
 	let speedCanvas: HTMLCanvasElement;
 	let memoryCanvas: HTMLCanvasElement;
 	let lrCanvas: HTMLCanvasElement;
+	let accuracyCanvas: HTMLCanvasElement;
 	let attentionCanvases: HTMLCanvasElement[][] = [];
 	let showAdvanced = false;
 	let runCount = 0;
@@ -136,6 +138,16 @@
 		initialLoss: number;
 	}> = [];
 	const MAX_HISTORY = 5; // Keep last 10 batches
+
+	// Add eval history state
+	let evalHistory: Array<{
+		sequence: string;
+		completion: string;
+		target: string;
+		results: Array<boolean | null>;
+		logits: number[];
+	}> = [];
+	const MAX_EVAL_HISTORY = 5;
 
 	// Add task parameter state
 	let taskParameters: Record<string, number> = {};
@@ -271,7 +283,8 @@
 
 	function startTraining() {
 		currentStepCount = 0;
-		// Clear batch history
+		// Clear evaluation and batch histories
+		evalHistory = [];
 		batchHistory = [];
 
 		// isTraining = true;
@@ -369,6 +382,16 @@
 			pointStyle: false
 		});
 
+		// Add dataset to accuracy chart
+		accuracyChart.data.datasets.push({
+			label: '', // Will be set by updateAllLabels
+			data: [],
+			borderColor: colors[runCount % colors.length],
+			tension: 0.1,
+			order: -runCount,
+			pointStyle: false
+		});
+
 		updateAllLabels();
 		lastStepTime = performance.now();
 
@@ -413,6 +436,38 @@
 					break;
 				case 'modelReady':
 					addMessage('Model initialized and ready');
+					break;
+				case 'evalStreaming':
+					// Convert sequence and completion to strings
+					const sequence = data.sequence.map((x: number) => String.fromCharCode(x)).join('');
+					const completion = data.completion.map((x: number) => String.fromCharCode(x)).join('');
+					const target = data.target.map((x: number) => String.fromCharCode(x)).join('');
+
+					// Update eval history - find existing entry or create new one
+					const existingIndex = evalHistory.findIndex((entry) => entry.sequence === sequence);
+					if (existingIndex !== -1) {
+						// Update existing entry
+						evalHistory[existingIndex] = {
+							...evalHistory[existingIndex],
+							completion,
+							target,
+							results: data.evalResult,
+							logits: data.logits.data
+						};
+						evalHistory = evalHistory; // Trigger reactivity
+					} else {
+						// Create new entry
+						evalHistory = [
+							{
+								sequence,
+								completion,
+								target,
+								results: data.evalResult,
+								logits: data.logits.data
+							},
+							...evalHistory.slice(0, MAX_EVAL_HISTORY - 1)
+						];
+					}
 					break;
 				case 'step':
 					currentStepCount++;
@@ -464,6 +519,18 @@
 					currentMemoryDataset.data.push(Number(data.usage_bytes) / (1024 * 1024)); // Convert bigint to number then to MB
 					currentLrDataset.data.push(data.learning_rate);
 
+					// Update accuracy chart only when we have valid accuracy data
+					if (data.accuracy !== null && data.accuracy !== undefined) {
+						const currentAccuracyDataset =
+							accuracyChart.data.datasets[accuracyChart.data.datasets.length - 1];
+						// Store both the step number and accuracy value
+						currentAccuracyDataset.data.push({
+							x: currentStepCount,
+							y: data.accuracy
+						});
+						accuracyChart.update();
+					}
+
 					// Update labels if this is the longest run
 					const maxLength = Math.max(...chart.data.datasets.map((d) => d.data.length));
 					const labels = Array.from({ length: maxLength }, (_, i) => i.toString());
@@ -471,6 +538,7 @@
 					speedChart.data.labels = labels;
 					memoryChart.data.labels = labels;
 					lrChart.data.labels = labels;
+					accuracyChart.data.labels = labels;
 
 					if (isNaN(loss)) {
 						addMessage('Loss is NaN; stopped training');
@@ -534,6 +602,7 @@
 					speedChart.update();
 					memoryChart.update();
 					lrChart.update();
+					accuracyChart.update();
 					break;
 				case 'error':
 					addMessage(`Error: ${data.error}`);
@@ -680,6 +749,57 @@
 				}
 			}
 		});
+
+		// Initialize accuracy chart
+		accuracyChart = new Chart(accuracyCanvas, {
+			type: 'line',
+			data: {
+				labels: [],
+				datasets: []
+			},
+			options: {
+				responsive: true,
+				animation: false,
+				aspectRatio: 4,
+				scales: {
+					x: {
+						type: 'linear',
+						display: true,
+						title: {
+							display: true,
+							text: 'Steps'
+						}
+					},
+					y: {
+						beginAtZero: true,
+						max: 1,
+						title: {
+							display: true,
+							text: 'Accuracy'
+						}
+					}
+				},
+				plugins: {
+					legend: {
+						display: false
+					},
+					title: {
+						display: true,
+						text: 'Validation Accuracy',
+						font: {
+							weight: 'bold'
+						}
+					}
+				},
+				datasets: {
+					line: {
+						order: -1,
+						showLine: true, // Connect points with lines
+						spanGaps: true // Connect points across gaps
+					}
+				}
+			}
+		});
 	});
 </script>
 
@@ -727,6 +847,9 @@
 			</div>
 			<div class="relative w-full">
 				<canvas bind:this={canvas} />
+			</div>
+			<div class="relative w-full">
+				<canvas bind:this={accuracyCanvas} />
 			</div>
 
 			<!-- Add checkbox before the attention visualization section -->
@@ -800,6 +923,38 @@
 						{/each}
 					</div>
 				</div>
+
+				{#if evalHistory.length > 0}
+					<div class="bg-gray-100 p-4 flex flex-col gap-4">
+						<div class="flex items-center justify-between">
+							<h3 class="text-sm font-medium">Eval Results</h3>
+							<div class="text-xs text-gray-500">Showing last {MAX_EVAL_HISTORY} evaluations</div>
+						</div>
+						<div class="flex flex-col gap-2">
+							{#each evalHistory as evalEntry}
+								<div class="flex flex-col leading-none border-l-2 border-gray-300 pl-1">
+									<div class="flex items-center">
+										<div class="font-mono text-sm">
+											<span>{evalEntry.sequence}</span
+											>{#each evalEntry.completion.split('') as char, i}
+												<span
+													style="background-color: {evalEntry.results[i] === true
+														? 'rgba(0, 255, 0, 0.3)'
+														: evalEntry.results[i] === false
+															? 'rgba(255, 0, 0, 0.3)'
+															: 'transparent'}"
+												>
+													{char}
+												</span>
+											{/each}
+											<span>&rarr; {evalEntry.target}</span>
+										</div>
+									</div>
+								</div>
+							{/each}
+						</div>
+					</div>
+				{/if}
 			{/if}
 			<div class="relative w-full">
 				<canvas bind:this={lrCanvas} />
