@@ -19,8 +19,9 @@ use ratchet_models::gpt2::generate;
 use ratchet_models::gpt2::{Config, GPT2Input, PositionalEncoding};
 use ratchet_models::gpt2::{LayerNormPosition, GPT2};
 use ratchet_nn::{
-    clip_grad_norm, cross_entropy, Activation, AdamW, ConstantLR, CosineAnnealingLR, LRScheduler,
-    LRSchedulerCore, LinearLR, Module, Optimizer, ParamsAdamW, VarBuilder, VarMap, SGD,
+    clip_grad_norm, cross_entropy, log_softmax, nll, Activation, AdamW, ConstantLR,
+    CosineAnnealingLR, LRScheduler, LRSchedulerCore, LinearLR, Module, Optimizer, ParamsAdamW,
+    VarBuilder, VarMap, SGD,
 };
 use serde::{Deserialize, Serialize};
 use std::iter::Iterator;
@@ -385,15 +386,15 @@ impl Trainer {
             })
             .map_err(|e| e.to_string())?;
 
-        // Flatten the logits and targets.
-        let logits_flat = logits.flatten_to(1).map_err(|e| e.to_string())?;
+        // Flatten the logits and targets, compute the cross-entropy loss.
+        let logits_flat = logits.clone().flatten_to(1).map_err(|e| e.to_string())?;
         let target_flat = target_tensor.flatten_to(1).map_err(|e| e.to_string())?;
-
-        // Compute the cross-entropy loss.
-        let loss = cross_entropy(logits_flat, target_flat).map_err(|e| e.to_string())?;
+        let inp = log_softmax(logits_flat, 1).map_err(|e| e.to_string())?;
+        let loss = nll(inp, target_flat).map_err(|e| e.to_string())?;
+        let loss_summed = loss.clone().sum_all().map_err(|e| e.to_string())?;
 
         // Backpropagate to compute gradients.
-        let grads = loss.backward().map_err(|e| e.to_string())?;
+        let grads = loss_summed.backward().map_err(|e| e.to_string())?;
 
         // Run an optimizer step (updating model parameters).
         self.optimizer
@@ -415,13 +416,25 @@ impl Trainer {
         let attn_masks_shape = attn_masks_cpu.shape().to_vec();
         let attn_masks_data = attn_masks_cpu.to_vec::<f32>().map_err(|e| e.to_string())?;
 
-        // Create a JS-friendly object with both loss and attention masks
+        // Add logits to the result:
+        let logits_cpu = logits.to(&Device::CPU).await.map_err(|e| e.to_string())?;
+        let logits_shape = logits_cpu.shape().to_vec();
+        let logits_data = logits_cpu.to_vec::<f32>().map_err(|e| e.to_string())?;
+
+        // Build a JS-friendly JSON with loss, LR, attn masks, and logits
         let result = serde_json::json!({
-            "loss": loss_vec[0],
+            "loss": {
+                "tokens": loss_vec,
+                "total": loss_vec.iter().sum::<f32>(),
+            },
             "learning_rate": self.optimizer.get_lr(),
             "attn_masks": {
                 "data": attn_masks_data,
                 "shape": attn_masks_shape,
+            },
+            "logits": {
+                "data": logits_data,
+                "shape": logits_shape,
             }
         });
 

@@ -14,7 +14,6 @@ pub fn nll(inp: Tensor, target: Tensor) -> anyhow::Result<Tensor> {
         dims => anyhow::bail!("the target tensor should have two dimensions ({dims:?})"),
     }
     inp.gather(target.clone().unsqueeze(1)?, 1)?
-        .sum_all()?
         .affine(-1f32 / b_sz as f32, 0.)
 }
 
@@ -31,7 +30,7 @@ pub fn cross_entropy(inp: Tensor, target: Tensor) -> anyhow::Result<Tensor> {
         anyhow::bail!("cross_entropy expects an input tensor of rank 2")
     }
     let inp = log_softmax(inp, 1)?;
-    nll(inp, target)
+    nll(inp, target)?.sum_all()
 }
 
 #[cfg(all(test, feature = "pyo3"))]
