@@ -89,12 +89,80 @@ async function trainingLoop(sessionId: number, config: TrainerConfig) {
 			const attn_masks = result.get('attn_masks') as Map<string, Uint8Array | number[]>;
 			const usage_bytes = trainer.usage_bytes();
 
+			let winCount = null;
+			const EVAL_TRIAL_COUNT = 5;
+
+			// After every 10 steps, evaluate the model
+			if (step % 10 === 0) {
+				const [streamingSequence, streamingTarget] = evalConfig.generator(config.task_parameters);
+				let streamingExampleCompletion: number[] | null = null;
+				const streamingExampleLogits: number[] = [];
+				let streamingExampleMetric: boolean | null = null;
+
+				// For the first eval, we'll stream it to the frontend
+				await trainer.generate(
+					streamingSequence,
+					/* max_tokens= */ streamingTarget.length + 1,
+					(tokens: number[], logitsObj: { shape: number[]; data: number[] }) => {
+						// For the first call (prompt), just store logits
+						if (streamingExampleCompletion === null) {
+							streamingExampleCompletion = [];
+							streamingExampleLogits.push(...logitsObj.data);
+							return;
+						}
+
+						// For each subsequent token, append it and evaluate
+						streamingExampleCompletion.push(...tokens);
+						streamingExampleLogits.push(...logitsObj.data);
+
+						// Run the metric on the current completion
+						const evalResult = evalConfig.metric(
+							streamingExampleCompletion,
+							streamingTarget,
+							streamingSequence,
+							config.task_parameters
+						);
+
+						streamingExampleMetric = evalResult.every((result) => result);
+
+						// Send the streaming eval result to the frontend
+						if (sessionId === currentSession) {
+							self.postMessage({
+								type: 'evalStreaming',
+								sequence: streamingSequence,
+								completion: streamingExampleCompletion,
+								target: streamingTarget,
+								evalResult,
+								logits: {
+									data: streamingExampleLogits,
+									shape: logitsObj.shape
+								}
+							});
+						}
+					}
+				);
+
+				winCount = streamingExampleMetric === true ? 1 : 0;
+
+				// We'll do best of 5 evals, so we'll do the rest non-streaming
+				for (let i = 0; i < EVAL_TRIAL_COUNT - 1; i++) {
+					const [sequence, target] = evalConfig.generator(config.task_parameters);
+					const result = await trainer.generate(sequence, target.length + 1);
+					const tokens = result.get('tokens') as number[];
+					const evalResult = evalConfig.metric(tokens, target, sequence, config.task_parameters);
+					if (evalResult.every((result) => result)) {
+						winCount++;
+					}
+				}
+			}
+
 			// Only send message if this is still the current session
 			if (sessionId === currentSession) {
 				self.postMessage({
 					type: 'step',
 					input: input,
 					target: target,
+					accuracy: winCount === null ? null : winCount / EVAL_TRIAL_COUNT,
 					loss: {
 						total: loss.get('total'),
 						tokens: loss.get('tokens')
@@ -121,6 +189,7 @@ async function trainingLoop(sessionId: number, config: TrainerConfig) {
 			}
 			break;
 		}
+		step++;
 		// Yield to keep the worker responsive
 		await new Promise((resolve) => setTimeout(resolve, 0));
 	}
