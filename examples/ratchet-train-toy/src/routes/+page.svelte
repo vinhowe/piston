@@ -6,6 +6,7 @@
 	import LogSlider from '$lib/components/LogSlider.svelte';
 	import TickSlider from '$lib/components/TickSlider.svelte';
 	import ActivationPicker from '$lib/components/ActivationPicker.svelte';
+	import { taskMetadata } from '../tasks';
 
 	let loss = 0;
 	let worker: Worker;
@@ -52,6 +53,7 @@
 
 	// Track last parameter values to detect actual changes
 	let lastParams: Record<string, any> | null = null;
+	let lastTaskParams: Record<string, number> | null = null;
 
 	// Add reactive statement to restart training when parameters change
 	$: {
@@ -82,13 +84,21 @@
 		if (lastParams === null) {
 			// First time through, just store the parameters
 			lastParams = { ...currentParams };
+			lastTaskParams = { ...taskParameters };
 		} else {
 			// Check if any parameter actually changed
 			const hasChanges = Object.entries(currentParams).some(
 				([key, value]) => lastParams![key] !== value
 			);
 
-			if (worker && isTraining && hasChanges) {
+			// Check which task parameters changed
+			const hasTaskChanges =
+				Object.keys(lastTaskParams!).length > 0 &&
+				Object.entries(taskParameters).some(([key, value]) => lastTaskParams![key] !== value);
+
+			lastTaskParams = { ...taskParameters };
+
+			if (worker && isTraining && (hasChanges || hasTaskChanges)) {
 				// Update last params before restarting
 				lastParams = { ...currentParams };
 				// Restart training with new parameters
@@ -116,6 +126,21 @@
 	let scheduler_factor = 1.5;
 	let scheduler_steps = 1000;
 	let scheduler_eta_min = 1e-4;
+
+	// Add task parameter state
+	let taskParameters: Record<string, number> = {};
+
+	// Initialize task parameters with defaults
+	$: {
+		if (dataset && taskMetadata[dataset]) {
+			const metadata = taskMetadata[dataset];
+			for (const [key, param] of Object.entries(metadata.parameters)) {
+				if (!(key in taskParameters)) {
+					taskParameters[key] = param.default;
+				}
+			}
+		}
+	}
 
 	function initializeAttentionCanvases(numLayers: number, numHeads: number) {
 		if (typeof document === 'undefined') return; // Check if we're in the browser
@@ -252,6 +277,7 @@
 			block_size: 24,
 			batch_size,
 			dataset,
+			task_parameters: taskParameters,
 			activation,
 			attention_only: attentionOnly,
 			positional_encoding,
@@ -389,7 +415,7 @@
 					const stepsPerSecond = 1000 / (currentTime - lastStepTime);
 					lastStepTime = currentTime;
 
-					loss = data.loss;
+					loss = data.loss.total;
 					const currentLossDataset = chart.data.datasets[chart.data.datasets.length - 1];
 					const currentSpeedDataset = speedChart.data.datasets[speedChart.data.datasets.length - 1];
 					const currentMemoryDataset =
@@ -752,13 +778,9 @@
 							bind:value={dataset}
 							class="w-full p-2 pr-12 border focus:outline-none focus:border-gray-400 border-gray-400 bg-white appearance-none"
 						>
-							<option value="sort">Sorting</option>
-							<option value="add">Addition</option>
-							<option value="mod_add">Modular Addition</option>
-							<option value="count">Counting</option>
-							<option value="slapjack">Slapjack</option>
-							<option value="two_sum">Two Sum</option>
-							<option value="zeros">Zeros</option>
+							{#each Object.entries(taskMetadata) as [key, meta]}
+								<option value={key}>{meta.name}</option>
+							{/each}
 						</select>
 						<div
 							class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-400"
@@ -773,7 +795,22 @@
 							>
 						</div>
 					</div>
-					<!-- <b>(put short visual explainer here + options)</b> -->
+					{#if dataset && taskMetadata[dataset]}
+						<p class="text-sm text-gray-600 mt-1">{taskMetadata[dataset].description}</p>
+						<div class="mt-4 space-y-4">
+							{#each Object.entries(taskMetadata[dataset].parameters) as [key, param]}
+								<div class="form-group">
+									<TickSlider
+										bind:value={taskParameters[key]}
+										min={param.min}
+										max={param.max}
+										label={param.name}
+									/>
+									<p class="text-sm text-gray-600 mt-1">{param.description}</p>
+								</div>
+							{/each}
+						</div>
+					{/if}
 				</div>
 			</div>
 			<div class="bg-gray-100 p-4">
