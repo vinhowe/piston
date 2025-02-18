@@ -77,8 +77,8 @@ export const taskMetadata: Record<string, TaskMetadata> = {
 				name: 'Modulo',
 				description: 'The modulo to use',
 				min: 10,
-				max: 100,
-				default: 100
+				max: 113,
+				default: 113
 			}
 		}
 	},
