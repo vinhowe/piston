@@ -9,6 +9,7 @@
 	import { taskMetadata } from '../tasks';
 
 	let loss = 0;
+	let initialTotalLoss: number | null = null;
 	let worker: Worker;
 	let chart: Chart;
 	let speedChart: Chart;
@@ -126,6 +127,15 @@
 	let scheduler_factor = 1.5;
 	let scheduler_steps = 1000;
 	let scheduler_eta_min = 1e-4;
+
+	// Add new state for batch visualization
+	let batchHistory: Array<{
+		input: string[];
+		target: string[];
+		losses: number[];
+		initialLoss: number;
+	}> = [];
+	const MAX_HISTORY = 5; // Keep last 10 batches
 
 	// Add task parameter state
 	let taskParameters: Record<string, number> = {};
@@ -261,6 +271,9 @@
 
 	function startTraining() {
 		currentStepCount = 0;
+		// Clear batch history
+		batchHistory = [];
+
 		// isTraining = true;
 		// Store the current model configuration
 		currentModelLayers = n_layer;
@@ -416,6 +429,30 @@
 					lastStepTime = currentTime;
 
 					loss = data.loss.total;
+					if (initialTotalLoss === null) {
+						initialTotalLoss = loss;
+					}
+
+					// Process batch data for visualization
+					const inputStrings = data.input.map((x: Array<number>) =>
+						x.map((y: number) => String.fromCharCode(y))
+					);
+					const targetStrings = data.target.map((x: Array<number>) =>
+						x.map((y: number) => String.fromCharCode(y))
+					);
+					const tokenLosses = data.loss.tokens.map((x: number) => x * data.loss.tokens.length);
+
+					// Update batch history
+					batchHistory = [
+						{
+							input: inputStrings,
+							target: targetStrings,
+							losses: tokenLosses,
+							initialLoss: initialTotalLoss / 2
+						},
+						...batchHistory.slice(0, MAX_HISTORY - 1)
+					];
+
 					const currentLossDataset = chart.data.datasets[chart.data.datasets.length - 1];
 					const currentSpeedDataset = speedChart.data.datasets[speedChart.data.datasets.length - 1];
 					const currentMemoryDataset =
@@ -727,6 +764,41 @@
 							{/each}
 						</div>
 					{/if}
+				</div>
+			{/if}
+
+			{#if isTraining}
+				<div class="bg-gray-100 p-4 flex flex-col gap-4">
+					<div class="flex items-center justify-between">
+						<h3 class="text-sm font-medium">Train Batches</h3>
+						<div class="text-xs text-gray-500">Showing last {MAX_HISTORY} batches</div>
+					</div>
+					<div class="flex flex-col gap-2">
+						{#each batchHistory as batch}
+							<div class="flex flex-col leading-none border-l-2 border-gray-300 pl-1">
+								{#each batch.input as input, batchIdx}
+									<div class="flex items-center">
+										<div class="font-mono text-sm">
+											<span>{input[0]}</span
+											>{#each [...input.slice(1), batch.target[batchIdx][batch.target[batchIdx].length - 1]] as char, i}
+												<span
+													style="background-color: rgba(255, 0, 0, {Math.min(
+														1,
+														Math.max(
+															0,
+															batch.losses[batchIdx * input.length + i] / (batch.initialLoss * 2)
+														)
+													)})"
+												>
+													{char}
+												</span>
+											{/each}
+										</div>
+									</div>
+								{/each}
+							</div>
+						{/each}
+					</div>
 				</div>
 			{/if}
 			<div class="relative w-full">
