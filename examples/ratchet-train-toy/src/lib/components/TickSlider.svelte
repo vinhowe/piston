@@ -13,16 +13,24 @@
 		const ticks = [];
 		const range = max - min;
 		const totalTicks = range / step;
-		const skipFactor = Math.ceil(totalTicks / 10); // Show at most 10 ticks
+		const majorTickCount = 10; // Show 10 major ticks
+		const minorTickCount = 40; // Show at most 20 minor ticks
+		
+		const majorStep = Math.ceil(totalTicks / majorTickCount) * step;
+		const minorStep = Math.ceil(totalTicks / minorTickCount) * step;
 
-		for (let i = min; i <= max; i += step) {
-			if ((i - min) % (step * skipFactor) === 0) {
-				ticks.push({
-					value: i,
-					label: formatter(i),
-					type: 'major'
-				});
-			} else if ((i - min) % step === 0) {
+		// Add major ticks
+		for (let i = min; i <= max; i += majorStep) {
+			ticks.push({
+				value: i,
+				label: formatter(i),
+				type: 'major'
+			});
+		}
+
+		// Add minor ticks
+		for (let i = min; i <= max; i += minorStep) {
+			if (!ticks.some(t => Math.abs(t.value - i) < step/2)) {
 				ticks.push({
 					value: i,
 					label: '',
@@ -30,7 +38,8 @@
 				});
 			}
 		}
-		return ticks;
+
+		return ticks.sort((a, b) => a.value - b.value);
 	}
 
 	const ticks = generateTicks();
