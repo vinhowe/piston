@@ -24,6 +24,9 @@ pub struct KVCache {
     use_kv_cache: bool,
     masks: HashMap<usize, Tensor>,
     device: Device,
+    n_layers: usize,
+    allocated: bool,
+    shape: Shape,
 }
 
 impl std::ops::Index<usize> for KVCache {
@@ -42,14 +45,22 @@ impl KVCache {
         device: &Device,
     ) -> Self {
         let mut entries = Vec::with_capacity(n_layers as _);
-        for _ in 0..n_layers {
-            entries.push(KVEntry::allocate::<T>(&shape, device));
+        // TODO: This is really bad; look at actual patterns for how people do KV caches
+        let mut allocated = false;
+        if use_kv_cache {
+            for _ in 0..n_layers {
+                entries.push(KVEntry::allocate::<T>(&shape, device));
+            }
+            allocated = true;
         }
         KVCache {
             entries,
             masks: HashMap::default(),
             device: device.clone(),
+            n_layers: n_layers as _,
             use_kv_cache,
+            allocated,
+            shape,
         }
     }
 
@@ -66,6 +77,24 @@ impl KVCache {
     pub fn reset(&mut self) {
         for entry in &mut self.entries {
             entry.entries = 0;
+        }
+    }
+
+    pub fn use_kv_cache(&self) -> bool {
+        self.use_kv_cache
+    }
+
+    pub fn set_use_kv_cache(&mut self, use_kv_cache: bool) {
+        self.use_kv_cache = use_kv_cache;
+        if !use_kv_cache && self.allocated {
+            self.entries.clear();
+            self.allocated = false;
+        } else if use_kv_cache && !self.allocated {
+            for _ in 0..self.n_layers {
+                self.entries
+                    .push(KVEntry::allocate::<f32>(&self.shape, &self.device));
+            }
+            self.allocated = true;
         }
     }
 

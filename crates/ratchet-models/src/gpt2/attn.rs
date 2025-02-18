@@ -104,19 +104,31 @@ impl Module for GPT2SelfAttention {
         let mut q = q.view(qkv_shape.clone())?.permute(&[0, 2, 1, 3])?;
         let v = v.view(qkv_shape.clone())?.permute(&[0, 2, 1, 3])?;
 
+        let cache_entry = if cache.borrow_mut().use_kv_cache() {
+            let cache_ref = cache.borrow_mut();
+            let entry = cache_ref[block_idx].clone();
+            Some(entry)
+        } else {
+            None
+        };
+        let offset = cache_entry.as_ref().map(|kv| kv.entries).unwrap_or(0);
         // Apply RoPE if enabled
         if let Some(rope) = &self.rope {
-            q = rope.schedule(RotaryInput {
-                input: q,
-                offset: index_pos,
-            })?;
-            k = rope.schedule(RotaryInput {
-                input: k,
-                offset: index_pos,
-            })?;
+            q = rope.schedule(RotaryInput { input: q, offset })?;
+            k = rope.schedule(RotaryInput { input: k, offset })?;
         }
 
-        let mut att = q.matmul(k, false, true)?.mul(self.softmax_scale.clone())?;
+        let (k, v) = if let Some(cache_entry) = cache_entry {
+            let k_cache = cache_entry.k_cache.cache(k, 2, offset)?;
+            let v_cache = cache_entry.v_cache.cache(v, 2, offset)?;
+            (k_cache, v_cache)
+        } else {
+            (k, v)
+        };
+
+        let mut att = q
+            .matmul(k.clone(), false, true)?
+            .mul(self.softmax_scale.clone())?;
 
         // Apply ALiBi if enabled
         if let Some(alibi) = &self.alibi {
