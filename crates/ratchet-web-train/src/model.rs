@@ -1,5 +1,6 @@
 use anyhow::Result;
 use async_trait::async_trait;
+use js_sys::Function;
 use ratchet::{shape, DType, Device, DeviceRequest, GradStore, Tensor, Var};
 use ratchet_datasets::batcher::IterResult2;
 use ratchet_datasets::{
@@ -14,6 +15,7 @@ use ratchet_datasets::{
     },
     Batcher,
 };
+use ratchet_models::gpt2::generate;
 use ratchet_models::gpt2::{Config, GPT2Input, PositionalEncoding};
 use ratchet_models::gpt2::{LayerNormPosition, GPT2};
 use ratchet_nn::{
@@ -429,6 +431,63 @@ impl Trainer {
     #[wasm_bindgen]
     pub fn usage_bytes(&self) -> u64 {
         self.device.try_gpu().unwrap().usage_bytes()
+    }
+
+    /// Autoregressive generation with streaming callback.
+    /// `prompt` is a JS array of i32 tokens.
+    /// `max_tokens` is how many tokens to generate.
+    /// `callback` is invoked once per model call with:
+    ///   callback(tokens_to_feed, { shape: [...], data: [...] })
+    #[wasm_bindgen]
+    pub async fn generate(
+        &mut self,
+        prompt: JsValue,
+        max_tokens: usize,
+        callback: Function,
+    ) -> Result<(), JsValue> {
+        // Convert prompt from JsValue -> Vec<i32>
+        let prompt_vec: Vec<i32> =
+            serde_wasm_bindgen::from_value(prompt).map_err(|e| JsValue::from(e.to_string()))?;
+
+        // Call existing GPT-2 generate
+        generate(
+            &mut self.model,
+            prompt_vec,
+            // This closure is invoked for each new pass with the tokens we just fed
+            // and an ndarray of logits. We serialize them to JS inside.
+            |tokens, logits_nd| {
+                // Convert the tokens to JS
+                let tokens_js = serde_wasm_bindgen::to_value(&tokens).unwrap_or(JsValue::NULL);
+
+                // Turn the [1, seq_len, vocab_size] logits into a plain object
+                let shape = vec![
+                    logits_nd.shape()[0],
+                    logits_nd.shape()[1],
+                    logits_nd.shape()[2],
+                ];
+                let data: Vec<f32> = logits_nd.into_iter().collect();
+
+                let logits_obj = js_sys::Object::new();
+                let _ = js_sys::Reflect::set(
+                    &logits_obj,
+                    &JsValue::from_str("shape"),
+                    &serde_wasm_bindgen::to_value(&shape).unwrap_or(JsValue::NULL),
+                );
+                let _ = js_sys::Reflect::set(
+                    &logits_obj,
+                    &JsValue::from_str("data"),
+                    &serde_wasm_bindgen::to_value(&data).unwrap_or(JsValue::NULL),
+                );
+
+                // Finally, call the JS callback with (tokens, logitsObj)
+                let _ = callback.call2(&JsValue::NULL, &tokens_js, &logits_obj);
+            },
+            max_tokens,
+        )
+        .await
+        .map_err(|e| JsValue::from(e.to_string()))?;
+
+        Ok(())
     }
 }
 
