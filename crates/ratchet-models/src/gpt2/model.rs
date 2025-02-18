@@ -217,7 +217,7 @@ impl Module for GPT2 {
 impl GPT2 {
     const MAX_CACHE: usize = 4096;
 
-    pub async fn new(cfg: &Config, vb: VarBuilder<'_>) -> anyhow::Result<Self> {
+    pub async fn new(cfg: &Config, vb: VarBuilder<'_>, use_kv_cache: bool) -> anyhow::Result<Self> {
         let vb_m = vb.pp("model");
         let wte = embedding(cfg.vocab_size, cfg.n_embd, vb_m.pp("wte")).await?;
 
@@ -246,7 +246,7 @@ impl GPT2 {
         let ln_post = layer_norm(cfg.n_embd, Default::default(), vb_m.pp("norm")).await?;
         let lm_head = linear_no_bias_gpt2(cfg.n_embd, cfg.vocab_size, vb.pp("lm_head")).await?;
 
-        let cache_shape = shape![1, n_layers as _, Self::MAX_CACHE, cfg.head_dim() as _];
+        let cache_shape = shape![1, cfg.n_head as _, Self::MAX_CACHE, cfg.head_dim() as _];
 
         Ok(Self {
             wte,
@@ -257,12 +257,20 @@ impl GPT2 {
             lm_head,
             kv_cache: Rc::new(RefCell::new(KVCache::new::<f32>(
                 n_layers as _,
-                false,
+                use_kv_cache,
                 cache_shape,
                 vb.device(),
             ))),
             device: vb.device().clone(),
         })
+    }
+
+    pub fn reset(&mut self) {
+        self.kv_cache.borrow_mut().reset();
+    }
+
+    pub fn cache_mut(&mut self) -> std::cell::RefMut<'_, KVCache> {
+        (*self.kv_cache).borrow_mut()
     }
 }
 
@@ -282,7 +290,11 @@ mod tests {
     };
 
     use super::GPT2;
-    use crate::gpt2::model::{Config, GPT2Input, PositionalEncoding};
+    use crate::gpt2::{
+        generate,
+        model::{Config, GPT2Input, PositionalEncoding},
+        LayerNormPosition,
+    };
 
     #[test]
     #[cfg_attr(feature = "ci", ignore)]
@@ -308,7 +320,7 @@ mod tests {
         let varmap = VarMap::new();
         let vb = VarBuilder::from_varmap(&varmap, ratchet::DType::F32, &device.clone());
 
-        let model = GPT2::new(&config, vb)?;
+        let model = GPT2::new(&config, vb, false)?;
 
         let params = ParamsAdamW {
             lr: 1e-4,
@@ -377,7 +389,7 @@ mod tests {
         let varmap = VarMap::new();
         let vb = VarBuilder::from_varmap(&varmap, ratchet::DType::F32, &device.clone());
 
-        let model = GPT2::new(&config, vb)?;
+        let model = GPT2::new(&config, vb, false)?;
 
         const BATCH_SIZE: usize = 10;
 
@@ -429,7 +441,7 @@ mod tests {
         let varmap = VarMap::new();
         let vb = VarBuilder::from_varmap(&varmap, DType::F32, &device.clone());
 
-        let model = GPT2::new(&config, vb).unwrap();
+        let mut model = GPT2::new(&config, vb, false).unwrap();
 
         let params = ParamsAdamW {
             lr: 1e-4,
@@ -475,6 +487,20 @@ mod tests {
 
             println!("{:?} loss: {:?}, norm: {:?}", batch_index, loss_vec[0], "?");
         }
+
+        model.reset();
+
+        generate(
+            &mut model,
+            "12,35,07,99,03:134=".chars().map(|c| c as i32).collect(),
+            |s, _logits| {
+                println!("{}", s.iter().map(|&c| c as u8 as char).collect::<String>());
+                // println!("{:?}", logits);
+            },
+            24,
+        )
+        .unwrap();
+
         Ok(())
     }
 
@@ -517,7 +543,7 @@ mod tests {
         let iter = DatasetRandomIter::new(&dataset, false, config.block_size, device.clone());
         let batch_iter = Batcher::new_r2(iter).batch_size(BATCH_SIZE);
 
-        let model = GPT2::new(&config, vb)?;
+        let model = GPT2::new(&config, vb, false)?;
 
         let params = ParamsAdamW {
             lr: 0.0001,
@@ -553,6 +579,43 @@ mod tests {
 
             println!("{:?} loss: {:?}", batch_index, loss_vec[0]);
         }
+
+        Ok(())
+    }
+
+    #[test]
+    fn generate_from_initialization() -> anyhow::Result<()> {
+        let _ = env_logger::builder().is_test(true).try_init();
+
+        let device = Device::request_device(DeviceRequest::GPU).unwrap();
+
+        let varmap = VarMap::new();
+        let vb = VarBuilder::from_varmap(&varmap, ratchet::DType::F32, &device.clone());
+
+        let config = Config {
+            vocab_size: 256,
+            hidden_act: ratchet_nn::Activation::Relu2,
+            n_embd: 128,
+            n_layer: 1,
+            n_head: 1,
+            block_size: 20,
+            attention_only: false,
+            positional_encoding: PositionalEncoding::Learned,
+            layernorm_position: LayerNormPosition::Pre,
+        };
+
+        let mut model = GPT2::new(&config, vb, false)?;
+
+        generate(
+            &mut model,
+            "Hello, world".chars().map(|c| c as i32).collect(),
+            |s, logits| {
+                println!("{:?}", s);
+                println!("{:?}", logits);
+            },
+            24,
+        )
+        .unwrap();
 
         Ok(())
     }
