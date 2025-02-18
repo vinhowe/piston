@@ -1,5 +1,10 @@
 import { Trainer } from '@ratchet-ml/ratchet-web-train';
-import { taskGenerators } from './tasks';
+import {
+	evalExampleGenerators,
+	trainBatchGenerators,
+	type EvalConfig,
+	type TaskConfigMap
+} from './tasks';
 
 let trainer: Trainer;
 let sessionCounter = 0;
@@ -13,7 +18,8 @@ export interface TrainerConfig {
 	n_head: number;
 	block_size: number;
 	batch_size: number;
-	dataset: string;
+	dataset: keyof typeof trainBatchGenerators;
+	task_parameters: TaskConfigMap[keyof TaskConfigMap];
 	activation: string;
 	attention_only: boolean;
 	position_encoding: string;
@@ -58,12 +64,14 @@ async function trainingLoop(sessionId: number, config: TrainerConfig) {
 	}
 
 	// Get the appropriate task generator
-	const taskGenerator = taskGenerators[config.dataset];
+	const taskGenerator = trainBatchGenerators[config.dataset];
+	const evalConfig = evalExampleGenerators[config.dataset] as EvalConfig<typeof config.dataset>;
 	if (!taskGenerator) {
 		console.error(`Unknown dataset type: ${config.dataset}`);
 		return;
 	}
 
+	let step = 0;
 	while (trainingSessions[sessionId]) {
 		// Skip if this isn't the current session anymore
 		if (sessionId !== currentSession) {
@@ -72,10 +80,12 @@ async function trainingLoop(sessionId: number, config: TrainerConfig) {
 
 		try {
 			// Generate a new batch using the selected task generator
-			const [input, target] = taskGenerator(100, 5, 1); // maxNum, seqLen, batchSize
+			const [input, target] = generateTask(config);
 
 			// Train on the batch
 			const result = await trainer.train_on_batch(input, target);
+			const logits = result.get('logits') as Map<string, Uint8Array | number[]>;
+			const loss = result.get('loss') as Map<string, number>;
 			const attn_masks = result.get('attn_masks') as Map<string, Uint8Array | number[]>;
 			const usage_bytes = trainer.usage_bytes();
 
@@ -83,12 +93,21 @@ async function trainingLoop(sessionId: number, config: TrainerConfig) {
 			if (sessionId === currentSession) {
 				self.postMessage({
 					type: 'step',
-					loss: result.get('loss'),
+					input: input,
+					target: target,
+					loss: {
+						total: loss.get('total'),
+						tokens: loss.get('tokens')
+					},
 					learning_rate: result.get('learning_rate'),
 					usage_bytes,
 					attn_masks: {
 						data: attn_masks.get('data'),
 						shape: attn_masks.get('shape')
+					},
+					logits: {
+						data: logits.get('data'),
+						shape: logits.get('shape')
 					}
 				});
 			}
@@ -105,6 +124,21 @@ async function trainingLoop(sessionId: number, config: TrainerConfig) {
 		// Yield to keep the worker responsive
 		await new Promise((resolve) => setTimeout(resolve, 0));
 	}
+}
+
+function generateTask(config: TrainerConfig): [number[][], number[][]] {
+	const taskGenerator = trainBatchGenerators[config.dataset];
+	if (!taskGenerator) {
+		throw new Error(`Unknown dataset: ${config.dataset}`);
+	}
+
+	// Combine batch size with task-specific parameters
+	const taskConfig = {
+		batchSize: config.batch_size,
+		...config.task_parameters
+	};
+
+	return taskGenerator(taskConfig);
 }
 
 self.onmessage = async (e: MessageEvent) => {
