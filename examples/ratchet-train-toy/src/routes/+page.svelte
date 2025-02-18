@@ -981,7 +981,7 @@
 				</div>
 			</div>
 		</div>
-		<div class="space-y-3">
+		<div class="space-y-3 md:order-first">
 			<div class="flex gap-4">
 				<!-- <button
 					on:click={startTraining}
