@@ -9,6 +9,7 @@
 	import { taskMetadata } from '../tasks';
 
 	let loss = 0;
+	let evalAccuracy = 0;
 	let initialTotalLoss: number | null = null;
 	let worker: Worker;
 	let chart: Chart;
@@ -523,6 +524,7 @@
 					if (data.accuracy !== null && data.accuracy !== undefined) {
 						const currentAccuracyDataset =
 							accuracyChart.data.datasets[accuracyChart.data.datasets.length - 1];
+						evalAccuracy = data.accuracy;
 						// Store both the step number and accuracy value
 						currentAccuracyDataset.data.push({
 							x: currentStepCount,
@@ -841,9 +843,9 @@
 					>
 				</div>
 			</div>
-			<div class="flex gap-8">
+			<div class="flex gap-6 md:gap-8">
 				<p class="font-mono text-sm">train loss: {loss.toFixed(4)}</p>
-				<p class="font-mono text-sm">val loss: -.----</p>
+				<p class="font-mono text-sm text-right">val accuracy: {evalAccuracy.toFixed(4)}</p>
 			</div>
 			<div class="relative w-full">
 				<canvas bind:this={canvas} />
