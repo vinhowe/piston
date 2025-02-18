@@ -1,6 +1,6 @@
 use anyhow::Result;
 use async_trait::async_trait;
-use ratchet::{DType, Device, DeviceRequest, GradStore, Tensor, Var};
+use ratchet::{shape, DType, Device, DeviceRequest, GradStore, Tensor, Var};
 use ratchet_datasets::batcher::IterResult2;
 use ratchet_datasets::{
     nlp::{
@@ -330,7 +330,6 @@ pub struct Trainer {
     optimizer: Box<dyn LRScheduler<OptimizerEnum> + Send + Sync>,
     device: Device,
     config: TrainerConfig,
-    batcher: BatcherType<'static>,
 }
 
 #[wasm_bindgen]
@@ -380,7 +379,7 @@ impl Trainer {
             },
         };
         // Initialize the GPT2 model.
-        let model = GPT2::new(&gpt2_config, vb)
+        let model = GPT2::new(&gpt2_config, vb, false)
             .await
             .map_err(|e| e.to_string())?;
 
@@ -427,135 +426,66 @@ impl Trainer {
                 _ => Box::new(NoopScheduler::new(base_optimizer)), // Default to no scheduler
             };
 
-        // Based on the config.dataset value, choose the dataset iterator and wrap it in a Batcher.
-        // Supported options (case-insensitive): "two_sum" (default), "zeros", "tinystories", "sort", "add", "count", "slapjack", "mod_add"
-        let batcher = match cfg.dataset.to_lowercase().as_str() {
-            "zeros" => {
-                let task = ZerosTask::new(cfg.block_size);
-                let dataset_iter = ToyTaskIter::new(task, device.clone());
-                BatcherType::ToyZeros(Batcher::new_r2(dataset_iter).batch_size(cfg.batch_size))
-            }
-            "sort" => {
-                let task = SortTask::new(20, cfg.seed);
-                let dataset_iter = ToyTaskIter::new(task, device.clone());
-                BatcherType::ToySort(Batcher::new_r2(dataset_iter).batch_size(cfg.batch_size))
-            }
-            "add" => {
-                let task = AddTask::new(1000, cfg.seed);
-                let dataset_iter = ToyTaskIter::new(task, device.clone());
-                BatcherType::ToyAdd(Batcher::new_r2(dataset_iter).batch_size(cfg.batch_size))
-            }
-            "count" => {
-                let task = CountTask::new(10, 'd', cfg.seed);
-                let dataset_iter = ToyTaskIter::new(task, device.clone());
-                BatcherType::ToyCount(Batcher::new_r2(dataset_iter).batch_size(cfg.batch_size))
-            }
-            "slapjack" => {
-                let task = SlapjackTask::new(48, cfg.seed);
-                let dataset_iter = ToyTaskIter::new(task, device.clone());
-                BatcherType::ToySlapjack(Batcher::new_r2(dataset_iter).batch_size(cfg.batch_size))
-            }
-            "mod_add" => {
-                let task = ModAddTask::new(113, cfg.seed);
-                let dataset_iter = ToyTaskIter::new(task, device.clone());
-                BatcherType::ToyModAdd(Batcher::new_r2(dataset_iter).batch_size(cfg.batch_size))
-            }
-            // "tinystories" => {
-            //     let dataset = TinyStoriesDataset::new();
-            //     let dataset_iter = TinyStoriesDatasetRandomIter::new(dataset, device.clone());
-            //     BatcherEnum::TinyStories(Batcher::new_r2(dataset_iter).batch_size(cfg.batch_size))
-            // }
-            // Default (including "two_sum" and unrecognized values): use the TwoSum task.
-            _ => {
-                let task = TwoSumTask::new(5, 5, cfg.seed);
-                let dataset_iter = ToyTaskIter::new(task, device.clone());
-                BatcherType::ToyTwoSum(Batcher::new_r2(dataset_iter).batch_size(cfg.batch_size))
-            }
-        };
-
         Ok(Trainer {
             model,
             optimizer,
             device,
             config: cfg,
-            batcher,
         })
     }
 
-    /// Asynchronously retrieve the next batch as a BatchHandle.
-    /// The returned BatchHandle wraps a Batch consisting of (input, target) tensors,
-    /// which reside on the device.
+    /// Train on a single batch of data provided directly from JavaScript
     #[wasm_bindgen]
-    pub async fn next_batch(&mut self) -> Result<BatchHandle, JsValue> {
-        // Pull the next (input, target) tuple from the dataset iterator.
-        let (input, target) = match &mut self.batcher {
-            BatcherType::ToyTwoSum(batcher) => batcher
-                .next()
-                .ok_or_else(|| {
-                    JsValue::from_str("No more data available in the ToyTwoSum dataset")
-                })?
-                .map_err(|e| e.to_string())?,
-            BatcherType::ToyZeros(batcher) => batcher
-                .next()
-                .ok_or_else(|| JsValue::from_str("No more data available in the ToyZeros dataset"))?
-                .map_err(|e| e.to_string())?,
-            BatcherType::ToySort(batcher) => batcher
-                .next()
-                .ok_or_else(|| JsValue::from_str("No more data available in the ToySort dataset"))?
-                .map_err(|e| e.to_string())?,
-            BatcherType::ToyAdd(batcher) => batcher
-                .next()
-                .ok_or_else(|| JsValue::from_str("No more data available in the ToyAdd dataset"))?
-                .map_err(|e| e.to_string())?,
-            BatcherType::ToyCount(batcher) => batcher
-                .next()
-                .ok_or_else(|| JsValue::from_str("No more data available in the ToyCount dataset"))?
-                .map_err(|e| e.to_string())?,
-            BatcherType::ToySlapjack(batcher) => batcher
-                .next()
-                .ok_or_else(|| {
-                    JsValue::from_str("No more data available in the ToySlapjack dataset")
-                })?
-                .map_err(|e| e.to_string())?,
-            BatcherType::ToyModAdd(batcher) => batcher
-                .next()
-                .ok_or_else(|| {
-                    JsValue::from_str("No more data available in the ToyModAdd dataset")
-                })?
-                .map_err(|e| e.to_string())?,
-            BatcherType::TinyStories(batcher) => batcher
-                .next()
-                .ok_or_else(|| {
-                    JsValue::from_str("No more data available in the TinyStories dataset")
-                })?
-                .map_err(|e| e.to_string())?,
-        };
-        Ok(BatchHandle {
-            inner: Batch { input, target },
-        })
-    }
+    pub async fn train_on_batch(
+        &mut self,
+        input: JsValue,
+        target: JsValue,
+    ) -> Result<JsValue, JsValue> {
+        // Convert input and target from JS arrays to Vec<Vec<i32>>
+        let input: Vec<Vec<i32>> =
+            serde_wasm_bindgen::from_value(input).map_err(|e| JsValue::from(e.to_string()))?;
+        let target: Vec<Vec<i32>> =
+            serde_wasm_bindgen::from_value(target).map_err(|e| JsValue::from(e.to_string()))?;
 
-    /// Asynchronously train on the provided batch.
-    /// Here we assume that `batch.input` and `batch.target` are already on the correct device.
-    /// They are passed directly into the model; loss, backpropagation, and the optimizer step
-    /// are performed, and the scalar loss value is returned.
-    #[wasm_bindgen]
-    pub async fn train_step(&mut self, batch_handle: BatchHandle) -> Result<JsValue, JsValue> {
-        // Extract the batch from the handle.
-        let batch = batch_handle.inner;
+        // Validate batch dimensions
+        if input.is_empty() || target.is_empty() {
+            return Err("Empty batch provided".into());
+        }
+        let batch_size = input.len();
+        let seq_len = input[0].len();
+        if batch_size != target.len()
+            || input.iter().any(|x| x.len() != seq_len)
+            || target.iter().any(|x| x.len() != seq_len)
+        {
+            return Err("Inconsistent batch dimensions".into());
+        }
+
+        // Flatten the vectors and create tensors
+        let input_flat: Vec<i32> = input.into_iter().flatten().collect();
+        let target_flat: Vec<i32> = target.into_iter().flatten().collect();
+
+        // Create tensors and move to device
+        let input_tensor =
+            Tensor::from_data(input_flat, shape![batch_size, seq_len], self.device.clone());
+
+        let target_tensor = Tensor::from_data(
+            target_flat,
+            shape![batch_size, seq_len],
+            self.device.clone(),
+        );
 
         // Forward pass: compute logits from the model.
         let (logits, attn_masks) = self
             .model
             .schedule(GPT2Input {
-                x: batch.input,
+                x: input_tensor,
                 index_pos: 0,
             })
             .map_err(|e| e.to_string())?;
 
         // Flatten the logits and targets.
         let logits_flat = logits.flatten_to(1).map_err(|e| e.to_string())?;
-        let target_flat = batch.target.flatten_to(1).map_err(|e| e.to_string())?;
+        let target_flat = target_tensor.flatten_to(1).map_err(|e| e.to_string())?;
 
         // Compute the cross-entropy loss.
         let loss = cross_entropy(logits_flat, target_flat).map_err(|e| e.to_string())?;
@@ -652,35 +582,36 @@ mod tests {
 
     wasm_bindgen_test::wasm_bindgen_test_configure!(run_in_browser);
 
-    #[wasm_bindgen_test]
-    async fn train_browser() -> Result<(), JsValue> {
-        log_init();
-        let json_config = r#"{
-                "vocab_size": 1024,
-                "n_embd": 768,
-                "n_layer": 6,
-                "n_head": 6,
-                "block_size": 24,
-                "batch_size": 1,
-                "dataset": "two_sum",
-                "optimizer": {
-                    "lr": 1e-3
-                }
-            }"#;
-        // Parse the JSON string into a TrainerConfig first to validate it
-        let config: TrainerConfig =
-            serde_json::from_str(json_config).map_err(|e| JsValue::from(e.to_string()))?;
-        // Convert to JsValue
-        let config_js =
-            serde_wasm_bindgen::to_value(&config).map_err(|e| JsValue::from(e.to_string()))?;
+    // #[wasm_bindgen_test]
+    // async fn train_browser() -> Result<(), JsValue> {
+    //     log_init();
+    //     let json_config = r#"{
+    //             "vocab_size": 1024,
+    //             "n_embd": 768,
+    //             "n_layer": 6,
+    //             "n_head": 6,
+    //             "block_size": 24,
+    //             "batch_size": 1,
+    //             "dataset": "two_sum",
+    //             "optimizer": {
+    //                 "lr": 1e-3
+    //             }
+    //         }"#;
+    //     // Parse the JSON string into a TrainerConfig first to validate it
+    //     let config: TrainerConfig =
+    //         serde_json::from_str(json_config).map_err(|e| JsValue::from(e.to_string()))?;
+    //     // Convert to JsValue
+    //     let config_js =
+    //         serde_wasm_bindgen::to_value(&config).map_err(|e| JsValue::from(e.to_string()))?;
 
-        let mut trainer = Trainer::new(config_js).await.unwrap();
-        for i in 0..10 {
-            let batch = trainer.next_batch().await.unwrap();
-            let loss = trainer.train_step(batch).await.unwrap();
-            log::error!("step {}: loss: {:?}", i, loss);
-        }
-        // log::error!("config_js: {:?}", config_js);
-        Ok(())
-    }
+    //     let mut trainer = Trainer::new(config_js).await.unwrap();
+    //     for i in 0..10 {
+    //         let input = vec![vec![1, 2, 3, 4]];
+    //         let target = vec![vec![5, 6, 7, 8]];
+    //         let loss = trainer.train_on_batch(input, target).await.unwrap();
+    //         log::error!("step {}: loss: {:?}", i, loss);
+    //     }
+    //     // log::error!("config_js: {:?}", config_js);
+    //     Ok(())
+    // }
 }

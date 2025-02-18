@@ -1,4 +1,5 @@
 import { Trainer } from '@ratchet-ml/ratchet-web-train';
+import { taskGenerators } from './tasks';
 
 let trainer: Trainer;
 let sessionCounter = 0;
@@ -47,14 +48,22 @@ async function initializeTrainer(config: TrainerConfig) {
 	self.postMessage({ type: 'modelReady' });
 	currentSession = sessionCounter++;
 	trainingSessions[currentSession] = true;
-	trainingLoop(currentSession);
+	trainingLoop(currentSession, config);
 }
 
-async function trainingLoop(sessionId: number) {
+async function trainingLoop(sessionId: number, config: TrainerConfig) {
 	if (!trainer) {
 		console.error('Trainer not initialized');
 		return;
 	}
+
+	// Get the appropriate task generator
+	const taskGenerator = taskGenerators[config.dataset];
+	if (!taskGenerator) {
+		console.error(`Unknown dataset type: ${config.dataset}`);
+		return;
+	}
+
 	while (trainingSessions[sessionId]) {
 		// Skip if this isn't the current session anymore
 		if (sessionId !== currentSession) {
@@ -62,8 +71,11 @@ async function trainingLoop(sessionId: number) {
 		}
 
 		try {
-			const batch = await trainer.next_batch();
-			const result: Map<string, unknown> = await trainer.train_step(batch);
+			// Generate a new batch using the selected task generator
+			const [input, target] = taskGenerator(100, 5, 1); // maxNum, seqLen, batchSize
+
+			// Train on the batch
+			const result = await trainer.train_on_batch(input, target);
 			const attn_masks = result.get('attn_masks') as Map<string, Uint8Array | number[]>;
 			const usage_bytes = trainer.usage_bytes();
 
