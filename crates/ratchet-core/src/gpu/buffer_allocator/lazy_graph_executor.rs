@@ -559,9 +559,9 @@ impl LazyGraphExecutor {
                 return Ok(());
             }
 
-            // On a cache miss: Clear cache because currently I don't know how to make sure
-            // allocations are compatible between runs.
-            self.cache.clear();
+            // // On a cache miss: Clear cache because currently I don't know how to make sure
+            // // allocations are compatible between runs.
+            // self.cache.clear();
         }
 
         #[cfg(feature = "plotting")]
