@@ -630,7 +630,7 @@
 				plugins: {
 					legend: {
 						reverse: true
-					},
+					}
 					// title: {
 					// 	display: false,
 					// 	// text: 'Training Loss',
