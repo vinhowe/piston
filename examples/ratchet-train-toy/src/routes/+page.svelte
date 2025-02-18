@@ -835,10 +835,10 @@
 		<div class="space-y-4 col-span-2">
 			<div class="flex justify-between items-baseline gap-4 space-y-3">
 				<h1 class="text-2xl">toy transformer</h1>
-				<div class="flex gap-3">
-					<a href="https://x.com/vinhowe" class="text-md text-blue-500">@vinhowe</a>
-					<a href="https://x.com/grantpitt0" class="text-md text-blue-500">@grantpitt</a>
-					<a href="https://github.com/vinhowe/ratchet-backward" class="text-md text-blue-500"
+				<div class="flex flex-wrap gap-3 justify-end text-sm md:text-base">
+					<a href="https://x.com/vinhowe" class="text-blue-500">@vinhowe</a>
+					<a href="https://x.com/grantpitt0" class="text-blue-500">@grantpitt</a>
+					<a href="https://github.com/vinhowe/ratchet-backward" class="text-blue-500"
 						>github</a
 					>
 				</div>
