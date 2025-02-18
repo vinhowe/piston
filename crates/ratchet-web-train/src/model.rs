@@ -446,61 +446,117 @@ impl Trainer {
         self.device.try_gpu().unwrap().usage_bytes()
     }
 
-    /// Autoregressive generation with streaming callback.
-    /// `prompt` is a JS array of i32 tokens.
-    /// `max_tokens` is how many tokens to generate.
-    /// `callback` is invoked once per model call with:
-    ///   callback(tokens_to_feed, { shape: [...], data: [...] })
+    /// Autoregressive generation with an optional streaming callback.
+    ///
+    /// - `prompt` is a JS array of i32 tokens.
+    /// - `max_tokens` is how many tokens to generate.
+    /// - `callback` is optional; if provided, it is invoked once per model call with:
+    ///   `callback(tokens_to_feed, { shape: [...], data: [...] })`
+    /// - If `callback` is not provided (i.e., `null` or `undefined`),
+    ///   we accumulate the final tokens and logits internally, and return them as a single
+    ///   JS object of the form:
+    ///   ```json
+    ///   {
+    ///       "tokens": [...],
+    ///       "logits": {
+    ///           "shape": [1, total_seq_len, vocab_size],
+    ///           "data": [...]
+    ///       }
+    ///   }
+    ///   ```
     #[wasm_bindgen]
     pub async fn generate(
         &mut self,
         prompt: JsValue,
         max_tokens: usize,
-        callback: Function,
-    ) -> Result<(), JsValue> {
+        callback: Option<Function>,
+    ) -> Result<JsValue, JsValue> {
         // Convert prompt from JsValue -> Vec<i32>
         let prompt_vec: Vec<i32> =
             serde_wasm_bindgen::from_value(prompt).map_err(|e| JsValue::from(e.to_string()))?;
 
-        // Call existing GPT-2 generate
-        generate(
-            &mut self.model,
-            prompt_vec,
-            // This closure is invoked for each new pass with the tokens we just fed
-            // and an ndarray of logits. We serialize them to JS inside.
-            |tokens, logits_nd| {
-                // Convert the tokens to JS
-                let tokens_js = serde_wasm_bindgen::to_value(&tokens).unwrap_or(JsValue::NULL);
+        // If a callback is provided, we do the streaming approach.
+        if let Some(callback_fn) = callback {
+            // Call existing GPT-2 generate with a streaming closure:
+            generate(
+                &mut self.model,
+                prompt_vec,
+                |tokens, logits_nd| {
+                    // Convert the tokens to JS
+                    let tokens_js = serde_wasm_bindgen::to_value(&tokens).unwrap_or(JsValue::NULL);
 
-                // Turn the [1, seq_len, vocab_size] logits into a plain object
-                let shape = vec![
-                    logits_nd.shape()[0],
-                    logits_nd.shape()[1],
-                    logits_nd.shape()[2],
-                ];
-                let data: Vec<f32> = logits_nd.into_iter().collect();
+                    // Convert the logits to a {shape, data} object
+                    let shape = vec![
+                        logits_nd.shape()[0],
+                        logits_nd.shape()[1],
+                        logits_nd.shape()[2],
+                    ];
+                    let data: Vec<f32> = logits_nd.into_iter().collect();
 
-                let logits_obj = js_sys::Object::new();
-                let _ = js_sys::Reflect::set(
-                    &logits_obj,
-                    &JsValue::from_str("shape"),
-                    &serde_wasm_bindgen::to_value(&shape).unwrap_or(JsValue::NULL),
-                );
-                let _ = js_sys::Reflect::set(
-                    &logits_obj,
-                    &JsValue::from_str("data"),
-                    &serde_wasm_bindgen::to_value(&data).unwrap_or(JsValue::NULL),
-                );
+                    let logits_obj = js_sys::Object::new();
+                    let _ = js_sys::Reflect::set(
+                        &logits_obj,
+                        &JsValue::from_str("shape"),
+                        &serde_wasm_bindgen::to_value(&shape).unwrap_or(JsValue::NULL),
+                    );
+                    let _ = js_sys::Reflect::set(
+                        &logits_obj,
+                        &JsValue::from_str("data"),
+                        &serde_wasm_bindgen::to_value(&data).unwrap_or(JsValue::NULL),
+                    );
 
-                // Finally, call the JS callback with (tokens, logitsObj)
-                let _ = callback.call2(&JsValue::NULL, &tokens_js, &logits_obj);
-            },
-            max_tokens,
-        )
-        .await
-        .map_err(|e| JsValue::from(e.to_string()))?;
+                    // Finally, call the JS callback with (tokens, logitsObj)
+                    let _ = callback_fn.call2(&JsValue::NULL, &tokens_js, &logits_obj);
+                },
+                max_tokens,
+            )
+            .await
+            .map_err(|e| JsValue::from(e.to_string()))?;
 
-        Ok(())
+            // Return undefined if we're streaming via callback
+            Ok(JsValue::UNDEFINED)
+        } else {
+            // No callback was provided, so we accumulate only the final tokens/logits and return them.
+            let mut final_tokens: Vec<i32> = Vec::new();
+            let mut final_logits_data: Vec<f32> = Vec::new();
+            let mut final_logits_shape: Vec<usize> = Vec::new();
+
+            let prompt_len = prompt_vec.len();
+
+            // We capture these as mut so we can overwrite them at each step with the latest pass
+            generate(
+                &mut self.model,
+                prompt_vec,
+                |tokens, logits_nd| {
+                    // Update tokens
+                    final_tokens.extend_from_slice(&tokens);
+
+                    // Convert the logits into shape/data only for the final pass
+                    final_logits_shape.extend_from_slice(&[
+                        logits_nd.shape()[0],
+                        logits_nd.shape()[1],
+                        logits_nd.shape()[2],
+                    ]);
+
+                    final_logits_data.extend(logits_nd.into_iter());
+                },
+                max_tokens,
+            )
+            .await
+            .map_err(|e| JsValue::from(e.to_string()))?;
+
+            // Build a JSON object with final tokens and final logits
+            let result = serde_json::json!({
+                "tokens": final_tokens[prompt_len..].to_vec(),
+                "logits": {
+                    "shape": final_logits_shape,
+                    "data": final_logits_data,
+                },
+            });
+
+            // Convert to JsValue
+            Ok(serde_wasm_bindgen::to_value(&result).map_err(|e| e.to_string())?)
+        }
     }
 }
 
