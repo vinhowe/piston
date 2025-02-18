@@ -234,7 +234,7 @@ function modAddSequence(config: ModAdditionConfig): [string, string] {
 	const num1 = Math.floor(Math.random() * maxNum);
 	const num2 = Math.floor(Math.random() * maxNum);
 	const sum = (num1 + num2) % maxNum;
-	return [`${pad(num1, width)}+${pad(num2, width)}%${pad(maxNum, width)}=`, `${pad(sum, width)}`];
+	return [`${pad(num1, width)}+${pad(num2, width)}=`, `${pad(sum, width)}`];
 }
 
 // function countSequence(config: NumberSequenceConfig): [string, string] {
