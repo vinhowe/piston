@@ -27,7 +27,7 @@ pub async fn generate(
     // Count only the tokens that are generated (not in the original prompt)
     let mut generated_count = 0;
 
-    while generated_count < max_tokens {
+    while generated_count < max_tokens && all_tokens[all_tokens.len() - 1] != 256 {
         // For the first pass, feed the entire prompt.
         // For subsequent passes, feed only the latest generated token.
         let tokens_to_feed = if generated_count == 0 {
