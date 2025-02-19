@@ -1,7 +1,6 @@
 // Task-specific configuration types
 export interface TrainBatchConfig {
 	batchSize: number;
-	maskOutPrefix: boolean;
 }
 
 export interface NumberSequenceConfig {
