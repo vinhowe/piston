@@ -37,6 +37,74 @@ pub fn nll(inp: Tensor, target: Tensor) -> anyhow::Result<Tensor> {
     masked_loss.div(valid_count.cast(DType::F32)?)
 }
 
+/// Computes label-smoothed cross-entropy for a flattened `[batch_size, vocab_size]` log-softmax
+/// tensor `log_probs`, together with a corresponding `target` of shape `[batch_size]`.
+///
+/// `alpha` is the smoothing parameter in `[0, 1]`. If `alpha == 0.0`, this is just ordinary NLL.
+pub fn label_smoothed_nll(log_probs: Tensor, target: Tensor, alpha: f32) -> anyhow::Result<Tensor> {
+    let b_sz = match &target.shape().to_vec()[..] {
+        &[b_sz] => b_sz,
+        dims => {
+            anyhow::bail!("label_smoothed_nll: target must be [batch_size], got shape {dims:?}")
+        }
+    };
+    let shape_lp = log_probs.shape().to_vec();
+    if shape_lp.len() != 2 {
+        anyhow::bail!(
+            "label_smoothed_nll: log_probs must be rank-2 [batch_size, vocab_size], got {shape_lp:?}"
+        );
+    }
+    let (inp_b_sz, vocab_size) = (shape_lp[0], shape_lp[1]);
+    if inp_b_sz != b_sz {
+        anyhow::bail!(
+            "label_smoothed_nll: batch size mismatch between log_probs ({inp_b_sz}) and target ({b_sz})"
+        );
+    }
+
+    // Check for ignored tokens (often `-100` in NLP).
+    let ignore_index = -100;
+    let mask = target
+        .clone()
+        .ne(Tensor::full(target.shape(), ignore_index, target.device()))?
+        .cast(ratchet::DType::F32)?;
+
+    // Gather the negative log-prob for the correct class:
+    // nll_loss[i] = -log_probs[i, target[i]]  (for each token i).
+    let nll_gathered = log_probs
+        .clone()
+        .gather(target.clone().unsqueeze(1)?, 1)? // shape [batch_size, 1]
+        .affine(-1.0, 0.0)?; // multiply by -1
+
+    // Mask out ignored tokens (multiply by 0 where masked=0).
+    let nll_masked = nll_gathered.mul(mask.clone().unsqueeze(1)?)?;
+
+    // We'll also average over only the valid tokens:
+    let valid_count = mask.clone().sum_all()?; // shape []
+
+    // (1) Ordinary cross-entropy term (averaged).
+    let nll_loss = nll_masked.div(valid_count.clone())?;
+
+    // (2) Uniform penalty term, also masked.
+    //
+    // For label smoothing, we pretend a small fraction α of the time
+    // we want the “average” log-prob over all classes, not just the correct one.
+    // i.e. uniform_loss = - average over (vocab_size) of log_probs, restricted to masked positions.
+    let all_probs_masked = log_probs.mul(mask.unsqueeze(1)?)?;
+    let sum_log_probs = all_probs_masked.sum(&[1])?;
+    // Now shape [batch_size], each entry is sum_{v in vocab} log_probs[i, v].
+    // Negative average per token:
+    let neg_avg_log_prob = sum_log_probs.affine(-1.0 / vocab_size as f32, 0.0)?;
+    let uniform_loss = neg_avg_log_prob.sum_all()?.div(valid_count)?;
+
+    // Combine with alpha
+    // final = (1 - alpha) * nll + alpha * uniform_term
+    let final_loss = nll_loss
+        .affine(1.0 - alpha, 0.0)?
+        .add(uniform_loss.affine(alpha, 0.0)?)?;
+
+    Ok(final_loss)
+}
+
 pub fn log_softmax(xs: Tensor, d: usize) -> anyhow::Result<Tensor> {
     let max = xs.clone().max_keepdim(d)?;
     let diff = xs.clone().sub(max)?;

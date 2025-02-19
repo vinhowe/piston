@@ -19,9 +19,9 @@ use ratchet_models::gpt2::generate;
 use ratchet_models::gpt2::{Config, GPT2Input, PositionalEncoding};
 use ratchet_models::gpt2::{LayerNormPosition, GPT2};
 use ratchet_nn::{
-    clip_grad_norm, cross_entropy, log_softmax, nll, Activation, AdamW, ConstantLR,
-    CosineAnnealingLR, LRScheduler, LRSchedulerCore, LinearLR, Module, Optimizer, ParamsAdamW,
-    VarBuilder, VarMap, SGD,
+    clip_grad_norm, cross_entropy, label_smoothed_nll, log_softmax, nll, Activation, AdamW,
+    ConstantLR, CosineAnnealingLR, LRScheduler, LRSchedulerCore, LinearLR, Module, Optimizer,
+    ParamsAdamW, VarBuilder, VarMap, SGD,
 };
 use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
@@ -129,6 +129,8 @@ pub struct TrainerConfig {
     pub layernorm_position: String,
     #[serde(default = "default_seed")]
     pub seed: Option<u64>,
+    #[serde(default = "default_label_smoothing")]
+    pub label_smoothing: f32,
 }
 
 fn default_optimizer_config() -> OptimizerConfig {
@@ -165,6 +167,10 @@ fn default_layernorm_position() -> String {
 
 fn default_seed() -> Option<u64> {
     None
+}
+
+fn default_label_smoothing() -> f32 {
+    0.0
 }
 
 fn string_to_activation(s: &str) -> Activation {
@@ -387,11 +393,18 @@ impl Trainer {
             })
             .map_err(|e| e.to_string())?;
 
-        // Flatten the logits and targets, compute the cross-entropy loss.
+        // Flatten the logits and targets, compute the cross-entropy loss with label smoothing
         let logits_flat = logits.clone().flatten_to(1).map_err(|e| e.to_string())?;
         let target_flat = target_tensor.flatten_to(1).map_err(|e| e.to_string())?;
         let inp = log_softmax(logits_flat, 1).map_err(|e| e.to_string())?;
-        let loss = nll(inp, target_flat).map_err(|e| e.to_string())?;
+
+        let alpha = self.config.label_smoothing;
+        let loss = if alpha > 0.0 {
+            label_smoothed_nll(inp, target_flat, alpha).map_err(|e| e.to_string())?
+        } else {
+            nll(inp, target_flat).map_err(|e| e.to_string())?
+        };
+
         let loss_summed = loss.clone().sum_all().map_err(|e| e.to_string())?;
 
         // Backpropagate to compute gradients.
