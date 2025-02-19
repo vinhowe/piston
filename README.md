@@ -1,6 +1,6 @@
 # toy transformer
 
-Watch a toy model train in your browser
+Watch a toy model train, in your browser, with WebGPU.
 
 ## Attribution
 
