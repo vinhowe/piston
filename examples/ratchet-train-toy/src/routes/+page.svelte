@@ -837,7 +837,7 @@
 				<div class="flex flex-wrap gap-3 justify-end text-sm md:text-base">
 					<a href="https://x.com/vinhowe" class="text-blue-500">@vinhowe</a>
 					<a href="https://x.com/grantpitt0" class="text-blue-500">@grantpitt</a>
-					<a href="https://github.com/vinhowe/ratchet-backward" class="text-blue-500">github</a>
+					<a href="https://github.com/vinhowe/toy-transformer" class="text-blue-500">github</a>
 				</div>
 			</div>
 			<div class="flex gap-6 md:gap-8">
