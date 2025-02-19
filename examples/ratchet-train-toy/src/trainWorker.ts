@@ -4,6 +4,7 @@ import {
 	taskMetadata,
 	trainBatchGenerators,
 	type EvalConfig,
+	type EvalConfigGenerator,
 	type TaskConfigMap,
 	type TrainBatchConfig,
 	type TrainBatchGenerator
@@ -76,7 +77,9 @@ async function trainingLoop(sessionId: number, config: TrainerConfig) {
 	const taskGenerator = trainBatchGenerators[config.dataset] as TrainBatchGenerator<
 		typeof config.dataset
 	>;
-	const evalConfig = evalExampleGenerators[config.dataset] as EvalConfig<typeof config.dataset>;
+	const evalConfig = (
+		evalExampleGenerators[config.dataset] as EvalConfigGenerator<typeof config.dataset>
+	)(config.task_parameters);
 	if (!taskGenerator) {
 		console.error(`Unknown dataset type: ${config.dataset}`);
 		return;
@@ -109,7 +112,7 @@ async function trainingLoop(sessionId: number, config: TrainerConfig) {
 
 			// After every 10 steps, evaluate the model
 			if (step % 10 === 0) {
-				const [streamingSequence, streamingTarget] = evalConfig.generator(config.task_parameters);
+				const [streamingSequence, streamingTarget] = evalConfig.generator();
 				let streamingExampleCompletion: number[] | null = null;
 				const streamingExampleLogits: number[] = [];
 				let streamingExampleMetric: boolean | null = null;
@@ -134,8 +137,7 @@ async function trainingLoop(sessionId: number, config: TrainerConfig) {
 						const evalResult = evalConfig.metric(
 							streamingExampleCompletion,
 							streamingTarget,
-							streamingSequence,
-							config.task_parameters
+							streamingSequence
 						);
 
 						streamingExampleMetric = evalResult.every((result) => result);
@@ -161,10 +163,10 @@ async function trainingLoop(sessionId: number, config: TrainerConfig) {
 
 				// We'll do best of 5 evals, so we'll do the rest non-streaming
 				for (let i = 0; i < EVAL_TRIAL_COUNT - 1; i++) {
-					const [sequence, target] = evalConfig.generator(config.task_parameters);
+					const [sequence, target] = evalConfig.generator();
 					const result = await trainer.generate(sequence, target.length + 1);
 					const tokens = result.get('tokens') as number[];
-					const evalResult = evalConfig.metric(tokens, target, sequence, config.task_parameters);
+					const evalResult = evalConfig.metric(tokens, target, sequence);
 					if (evalResult.every((result) => result)) {
 						winCount++;
 					}
