@@ -8,19 +8,24 @@
 	export let label: string;
 	export let formatter: (value: number) => string = (v) => v.toString();
 
-	// Generate tick marks
+	// Normalize the slider bounds
+	$: low = Math.min(min, max);
+	$: high = Math.max(min, max);
+
+	// Generate tick marks based on the normalized range.
 	function generateTicks() {
+		if (high === low) return [];
 		const ticks = [];
-		const range = max - min;
+		const range = high - low;
 		const totalTicks = range / step;
 		const majorTickCount = 10; // Show 10 major ticks
-		const minorTickCount = 40; // Show at most 20 minor ticks
-		
+		const minorTickCount = 40; // Show at most 40 minor ticks
+
 		const majorStep = Math.ceil(totalTicks / majorTickCount) * step;
 		const minorStep = Math.ceil(totalTicks / minorTickCount) * step;
 
 		// Add major ticks
-		for (let i = min; i <= max; i += majorStep) {
+		for (let i = low; i <= high; i += majorStep) {
 			ticks.push({
 				value: i,
 				label: formatter(i),
@@ -28,9 +33,9 @@
 			});
 		}
 
-		// Add minor ticks
-		for (let i = min; i <= max; i += minorStep) {
-			if (!ticks.some(t => Math.abs(t.value - i) < step/2)) {
+		// Add minor ticks (only if not very close to a major tick)
+		for (let i = low; i <= high; i += minorStep) {
+			if (!ticks.some((t) => Math.abs(t.value - i) < step / 2)) {
 				ticks.push({
 					value: i,
 					label: '',
@@ -42,8 +47,14 @@
 		return ticks.sort((a, b) => a.value - b.value);
 	}
 
-	// Make ticks reactive so they update when min/max/step change
+	// Regenerate ticks reactively when low, high, step, or formatter change.
 	$: ticks = generateTicks();
+
+	// Compute tick positions reactively so they update when low/high change.
+	$: tickPositions = ticks.map((tick) => ({
+		...tick,
+		position: `${((tick.value - low) / (high - low)) * 100}%`
+	}));
 
 	function handleSliderChange(e: Event) {
 		const rawValue = parseFloat((e.target as HTMLInputElement).value);
@@ -57,11 +68,10 @@
 		{formatter(value)}
 	</div>
 
-	<div slot="ticks">
-		{#each ticks as tick}
-			{@const position = `${((tick.value - min) / (max - min)) * 100}%`}
-			<div class="slider-tick" style:left={position}>
-				<div class="slider-tick-mark {tick.type}" />
+	<div slot="ticks" class="ticks-container">
+		{#each tickPositions as tick}
+			<div class="slider-tick" style:left={tick.position}>
+				<div class="slider-tick-mark {tick.type}"></div>
 			</div>
 		{/each}
 	</div>
@@ -69,11 +79,27 @@
 	<input
 		slot="input"
 		type="range"
-		{min}
-		{max}
+		min={low}
+		max={high}
 		{step}
 		bind:value
 		on:input={handleSliderChange}
 		class="slider-input"
 	/>
-</BaseSlider> 
+</BaseSlider>
+
+<style>
+	/* Ensure the ticks container is positioned relative so that absolutely-
+	   positioned ticks are aligned relative to it. */
+	.ticks-container {
+		position: relative;
+		width: 100%;
+	}
+
+	/* Tick elements are absolutely positioned and centered on their computed left coordinate. */
+	.slider-tick {
+		position: absolute;
+		top: 0;
+		transform: translateX(-50%);
+	}
+</style>
