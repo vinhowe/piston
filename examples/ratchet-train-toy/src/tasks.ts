@@ -1,6 +1,7 @@
 // Task-specific configuration types
 export interface TrainBatchConfig {
 	batchSize: number;
+	maskOutPrefix: boolean;
 }
 
 export interface NumberSequenceConfig {
@@ -10,10 +11,12 @@ export interface NumberSequenceConfig {
 
 export interface AdditionConfig {
 	maxNum: number;
+	includeExpressionTokens: boolean;
 }
 
 export interface ModAdditionConfig {
 	maxNum: number;
+	includeExpressionTokens: boolean;
 }
 
 export interface FixedLengthConfig {
@@ -23,10 +26,11 @@ export interface FixedLengthConfig {
 // Task metadata for UI configuration
 export interface TaskParameter {
 	name: string;
-	description: string;
-	min: number;
-	max: number;
-	default: number;
+	description?: string;
+	type?: 'number' | 'boolean'; // Default to 'number' if not specified
+	min?: number; // Only for number type
+	max?: number; // Only for number type
+	default: number | boolean;
 }
 
 export interface TaskMetadata {
@@ -44,7 +48,8 @@ export const taskMetadata: Record<string, TaskMetadata> = {
 		parameters: {
 			seqLen: {
 				name: 'Sequence Length',
-				description: 'Length of the sequence to sort',
+				description: 'Number of items to sort',
+				type: 'number',
 				min: 2,
 				max: 10,
 				default: 2
@@ -52,9 +57,15 @@ export const taskMetadata: Record<string, TaskMetadata> = {
 			maxNum: {
 				name: 'Max Number',
 				description: 'Maximum value in the sequence',
+				type: 'number',
 				min: 10,
 				max: 100,
 				default: 100
+			},
+			maskOutPrefix: {
+				name: 'Mask Out Prefix',
+				type: 'boolean',
+				default: true
 			}
 		}
 	},
@@ -64,11 +75,21 @@ export const taskMetadata: Record<string, TaskMetadata> = {
 		parameters: {
 			maxNum: {
 				name: 'Max Number',
-				description:
-					'Maximum value for each addend (the addends are chosen so their sum is ≤ this value)',
+				description: 'Maximum value for each addend',
+				type: 'number',
 				min: 10,
 				max: 100,
 				default: 100
+			},
+			maskOutPrefix: {
+				name: 'Mask Out Prefix',
+				type: 'boolean',
+				default: true
+			},
+			includeExpressionTokens: {
+				name: 'Include Expression Tokens (+, =)',
+				type: 'boolean',
+				default: true
 			}
 		}
 	},
@@ -77,11 +98,22 @@ export const taskMetadata: Record<string, TaskMetadata> = {
 		description: 'Learn to add two numbers with modulo',
 		parameters: {
 			maxNum: {
-				name: 'Modulo',
+				name: 'Max Number',
 				description: 'The modulo to use',
+				type: 'number',
 				min: 10,
 				max: 113,
 				default: 113
+			},
+			maskOutPrefix: {
+				name: 'Mask Out Prefix',
+				type: 'boolean',
+				default: true
+			},
+			includeExpressionTokens: {
+				name: 'Include Expression Tokens (+, =)',
+				type: 'boolean',
+				default: true
 			}
 		}
 	},
@@ -92,6 +124,7 @@ export const taskMetadata: Record<string, TaskMetadata> = {
 			seqLen: {
 				name: 'Sequence Length',
 				description: 'Length of the sequence',
+				type: 'number',
 				min: 2,
 				max: 10,
 				default: 5
@@ -106,6 +139,7 @@ export const taskMetadata: Record<string, TaskMetadata> = {
 			seqLen: {
 				name: 'Sequence Length',
 				description: 'Length of the sequence',
+				type: 'number',
 				min: 2,
 				max: 10,
 				default: 5
@@ -113,9 +147,16 @@ export const taskMetadata: Record<string, TaskMetadata> = {
 			maxNum: {
 				name: 'Max Number',
 				description: 'Maximum value in the sequence',
+				type: 'number',
 				min: 10,
 				max: 100,
 				default: 100
+			},
+			maskOutPrefix: {
+				name: 'Mask Out Prefix',
+				description: 'Whether to mask out the prefix of the sequence',
+				type: 'boolean',
+				default: true
 			}
 		}
 	}
@@ -168,13 +209,21 @@ export type SimpleTokenizer = {
  * Then, create an autoregressive pair where the input is fullSequence[:-1] and the target is fullSequence[1:],
  * with all tokens corresponding to the prompt (except for its final token) masked to -100.
  */
-export function createAutoregressivePair<T>(prompt: T[], completion: T[]): [T[], (T | number)[]] {
+export function createAutoregressivePair<T>(
+	prompt: T[],
+	completion: T[],
+	maskOutPrefix: boolean
+): [T[], (T | number)[]] {
 	const fullSequence = prompt.concat(completion);
 	const input = fullSequence.slice(0, fullSequence.length - 1);
 	const target = fullSequence.slice(1);
 	// Mask the positions corresponding to the prompt (all but the last token of the prompt)
-	const maskedTarget = target.map((tok, i) => (i < prompt.length - 1 ? -100 : tok));
-	return [input, maskedTarget];
+	if (maskOutPrefix) {
+		const maskedTarget = target.map((tok, i) => (i < prompt.length - 1 ? -100 : tok));
+		return [input, maskedTarget];
+	} else {
+		return [input, target];
+	}
 }
 
 /**
@@ -279,17 +328,26 @@ export function sequenceToTokens(sequence: string, tokenizer: SimpleTokenizer): 
 	return sequence.split('').map((c) => tokenizer.vocab[c]);
 }
 
+// --------------------------
+// Task-Specific Sequence Generators
+// (These return token ID arrays directly for the number‐block tasks.)
+// --------------------------
 
 /**
  * Addition: generate two addends (in [0, maxNum]) chosen so that their sum ≤ maxNum.
  * Mapping: number token = number + 2, plus = 0, equals = 1.
  */
 export function addSequenceTokenized(config: AdditionConfig): [number[], number[]] {
-	const { maxNum } = config;
+	const { maxNum, includeExpressionTokens } = config;
 	const num1 = Math.floor(Math.random() * (maxNum + 1));
 	const num2 = Math.floor(Math.random() * (maxNum - num1 + 1));
 	const sum = num1 + num2;
-	const prompt = [num1 + 2, 0, num2 + 2, 1];
+	let prompt;
+	if (includeExpressionTokens) {
+		prompt = [num1 + 2, 0, num2 + 2, 1];
+	} else {
+		prompt = [num1 + 2, num2 + 2];
+	}
 	const target = [sum + 2];
 	return [prompt, target];
 }
@@ -299,11 +357,16 @@ export function addSequenceTokenized(config: AdditionConfig): [number[], number[
  * Mapping is identical to Addition.
  */
 export function modAddSequenceTokenized(config: ModAdditionConfig): [number[], number[]] {
-	const { maxNum } = config;
+	const { maxNum, includeExpressionTokens } = config;
 	const num1 = Math.floor(Math.random() * maxNum);
 	const num2 = Math.floor(Math.random() * maxNum);
 	const sum = (num1 + num2) % maxNum;
-	const prompt = [num1 + 2, 0, num2 + 2, 1];
+	let prompt;
+	if (includeExpressionTokens) {
+		prompt = [num1 + 2, 0, num2 + 2, 1];
+	} else {
+		prompt = [num1 + 2, num2 + 2];
+	}
 	const target = [sum + 2];
 	return [prompt, target];
 }
@@ -418,7 +481,11 @@ export const tasks: { [K in keyof TaskConfigMap]: TaskSpec<TaskConfigMap[K]> } =
 				const targets: (number | -100)[][] = [];
 				for (let i = 0; i < config.batchSize; i++) {
 					const [prompt, completion] = addSequenceTokenized(config);
-					const [inputSeq, targetSeq] = createAutoregressivePair(prompt, completion);
+					const [inputSeq, targetSeq] = createAutoregressivePair(
+						prompt,
+						completion,
+						config.maskOutPrefix
+					);
 					inputs.push(inputSeq);
 					targets.push(targetSeq);
 				}
@@ -445,7 +512,11 @@ export const tasks: { [K in keyof TaskConfigMap]: TaskSpec<TaskConfigMap[K]> } =
 				const targets: (number | -100)[][] = [];
 				for (let i = 0; i < config.batchSize; i++) {
 					const [prompt, completion] = modAddSequenceTokenized(config);
-					const [inputSeq, targetSeq] = createAutoregressivePair(prompt, completion);
+					const [inputSeq, targetSeq] = createAutoregressivePair(
+						prompt,
+						completion,
+						config.maskOutPrefix
+					);
 					inputs.push(inputSeq);
 					targets.push(targetSeq);
 				}
@@ -472,7 +543,11 @@ export const tasks: { [K in keyof TaskConfigMap]: TaskSpec<TaskConfigMap[K]> } =
 				const targets: (number | -100)[][] = [];
 				for (let i = 0; i < config.batchSize; i++) {
 					const [prompt, completion] = sortSequenceTokenized(config);
-					const [inputSeq, targetSeq] = createAutoregressivePair(prompt, completion);
+					const [inputSeq, targetSeq] = createAutoregressivePair(
+						prompt,
+						completion,
+						config.maskOutPrefix
+					);
 					inputs.push(inputSeq);
 					targets.push(targetSeq);
 				}
@@ -499,7 +574,11 @@ export const tasks: { [K in keyof TaskConfigMap]: TaskSpec<TaskConfigMap[K]> } =
 				const targets: (number | -100)[][] = [];
 				for (let i = 0; i < config.batchSize; i++) {
 					const [prompt, completion] = twoSumSequenceTokenized(config);
-					const [inputSeq, targetSeq] = createAutoregressivePair(prompt, completion);
+					const [inputSeq, targetSeq] = createAutoregressivePair(
+						prompt,
+						completion,
+						config.maskOutPrefix
+					);
 					inputs.push(inputSeq);
 					targets.push(targetSeq);
 				}
@@ -529,7 +608,11 @@ export const tasks: { [K in keyof TaskConfigMap]: TaskSpec<TaskConfigMap[K]> } =
 				const [promptStr, completionStr] = zerosSequence(config);
 				const promptTokens = sequenceToTokens(promptStr, tokenizer);
 				const completionTokens = sequenceToTokens(completionStr, tokenizer);
-				const [inputSeq, targetSeq] = createAutoregressivePair(promptTokens, completionTokens);
+				const [inputSeq, targetSeq] = createAutoregressivePair(
+					promptTokens,
+					completionTokens,
+					config.maskOutPrefix
+				);
 				inputs.push(inputSeq);
 				targets.push(targetSeq);
 			}
