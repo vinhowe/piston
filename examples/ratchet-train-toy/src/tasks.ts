@@ -142,7 +142,7 @@ export const taskMetadata: Record<string, TaskMetadata> = {
 				type: 'number',
 				min: 2,
 				max: 10,
-				default: 5
+				default: 3
 			},
 			maxNum: {
 				name: 'Max Number',
@@ -150,7 +150,7 @@ export const taskMetadata: Record<string, TaskMetadata> = {
 				type: 'number',
 				min: 10,
 				max: 100,
-				default: 100
+				default: 10
 			},
 			maskOutPrefix: {
 				name: 'Mask Out Prefix',
