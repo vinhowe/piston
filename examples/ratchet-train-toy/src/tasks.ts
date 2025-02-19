@@ -89,7 +89,7 @@ export const taskMetadata: Record<string, TaskMetadata> = {
 			includeExpressionTokens: {
 				name: 'Include Expression Tokens (+, =)',
 				type: 'boolean',
-				default: true
+				default: false
 			}
 		}
 	},
@@ -113,7 +113,7 @@ export const taskMetadata: Record<string, TaskMetadata> = {
 			includeExpressionTokens: {
 				name: 'Include Expression Tokens (+, =)',
 				type: 'boolean',
-				default: true
+				default: false
 			}
 		}
 	},
