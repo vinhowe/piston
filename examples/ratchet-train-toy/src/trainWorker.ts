@@ -1,9 +1,12 @@
 import { Trainer } from '@ratchet-ml/ratchet-web-train';
 import {
 	evalExampleGenerators,
+	taskMetadata,
 	trainBatchGenerators,
 	type EvalConfig,
-	type TaskConfigMap
+	type TaskConfigMap,
+	type TrainBatchConfig,
+	type TrainBatchGenerator
 } from './tasks';
 
 let trainer: Trainer;
@@ -50,7 +53,13 @@ async function initializeTrainer(config: TrainerConfig) {
 	// Stop all existing training sessions
 	markStopTraining();
 
-	trainer = await new Trainer(config);
+	const vocab = taskMetadata[config.dataset].vocab;
+
+	trainer = await new Trainer({
+		...config,
+		// Add 1 to the vocab size to account for the end-of-sequence token
+		vocab_size: vocab.length + 1
+	});
 	self.postMessage({ type: 'modelReady' });
 	currentSession = sessionCounter++;
 	trainingSessions[currentSession] = true;
@@ -64,7 +73,9 @@ async function trainingLoop(sessionId: number, config: TrainerConfig) {
 	}
 
 	// Get the appropriate task generator
-	const taskGenerator = trainBatchGenerators[config.dataset];
+	const taskGenerator = trainBatchGenerators[config.dataset] as TrainBatchGenerator<
+		typeof config.dataset
+	>;
 	const evalConfig = evalExampleGenerators[config.dataset] as EvalConfig<typeof config.dataset>;
 	if (!taskGenerator) {
 		console.error(`Unknown dataset type: ${config.dataset}`);
@@ -79,8 +90,12 @@ async function trainingLoop(sessionId: number, config: TrainerConfig) {
 		}
 
 		try {
-			// Generate a new batch using the selected task generator
-			const [input, target] = generateTask(config);
+			// Combine batch size with task-specific parameters before invoking the generator
+			const taskConfig = {
+				batchSize: config.batch_size,
+				...config.task_parameters
+			};
+			const [input, target] = taskGenerator(taskConfig);
 
 			// Train on the batch
 			const result = await trainer.train_on_batch(input, target);
@@ -129,9 +144,9 @@ async function trainingLoop(sessionId: number, config: TrainerConfig) {
 						if (sessionId === currentSession) {
 							self.postMessage({
 								type: 'evalStreaming',
-								sequence: streamingSequence,
-								completion: streamingExampleCompletion,
-								target: streamingTarget,
+								sequence: streamingSequence.map((t) => evalConfig.tokenizer.ids[t]),
+								completion: streamingExampleCompletion.map((t) => evalConfig.tokenizer.ids[t]),
+								target: streamingTarget.map((t) => evalConfig.tokenizer.ids[t]),
 								evalResult,
 								logits: {
 									data: streamingExampleLogits,
@@ -160,8 +175,8 @@ async function trainingLoop(sessionId: number, config: TrainerConfig) {
 			if (sessionId === currentSession) {
 				self.postMessage({
 					type: 'step',
-					input: input,
-					target: target,
+					input: input.map((x) => x.map((t) => evalConfig.tokenizer.ids[t])),
+					target: target.map((t) => t.map((t) => evalConfig.tokenizer.ids[t])),
 					accuracy: winCount === null ? null : winCount / EVAL_TRIAL_COUNT,
 					loss: {
 						total: loss.get('total'),

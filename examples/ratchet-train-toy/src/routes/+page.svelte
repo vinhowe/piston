@@ -440,9 +440,9 @@
 					break;
 				case 'evalStreaming':
 					// Convert sequence and completion to strings
-					const sequence = data.sequence.map((x: number) => String.fromCharCode(x)).join('');
-					const completion = data.completion.map((x: number) => String.fromCharCode(x)).join('');
-					const target = data.target.map((x: number) => String.fromCharCode(x)).join('');
+					const sequence = data.sequence.join('');
+					const completion = data.completion.join('');
+					const target = data.target.join('');
 
 					// Update eval history - find existing entry or create new one
 					const existingIndex = evalHistory.findIndex((entry) => entry.sequence === sequence);
@@ -490,12 +490,8 @@
 					}
 
 					// Process batch data for visualization
-					const inputStrings = data.input.map((x: Array<number>) =>
-						x.map((y: number) => String.fromCharCode(y))
-					);
-					const targetStrings = data.target.map((x: Array<number>) =>
-						x.map((y: number) => String.fromCharCode(y))
-					);
+					const inputStrings = data.input.map((x: Array<number>) => x.join(''));
+					const targetStrings = data.target.map((x: Array<number>) => x.join(''));
 					const tokenLosses = data.loss.tokens.map((x: number) => x * data.loss.tokens.length);
 
 					// Update batch history
