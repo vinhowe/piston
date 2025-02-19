@@ -24,6 +24,7 @@ use ratchet_nn::{
     VarBuilder, VarMap, SGD,
 };
 use serde::{Deserialize, Serialize};
+use std::cell::RefCell;
 use std::iter::Iterator;
 use wasm_bindgen::prelude::*;
 
@@ -517,9 +518,9 @@ impl Trainer {
             Ok(JsValue::UNDEFINED)
         } else {
             // No callback was provided, so we accumulate only the final tokens/logits and return them.
-            let mut final_tokens: Vec<i32> = Vec::new();
-            let mut final_logits_data: Vec<f32> = Vec::new();
-            let mut final_logits_shape: Vec<usize> = Vec::new();
+            let final_tokens: RefCell<Vec<i32>> = RefCell::new(Vec::new());
+            let final_logits_data: RefCell<Vec<f32>> = RefCell::new(Vec::new());
+            let final_logits_shape: RefCell<Vec<usize>> = RefCell::new(Vec::new());
 
             let prompt_len = prompt_vec.len();
 
@@ -529,16 +530,16 @@ impl Trainer {
                 prompt_vec,
                 |tokens, logits_nd| {
                     // Update tokens
-                    final_tokens.extend_from_slice(&tokens);
+                    final_tokens.borrow_mut().extend_from_slice(&tokens);
 
                     // Convert the logits into shape/data only for the final pass
-                    final_logits_shape.extend_from_slice(&[
+                    final_logits_shape.borrow_mut().extend_from_slice(&[
                         logits_nd.shape()[0],
                         logits_nd.shape()[1],
                         logits_nd.shape()[2],
                     ]);
 
-                    final_logits_data.extend(logits_nd.into_iter());
+                    final_logits_data.borrow_mut().extend(logits_nd.into_iter());
                 },
                 max_tokens,
             )
@@ -547,10 +548,10 @@ impl Trainer {
 
             // Build a JSON object with final tokens and final logits
             let result = serde_json::json!({
-                "tokens": final_tokens[prompt_len..].to_vec(),
+                "tokens": final_tokens.borrow()[prompt_len..].to_vec(),
                 "logits": {
-                    "shape": final_logits_shape,
-                    "data": final_logits_data,
+                    "shape": final_logits_shape.borrow().to_vec(),
+                    "data": final_logits_data.borrow().to_vec(),
                 },
             });
 
