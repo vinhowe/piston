@@ -210,21 +210,6 @@ async function trainingLoop(sessionId: number, config: TrainerConfig) {
 	}
 }
 
-function generateTask(config: TrainerConfig): [number[][], number[][]] {
-	const taskGenerator = trainBatchGenerators[config.dataset];
-	if (!taskGenerator) {
-		throw new Error(`Unknown dataset: ${config.dataset}`);
-	}
-
-	// Combine batch size with task-specific parameters
-	const taskConfig = {
-		batchSize: config.batch_size,
-		...config.task_parameters
-	};
-
-	return taskGenerator(taskConfig);
-}
-
 self.onmessage = async (e: MessageEvent) => {
 	if (e.data.type === 'stop') {
 		markStopTraining();
