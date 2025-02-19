@@ -142,9 +142,9 @@
 
 	// Add eval history state
 	let evalHistory: Array<{
-		sequence: string;
-		completion: string;
-		target: string;
+		sequence: number[];
+		completion: number[];
+		target: number[];
 		results: Array<boolean | null>;
 		logits: number[];
 	}> = [];
@@ -440,12 +440,14 @@
 					break;
 				case 'evalStreaming':
 					// Convert sequence and completion to strings
-					const sequence = data.sequence.join('');
-					const completion = data.completion.join('');
-					const target = data.target.join('');
+					const sequence = data.sequence;
+					const completion = data.completion;
+					const target = data.target;
 
 					// Update eval history - find existing entry or create new one
-					const existingIndex = evalHistory.findIndex((entry) => entry.sequence === sequence);
+					const existingIndex = evalHistory.findIndex((entry) =>
+						entry.sequence.every((x, i) => x === sequence[i])
+					);
 					if (existingIndex !== -1) {
 						// Update existing entry
 						evalHistory[existingIndex] = {
@@ -490,15 +492,13 @@
 					}
 
 					// Process batch data for visualization
-					const inputStrings = data.input.map((x: Array<number>) => x.join(''));
-					const targetStrings = data.target.map((x: Array<number>) => x.join(''));
 					const tokenLosses = data.loss.tokens.map((x: number) => x * data.loss.tokens.length);
 
 					// Update batch history
 					batchHistory = [
 						{
-							input: inputStrings,
-							target: targetStrings,
+							input: data.input,
+							target: data.target,
 							losses: tokenLosses,
 							initialLoss: initialTotalLoss / 2
 						},
@@ -933,8 +933,8 @@
 								<div class="flex flex-col leading-none border-l-2 border-gray-300 pl-1">
 									<div class="flex items-center">
 										<div class="font-mono text-sm">
-											<span>{evalEntry.sequence}</span
-											>{#each evalEntry.completion.split('') as char, i}
+											<span>{evalEntry.sequence.join('')}</span
+											>{#each evalEntry.completion as char, i}
 												<span
 													style="background-color: {evalEntry.results[i] === true
 														? 'rgba(0, 255, 0, 0.3)'
@@ -945,7 +945,7 @@
 													{char}
 												</span>
 											{/each}
-											<span>&rarr; {evalEntry.target}</span>
+											<span>&rarr; {evalEntry.target.join('')}</span>
 										</div>
 									</div>
 								</div>
