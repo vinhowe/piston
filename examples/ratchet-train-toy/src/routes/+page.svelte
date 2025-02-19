@@ -42,8 +42,8 @@
 	// Model parameters
 	let n_layer = 1;
 	let n_head = 6;
-	let n_embd_per_head = 16;
-	let n_embd = n_embd_per_head * n_head;
+	let n_8_embd_per_head = 2;
+	let n_embd = n_8_embd_per_head * 8 * n_head;
 	let batch_size = 2;
 	let dataset = 'sort';
 	let activation = 'gelu';
@@ -121,7 +121,7 @@
 	];
 
 	// $: n_embd = Math.ceil(n_embd / n_head) * n_head; // Ensure n_embd is multiple of n_head
-	$: n_embd = n_embd_per_head * n_head;
+	$: n_embd = n_8_embd_per_head * 8 * n_head;
 
 	// Add new state variables
 	let optimizer_type = 'adamw';
@@ -1046,12 +1046,11 @@
 
 				<div>
 					<TickSlider
-						bind:value={n_embd_per_head}
-						min={n_head}
-						max={64}
-						step={1}
+						bind:value={n_8_embd_per_head}
+						min={1}
+						max={8}
 						label="Embedding Size"
-						formatter={(v) => `${v} per head`}
+						formatter={(v) => `${v * 8} per head`}
 					/>
 				</div>
 
