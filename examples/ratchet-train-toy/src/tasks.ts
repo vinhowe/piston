@@ -1,22 +1,22 @@
 // Task-specific configuration types
-interface TrainBatchConfig {
+export interface TrainBatchConfig {
 	batchSize: number;
 }
 
-interface NumberSequenceConfig {
+export interface NumberSequenceConfig {
 	seqLen: number;
 	maxNum: number;
 }
 
-interface AdditionConfig {
+export interface AdditionConfig {
 	maxNum: number;
 }
 
-interface ModAdditionConfig {
+export interface ModAdditionConfig {
 	maxNum: number;
 }
 
-interface FixedLengthConfig {
+export interface FixedLengthConfig {
 	seqLen: number;
 }
 
@@ -33,6 +33,7 @@ export interface TaskMetadata {
 	name: string;
 	description: string;
 	parameters: Record<string, TaskParameter>;
+	vocab: string;
 }
 
 export const taskMetadata: Record<string, TaskMetadata> = {
@@ -54,7 +55,8 @@ export const taskMetadata: Record<string, TaskMetadata> = {
 				max: 100,
 				default: 100
 			}
-		}
+		},
+		vocab: '0123456789,:'
 	},
 	add: {
 		name: 'Addition',
@@ -67,7 +69,8 @@ export const taskMetadata: Record<string, TaskMetadata> = {
 				max: 100,
 				default: 100
 			}
-		}
+		},
+		vocab: '0123456789+='
 	},
 	mod_add: {
 		name: 'Modular Addition',
@@ -80,7 +83,8 @@ export const taskMetadata: Record<string, TaskMetadata> = {
 				max: 113,
 				default: 113
 			}
-		}
+		},
+		vocab: '0123456789+='
 	},
 	// count: {
 	// 	name: 'Counting',
@@ -126,7 +130,8 @@ export const taskMetadata: Record<string, TaskMetadata> = {
 				max: 10,
 				default: 5
 			}
-		}
+		},
+		vocab: '0123456789'
 	},
 	two_sum: {
 		name: 'Two Sum',
@@ -146,7 +151,8 @@ export const taskMetadata: Record<string, TaskMetadata> = {
 				max: 100,
 				default: 100
 			}
-		}
+		},
+		vocab: '0123456789:=,'
 	}
 };
 
@@ -155,17 +161,44 @@ type SequenceGenerator<K extends keyof TaskConfigMap> = (
 	config: TaskConfigMap[K]
 ) => [string, string];
 
+type SimpleTokenizer = {
+	vocab: Record<string, number>;
+	ids: Record<number, string>;
+	endToken: number;
+};
+
+function vocabToSimpleTokenizer(vocab: string): SimpleTokenizer {
+	return {
+		vocab: vocab.split('').reduce(
+			(acc, c, i) => {
+				acc[c] = i;
+				return acc;
+			},
+			{} as Record<string, number>
+		),
+		ids: vocab.split('').reduce(
+			(acc, c, i) => {
+				acc[i] = c;
+				return acc;
+			},
+			{} as Record<number, string>
+		),
+		endToken: vocab.length
+	};
+}
+
 // Helper function to handle batch processing and tokenization
 function generateTrainBatch<K extends keyof TaskConfigMap>(
 	generator: SequenceGenerator<K>,
-	config: TrainBatchConfig & TaskConfigMap[K]
+	config: TrainBatchConfig & TaskConfigMap[K],
+	tokenizer: SimpleTokenizer
 ): [number[][], number[][]] {
 	const input: number[][] = [];
 	const target: number[][] = [];
 
 	for (let b = 0; b < config.batchSize; b++) {
 		const sequence = generator(config).join('');
-		const tokens = sequenceToTokens(sequence);
+		const tokens = sequenceToTokens(sequence, tokenizer);
 		input.push(tokens.slice(0, -1));
 		target.push(tokens.slice(1));
 	}
@@ -175,21 +208,22 @@ function generateTrainBatch<K extends keyof TaskConfigMap>(
 
 function generateEvalExample<K extends keyof TaskConfigMap>(
 	generator: SequenceGenerator<K>,
-	config: TaskConfigMap[K]
+	config: TaskConfigMap[K],
+	tokenizer: SimpleTokenizer
 ): [number[], number[]] {
 	const [sequence, completion] = generator(config);
-	const sequenceTokens = sequenceToTokens(sequence);
-	const completionTokens = sequenceToTokens(completion);
+	const sequenceTokens = sequenceToTokens(sequence, tokenizer);
+	const completionTokens = sequenceToTokens(completion, tokenizer);
 	return [sequenceTokens, completionTokens];
 }
 
 // Helper function to convert a sequence to tokens
-export function sequenceToTokens(sequence: string): number[] {
-	return sequence.split('').map((c) => c.charCodeAt(0));
+export function sequenceToTokens(sequence: string, tokenizer: SimpleTokenizer): number[] {
+	return sequence.split('').map((c) => tokenizer.vocab[c]);
 }
 
-export function tokensToString(tokens: number[]): string {
-	return tokens.map((t) => String.fromCharCode(t)).join('');
+export function tokensToString(tokens: number[], tokenizer: SimpleTokenizer): string {
+	return tokens.map((t) => tokenizer.ids[t]).join('');
 }
 
 // A helper function to pad a number to the given number of digits
@@ -198,6 +232,17 @@ function pad(num: number, digits: number): string {
 }
 
 // Task-specific sequence generators
+function sortSequence(config: NumberSequenceConfig): [string, string] {
+	const { maxNum, seqLen } = config;
+	const width = Math.floor(Math.log10(maxNum)) + 1;
+	const nums = Array.from({ length: seqLen }, () => Math.floor(Math.random() * maxNum));
+	const sorted = [...nums].sort((a, b) => a - b);
+	return [
+		`${nums.map((n) => pad(n, width)).join(',')}:`,
+		`${sorted.map((n) => pad(n, width)).join(',')}`
+	];
+}
+
 function twoSumSequence(config: NumberSequenceConfig): [string, string] {
 	const { maxNum, seqLen } = config;
 	const width = Math.floor(Math.log10(maxNum)) + 1;
@@ -209,14 +254,6 @@ function twoSumSequence(config: NumberSequenceConfig): [string, string] {
 		`${nums.map((n) => pad(n, width)).join(',')}:${pad(sum, width)}=`,
 		`${pad(nums[i], width)},${pad(nums[j], width)}`
 	];
-}
-
-function sortSequence(config: NumberSequenceConfig): [string, string] {
-	const { maxNum, seqLen } = config;
-	const width = Math.floor(Math.log10(maxNum)) + 1;
-	const nums = Array.from({ length: seqLen }, () => Math.floor(Math.random() * maxNum));
-	const sorted = [...nums].sort((a, b) => a - b);
-	return [`${nums.map((n) => pad(n, width)).join(',')}:`, `${sorted.map((n) => pad(n, width)).join(',')}`];
 }
 
 function addSequence(config: AdditionConfig): [string, string] {
@@ -272,7 +309,6 @@ export type TaskConfigMap = {
 	zeros: FixedLengthConfig;
 };
 
-// Update TrainBatchGenerator to be generic over task keys
 export type TrainBatchGenerator<K extends keyof TaskConfigMap> = (
 	config: TrainBatchConfig & TaskConfigMap[K]
 ) => [number[][], number[][]];
@@ -283,19 +319,27 @@ export const trainBatchGenerators: {
 } = {
 	two_sum: (config: TrainBatchConfig & NumberSequenceConfig) => {
 		const { seqLen, maxNum } = config;
-		return generateTrainBatch((c) => twoSumSequence({ ...c, seqLen, maxNum }), config);
+		const vocab = taskMetadata.two_sum.vocab;
+		const tokenMap = vocabToSimpleTokenizer(vocab);
+		return generateTrainBatch((c) => twoSumSequence({ ...c, seqLen, maxNum }), config, tokenMap);
 	},
 	sort: (config: TrainBatchConfig & NumberSequenceConfig) => {
 		const { seqLen, maxNum } = config;
-		return generateTrainBatch((c) => sortSequence({ ...c, seqLen, maxNum }), config);
+		const vocab = taskMetadata.sort.vocab;
+		const tokenMap = vocabToSimpleTokenizer(vocab);
+		return generateTrainBatch((c) => sortSequence({ ...c, seqLen, maxNum }), config, tokenMap);
 	},
 	add: (config: TrainBatchConfig & AdditionConfig) => {
 		const { maxNum } = config;
-		return generateTrainBatch((c) => addSequence({ ...c, maxNum }), config);
+		const vocab = taskMetadata.add.vocab;
+		const tokenMap = vocabToSimpleTokenizer(vocab);
+		return generateTrainBatch((c) => addSequence({ ...c, maxNum }), config, tokenMap);
 	},
 	mod_add: (config: TrainBatchConfig & ModAdditionConfig) => {
 		const { maxNum } = config;
-		return generateTrainBatch((c) => modAddSequence({ ...c, maxNum }), config);
+		const vocab = taskMetadata.mod_add.vocab;
+		const tokenMap = vocabToSimpleTokenizer(vocab);
+		return generateTrainBatch((c) => modAddSequence({ ...c, maxNum }), config, tokenMap);
 	},
 	// count: (config: BaseTaskConfig) => {
 	// 	const { seqLen, maxNum } = config as NumberSequenceConfig;
@@ -307,7 +351,9 @@ export const trainBatchGenerators: {
 	// },
 	zeros: (config: TrainBatchConfig & FixedLengthConfig) => {
 		const { seqLen } = config;
-		return generateTrainBatch((c) => zerosSequence({ ...c, seqLen }), config);
+		const vocab = taskMetadata.zeros.vocab;
+		const tokenMap = vocabToSimpleTokenizer(vocab);
+		return generateTrainBatch((c) => zerosSequence({ ...c, seqLen }), config, tokenMap);
 	}
 };
 
@@ -325,21 +371,28 @@ export type EvalMetric<K extends keyof TaskConfigMap> = (
 export type EvalConfig<K extends keyof TaskConfigMap> = {
 	metric: EvalMetric<K>;
 	generator: EvalExampleGenerator<K>;
+	tokenizer: SimpleTokenizer;
 };
 
 export const evalExampleGenerators: {
 	[K in keyof TaskConfigMap]: EvalConfig<K>;
 } = {
 	two_sum: (() => {
+		const tokenizer = vocabToSimpleTokenizer(taskMetadata.two_sum.vocab);
 		return {
+			tokenizer,
 			generator: (config: NumberSequenceConfig) => {
 				const { seqLen, maxNum } = config as NumberSequenceConfig;
-				return generateEvalExample((c) => twoSumSequence({ ...c, seqLen, maxNum }), config);
+				return generateEvalExample(
+					(c) => twoSumSequence({ ...c, seqLen, maxNum }),
+					config,
+					tokenizer
+				);
 			},
-			metric: (completion, _, sequence, config) => {
+			metric: (completion, _, _sequence, config) => {
 				// Passing is binary in this case, and depends on the whole completion
 				const shouldPass = (() => {
-					const completionString = tokensToString(completion);
+					const completionString = tokensToString(completion, tokenizer);
 					// Count the number of commas
 					const numCommas = (completionString.match(/,/g) || []).length;
 					if (numCommas !== 1) {
@@ -359,10 +412,16 @@ export const evalExampleGenerators: {
 		};
 	})(),
 	sort: (() => {
+		const tokenizer = vocabToSimpleTokenizer(taskMetadata.sort.vocab);
 		return {
+			tokenizer,
 			generator: (config: NumberSequenceConfig) => {
 				const { seqLen, maxNum } = config as NumberSequenceConfig;
-				return generateEvalExample((c) => sortSequence({ ...c, seqLen, maxNum }), config);
+				return generateEvalExample(
+					(c) => sortSequence({ ...c, seqLen, maxNum }),
+					config,
+					tokenizer
+				);
 			},
 			metric: (completion, target) => {
 				return completion.map((c, i) => c === target[i]);
@@ -370,10 +429,12 @@ export const evalExampleGenerators: {
 		};
 	})(),
 	add: (() => {
+		const tokenizer = vocabToSimpleTokenizer(taskMetadata.add.vocab);
 		return {
+			tokenizer,
 			generator: (config: AdditionConfig) => {
 				const { maxNum } = config as AdditionConfig;
-				return generateEvalExample((c) => addSequence({ ...c, maxNum }), config);
+				return generateEvalExample((c) => addSequence({ ...c, maxNum }), config, tokenizer);
 			},
 			metric: (completion, target) => {
 				return completion.map((c, i) => c === target[i]);
@@ -381,10 +442,12 @@ export const evalExampleGenerators: {
 		};
 	})(),
 	mod_add: (() => {
+		const tokenizer = vocabToSimpleTokenizer(taskMetadata.mod_add.vocab);
 		return {
+			tokenizer,
 			generator: (config: ModAdditionConfig) => {
 				const { maxNum } = config as ModAdditionConfig;
-				return generateEvalExample((c) => modAddSequence({ ...c, maxNum }), config);
+				return generateEvalExample((c) => modAddSequence({ ...c, maxNum }), config, tokenizer);
 			},
 			metric: (completion, target) => {
 				return completion.map((c, i) => c === target[i]);
@@ -392,10 +455,12 @@ export const evalExampleGenerators: {
 		};
 	})(),
 	zeros: (() => {
+		const tokenizer = vocabToSimpleTokenizer(taskMetadata.zeros.vocab);
 		return {
+			tokenizer,
 			generator: (config: FixedLengthConfig) => {
 				const { seqLen } = config as FixedLengthConfig;
-				return generateEvalExample((c) => zerosSequence({ ...c, seqLen }), config);
+				return generateEvalExample((c) => zerosSequence({ ...c, seqLen }), config, tokenizer);
 			},
 			metric: (completion, target) => {
 				return completion.map((c, i) => c === target[i]);
