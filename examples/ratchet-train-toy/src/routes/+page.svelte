@@ -299,7 +299,6 @@
 
 		addMessage(`Initializing model (run #${runCount + 1})...`);
 		const config = {
-			vocab_size: 256,
 			n_embd,
 			n_layer,
 			n_head,
