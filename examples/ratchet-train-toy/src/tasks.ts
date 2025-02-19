@@ -347,7 +347,7 @@ export function sortSequenceTokenized(config: NumberSequenceConfig): [number[], 
  */
 export function twoSumSequenceTokenized(config: NumberSequenceConfig): [number[], number[]] {
 	const { seqLen, maxNum } = config;
-	const nums = Array.from({ length: seqLen }, () => Math.floor(Math.random() * (maxNum + 1)));
+	const nums = Array.from({ length: seqLen }, () => Math.floor(Math.random() * (maxNum / 2)));
 	const i = Math.floor(Math.random() * seqLen);
 	const j = Math.floor(Math.random() * seqLen);
 	const sum = nums[i] + nums[j];
