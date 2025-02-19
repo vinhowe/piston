@@ -46,7 +46,9 @@ impl GPT2SelfAttention {
                 None,
                 Some(AlibiEmbedding::new(cfg.n_head, 8.0)), // max_bias=8.0 is a common default
             ),
-            PositionalEncoding::Learned | PositionalEncoding::Sinusoidal => (None, None),
+            PositionalEncoding::Learned
+            | PositionalEncoding::Sinusoidal
+            | PositionalEncoding::None => (None, None),
         };
 
         Ok(Self {

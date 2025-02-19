@@ -19,6 +19,7 @@ pub enum PositionalEncoding {
     RoPE,
     ALiBi,
     Sinusoidal,
+    None,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -232,6 +233,7 @@ impl GPT2 {
                 Some(SinusoidalEmbedding::new(cfg.n_embd, vb.device())?),
             ),
             PositionalEncoding::RoPE | PositionalEncoding::ALiBi => (None, None),
+            PositionalEncoding::None => (None, None),
         };
 
         let n_layers = cfg.n_layer as _;
