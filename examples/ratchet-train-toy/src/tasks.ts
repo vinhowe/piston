@@ -33,7 +33,8 @@ export interface TaskMetadata {
 	name: string;
 	description: string;
 	parameters: Record<string, TaskParameter>;
-	vocab: string;
+	// For tasks using typical tokenization (zeros, count, slapjack)
+	vocab?: string;
 }
 
 export const taskMetadata: Record<string, TaskMetadata> = {
@@ -55,8 +56,7 @@ export const taskMetadata: Record<string, TaskMetadata> = {
 				max: 100,
 				default: 100
 			}
-		},
-		vocab: '0123456789,:'
+		}
 	},
 	add: {
 		name: 'Addition',
@@ -64,13 +64,13 @@ export const taskMetadata: Record<string, TaskMetadata> = {
 		parameters: {
 			maxNum: {
 				name: 'Max Number',
-				description: 'Maximum value for each addend',
+				description:
+					'Maximum value for each addend (the addends are chosen so their sum is ≤ this value)',
 				min: 10,
 				max: 100,
 				default: 100
 			}
-		},
-		vocab: '0123456789+='
+		}
 	},
 	mod_add: {
 		name: 'Modular Addition',
@@ -83,42 +83,8 @@ export const taskMetadata: Record<string, TaskMetadata> = {
 				max: 113,
 				default: 113
 			}
-		},
-		vocab: '0123456789+='
+		}
 	},
-	// count: {
-	// 	name: 'Counting',
-	// 	description: 'Learn to count the occurrences of a character in a sequence',
-	// 	parameters: {
-	// 		seqLen: {
-	// 			name: 'Sequence Length',
-	// 			description: 'Length of the counting sequence',
-	// 			min: 2,
-	// 			max: 10,
-	// 			default: 5
-	// 		},
-	// 		maxNum: {
-	// 			name: 'Max Number',
-	// 			description: 'Maximum starting number',
-	// 			min: 10,
-	// 			max: 100,
-	// 			default: 100
-	// 		}
-	// 	}
-	// },
-	// slapjack: {
-	// 	name: 'Slapjack',
-	// 	description: 'Learn to find a specific number in a sequence',
-	// 	parameters: {
-	// 		seqLen: {
-	// 			name: 'Sequence Length',
-	// 			description: 'Length of the sequence',
-	// 			min: 2,
-	// 			max: 10,
-	// 			default: 5
-	// 		}
-	// 	}
-	// },
 	zeros: {
 		name: 'Zeros',
 		description: 'Learn to output zeros (baseline/debug task)',
@@ -151,165 +117,284 @@ export const taskMetadata: Record<string, TaskMetadata> = {
 				max: 100,
 				default: 100
 			}
-		},
-		vocab: '0123456789:=,'
+		}
 	}
+	/* 
+	// (Commented: these tasks use the typical tokenization.)
+	count: {
+		name: 'Counting',
+		description: 'Learn to count the occurrences of a character in a sequence',
+		parameters: {
+			seqLen: {
+				name: 'Sequence Length',
+				description: 'Length of the counting sequence',
+				min: 2,
+				max: 10,
+				default: 5
+			},
+			maxNum: {
+				name: 'Max Number',
+				description: 'Maximum starting number',
+				min: 10,
+				max: 100,
+				default: 100
+			}
+		}
+	},
+	slapjack: {
+		name: 'Slapjack',
+		description: 'Learn to find a specific number in a sequence',
+		parameters: {
+			seqLen: {
+				name: 'Sequence Length',
+				description: 'Length of the sequence',
+				min: 2,
+				max: 10,
+				default: 5
+			}
+		}
+	}
+	*/
 };
 
-// Type for single sequence generation
-type SequenceGenerator<K extends keyof TaskConfigMap> = (
-	config: TaskConfigMap[K]
-) => [string, string];
-
-type SimpleTokenizer = {
+export type SimpleTokenizer = {
 	vocab: Record<string, number>;
 	ids: Record<number, string>;
 	endToken: number;
 };
 
-function vocabToSimpleTokenizer(vocab: string): SimpleTokenizer {
-	return {
-		vocab: vocab.split('').reduce(
-			(acc, c, i) => {
-				acc[c] = i;
-				return acc;
-			},
-			{} as Record<string, number>
-		),
-		ids: vocab.split('').reduce(
-			(acc, c, i) => {
-				acc[i] = c;
-				return acc;
-			},
-			{} as Record<number, string>
-		),
-		endToken: vocab.length
-	};
+/**
+ * Given a prompt and a completion (both as token arrays), concatenate them to form a full sequence.
+ * Then, create an autoregressive pair where the input is fullSequence[:-1] and the target is fullSequence[1:],
+ * with all tokens corresponding to the prompt (except for its final token) masked to -100.
+ */
+export function createAutoregressivePair<T>(prompt: T[], completion: T[]): [T[], (T | number)[]] {
+	const fullSequence = prompt.concat(completion);
+	const input = fullSequence.slice(0, fullSequence.length - 1);
+	const target = fullSequence.slice(1);
+	// Mask the positions corresponding to the prompt (all but the last token of the prompt)
+	const maskedTarget = target.map((tok, i) => (i < prompt.length - 1 ? -100 : tok));
+	return [input, maskedTarget];
 }
 
-// Helper function to handle batch processing and tokenization
-function generateTrainBatch<K extends keyof TaskConfigMap>(
-	generator: SequenceGenerator<K>,
-	config: TrainBatchConfig & TaskConfigMap[K],
-	tokenizer: SimpleTokenizer
-): [number[][], number[][]] {
-	const input: number[][] = [];
-	const target: number[][] = [];
-
-	for (let b = 0; b < config.batchSize; b++) {
-		const [prompt, completion] = generator(config);
-		const sequence = prompt + completion;
-		const tokens = sequenceToTokens(sequence, tokenizer);
-		const promptTokens = sequenceToTokens(prompt, tokenizer);
-
-		input.push(tokens.slice(0, -1));
-		// Create target with -100 for prompt tokens and actual tokens for completion
-		const targetTokens = tokens
-			.slice(1)
-			.map((token, i) => (i < promptTokens.length - 1 ? -100 : token));
-		target.push(targetTokens);
-		// const sequence = generator(config).join('');
-		// const tokens = sequenceToTokens(sequence, tokenizer);
-		// input.push(tokens.slice(0, -1));
-		// target.push(tokens.slice(1));
+/**
+ * For tasks that use number blocks we define custom tokenizers.
+ *
+ * For Add (and Mod-Add):
+ *   token 0 → "+"
+ *   token 1 → "="
+ *   tokens 2 … maxNum+2 represent the numbers 0 … maxNum
+ *   (When converting to a string, token id i ≥ 2 becomes `<${i-2}>`.)
+ */
+export function createAddTokenizer(maxNum: number): SimpleTokenizer {
+	const vocab: Record<string, number> = {};
+	const ids: Record<number, string> = {};
+	vocab['+'] = 0;
+	ids[0] = '+';
+	vocab['='] = 1;
+	ids[1] = '=';
+	const width = maxNum.toString().length;
+	for (let n = 0; n <= maxNum; n++) {
+		const token = `<${n.toString().padStart(width, '0')}>`;
+		const id = n + 2;
+		vocab[token] = id;
+		ids[id] = token;
 	}
-
-	return [input, target];
+	return { vocab, ids, endToken: maxNum + 3 };
 }
 
-function generateEvalExample<K extends keyof TaskConfigMap>(
-	generator: SequenceGenerator<K>,
-	config: TaskConfigMap[K],
-	tokenizer: SimpleTokenizer
-): [number[], number[]] {
-	const [sequence, completion] = generator(config);
-	const sequenceTokens = sequenceToTokens(sequence, tokenizer);
-	const completionTokens = sequenceToTokens(completion, tokenizer);
-	return [sequenceTokens, completionTokens];
+/**
+ * For Sort:
+ *   token 0 → ":"
+ *   token 1 → ","
+ *   tokens 2 … maxNum+2 represent the numbers 0 … maxNum.
+ */
+export function createSortTokenizer(maxNum: number): SimpleTokenizer {
+	const vocab: Record<string, number> = {};
+	const ids: Record<number, string> = {};
+	vocab[':'] = 0;
+	ids[0] = ':';
+	vocab[','] = 1;
+	ids[1] = ',';
+	const width = maxNum.toString().length;
+	for (let n = 0; n <= maxNum; n++) {
+		const token = `<${n.toString().padStart(width, '0')}>`;
+		const id = n + 2;
+		vocab[token] = id;
+		ids[id] = token;
+	}
+	return { vocab, ids, endToken: maxNum + 3 };
 }
 
-// Helper function to convert a sequence to tokens
+/**
+ * For Two-Sum:
+ *   token 0 → ":"
+ *   token 1 → "="
+ *   token 2 → ","
+ *   tokens 3 … maxNum+3 represent the numbers 0 … maxNum.
+ */
+export function createTwoSumTokenizer(maxNum: number): SimpleTokenizer {
+	const vocab: Record<string, number> = {};
+	const ids: Record<number, string> = {};
+	vocab[':'] = 0;
+	ids[0] = ':';
+	vocab['='] = 1;
+	ids[1] = '=';
+	vocab[','] = 2;
+	ids[2] = ',';
+	const width = maxNum.toString().length;
+	for (let n = 0; n <= maxNum; n++) {
+		const token = `<${n.toString().padStart(width, '0')}>`;
+		const id = n + 3;
+		vocab[token] = id;
+		ids[id] = token;
+	}
+	return { vocab, ids, endToken: maxNum + 4 };
+}
+
+/**
+ * Typical tokenizer (used by zeros, count, slapjack).
+ */
+export function vocabToSimpleTokenizer(vocab: string): SimpleTokenizer {
+	const tokens = vocab.split('');
+	const vocabMap = tokens.reduce(
+		(acc, c, i) => {
+			acc[c] = i;
+			return acc;
+		},
+		{} as Record<string, number>
+	);
+	const ids = tokens.reduce(
+		(acc, c, i) => {
+			acc[i] = c;
+			return acc;
+		},
+		{} as Record<number, string>
+	);
+	return { vocab: vocabMap, ids, endToken: tokens.length };
+}
+
+// A helper for typical (character-based) tokenization.
 export function sequenceToTokens(sequence: string, tokenizer: SimpleTokenizer): number[] {
 	return sequence.split('').map((c) => tokenizer.vocab[c]);
 }
 
-export function tokensToString(tokens: number[], tokenizer: SimpleTokenizer): string {
-	return tokens.map((t) => tokenizer.ids[t]).join('');
-}
 
-// A helper function to pad a number to the given number of digits
-function pad(num: number, digits: number): string {
-	return num.toString().padStart(digits, '0');
-}
-
-// Task-specific sequence generators
-function sortSequence(config: NumberSequenceConfig): [string, string] {
-	const { maxNum, seqLen } = config;
-	const width = Math.floor(Math.log10(maxNum)) + 1;
-	const nums = Array.from({ length: seqLen }, () => Math.floor(Math.random() * maxNum));
-	const sorted = [...nums].sort((a, b) => a - b);
-	return [
-		`${nums.map((n) => pad(n, width)).join(',')}:`,
-		`${sorted.map((n) => pad(n, width)).join(',')}`
-	];
-}
-
-function twoSumSequence(config: NumberSequenceConfig): [string, string] {
-	const { maxNum, seqLen } = config;
-	const width = Math.floor(Math.log10(maxNum)) + 1;
-	const nums = Array.from({ length: seqLen }, () => Math.floor(Math.random() * maxNum));
-	const i = Math.floor(Math.random() * seqLen);
-	const j = Math.floor(Math.random() * seqLen);
-	const sum = nums[i] + nums[j];
-	return [
-		`${nums.map((n) => pad(n, width)).join(',')}:${pad(sum, width)}=`,
-		`${pad(nums[i], width)},${pad(nums[j], width)}`
-	];
-}
-
-function addSequence(config: AdditionConfig): [string, string] {
+/**
+ * Addition: generate two addends (in [0, maxNum]) chosen so that their sum ≤ maxNum.
+ * Mapping: number token = number + 2, plus = 0, equals = 1.
+ */
+export function addSequenceTokenized(config: AdditionConfig): [number[], number[]] {
 	const { maxNum } = config;
-	const width = Math.floor(Math.log10(maxNum)) + 1;
-	const num1 = Math.floor(Math.random() * maxNum);
-	const num2 = Math.floor(Math.random() * maxNum);
+	const num1 = Math.floor(Math.random() * (maxNum + 1));
+	const num2 = Math.floor(Math.random() * (maxNum - num1 + 1));
 	const sum = num1 + num2;
-	return [`${pad(num1, width)}+${pad(num2, width)}=`, `${pad(sum, width)}`];
+	const prompt = [num1 + 2, 0, num2 + 2, 1];
+	const target = [sum + 2];
+	return [prompt, target];
 }
 
-function modAddSequence(config: ModAdditionConfig): [string, string] {
+/**
+ * Modular Addition: generate two numbers (in [0, maxNum)) and compute (num1+num2)%maxNum.
+ * Mapping is identical to Addition.
+ */
+export function modAddSequenceTokenized(config: ModAdditionConfig): [number[], number[]] {
 	const { maxNum } = config;
-	const width = Math.floor(Math.log10(maxNum)) + 1;
 	const num1 = Math.floor(Math.random() * maxNum);
 	const num2 = Math.floor(Math.random() * maxNum);
 	const sum = (num1 + num2) % maxNum;
-	return [`${pad(num1, width)}+${pad(num2, width)}=`, `${pad(sum, width)}`];
+	const prompt = [num1 + 2, 0, num2 + 2, 1];
+	const target = [sum + 2];
+	return [prompt, target];
 }
 
-// function countSequence(config: NumberSequenceConfig): [string, string] {
-// 	const { maxNum, seqLen } = config;
-// 	const start = Math.floor(Math.random() * (maxNum - seqLen));
-// 	const sequence = Array.from({ length: seqLen - 1 }, (_, i) => pad2(start + i)).join(',');
-// 	return [sequence, `,${pad2(start + seqLen - 1)}`];
-// }
+/**
+ * Sorting: generate a sequence of numbers (each in [0, maxNum]) and return:
+ *  - prompt: the unsorted sequence with commas (token 1) between numbers and a colon (token 0) at the end.
+ *  - target: the sorted sequence with commas between numbers.
+ * Mapping: number token = number + 2.
+ */
+export function sortSequenceTokenized(config: NumberSequenceConfig): [number[], number[]] {
+	const { seqLen, maxNum } = config;
+	const nums = Array.from({ length: seqLen }, () => Math.floor(Math.random() * (maxNum + 1)));
+	const sorted = [...nums].sort((a, b) => a - b);
+	const prompt: number[] = [];
+	for (let i = 0; i < nums.length; i++) {
+		prompt.push(nums[i] + 2);
+		if (i < nums.length - 1) {
+			prompt.push(1); // comma
+		} else {
+			prompt.push(0); // colon
+		}
+	}
+	const target: number[] = [];
+	for (let i = 0; i < sorted.length; i++) {
+		target.push(sorted[i] + 2);
+		if (i < sorted.length - 1) {
+			target.push(1); // comma
+		}
+	}
+	return [prompt, target];
+}
 
-// function slapjackSequence(config: FixedLengthConfig): [string, string] {
-// 	const { seqLen } = config;
-// 	const maxNum = 100; // Fixed max number for consistency
-// 	const nums = Array.from({ length: seqLen }, () => Math.floor(Math.random() * maxNum));
-// 	const jackPosition = Math.floor(Math.random() * seqLen);
-// 	nums[jackPosition] = maxNum - 1; // Use max number as "jack"
-// 	return [
-// 		`${nums.map((n) => pad2(n)).join(',')}`,
-// 		`:${pad2(jackPosition)}`
-// 	];
-// }
+/**
+ * Two-Sum: generate a sequence of numbers (each in [0, maxNum]) and two random indices.
+ * The prompt consists of:
+ *   - the unsorted sequence (with commas, token 2)
+ *   - a colon (token 0), the sum (token = sum+3) and an equals sign (token 1).
+ * The target is the two numbers (from the chosen indices) separated by a comma.
+ * Mapping: number token = number + 3.
+ */
+export function twoSumSequenceTokenized(config: NumberSequenceConfig): [number[], number[]] {
+	const { seqLen, maxNum } = config;
+	const nums = Array.from({ length: seqLen }, () => Math.floor(Math.random() * (maxNum + 1)));
+	const i = Math.floor(Math.random() * seqLen);
+	const j = Math.floor(Math.random() * seqLen);
+	const sum = nums[i] + nums[j];
+	const prompt: number[] = [];
+	for (let k = 0; k < nums.length; k++) {
+		prompt.push(nums[k] + 3);
+		if (k < nums.length - 1) {
+			prompt.push(2); // comma
+		}
+	}
+	prompt.push(0); // colon
+	prompt.push(sum + 3);
+	prompt.push(1); // equals
+	const target: number[] = [nums[i] + 3, 2, nums[j] + 3];
+	return [prompt, target];
+}
 
-function zerosSequence(config: FixedLengthConfig): [string, string] {
+/**
+ * Zeros: (Baseline) returns string outputs and uses typical tokenization.
+ */
+export function zerosSequence(config: FixedLengthConfig): [string, string] {
 	const { seqLen } = config;
 	const sequence = Array(seqLen - 1)
 		.fill('0')
 		.join('');
-	return ['', sequence];
+	return ['0', sequence];
+}
+
+// (The counting and slapjack tasks are left commented out. Note that slapjack will continue to use the typical tokenization.)
+
+export interface TaskSpec<Config> {
+	metadata: TaskMetadata;
+	/**
+	 * Build a tokenizer (which may depend on the config).
+	 */
+	createTokenizer: (config: Config) => SimpleTokenizer;
+	/**
+	 * Generate a training batch given the combined task config.
+	 */
+	trainBatch: (config: TrainBatchConfig & Config) => [number[][], number[][]];
+	/**
+	 * Return the evaluation configuration, including a generator and a metric.
+	 */
+	eval: (config: Config) => {
+		example: () => [number[], number[]];
+		metric: (completion: number[], target: number[], sequence?: number[]) => Array<boolean | null>;
+	};
 }
 
 export type TaskConfigMap = {
@@ -318,165 +403,151 @@ export type TaskConfigMap = {
 	add: AdditionConfig;
 	mod_add: ModAdditionConfig;
 	zeros: FixedLengthConfig;
+	// count: NumberSequenceConfig;
+	// slapjack: FixedLengthConfig;
 };
 
-export type TrainBatchGenerator<K extends keyof TaskConfigMap> = (
-	config: TrainBatchConfig & TaskConfigMap[K]
-) => [number[][], number[][]];
-
-// Map of task names to their generator functions
-export const trainBatchGenerators: {
-	[K in keyof TaskConfigMap]: TrainBatchGenerator<K>;
-} = {
-	two_sum: (config: TrainBatchConfig & NumberSequenceConfig) => {
-		const { seqLen, maxNum } = config;
-		const vocab = taskMetadata.two_sum.vocab;
-		const tokenizer = vocabToSimpleTokenizer(vocab);
-		return generateTrainBatch((c) => twoSumSequence({ ...c, seqLen, maxNum }), config, tokenizer);
-	},
-	sort: (config: TrainBatchConfig & NumberSequenceConfig) => {
-		const { seqLen, maxNum } = config;
-		const vocab = taskMetadata.sort.vocab;
-		const tokenizer = vocabToSimpleTokenizer(vocab);
-		return generateTrainBatch((c) => sortSequence({ ...c, seqLen, maxNum }), config, tokenizer);
-	},
-	add: (config: TrainBatchConfig & AdditionConfig) => {
-		const { maxNum } = config;
-		const vocab = taskMetadata.add.vocab;
-		const tokenizer = vocabToSimpleTokenizer(vocab);
-		return generateTrainBatch((c) => addSequence({ ...c, maxNum }), config, tokenizer);
-	},
-	mod_add: (config: TrainBatchConfig & ModAdditionConfig) => {
-		const { maxNum } = config;
-		const vocab = taskMetadata.mod_add.vocab;
-		const tokenizer = vocabToSimpleTokenizer(vocab);
-		return generateTrainBatch((c) => modAddSequence({ ...c, maxNum }), config, tokenizer);
-	},
-	// count: (config: BaseTaskConfig) => {
-	// 	const { seqLen, maxNum } = config as NumberSequenceConfig;
-	// 	return generateBatch((c) => countSequence({ ...c, seqLen, maxNum }), config);
-	// },
-	// slapjack: (config: BaseTaskConfig) => {
-	// 	const { seqLen } = config as FixedLengthConfig;
-	// 	return generateBatch((c) => slapjackSequence({ ...c, seqLen }), config);
-	// },
-	zeros: (config: TrainBatchConfig & FixedLengthConfig) => {
-		const { seqLen } = config;
-		const vocab = taskMetadata.zeros.vocab;
-		const tokenizer = vocabToSimpleTokenizer(vocab);
-		return generateTrainBatch((c) => zerosSequence({ ...c, seqLen }), config, tokenizer);
-	}
-};
-
-export type EvalExampleGenerator = () => [number[], number[]];
-
-export type EvalMetric = (
-	completion: number[],
-	target: number[],
-	sequence: number[]
-) => Array<boolean | null>;
-
-export type EvalConfig = {
-	metric: EvalMetric;
-	generator: EvalExampleGenerator;
-	tokenizer: SimpleTokenizer;
-};
-
-export type EvalConfigGenerator<K extends keyof TaskConfigMap> = (
-	config: TaskConfigMap[K]
-) => EvalConfig;
-
-export const evalExampleGenerators: {
-	[K in keyof TaskConfigMap]: EvalConfigGenerator<K>;
-} = {
-	two_sum: (config: NumberSequenceConfig) => {
-		const tokenizer = vocabToSimpleTokenizer(taskMetadata.two_sum.vocab);
+export const tasks: { [K in keyof TaskConfigMap]: TaskSpec<TaskConfigMap[K]> } = {
+	add: (() => {
+		const createTokenizer = (config: AdditionConfig) => createAddTokenizer(config.maxNum);
 		return {
-			tokenizer,
-			generator: () => {
-				const { seqLen, maxNum } = config as NumberSequenceConfig;
-				return generateEvalExample(
-					(c) => twoSumSequence({ ...c, seqLen, maxNum }),
-					config,
-					tokenizer
-				);
+			metadata: taskMetadata.add,
+			createTokenizer,
+			trainBatch: (config: TrainBatchConfig & AdditionConfig) => {
+				const inputs: number[][] = [];
+				const targets: (number | -100)[][] = [];
+				for (let i = 0; i < config.batchSize; i++) {
+					const [prompt, completion] = addSequenceTokenized(config);
+					const [inputSeq, targetSeq] = createAutoregressivePair(prompt, completion);
+					inputs.push(inputSeq);
+					targets.push(targetSeq);
+				}
+				return [inputs, targets];
 			},
-			metric: (completion, _, _sequence) => {
-				// Passing is binary in this case, and depends on the whole completion
-				const shouldPass = (() => {
-					const completionString = tokensToString(completion, tokenizer);
-					// Count the number of commas
-					const numCommas = (completionString.match(/,/g) || []).length;
-					if (numCommas !== 1) {
-						return false;
+			eval: (config: AdditionConfig) => {
+				return {
+					example: () => addSequenceTokenized(config),
+					metric: (completion, target) => {
+						if (completion.length !== target.length) return completion.map(() => false);
+						return completion.map((t, i) => t === target[i]);
 					}
-
-					// Use log to find the number length
-					const numberLength = Math.floor(Math.log10(config.maxNum));
-					// Check that there are two numbers of the correct length, separated
-					// by a comma
-					// Match pattern of two 2-digit numbers separated by comma
-					const pattern = new RegExp(`^\\d{${numberLength}},\\d{${numberLength}}$`);
-					return pattern.test(completionString);
-				})();
-				return completion.map(() => shouldPass);
+				};
 			}
 		};
-	},
-	sort: (config: NumberSequenceConfig) => {
-		const tokenizer = vocabToSimpleTokenizer(taskMetadata.sort.vocab);
+	})(),
+	mod_add: (() => {
+		const createTokenizer = (config: ModAdditionConfig) => createAddTokenizer(config.maxNum);
 		return {
-			tokenizer,
-			generator: () => {
-				const { seqLen, maxNum } = config as NumberSequenceConfig;
-				return generateEvalExample(
-					(c) => sortSequence({ ...c, seqLen, maxNum }),
-					config,
-					tokenizer
-				);
+			metadata: taskMetadata.mod_add,
+			createTokenizer,
+			trainBatch: (config: TrainBatchConfig & ModAdditionConfig) => {
+				const inputs: number[][] = [];
+				const targets: (number | -100)[][] = [];
+				for (let i = 0; i < config.batchSize; i++) {
+					const [prompt, completion] = modAddSequenceTokenized(config);
+					const [inputSeq, targetSeq] = createAutoregressivePair(prompt, completion);
+					inputs.push(inputSeq);
+					targets.push(targetSeq);
+				}
+				return [inputs, targets];
 			},
-			metric: (completion, target) => {
-				return completion.map((c, i) => c === target[i]);
+			eval: (config: ModAdditionConfig) => {
+				return {
+					example: () => modAddSequenceTokenized(config),
+					metric: (completion, target) => {
+						if (completion.length !== target.length) return completion.map(() => false);
+						return completion.map((t, i) => t === target[i]);
+					}
+				};
 			}
 		};
-	},
-	add: (config: AdditionConfig) => {
-		const tokenizer = vocabToSimpleTokenizer(taskMetadata.add.vocab);
+	})(),
+	sort: (() => {
+		const createTokenizer = (config: NumberSequenceConfig) => createSortTokenizer(config.maxNum);
 		return {
-			tokenizer,
-			generator: () => {
-				const { maxNum } = config as AdditionConfig;
-				return generateEvalExample((c) => addSequence({ ...c, maxNum }), config, tokenizer);
+			metadata: taskMetadata.sort,
+			createTokenizer,
+			trainBatch: (config: TrainBatchConfig & NumberSequenceConfig) => {
+				const inputs: number[][] = [];
+				const targets: (number | -100)[][] = [];
+				for (let i = 0; i < config.batchSize; i++) {
+					const [prompt, completion] = sortSequenceTokenized(config);
+					const [inputSeq, targetSeq] = createAutoregressivePair(prompt, completion);
+					inputs.push(inputSeq);
+					targets.push(targetSeq);
+				}
+				return [inputs, targets];
 			},
-			metric: (completion, target) => {
-				return completion.map((c, i) => c === target[i]);
+			eval: (config: NumberSequenceConfig) => {
+				return {
+					example: () => sortSequenceTokenized(config),
+					metric: (completion, target) => {
+						if (completion.length !== target.length) return completion.map(() => false);
+						return completion.map((t, i) => t === target[i]);
+					}
+				};
 			}
 		};
-	},
-	mod_add: (config: ModAdditionConfig) => {
-		const tokenizer = vocabToSimpleTokenizer(taskMetadata.mod_add.vocab);
+	})(),
+	two_sum: (() => {
+		const createTokenizer = (config: NumberSequenceConfig) => createTwoSumTokenizer(config.maxNum);
 		return {
-			tokenizer,
-			generator: () => {
-				const { maxNum } = config as ModAdditionConfig;
-				return generateEvalExample((c) => modAddSequence({ ...c, maxNum }), config, tokenizer);
+			metadata: taskMetadata.two_sum,
+			createTokenizer,
+			trainBatch: (config: TrainBatchConfig & NumberSequenceConfig) => {
+				const inputs: number[][] = [];
+				const targets: (number | -100)[][] = [];
+				for (let i = 0; i < config.batchSize; i++) {
+					const [prompt, completion] = twoSumSequenceTokenized(config);
+					const [inputSeq, targetSeq] = createAutoregressivePair(prompt, completion);
+					inputs.push(inputSeq);
+					targets.push(targetSeq);
+				}
+				return [inputs, targets];
 			},
-			metric: (completion, target) => {
-				return completion.map((c, i) => c === target[i]);
+			eval: (config: NumberSequenceConfig) => {
+				return {
+					example: () => twoSumSequenceTokenized(config),
+					metric: (completion, target) => {
+						if (completion.length !== target.length) return completion.map(() => false);
+						return completion.map((t, i) => t === target[i]);
+					}
+				};
 			}
 		};
-	},
-	zeros: (config: FixedLengthConfig) => {
-		const tokenizer = vocabToSimpleTokenizer(taskMetadata.zeros.vocab);
-		return {
-			tokenizer,
-			generator: () => {
-				const { seqLen } = config as FixedLengthConfig;
-				return generateEvalExample((c) => zerosSequence({ ...c, seqLen }), config, tokenizer);
-			},
-			metric: (completion, target) => {
-				return completion.map((c, i) => c === target[i]);
+	})(),
+	zeros: {
+		metadata: taskMetadata.zeros,
+		createTokenizer: (_config: FixedLengthConfig) =>
+			vocabToSimpleTokenizer(taskMetadata.zeros.vocab!),
+		trainBatch: (config: TrainBatchConfig & FixedLengthConfig) => {
+			const tokenizer = vocabToSimpleTokenizer(taskMetadata.zeros.vocab!);
+			const inputs: number[][] = [];
+			const targets: (number | -100)[][] = [];
+			for (let i = 0; i < config.batchSize; i++) {
+				// Zeros returns strings; tokenize them.
+				const [promptStr, completionStr] = zerosSequence(config);
+				const promptTokens = sequenceToTokens(promptStr, tokenizer);
+				const completionTokens = sequenceToTokens(completionStr, tokenizer);
+				const [inputSeq, targetSeq] = createAutoregressivePair(promptTokens, completionTokens);
+				inputs.push(inputSeq);
+				targets.push(targetSeq);
 			}
-		};
+			return [inputs, targets];
+		},
+		eval: (config: FixedLengthConfig) => {
+			const tokenizer = vocabToSimpleTokenizer(taskMetadata.zeros.vocab!);
+			return {
+				example: () => {
+					const [promptStr, targetStr] = zerosSequence(config);
+					return [sequenceToTokens(promptStr, tokenizer), sequenceToTokens(targetStr, tokenizer)];
+				},
+				metric: (completion, target) => {
+					if (completion.length !== target.length) return completion.map(() => false);
+					return completion.map((t, i) => t === target[i]);
+				}
+			};
+		}
 	}
+	// TODO: Add count and slapjack
 };
