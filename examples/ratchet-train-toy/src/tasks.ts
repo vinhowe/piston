@@ -368,31 +368,32 @@ export const trainBatchGenerators: {
 	}
 };
 
-export type EvalExampleGenerator<K extends keyof TaskConfigMap> = (
-	config: TaskConfigMap[K]
-) => [number[], number[]];
+export type EvalExampleGenerator = () => [number[], number[]];
 
-export type EvalMetric<K extends keyof TaskConfigMap> = (
+export type EvalMetric = (
 	completion: number[],
 	target: number[],
-	sequence: number[],
-	config: TaskConfigMap[K]
+	sequence: number[]
 ) => Array<boolean | null>;
 
-export type EvalConfig<K extends keyof TaskConfigMap> = {
-	metric: EvalMetric<K>;
-	generator: EvalExampleGenerator<K>;
+export type EvalConfig = {
+	metric: EvalMetric;
+	generator: EvalExampleGenerator;
 	tokenizer: SimpleTokenizer;
 };
 
+export type EvalConfigGenerator<K extends keyof TaskConfigMap> = (
+	config: TaskConfigMap[K]
+) => EvalConfig;
+
 export const evalExampleGenerators: {
-	[K in keyof TaskConfigMap]: EvalConfig<K>;
+	[K in keyof TaskConfigMap]: EvalConfigGenerator<K>;
 } = {
-	two_sum: (() => {
+	two_sum: (config: NumberSequenceConfig) => {
 		const tokenizer = vocabToSimpleTokenizer(taskMetadata.two_sum.vocab);
 		return {
 			tokenizer,
-			generator: (config: NumberSequenceConfig) => {
+			generator: () => {
 				const { seqLen, maxNum } = config as NumberSequenceConfig;
 				return generateEvalExample(
 					(c) => twoSumSequence({ ...c, seqLen, maxNum }),
@@ -400,7 +401,7 @@ export const evalExampleGenerators: {
 					tokenizer
 				);
 			},
-			metric: (completion, _, _sequence, config) => {
+			metric: (completion, _, _sequence) => {
 				// Passing is binary in this case, and depends on the whole completion
 				const shouldPass = (() => {
 					const completionString = tokensToString(completion, tokenizer);
@@ -421,12 +422,12 @@ export const evalExampleGenerators: {
 				return completion.map(() => shouldPass);
 			}
 		};
-	})(),
-	sort: (() => {
+	},
+	sort: (config: NumberSequenceConfig) => {
 		const tokenizer = vocabToSimpleTokenizer(taskMetadata.sort.vocab);
 		return {
 			tokenizer,
-			generator: (config: NumberSequenceConfig) => {
+			generator: () => {
 				const { seqLen, maxNum } = config as NumberSequenceConfig;
 				return generateEvalExample(
 					(c) => sortSequence({ ...c, seqLen, maxNum }),
@@ -438,12 +439,12 @@ export const evalExampleGenerators: {
 				return completion.map((c, i) => c === target[i]);
 			}
 		};
-	})(),
-	add: (() => {
+	},
+	add: (config: AdditionConfig) => {
 		const tokenizer = vocabToSimpleTokenizer(taskMetadata.add.vocab);
 		return {
 			tokenizer,
-			generator: (config: AdditionConfig) => {
+			generator: () => {
 				const { maxNum } = config as AdditionConfig;
 				return generateEvalExample((c) => addSequence({ ...c, maxNum }), config, tokenizer);
 			},
@@ -451,12 +452,12 @@ export const evalExampleGenerators: {
 				return completion.map((c, i) => c === target[i]);
 			}
 		};
-	})(),
-	mod_add: (() => {
+	},
+	mod_add: (config: ModAdditionConfig) => {
 		const tokenizer = vocabToSimpleTokenizer(taskMetadata.mod_add.vocab);
 		return {
 			tokenizer,
-			generator: (config: ModAdditionConfig) => {
+			generator: () => {
 				const { maxNum } = config as ModAdditionConfig;
 				return generateEvalExample((c) => modAddSequence({ ...c, maxNum }), config, tokenizer);
 			},
@@ -464,12 +465,12 @@ export const evalExampleGenerators: {
 				return completion.map((c, i) => c === target[i]);
 			}
 		};
-	})(),
-	zeros: (() => {
+	},
+	zeros: (config: FixedLengthConfig) => {
 		const tokenizer = vocabToSimpleTokenizer(taskMetadata.zeros.vocab);
 		return {
 			tokenizer,
-			generator: (config: FixedLengthConfig) => {
+			generator: () => {
 				const { seqLen } = config as FixedLengthConfig;
 				return generateEvalExample((c) => zerosSequence({ ...c, seqLen }), config, tokenizer);
 			},
@@ -477,5 +478,5 @@ export const evalExampleGenerators: {
 				return completion.map((c, i) => c === target[i]);
 			}
 		};
-	})()
+	}
 };
