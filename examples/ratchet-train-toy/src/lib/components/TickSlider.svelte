@@ -42,7 +42,8 @@
 		return ticks.sort((a, b) => a.value - b.value);
 	}
 
-	const ticks = generateTicks();
+	// Make ticks reactive so they update when min/max/step change
+	$: ticks = generateTicks();
 
 	function handleSliderChange(e: Event) {
 		const rawValue = parseFloat((e.target as HTMLInputElement).value);
