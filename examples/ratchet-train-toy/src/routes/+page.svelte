@@ -47,6 +47,7 @@
 	let batch_size = 2;
 	let dataset = 'sort';
 	let activation = 'gelu';
+	let label_smoothing = -3; // log10 scale
 
 	// Optimizer parameters
 	let lr = -3; // log10 scale
@@ -71,6 +72,7 @@
 			attentionOnly,
 			positional_encoding,
 			seed,
+			label_smoothing,
 			lr,
 			beta1,
 			beta2,
@@ -309,6 +311,7 @@
 			attention_only: attentionOnly,
 			positional_encoding,
 			seed: stringToSeed(seed),
+			label_smoothing: Math.pow(10, label_smoothing),
 			optimizer: {
 				optimizer_type,
 				lr: Math.pow(10, lr),
@@ -1277,6 +1280,16 @@
 
 				<div class="form-group mb-4">
 					<TickSlider bind:value={batch_size} min={1} max={10} label="Batch Size" />
+				</div>
+
+				<div class="form-group mb-4">
+					<LogSlider
+						bind:value={label_smoothing}
+						minExp={-3}
+						maxExp={0}
+						label="Label Smoothing"
+						formatter={(v) => Math.pow(10, v).toFixed(3)}
+					/>
 				</div>
 
 				<div class="form-group">

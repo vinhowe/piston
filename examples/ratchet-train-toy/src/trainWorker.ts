@@ -20,6 +20,7 @@ export interface TrainerConfig {
 	position_encoding: string;
 	seed?: number;
 	layernorm_position: string;
+	label_smoothing: number;
 	optimizer: {
 		optimizer_type: string;
 		lr: number;
