@@ -197,10 +197,21 @@ function generateTrainBatch<K extends keyof TaskConfigMap>(
 	const target: number[][] = [];
 
 	for (let b = 0; b < config.batchSize; b++) {
-		const sequence = generator(config).join('');
+		const [prompt, completion] = generator(config);
+		const sequence = prompt + completion;
 		const tokens = sequenceToTokens(sequence, tokenizer);
+		const promptTokens = sequenceToTokens(prompt, tokenizer);
+
 		input.push(tokens.slice(0, -1));
-		target.push(tokens.slice(1));
+		// Create target with -100 for prompt tokens and actual tokens for completion
+		const targetTokens = tokens
+			.slice(1)
+			.map((token, i) => (i < promptTokens.length - 1 ? -100 : token));
+		target.push(targetTokens);
+		// const sequence = generator(config).join('');
+		// const tokens = sequenceToTokens(sequence, tokenizer);
+		// input.push(tokens.slice(0, -1));
+		// target.push(tokens.slice(1));
 	}
 
 	return [input, target];
