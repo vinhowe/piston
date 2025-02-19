@@ -331,26 +331,26 @@ export const trainBatchGenerators: {
 	two_sum: (config: TrainBatchConfig & NumberSequenceConfig) => {
 		const { seqLen, maxNum } = config;
 		const vocab = taskMetadata.two_sum.vocab;
-		const tokenMap = vocabToSimpleTokenizer(vocab);
-		return generateTrainBatch((c) => twoSumSequence({ ...c, seqLen, maxNum }), config, tokenMap);
+		const tokenizer = vocabToSimpleTokenizer(vocab);
+		return generateTrainBatch((c) => twoSumSequence({ ...c, seqLen, maxNum }), config, tokenizer);
 	},
 	sort: (config: TrainBatchConfig & NumberSequenceConfig) => {
 		const { seqLen, maxNum } = config;
 		const vocab = taskMetadata.sort.vocab;
-		const tokenMap = vocabToSimpleTokenizer(vocab);
-		return generateTrainBatch((c) => sortSequence({ ...c, seqLen, maxNum }), config, tokenMap);
+		const tokenizer = vocabToSimpleTokenizer(vocab);
+		return generateTrainBatch((c) => sortSequence({ ...c, seqLen, maxNum }), config, tokenizer);
 	},
 	add: (config: TrainBatchConfig & AdditionConfig) => {
 		const { maxNum } = config;
 		const vocab = taskMetadata.add.vocab;
-		const tokenMap = vocabToSimpleTokenizer(vocab);
-		return generateTrainBatch((c) => addSequence({ ...c, maxNum }), config, tokenMap);
+		const tokenizer = vocabToSimpleTokenizer(vocab);
+		return generateTrainBatch((c) => addSequence({ ...c, maxNum }), config, tokenizer);
 	},
 	mod_add: (config: TrainBatchConfig & ModAdditionConfig) => {
 		const { maxNum } = config;
 		const vocab = taskMetadata.mod_add.vocab;
-		const tokenMap = vocabToSimpleTokenizer(vocab);
-		return generateTrainBatch((c) => modAddSequence({ ...c, maxNum }), config, tokenMap);
+		const tokenizer = vocabToSimpleTokenizer(vocab);
+		return generateTrainBatch((c) => modAddSequence({ ...c, maxNum }), config, tokenizer);
 	},
 	// count: (config: BaseTaskConfig) => {
 	// 	const { seqLen, maxNum } = config as NumberSequenceConfig;
@@ -363,8 +363,8 @@ export const trainBatchGenerators: {
 	zeros: (config: TrainBatchConfig & FixedLengthConfig) => {
 		const { seqLen } = config;
 		const vocab = taskMetadata.zeros.vocab;
-		const tokenMap = vocabToSimpleTokenizer(vocab);
-		return generateTrainBatch((c) => zerosSequence({ ...c, seqLen }), config, tokenMap);
+		const tokenizer = vocabToSimpleTokenizer(vocab);
+		return generateTrainBatch((c) => zerosSequence({ ...c, seqLen }), config, tokenizer);
 	}
 };
 
