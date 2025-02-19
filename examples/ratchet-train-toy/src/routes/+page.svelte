@@ -153,7 +153,7 @@
 	const MAX_EVAL_HISTORY = 5;
 
 	// Add task parameter state
-	let taskParameters: Record<string, number> = {};
+	let taskParameters: Record<string, number | boolean> = {};
 
 	// Initialize task parameters with defaults
 	$: {
@@ -1026,13 +1026,28 @@
 						<div class="mt-4 space-y-4">
 							{#each Object.entries(taskMetadata[dataset].parameters) as [key, param]}
 								<div class="form-group">
-									<TickSlider
-										bind:value={taskParameters[key]}
-										min={param.min}
-										max={param.max}
-										label={param.name}
-									/>
-									<p class="text-sm text-gray-600 mt-1">{param.description}</p>
+									{#if param.type === 'boolean'}
+										<div class="flex items-center gap-2">
+											<input
+												type="checkbox"
+												id={key}
+												bind:checked={taskParameters[key] as boolean}
+												class="w-4 h-4 text-black focus:ring-0"
+											/>
+											<label for={key} class="text-sm">{param.name}</label>
+										</div>
+										{#if param.description}
+											<p class="text-sm text-gray-600 mt-1">{param.description}</p>
+										{/if}
+									{:else}
+										<TickSlider
+											bind:value={taskParameters[key] as number}
+											min={param.min as number}
+											max={param.max as number}
+											label={param.name}
+										/>
+										<p class="text-sm text-gray-600 mt-1">{param.description}</p>
+									{/if}
 								</div>
 							{/each}
 						</div>
