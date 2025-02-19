@@ -34,7 +34,7 @@
 	let currentModelHeads = 0;
 	let showAttention = true;
 	let attentionOnly = false;
-	let positional_encoding = 'rope';
+	let positional_encoding = 'alibi';
 	let seed: string | undefined = 'autoregressive';
 	let layernorm_position = 'pre';
 	let hasWebGPU = true;
@@ -45,8 +45,8 @@
 	let n_8_embd_per_head = 2;
 	let n_embd = n_8_embd_per_head * 8 * n_head;
 	let batch_size = 2;
-	let dataset = 'sort';
-	let activation = 'gelu';
+	let dataset = 'mod_add';
+	let activation = 'swiglu';
 	let label_smoothing = -3; // log10 scale
 
 	// Optimizer parameters
