@@ -1,4 +1,4 @@
-use ratchet::Tensor;
+use ratchet::{DType, Tensor};
 
 pub fn nll(inp: Tensor, target: Tensor) -> anyhow::Result<Tensor> {
     let b_sz = match &target.shape().to_vec()[..] {
@@ -13,8 +13,28 @@ pub fn nll(inp: Tensor, target: Tensor) -> anyhow::Result<Tensor> {
         }
         dims => anyhow::bail!("the target tensor should have two dimensions ({dims:?})"),
     }
-    inp.gather(target.clone().unsqueeze(1)?, 1)?
-        .affine(-1f32 / b_sz as f32, 0.)
+
+    // We do a bunch of work here to allow ignoring tokens in the target.
+    let ignore_index = -100;
+    let mask = target
+        .clone()
+        .ne(Tensor::full(target.shape(), ignore_index, target.device()))?;
+
+    // Note here that we seem to be able to get away with passing negative indices to gather.
+    // If we were more careful about this, we'd replace the indices with 0s where the mask is 0,
+    // before passing them to gather.
+
+    let per_sample_loss = inp
+        .gather(target.clone().unsqueeze(1)?, 1)?
+        .affine(-1f32, 0.)?;
+    let mask_unsqueezed = mask.clone().unsqueeze(1)?;
+    let masked_loss = per_sample_loss
+        .clone()
+        .mul(mask_unsqueezed.cast(DType::F32)?)?;
+
+    let valid_count = mask.cast(DType::F32)?.sum_all()?;
+
+    masked_loss.div(valid_count.cast(DType::F32)?)
 }
 
 pub fn log_softmax(xs: Tensor, d: usize) -> anyhow::Result<Tensor> {

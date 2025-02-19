@@ -183,7 +183,6 @@ impl OpGuards for Reduce {
     fn check_dtypes(&self) {
         let input = &self.input;
         assert!(self.reduce_dims.len() <= 4);
-        assert!(input.dt() == crate::DType::F32);
     }
 }
 
@@ -339,6 +338,9 @@ impl Kernel for ReduceKernels {
             }
             (DType::F16, KernelElement::Scalar) => {
                 self.render::<Scalar<f16>>(inplace, dst, workgroup_size)
+            }
+            (DType::I32, KernelElement::Scalar) => {
+                self.render::<Scalar<i32>>(inplace, dst, workgroup_size)
             }
             _ => Err(OperationError::CompileError(format!(
                 "Unsupported dtype {:?} or kernel element {:?}",

@@ -13,8 +13,8 @@ use crate::{
 
 #[derive(new, Debug, Clone, IrFields)]
 pub struct Cast {
-    input: Tensor,
-    dst_dt: DType,
+    pub input: Tensor,
+    pub dst_dt: DType,
 }
 
 impl Cast {

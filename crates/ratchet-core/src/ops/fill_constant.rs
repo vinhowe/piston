@@ -6,22 +6,16 @@ use ratchet_macros::{IrFields, WgslMetadata};
 
 use crate::{
     gpu::{dtype::WgslDType, BindGroupLayoutDescriptor},
-    rvec, Array, BindingMode, BuiltIn, DType, GPUOperation, Kernel, KernelElement,
-    KernelRenderable, KernelSource, OpGuards, Operation, OperationError, RVec, Scalar, Shape,
-    StorageView, Strides, Tensor, Vec2, Vec4, WgslKernelBuilder, WgslPrimitive, WorkgroupSize,
-    Workload,
+    rvec, Array, BindingMode, BuiltIn, DType, DynKernelMetadata, GPUOperation, Kernel,
+    KernelElement, KernelRenderable, KernelSource, OpGuards, Operation, OperationError, RVec,
+    Scalar, Shape, StorageView, Strides, Tensor, Vec2, Vec4, WgslKernelBuilder, WgslPrimitive,
+    WorkgroupSize, Workload,
 };
 
 #[derive(new, Debug, Clone, IrFields)]
 pub struct FillConstant {
     pub shape: Shape,
     pub value: f32,
-}
-
-#[derive(Debug, derive_new::new, ShaderType, WgslMetadata)]
-pub struct FillConstantMeta {
-    numel: u32,
-    value: f32,
 }
 
 impl Operation for FillConstant {
@@ -113,7 +107,7 @@ impl KernelRenderable for FillConstantKernels {
 }
 
 impl Kernel for FillConstantKernels {
-    type Metadata = FillConstantMeta;
+    type Metadata = DynKernelMetadata;
 
     fn kernel_name(&self) -> String {
         match self {
@@ -145,12 +139,16 @@ impl Kernel for FillConstantKernels {
         Ok(BindGroupLayoutDescriptor::unary_inplace())
     }
 
-    fn metadata(&self, _: &Tensor, _: &KernelElement) -> Result<Self::Metadata, OperationError> {
-        let FillConstantKernels::Standard(inner) = self;
-        Ok(FillConstantMeta {
-            numel: inner.shape.clone().numel() as u32,
-            value: inner.value,
-        })
+    fn metadata(&self, dst: &Tensor, _: &KernelElement) -> Result<Self::Metadata, OperationError> {
+        let FillConstantKernels::Standard(op) = self;
+        let mut dyn_meta = DynKernelMetadata::new();
+        dyn_meta.add_field("numel", dst.shape().numel() as u32);
+        if dst.dt().is_float() {
+            dyn_meta.add_field("value", op.value);
+        } else {
+            dyn_meta.add_field("value", op.value as i32);
+        }
+        Ok(dyn_meta)
     }
 
     fn build_kernel(
