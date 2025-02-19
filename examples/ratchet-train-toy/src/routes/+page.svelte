@@ -311,7 +311,7 @@
 			attention_only: attentionOnly,
 			positional_encoding,
 			seed: stringToSeed(seed),
-			label_smoothing: Math.pow(10, label_smoothing),
+			label_smoothing: label_smoothing === -5 ? 0 : Math.pow(10, label_smoothing),
 			optimizer: {
 				optimizer_type,
 				lr: Math.pow(10, lr),
@@ -1298,7 +1298,7 @@
 				<div class="form-group mb-4">
 					<LogSlider
 						bind:value={label_smoothing}
-						minExp={-3}
+						minExp={-5}
 						maxExp={0}
 						label="Label Smoothing"
 						formatter={(v) => Math.pow(10, v).toFixed(3)}
