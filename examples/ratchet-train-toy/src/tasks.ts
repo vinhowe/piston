@@ -6,6 +6,7 @@ export interface TrainBatchConfig {
 export interface NumberSequenceConfig {
 	seqLen: number;
 	maxNum: number;
+	maskOutPrefix: boolean;
 }
 
 export interface AdditionConfig {
@@ -64,7 +65,7 @@ export const taskMetadata: Record<string, TaskMetadata> = {
 			maskOutPrefix: {
 				name: 'Mask Out Prefix',
 				type: 'boolean',
-				default: true
+				default: false
 			}
 		}
 	},
@@ -83,7 +84,7 @@ export const taskMetadata: Record<string, TaskMetadata> = {
 			maskOutPrefix: {
 				name: 'Mask Out Prefix',
 				type: 'boolean',
-				default: true
+				default: false
 			},
 			includeExpressionTokens: {
 				name: 'Include Expression Tokens (+, =)',
@@ -107,7 +108,7 @@ export const taskMetadata: Record<string, TaskMetadata> = {
 			maskOutPrefix: {
 				name: 'Mask Out Prefix',
 				type: 'boolean',
-				default: true
+				default: false
 			},
 			includeExpressionTokens: {
 				name: 'Include Expression Tokens (+, =)',
@@ -153,9 +154,8 @@ export const taskMetadata: Record<string, TaskMetadata> = {
 			},
 			maskOutPrefix: {
 				name: 'Mask Out Prefix',
-				description: 'Whether to mask out the prefix of the sequence',
 				type: 'boolean',
-				default: true
+				default: false
 			}
 		}
 	}
