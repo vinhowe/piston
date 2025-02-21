@@ -495,7 +495,7 @@ impl Trainer {
             generate(
                 &mut self.model,
                 prompt_vec,
-                |tokens, logits_nd| {
+                |tokens, logits_nd, attn_probs_data| {
                     // Convert the tokens to JS
                     let tokens_js = serde_wasm_bindgen::to_value(&tokens).unwrap_or(JsValue::NULL);
 
@@ -519,8 +519,15 @@ impl Trainer {
                         &serde_wasm_bindgen::to_value(&data).unwrap_or(JsValue::NULL),
                     );
 
+                    let attn_probs_obj = js_sys::Object::new();
+                    let _ = js_sys::Reflect::set(
+                        &attn_probs_obj,
+                        &JsValue::from_str("data"),
+                        &serde_wasm_bindgen::to_value(&attn_probs_data).unwrap_or(JsValue::NULL),
+                    );
                     // Finally, call the JS callback with (tokens, logitsObj)
-                    let _ = callback_fn.call2(&JsValue::NULL, &tokens_js, &logits_obj);
+                    let _ =
+                        callback_fn.call3(&JsValue::NULL, &tokens_js, &logits_obj, &attn_probs_obj);
                 },
                 max_tokens,
             )
@@ -541,7 +548,7 @@ impl Trainer {
             generate(
                 &mut self.model,
                 prompt_vec,
-                |tokens, logits_nd| {
+                |tokens, logits_nd, _attn_probs_data| {
                     // Update tokens
                     final_tokens.borrow_mut().extend_from_slice(&tokens);
 
@@ -553,6 +560,9 @@ impl Trainer {
                     ]);
 
                     final_logits_data.borrow_mut().extend(logits_nd.into_iter());
+
+                    // Note that we don't bother passing along the attn_probs_data here.
+                    // This is inconsistent but we'll deal with it if it becomes an issue.
                 },
                 max_tokens,
             )
