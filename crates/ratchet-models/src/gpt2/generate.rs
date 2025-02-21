@@ -12,7 +12,8 @@ pub async fn generate(
     // The callback now receives:
     //   - A Vec<i32> of the tokens fed in this pass (either the prompt, or the latest token)
     //   - An ndarray (shape: [1, seq_len, vocab_size]) containing the logits for that pass.
-    callback: impl Fn(Vec<i32>, Array3<f32>),
+    //   - An ndarray (shape: [1, seq_len, seq_len]) containing the attention probabilities for that pass.
+    callback: impl Fn(Vec<i32>, Array3<f32>, Vec<f32>),
     max_tokens: usize,
 ) -> anyhow::Result<Vec<Array3<f32>>> {
     // Preserve original cache setting and enable kv-cache for generation.
@@ -44,7 +45,7 @@ pub async fn generate(
         );
 
         // The index_pos is the total length of the context so far.
-        let (result, _) = model.schedule(GPT2Input {
+        let (result, attn_probs) = model.schedule(GPT2Input {
             x: input,
             index_pos: all_tokens.len(),
         })?;
@@ -72,9 +73,20 @@ pub async fn generate(
         // Store them in our accumulator.
         all_logits_ndarray.push(logits_nd.clone());
 
+        let attn_probs_cpu = attn_probs
+            .to(&Device::CPU)
+            .await
+            .map_err(|e| e.to_string())
+            .unwrap();
+        let attn_probs_shape = attn_probs_cpu.shape().to_vec();
+        let attn_probs_data = attn_probs_cpu
+            .to_vec::<f32>()
+            .map_err(|e| e.to_string())
+            .unwrap();
+
         // *** Stream the current pass via the callback ***
         // Pass the tokens that were fed (as a Vec) and the corresponding logits ndarray.
-        callback(tokens_to_feed.to_vec(), logits_nd.clone());
+        callback(tokens_to_feed.to_vec(), logits_nd.clone(), attn_probs_data);
 
         // Extract the logits for the last token in this pass:
         // - For the first pass, that's at index (prompt.len() - 1).
