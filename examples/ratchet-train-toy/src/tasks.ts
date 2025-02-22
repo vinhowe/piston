@@ -72,7 +72,7 @@ export const taskMetadata: Record<string, TaskMetadata> = {
 			includeCommas: {
 				name: 'Include Commas',
 				type: 'boolean',
-				default: true
+				default: false
 			},
 			includeColon: {
 				name: 'Include Colon',
