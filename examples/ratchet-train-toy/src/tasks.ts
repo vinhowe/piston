@@ -212,7 +212,7 @@ export const taskMetadata: Record<string, TaskMetadata> = {
 export type SimpleTokenizer = {
 	vocab: Record<string, number>;
 	ids: Record<number, string>;
-	endToken: number;
+	lastToken: number;
 };
 
 /**
@@ -260,7 +260,7 @@ export function createAddTokenizer(maxNum: number): SimpleTokenizer {
 		vocab[token] = id;
 		ids[id] = token;
 	}
-	return { vocab, ids, endToken: maxNum + 3 };
+	return { vocab, ids, lastToken: maxNum + 2 };
 }
 
 /**
@@ -283,7 +283,7 @@ export function createSortTokenizer(maxNum: number): SimpleTokenizer {
 		vocab[token] = id;
 		ids[id] = token;
 	}
-	return { vocab, ids, endToken: maxNum + 3 };
+	return { vocab, ids, lastToken: maxNum + 2 };
 }
 
 /**
@@ -309,7 +309,7 @@ export function createTwoSumTokenizer(maxNum: number): SimpleTokenizer {
 		vocab[token] = id;
 		ids[id] = token;
 	}
-	return { vocab, ids, endToken: maxNum + 4 };
+	return { vocab, ids, lastToken: maxNum + 3 };
 }
 
 /**
@@ -331,7 +331,7 @@ export function vocabToSimpleTokenizer(vocab: string): SimpleTokenizer {
 		},
 		{} as Record<number, string>
 	);
-	return { vocab: vocabMap, ids, endToken: tokens.length };
+	return { vocab: vocabMap, ids, lastToken: tokens.length };
 }
 
 // A helper for typical (character-based) tokenization.
