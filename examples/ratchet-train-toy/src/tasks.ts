@@ -254,7 +254,7 @@ export function createAddTokenizer(maxNum: number): SimpleTokenizer {
 	vocab['='] = 1;
 	ids[1] = '=';
 	const width = maxNum.toString().length;
-	for (let n = 0; n <= maxNum; n++) {
+	for (let n = 0; n < maxNum; n++) {
 		const token = `<${n.toString().padStart(width, '0')}>`;
 		const id = n + 2;
 		vocab[token] = id;
@@ -277,7 +277,7 @@ export function createSortTokenizer(maxNum: number): SimpleTokenizer {
 	vocab[','] = 1;
 	ids[1] = ',';
 	const aCharCode = 'A'.charCodeAt(0);
-	for (let n = 0; n <= maxNum; n++) {
+	for (let n = 0; n < maxNum; n++) {
 		const token = String.fromCharCode(aCharCode + n);
 		const id = n + 2;
 		vocab[token] = id;
@@ -303,7 +303,7 @@ export function createTwoSumTokenizer(maxNum: number): SimpleTokenizer {
 	vocab[','] = 2;
 	ids[2] = ',';
 	const aCharCode = 'A'.charCodeAt(0);
-	for (let n = 0; n <= maxNum; n++) {
+	for (let n = 0; n < maxNum; n++) {
 		const token = String.fromCharCode(aCharCode + n);
 		const id = n + 3;
 		vocab[token] = id;
