@@ -7,6 +7,8 @@ export interface NumberSequenceConfig {
 	seqLen: number;
 	maxNum: number;
 	maskOutPrefix: boolean;
+	includeCommas: boolean;
+	includeColon: boolean;
 }
 
 export interface AdditionConfig {
@@ -59,7 +61,7 @@ export const taskMetadata: Record<string, TaskMetadata> = {
 				description: 'Maximum value in the sequence',
 				type: 'number',
 				min: 10,
-				max: 100,
+				max: 26,
 				default: 100
 			},
 			maskOutPrefix: {
@@ -377,23 +379,33 @@ export function modAddSequenceTokenized(config: ModAdditionConfig): [number[], n
  * Mapping: number token = number + 2.
  */
 export function sortSequenceTokenized(config: NumberSequenceConfig): [number[], number[]] {
-	const { seqLen, maxNum } = config;
+	const { seqLen, maxNum, includeCommas, includeColon } = config;
 	const nums = Array.from({ length: seqLen }, () => Math.floor(Math.random() * (maxNum + 1)));
 	const sorted = [...nums].sort((a, b) => a - b);
 	const prompt: number[] = [];
 	for (let i = 0; i < nums.length; i++) {
 		prompt.push(nums[i] + 2);
 		if (i < nums.length - 1) {
-			prompt.push(1); // comma
+			if (includeCommas) {
+				prompt.push(1); // comma
+			}
 		} else {
-			prompt.push(0); // colon
+			if (includeColon) {
+				prompt.push(0); // colon
+			}
 		}
 	}
 	const target: number[] = [];
 	for (let i = 0; i < sorted.length; i++) {
 		target.push(sorted[i] + 2);
 		if (i < sorted.length - 1) {
-			target.push(1); // comma
+			if (includeCommas) {
+				target.push(1); // comma
+			}
+		} else {
+			if (includeColon) {
+				target.push(0); // colon
+			}
 		}
 	}
 	return [prompt, target];
