@@ -58,7 +58,7 @@ async function initializeTrainer(config: TrainerConfig) {
 	trainer = await new Trainer({
 		...config,
 		// Add 1 to the vocab size to account for the end-of-sequence token
-		vocab_size: tokenizer.endToken
+		vocab_size: tokenizer.lastToken
 	});
 	self.postMessage({ type: 'modelReady' });
 	currentSession = sessionCounter++;
