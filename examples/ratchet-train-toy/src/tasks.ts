@@ -292,9 +292,9 @@ export function createTwoSumTokenizer(maxNum: number): SimpleTokenizer {
 	ids[1] = '=';
 	vocab[','] = 2;
 	ids[2] = ',';
-	const width = maxNum.toString().length;
+	const aCharCode = 'A'.charCodeAt(0);
 	for (let n = 0; n <= maxNum; n++) {
-		const token = `<${n.toString().padStart(width, '0')}>`;
+		const token = String.fromCharCode(aCharCode + n);
 		const id = n + 3;
 		vocab[token] = id;
 		ids[id] = token;
