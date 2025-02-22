@@ -68,6 +68,16 @@ export const taskMetadata: Record<string, TaskMetadata> = {
 				name: 'Mask Out Prefix',
 				type: 'boolean',
 				default: false
+			},
+			includeCommas: {
+				name: 'Include Commas',
+				type: 'boolean',
+				default: true
+			},
+			includeColon: {
+				name: 'Include Colon',
+				type: 'boolean',
+				default: true
 			}
 		}
 	},
