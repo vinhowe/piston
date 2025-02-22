@@ -266,9 +266,9 @@ export function createSortTokenizer(maxNum: number): SimpleTokenizer {
 	ids[0] = ':';
 	vocab[','] = 1;
 	ids[1] = ',';
-	const width = maxNum.toString().length;
+	const aCharCode = 'A'.charCodeAt(0);
 	for (let n = 0; n <= maxNum; n++) {
-		const token = `<${n.toString().padStart(width, '0')}>`;
+		const token = String.fromCharCode(aCharCode + n);
 		const id = n + 2;
 		vocab[token] = id;
 		ids[id] = token;
