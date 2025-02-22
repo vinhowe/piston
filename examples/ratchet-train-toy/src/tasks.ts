@@ -399,23 +399,15 @@ export function sortSequenceTokenized(config: NumberSequenceConfig): [number[], 
 			if (includeCommas) {
 				prompt.push(1); // comma
 			}
-		} else {
-			if (includeColon) {
-				prompt.push(0); // colon
-			}
+		} else if (includeColon) {
+			prompt.push(0); // colon
 		}
 	}
 	const target: number[] = [];
 	for (let i = 0; i < sorted.length; i++) {
 		target.push(sorted[i] + 2);
-		if (i < sorted.length - 1) {
-			if (includeCommas) {
-				target.push(1); // comma
-			}
-		} else {
-			if (includeColon) {
-				target.push(0); // colon
-			}
+		if (includeCommas && i < sorted.length - 1) {
+			target.push(1); // comma
 		}
 	}
 	return [prompt, target];
