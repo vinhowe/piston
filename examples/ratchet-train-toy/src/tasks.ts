@@ -83,6 +83,43 @@ export const taskMetadata: Record<string, TaskMetadata> = {
 			}
 		}
 	},
+	repeat: {
+		name: 'Repeat',
+		description: 'Learn to repeat a sequence of characters',
+		parameters: {
+			seqLen: {
+				name: 'Sequence Length',
+				description: 'Number of items to repeat',
+				type: 'number',
+				min: 2,
+				max: 10,
+				default: 2
+			},
+			maxNum: {
+				name: 'Max Number',
+				description: 'Maximum value in the sequence',
+				type: 'number',
+				min: 10,
+				max: 26,
+				default: 26
+			},
+			maskOutPrefix: {
+				name: 'Mask Out Prefix',
+				type: 'boolean',
+				default: false
+			},
+			includeCommas: {
+				name: 'Include Commas',
+				type: 'boolean',
+				default: false
+			},
+			includeColon: {
+				name: 'Include Colon',
+				type: 'boolean',
+				default: true
+			}
+		}
+	},
 	add: {
 		name: 'Addition',
 		description: 'Learn to add two numbers',
@@ -446,6 +483,39 @@ export function sortSequenceTokenized(
 }
 
 /**
+ * Repeat: generate a sequence of numbers (each in [0, maxNum]) and return:
+ *  - prompt: the  sequence with commas (token 1) between numbers and a colon (token 0) at the end.
+ *  - target: the same sequence with commas between numbers.
+ * Mapping: number token = number + 2.
+ */
+export function repeatSequenceTokenized(
+	config: NumberSequenceConfig,
+	tokenizer: SimpleTokenizer
+): [number[], number[]] {
+	const { seqLen, maxNum, includeCommas, includeColon } = config;
+	const nums = Array.from({ length: seqLen }, () => Math.floor(Math.random() * maxNum));
+	const prompt: number[] = [];
+	for (let i = 0; i < nums.length; i++) {
+		prompt.push(tokenizer.vocab[String.fromCharCode('A'.charCodeAt(0) + nums[i])]);
+		if (includeCommas && i < nums.length - 1) {
+			prompt.push(tokenizer.vocab[',']); // comma
+		}
+	}
+
+	const target: number[] = [];
+	if (includeColon) {
+		target.push(tokenizer.vocab[':']); // colon
+	}
+	for (let i = 0; i < nums.length; i++) {
+		target.push(tokenizer.vocab[String.fromCharCode('A'.charCodeAt(0) + nums[i])]);
+		if (includeCommas && i < nums.length - 1) {
+			target.push(tokenizer.vocab[',']); // comma
+		}
+	}
+	return [prompt, target];
+}
+
+/**
  * Two-Sum: generate a sequence of numbers (each in [0, maxNum]) and two random indices.
  * The prompt consists of:
  *   - the unsorted sequence (with commas, token 2)
@@ -508,6 +578,7 @@ export interface TaskSpec<Config> {
 export type TaskConfigMap = {
 	two_sum: NumberSequenceConfig;
 	sort: NumberSequenceConfig;
+	repeat: NumberSequenceConfig;
 	add: AdditionConfig;
 	mod_add: ModAdditionConfig;
 	zeros: FixedLengthConfig;
@@ -606,6 +677,40 @@ export const tasks: { [K in keyof TaskConfigMap]: TaskSpec<TaskConfigMap[K]> } =
 				const tokenizer = createTokenizer(config);
 				return {
 					example: () => sortSequenceTokenized(config, tokenizer),
+					metric: (completion, target) => {
+						if (completion.length !== target.length) return completion.map(() => false);
+						return completion.map((t, i) => t === target[i]);
+					}
+				};
+			}
+		};
+	})(),
+	repeat: (() => {
+		const createTokenizer = (config: NumberSequenceConfig) =>
+			createSortTokenizer(config.maxNum, config.includeColon, config.includeCommas);
+		return {
+			metadata: taskMetadata.repeat,
+			createTokenizer,
+			trainBatch: (config: TrainBatchConfig & NumberSequenceConfig) => {
+				const tokenizer = createTokenizer(config);
+				const inputs: number[][] = [];
+				const targets: (number | -100)[][] = [];
+				for (let i = 0; i < config.batchSize; i++) {
+					const [prompt, completion] = repeatSequenceTokenized(config, tokenizer);
+					const [inputSeq, targetSeq] = createAutoregressivePair(
+						prompt,
+						completion,
+						config.maskOutPrefix
+					);
+					inputs.push(inputSeq);
+					targets.push(targetSeq);
+				}
+				return [inputs, targets];
+			},
+			eval: (config: NumberSequenceConfig) => {
+				const tokenizer = createTokenizer(config);
+				return {
+					example: () => repeatSequenceTokenized(config, tokenizer),
 					metric: (completion, target) => {
 						if (completion.length !== target.length) return completion.map(() => false);
 						return completion.map((t, i) => t === target[i]);
