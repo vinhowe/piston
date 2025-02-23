@@ -14,11 +14,13 @@ export interface NumberSequenceConfig {
 export interface AdditionConfig {
 	maxNum: number;
 	includeExpressionTokens: boolean;
+	maskOutPrefix: boolean;
 }
 
 export interface ModAdditionConfig {
 	maxNum: number;
 	includeExpressionTokens: boolean;
+	maskOutPrefix: boolean;
 }
 
 export interface FixedLengthConfig {
@@ -655,7 +657,7 @@ export const tasks: { [K in keyof TaskConfigMap]: TaskSpec<TaskConfigMap[K]> } =
 				const [inputSeq, targetSeq] = createAutoregressivePair(
 					promptTokens,
 					completionTokens,
-					config.maskOutPrefix
+					false
 				);
 				inputs.push(inputSeq);
 				targets.push(targetSeq);
