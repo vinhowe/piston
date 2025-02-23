@@ -48,7 +48,7 @@ export interface TaskMetadata {
 export const taskMetadata: Record<string, TaskMetadata> = {
 	sort: {
 		name: 'Sorting',
-		description: 'Learn to sort a sequence of numbers',
+		description: 'Learn to sort a sequence of characters',
 		parameters: {
 			seqLen: {
 				name: 'Sequence Length',
