@@ -168,6 +168,11 @@ export const taskMetadata: Record<string, TaskMetadata> = {
 				name: 'Mask Out Prefix',
 				type: 'boolean',
 				default: false
+			},
+			includeCommas: {
+				name: 'Include Commas',
+				type: 'boolean',
+				default: false
 			}
 		}
 	}
@@ -246,21 +251,28 @@ export function createAutoregressivePair<T>(
  *   tokens 2 … maxNum+2 represent the numbers 0 … maxNum
  *   (When converting to a string, token id i ≥ 2 becomes `<${i-2}>`.)
  */
-export function createAddTokenizer(maxNum: number): SimpleTokenizer {
+export function createAddTokenizer(
+	maxNum: number,
+	includeExpressionTokens: boolean
+): SimpleTokenizer {
 	const vocab: Record<string, number> = {};
 	const ids: Record<number, string> = {};
-	vocab['+'] = 0;
-	ids[0] = '+';
-	vocab['='] = 1;
-	ids[1] = '=';
+	let offset = 0;
+	if (includeExpressionTokens) {
+		vocab['+'] = 0;
+		ids[0] = '+';
+		vocab['='] = 1;
+		ids[1] = '=';
+		offset = 2;
+	}
 	const width = maxNum.toString().length;
 	for (let n = 0; n < maxNum; n++) {
 		const token = `<${n.toString().padStart(width, '0')}>`;
-		const id = n + 2;
+		const id = n + offset;
 		vocab[token] = id;
 		ids[id] = token;
 	}
-	return { vocab, ids, lastToken: maxNum + 2 };
+	return { vocab, ids, lastToken: maxNum + offset };
 }
 
 /**
@@ -269,21 +281,32 @@ export function createAddTokenizer(maxNum: number): SimpleTokenizer {
  *   token 1 → ","
  *   tokens 2 … maxNum+2 represent the numbers 0 … maxNum.
  */
-export function createSortTokenizer(maxNum: number): SimpleTokenizer {
+export function createSortTokenizer(
+	maxNum: number,
+	includeColon: boolean,
+	includeCommas: boolean
+): SimpleTokenizer {
 	const vocab: Record<string, number> = {};
 	const ids: Record<number, string> = {};
-	vocab[':'] = 0;
-	ids[0] = ':';
-	vocab[','] = 1;
-	ids[1] = ',';
+	let offset = 0;
+	if (includeColon) {
+		vocab[':'] = 0;
+		ids[0] = ':';
+		offset++;
+	}
+	if (includeCommas) {
+		vocab[','] = 1;
+		ids[1] = ',';
+		offset++;
+	}
 	const aCharCode = 'A'.charCodeAt(0);
 	for (let n = 0; n < maxNum; n++) {
 		const token = String.fromCharCode(aCharCode + n);
-		const id = n + 2;
+		const id = n + offset;
 		vocab[token] = id;
 		ids[id] = token;
 	}
-	return { vocab, ids, lastToken: maxNum + 2 };
+	return { vocab, ids, lastToken: maxNum + offset };
 }
 
 /**
@@ -293,15 +316,19 @@ export function createSortTokenizer(maxNum: number): SimpleTokenizer {
  *   token 2 → ","
  *   tokens 3 … maxNum+3 represent the numbers 0 … maxNum.
  */
-export function createTwoSumTokenizer(maxNum: number): SimpleTokenizer {
+export function createTwoSumTokenizer(maxNum: number, includeCommas: boolean): SimpleTokenizer {
 	const vocab: Record<string, number> = {};
 	const ids: Record<number, string> = {};
+	let offset = 2;
 	vocab[':'] = 0;
 	ids[0] = ':';
 	vocab['='] = 1;
 	ids[1] = '=';
-	vocab[','] = 2;
-	ids[2] = ',';
+	if (includeCommas) {
+		vocab[','] = 2;
+		ids[2] = ',';
+		offset++;
+	}
 	const aCharCode = 'A'.charCodeAt(0);
 	for (let n = 0; n < maxNum; n++) {
 		const token = String.fromCharCode(aCharCode + n);
@@ -309,7 +336,7 @@ export function createTwoSumTokenizer(maxNum: number): SimpleTokenizer {
 		vocab[token] = id;
 		ids[id] = token;
 	}
-	return { vocab, ids, lastToken: maxNum + 3 };
+	return { vocab, ids, lastToken: maxNum + offset };
 }
 
 /**
@@ -485,7 +512,8 @@ export type TaskConfigMap = {
 
 export const tasks: { [K in keyof TaskConfigMap]: TaskSpec<TaskConfigMap[K]> } = {
 	add: (() => {
-		const createTokenizer = (config: AdditionConfig) => createAddTokenizer(config.maxNum);
+		const createTokenizer = (config: AdditionConfig) =>
+			createAddTokenizer(config.maxNum, config.includeExpressionTokens);
 		return {
 			metadata: taskMetadata.add,
 			createTokenizer,
@@ -516,7 +544,8 @@ export const tasks: { [K in keyof TaskConfigMap]: TaskSpec<TaskConfigMap[K]> } =
 		};
 	})(),
 	mod_add: (() => {
-		const createTokenizer = (config: ModAdditionConfig) => createAddTokenizer(config.maxNum);
+		const createTokenizer = (config: ModAdditionConfig) =>
+			createAddTokenizer(config.maxNum, config.includeExpressionTokens);
 		return {
 			metadata: taskMetadata.mod_add,
 			createTokenizer,
@@ -547,7 +576,8 @@ export const tasks: { [K in keyof TaskConfigMap]: TaskSpec<TaskConfigMap[K]> } =
 		};
 	})(),
 	sort: (() => {
-		const createTokenizer = (config: NumberSequenceConfig) => createSortTokenizer(config.maxNum);
+		const createTokenizer = (config: NumberSequenceConfig) =>
+			createSortTokenizer(config.maxNum, config.includeColon, config.includeCommas);
 		return {
 			metadata: taskMetadata.sort,
 			createTokenizer,
@@ -578,7 +608,8 @@ export const tasks: { [K in keyof TaskConfigMap]: TaskSpec<TaskConfigMap[K]> } =
 		};
 	})(),
 	two_sum: (() => {
-		const createTokenizer = (config: NumberSequenceConfig) => createTwoSumTokenizer(config.maxNum);
+		const createTokenizer = (config: NumberSequenceConfig) =>
+			createTwoSumTokenizer(config.maxNum, config.includeCommas);
 		return {
 			metadata: taskMetadata.two_sum,
 			createTokenizer,
