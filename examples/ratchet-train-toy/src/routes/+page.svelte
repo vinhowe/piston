@@ -1292,7 +1292,7 @@
 				<h2 class="text-lg font-semibold mb-4">Training Options</h2>
 
 				<div class="form-group mb-4">
-					<TickSlider bind:value={batch_size} min={1} max={10} label="Batch Size" />
+					<TickSlider bind:value={batch_size} min={1} max={128} label="Batch Size" />
 				</div>
 
 				<div class="form-group mb-4">
