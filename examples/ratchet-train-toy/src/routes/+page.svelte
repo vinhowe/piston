@@ -45,7 +45,7 @@
 	let n_8_embd_per_head = 2;
 	let n_embd = n_8_embd_per_head * 8 * n_head;
 	let batch_size = 2;
-	let dataset = 'two_sum';
+	let dataset = 'sort';
 	let activation = 'swiglu';
 	let label_smoothing = -3; // log10 scale
 

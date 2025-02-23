@@ -417,26 +417,29 @@ export function modAddSequenceTokenized(config: ModAdditionConfig): [number[], n
  *  - target: the sorted sequence with commas between numbers.
  * Mapping: number token = number + 2.
  */
-export function sortSequenceTokenized(config: NumberSequenceConfig): [number[], number[]] {
+export function sortSequenceTokenized(
+	config: NumberSequenceConfig,
+	tokenizer: SimpleTokenizer
+): [number[], number[]] {
 	const { seqLen, maxNum, includeCommas, includeColon } = config;
-	const nums = Array.from({ length: seqLen }, () => Math.floor(Math.random() * (maxNum + 1)));
+	const nums = Array.from({ length: seqLen }, () => Math.floor(Math.random() * maxNum));
 	const sorted = [...nums].sort((a, b) => a - b);
 	const prompt: number[] = [];
 	for (let i = 0; i < nums.length; i++) {
-		prompt.push(nums[i] + 2);
+		prompt.push(tokenizer.vocab[String.fromCharCode('A'.charCodeAt(0) + nums[i])]);
 		if (i < nums.length - 1) {
 			if (includeCommas) {
-				prompt.push(1); // comma
+				prompt.push(tokenizer.vocab[',']); // comma
 			}
 		} else if (includeColon) {
-			prompt.push(0); // colon
+			prompt.push(tokenizer.vocab[':']); // colon
 		}
 	}
 	const target: number[] = [];
 	for (let i = 0; i < sorted.length; i++) {
-		target.push(sorted[i] + 2);
+		target.push(tokenizer.vocab[String.fromCharCode('A'.charCodeAt(0) + sorted[i])]);
 		if (includeCommas && i < sorted.length - 1) {
-			target.push(1); // comma
+			target.push(tokenizer.vocab[',']); // comma
 		}
 	}
 	return [prompt, target];
@@ -584,10 +587,11 @@ export const tasks: { [K in keyof TaskConfigMap]: TaskSpec<TaskConfigMap[K]> } =
 			metadata: taskMetadata.sort,
 			createTokenizer,
 			trainBatch: (config: TrainBatchConfig & NumberSequenceConfig) => {
+				const tokenizer = createTokenizer(config);
 				const inputs: number[][] = [];
 				const targets: (number | -100)[][] = [];
 				for (let i = 0; i < config.batchSize; i++) {
-					const [prompt, completion] = sortSequenceTokenized(config);
+					const [prompt, completion] = sortSequenceTokenized(config, tokenizer);
 					const [inputSeq, targetSeq] = createAutoregressivePair(
 						prompt,
 						completion,
@@ -599,8 +603,9 @@ export const tasks: { [K in keyof TaskConfigMap]: TaskSpec<TaskConfigMap[K]> } =
 				return [inputs, targets];
 			},
 			eval: (config: NumberSequenceConfig) => {
+				const tokenizer = createTokenizer(config);
 				return {
-					example: () => sortSequenceTokenized(config),
+					example: () => sortSequenceTokenized(config, tokenizer),
 					metric: (completion, target) => {
 						if (completion.length !== target.length) return completion.map(() => false);
 						return completion.map((t, i) => t === target[i]);
