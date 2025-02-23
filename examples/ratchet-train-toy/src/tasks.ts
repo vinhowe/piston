@@ -427,15 +427,15 @@ export function sortSequenceTokenized(
 	const prompt: number[] = [];
 	for (let i = 0; i < nums.length; i++) {
 		prompt.push(tokenizer.vocab[String.fromCharCode('A'.charCodeAt(0) + nums[i])]);
-		if (i < nums.length - 1) {
-			if (includeCommas) {
-				prompt.push(tokenizer.vocab[',']); // comma
-			}
-		} else if (includeColon) {
-			prompt.push(tokenizer.vocab[':']); // colon
+		if (includeCommas && i < nums.length - 1) {
+			prompt.push(tokenizer.vocab[',']); // comma
 		}
 	}
+
 	const target: number[] = [];
+	if (includeColon) {
+		target.push(tokenizer.vocab[':']); // colon
+	}
 	for (let i = 0; i < sorted.length; i++) {
 		target.push(tokenizer.vocab[String.fromCharCode('A'.charCodeAt(0) + sorted[i])]);
 		if (includeCommas && i < sorted.length - 1) {
