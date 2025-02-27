@@ -141,8 +141,8 @@ impl LazyGraphExecutor {
         let tensors = self.get_live_tensors();
         log::debug!("All registered IDs: {:?}", self.tensors.read().keys());
         let owned_tensors = tensors.keys().cloned().collect();
-        // self.sync_tensors_graph_impl(tensors, Some(owned_tensors), gpu_device, true)
-        self.sync_tensors_graph_impl(tensors, Some(owned_tensors), gpu_device, false)
+        self.sync_tensors_graph_impl(tensors, Some(owned_tensors), gpu_device, true)
+        // self.sync_tensors_graph_impl(tensors, Some(owned_tensors), gpu_device, false)
     }
 
     pub fn sync_tensors_graph(
@@ -154,8 +154,8 @@ impl LazyGraphExecutor {
             tensors.into_iter().map(|t| (t.id(), t.clone())).collect(),
             None,
             gpu_device,
-            // true,
-            false,
+            true,
+            // false,
         )
     }
 
@@ -554,7 +554,8 @@ impl LazyGraphExecutor {
                     hash,
                     CachedExecutable {
                         executable: Arc::new(cached_exec),
-                        shared_realloc: true,
+                        // shared_realloc: true,
+                        shared_realloc: false,
                     },
                 );
                 self.pass_index += 1;
