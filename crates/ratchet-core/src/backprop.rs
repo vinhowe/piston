@@ -696,7 +696,7 @@ impl Tensor {
                     grads.accumulate_add(input, grad)?;
                 }
                 LazyOp::Cast(Cast { input, dst_dt }) => {
-                    grads.accumulate_add(input, grad.cast(*dst_dt)?)?;
+                    grads.accumulate_add(input, grad.cast(input.dt())?)?;
                 }
                 LazyOp::Norm(_) => todo!(),
                 LazyOp::Const => panic!("ratchet internal error - const node in backprop"),
