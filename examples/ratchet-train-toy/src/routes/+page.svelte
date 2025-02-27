@@ -47,7 +47,7 @@
 	let batch_size = 2;
 	let dataset = 'sort';
 	let activation = 'swiglu';
-	let label_smoothing = -3; // log10 scale
+	let label_smoothing = -5; // log10 scale
 
 	// Optimizer parameters
 	let lr = -3; // log10 scale
