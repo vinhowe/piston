@@ -13,6 +13,23 @@ pub fn nll(inp: Tensor, target: Tensor) -> anyhow::Result<Tensor> {
         }
         dims => anyhow::bail!("the target tensor should have two dimensions ({dims:?})"),
     }
+    inp.gather(target.clone().unsqueeze(1)?, 1)?
+        .affine(-1f32 / b_sz as f32, 0.)
+}
+
+pub fn nll_with_masking(inp: Tensor, target: Tensor) -> anyhow::Result<Tensor> {
+    let b_sz = match &target.shape().to_vec()[..] {
+        &[b_sz] => b_sz,
+        dims => anyhow::bail!("the target tensor should have a single dimension ({dims:?})"),
+    };
+    match &inp.shape().to_vec()[..] {
+        &[inp_b_sz, _] => {
+            if inp_b_sz != b_sz {
+                anyhow::bail!("batch size mismatch between inp ({inp_b_sz}) and target ({b_sz})")
+            }
+        }
+        dims => anyhow::bail!("the target tensor should have two dimensions ({dims:?})"),
+    }
 
     // We do a bunch of work here to allow ignoring tokens in the target.
     let ignore_index = -100;
