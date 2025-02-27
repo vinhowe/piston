@@ -30,7 +30,7 @@ impl OpGuards for Affine {
 
     fn check_dtypes(&self) {
         let a = &self.src;
-        assert!(matches!(a.dt(), crate::DType::F32));
+        assert!(matches!(a.dt(), crate::DType::F32 | crate::DType::F16));
     }
 }
 
@@ -113,13 +113,25 @@ impl KernelRenderable for AffineKernels {
             }
         });
 
+        let mul_rep = if dst.dt() == DType::F16 {
+            wgsl!(f16(metadata.mul))
+        } else {
+            wgsl!(metadata.mul)
+        };
+
+        let add_rep = if dst.dt() == DType::F16 {
+            wgsl!(f16(metadata.add))
+        } else {
+            wgsl!(metadata.add)
+        };
+
         let apply = if inplace {
             wgsl! {
                 let val = X[index];
-                X[index] = fma(val, 'dt(metadata.mul), 'dt(metadata.add));
+                X[index] = fma(val, 'dt('mul_rep), 'dt('add_rep));
             }
         } else {
-            wgsl! { Y[index] = fma(X[index], 'dt(metadata.mul), 'dt(metadata.add)); }
+            wgsl! { Y[index] = fma(X[index], 'dt('mul_rep), 'dt('add_rep)); }
         };
         kernel_builder.write_main(apply);
         Ok(kernel_builder.build()?)
