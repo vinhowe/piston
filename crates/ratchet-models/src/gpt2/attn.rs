@@ -130,9 +130,7 @@ impl Module for GPT2SelfAttention {
 
         let mut att = q
             .clone()
-            .cast(ratchet::DType::F16)?
-            .matmul(k.clone().cast(ratchet::DType::F16)?, false, true)?
-            .cast(q.dt())?
+            .matmul(k.clone(), false, true)?
             .mul(self.softmax_scale.clone())?;
 
         // Apply ALiBi if enabled
@@ -153,9 +151,7 @@ impl Module for GPT2SelfAttention {
         let att = att.softmax(3)?;
         let y = att
             .clone()
-            .cast(ratchet::DType::F16)?
-            .matmul(v.cast(ratchet::DType::F16)?, false, false)?
-            .cast(att.dt())?
+            .matmul(v.clone(), false, false)?
             .permute(&[0, 2, 1, 3])?
             .view(shape![batch_size as _, q_len, self.n_embd])?;
 
