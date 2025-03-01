@@ -23,15 +23,11 @@ impl Module for Linear {
             [bsize, _, _] => self.w.clone().broadcast_left(shape![bsize])?,
             _ => self.w.clone(),
         };
-        let input_dt = input.dt();
-        let x = input
-            .cast(ratchet::DType::F16)?
-            .matmul(w.cast(ratchet::DType::F16)?, false, true)?
-            .cast(input_dt)?;
+        let x = input.matmul(w, false, true)?;
 
         match &self.b {
             None => Ok(x),
-            Some(b) => Ok((x.clone() + b.clone().cast(x.dt())?)?.cast(input_dt)?),
+            Some(b) => x.clone() + b.clone().cast(x.dt())?,
         }
     }
 }
