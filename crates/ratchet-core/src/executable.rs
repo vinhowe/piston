@@ -390,46 +390,42 @@ impl Executable {
         while let Some(step) = steps_iter.next() {
             match step {
                 Compiled::Compute(op) => {
-                    // Group all contiguous compute operations.
                     let mut compute_group = vec![op];
                     while let Some(next_step) = steps_iter.peek() {
                         if let Compiled::Compute(next_op) = next_step {
                             compute_group.push(next_op);
-                            steps_iter.next(); // consume the op
+                            // consume the op
+                            steps_iter.next();
                         } else {
                             break;
                         }
                     }
 
-                    // Use the first op's label for the entire group.
-                    let first_op = compute_group.first().unwrap();
-                    let group_label = format!(
-                        "grouped: {} ({} ops)",
-                        first_op.kernel_key,
-                        compute_group.len()
-                    );
-                    let timestamp_writes =
-                        Some(profiler.create_timestamp_queries(0, group_label.as_str()));
-
-                    // Begin one compute pass for the grouped compute operations.
-                    let mut cpass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
-                        label: Some("ratchet inference pass"),
-                        timestamp_writes,
-                    });
                     for op in compute_group {
+                        let label =
+                            format!("{}_{}", op.kernel_key, op.workgroup_count().to_string());
+                        let timestamp_writes =
+                            Some(profiler.create_timestamp_queries(0, label.as_str()));
+                        let mut cpass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
+                            label: None,
+                            timestamp_writes,
+                        });
                         cpass.set_pipeline(pipeline_resources.get(op.pipeline_handle())?);
+
                         for (group_index, bind_group) in op.storage_groups().iter().enumerate() {
                             cpass.set_bind_group(group_index as u32, bind_group, &[]);
                         }
+
                         let uniform_group_index = op.storage_groups().len() as u32;
                         let uniform_group = self.gpu_uniform.bind_group();
                         cpass.set_bind_group(uniform_group_index, uniform_group, &[op.offset()]);
+
                         let [x_count, y_count, z_count] = op.workgroup_count().as_slice();
                         cpass.dispatch_workgroups(x_count, y_count, z_count);
                     }
                 }
                 Compiled::Copy(op) => {
-                    // Process copy operations individually.
+                    // TODO(vinhowe): Decide on the best way to profile these?
                     let mut encoder_copy = device
                         .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
                     let src = op.src().as_ref();
