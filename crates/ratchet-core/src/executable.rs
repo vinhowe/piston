@@ -152,26 +152,23 @@ impl Executable {
         while let Some((step_index, step)) = steps_iter.next() {
             match step {
                 Compiled::Compute(op) => {
-                    // Group contiguous compute operations.
                     let mut compute_group = vec![(step_index, op)];
                     while let Some(&(next_index, next_step)) = steps_iter.peek() {
                         if let Compiled::Compute(next_op) = next_step {
                             compute_group.push((next_index, next_op));
-                            steps_iter.next(); // Consume the op.
+                            steps_iter.next();
                         } else {
                             break;
                         }
                     }
 
                     for &(step_index, op) in &compute_group {
-                        // Create a single encoder for the entire compute-group.
                         let mut encoder =
                             device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
                                 label: None,
                             });
 
                         {
-                            // Begin a compute pass for all the grouped compute operations.
                             let mut cpass =
                                 encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
                                     label: Some("ratchet inference pass"),
