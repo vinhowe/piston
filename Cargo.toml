@@ -7,7 +7,6 @@ members = [
     "crates/ratchet-models",
     "crates/ratchet-nn",
     "crates/ratchet-hub",
-    "crates/ratchet-cli",
     "crates/ratchet-macros",
     "crates/ratchet-datasets",
 ]
