@@ -197,7 +197,7 @@ impl LazyGraphExecutor {
         // We also flip the hash order—post order first, then insertion order—because it's more
         // convenient to treat it as one big hash pass.
         // let tensors = tensors.clone();
-        let post_order = self.run_post_order(tensors.values().collect());
+        let combined_post_orders = self.run_post_order(tensors.values().collect());
 
         let mut indices = Vec::with_capacity(tensors.len());
         let mut tensor_ids = HashSet::with_capacity_and_hasher(
@@ -208,7 +208,8 @@ impl LazyGraphExecutor {
         let mut hasher = HasherType::default();
         let mut tensor_hashes = BTreeMap::default();
 
-        let mut consumed_tensors = HashSet::with_capacity_and_hasher(
+        // Keep track of tensors that have been used as an src by another tensor
+        let mut used_as_src = HashSet::with_capacity_and_hasher(
             tensors.len(),
             BuildHasherDefault::<HasherType>::default(),
         );
@@ -222,111 +223,124 @@ impl LazyGraphExecutor {
         // annoying views correctly.
         let mut tensor_sources = HashMap::default();
 
+        let mut seen_nodes = HashSet::default();
+        let mut post_order = Vec::new();
+
         // First we loop over the post order to hash the tensors in the right order
-        for tensor in &post_order {
-            // Scope to drop tensor_hashes before inserting
-            let srcs = tensor.op().srcs();
-            log::trace!(
-                "{:?}: Srcs: {:?}",
-                tensor.id(),
-                srcs.iter().map(|s| s.id()).collect::<Vec<_>>()
-            );
-            let first_src = srcs.first().cloned();
+        for tensor in combined_post_orders.into_iter() {
+            if seen_nodes.insert(tensor.id()) {
+                post_order.push(tensor);
+                // Scope to drop tensor_hashes before inserting
+                let srcs = tensor.op().srcs();
+                log::trace!(
+                    "{:?}: Srcs: {:?}",
+                    tensor.id(),
+                    srcs.iter().map(|s| s.id()).collect::<Vec<_>>()
+                );
+                let first_src = srcs.first().cloned();
 
-            let mut to_modify = None;
-            if !matches!(tensor.op(), LazyOp::View(_)) {
-                tensor_sources.insert(tensor.id(), tensor);
-                to_modify = first_src.map(|src| {
-                    tensor_sources
-                        .get(&src.id())
-                        .cloned()
-                        .expect("Source missing entry in tensor_sources")
-                });
-            } else if let Some(src) = tensor_sources
-                .get(&first_src.expect("All views should have one src").id())
-                .cloned()
-            {
-                tensor_sources.insert(tensor.id(), src);
-                to_modify = Some(src);
-            }
+                let mut to_modify = None;
+                if !matches!(tensor.op(), LazyOp::View(_)) {
+                    tensor_sources.insert(tensor.id(), tensor);
+                    to_modify = first_src.map(|src| {
+                        tensor_sources
+                            .get(&src.id())
+                            .cloned()
+                            .expect("Source missing entry in tensor_sources")
+                    });
+                } else if let Some(src) = tensor_sources
+                    .get(&first_src.expect("All views should have one src").id())
+                    .cloned()
+                {
+                    tensor_sources.insert(tensor.id(), src);
+                    to_modify = Some(src);
+                }
 
-            let can_inplace = match to_modify {
-                Some(to_modify_src) => {
-                    log::trace!(
-                        "{:?}: Supports inplace: {:?}, is variable: {:?}",
-                        tensor.id(),
-                        tensor.op().supports_inplace(),
-                        to_modify_src.is_variable()
-                    );
+                let can_inplace = match to_modify {
+                    Some(to_modify_src) => {
+                        log::trace!(
+                            "{:?}: Supports inplace: {:?}, is variable: {:?}",
+                            tensor.id(),
+                            tensor.op().supports_inplace(),
+                            to_modify_src.is_variable()
+                        );
 
-                    if !self.inplace_support {
-                        match tensor.op() {
-                            LazyOp::Softmax(_) | LazyOp::ScatterAdd(_) | LazyOp::IndexAdd(_) => {
-                                true
+                        if !self.inplace_support {
+                            match tensor.op() {
+                                LazyOp::Softmax(_)
+                                | LazyOp::ScatterAdd(_)
+                                | LazyOp::IndexAdd(_) => true,
+                                LazyOp::Detach(d) => {
+                                    matches!(
+                                        d.as_ref(),
+                                        LazyOp::Softmax(_)
+                                            | LazyOp::ScatterAdd(_)
+                                            | LazyOp::IndexAdd(_)
+                                    )
+                                }
+                                _ => false,
                             }
-                            LazyOp::Detach(d) => {
-                                matches!(
-                                    d.as_ref(),
-                                    LazyOp::Softmax(_)
-                                        | LazyOp::ScatterAdd(_)
-                                        | LazyOp::IndexAdd(_)
-                                )
-                            }
-                            _ => false,
-                        }
-                    } else if !tensor.op().supports_inplace()
+                        } else if !tensor.op().supports_inplace()
                     // vinhowe: we need to check if the src is a variable, because we can't
                     // inplace variables unless we've disabled gradient tracking.
                     || to_modify_src.is_variable()
-                    {
-                        false
-                    } else {
-                        // Typical references:
-                        // 1. Its original consumer. Whatever scope it was created in.
-                        // 2. `tensors`, as passed into this method, if it wasn't resolved and we
-                        //    upgraded its weak reference. This happens when we do a sync of live
-                        //    tensors, say, in an optimizer step, but a one-off sync won't do this.
-                        //    This is why we have the optional `owned_tensors`.
-                        // If these two are the only references, then we can inplace. Usually,
-                        // additional references include, not in any particular order:
-                        // 3. The optimizer, if it is a variable. We'll also check if the src is a
-                        //    variable.
-                        // 4+ Any other Tensor consumers in the post-order. If it's not a variable,
-                        //    these are the references we're concerned about messing with.
-                        //
-                        // If we own a copy, 2, otherwise 1.
-                        let expected_strong = owned_tensors
-                            .as_ref()
-                            .and_then(|ot| ot.contains(&to_modify_src.id()).then_some(2))
-                            .unwrap_or(1);
+                        {
+                            false
+                        } else {
+                            // Typical references:
+                            // 1. Its original consumer. Whatever scope it was created in.
+                            // 2. `tensors`, as passed into this method, if it wasn't resolved and we
+                            //    upgraded its weak reference. This happens when we do a sync of live
+                            //    tensors, say, in an optimizer step, but a one-off sync won't do this.
+                            //    This is why we have the optional `owned_tensors`.
+                            // If these two are the only references, then we can inplace. Usually,
+                            // additional references include, not in any particular order:
+                            // 3. The optimizer, if it is a variable. We'll also check if the src is a
+                            //    variable.
+                            // 4+ Any other Tensor consumers in the post-order. If it's not a variable,
+                            //    these are the references we're concerned about messing with.
+                            //
+                            // If we own a copy, 2, otherwise 1.
+                            let expected_strong = owned_tensors
+                                .as_ref()
+                                .and_then(|ot| ot.contains(&to_modify_src.id()).then_some(2))
+                                .unwrap_or(1);
 
-                        to_modify_src.strong_count() == expected_strong
+                            to_modify_src.strong_count() == expected_strong
+                        }
                     }
-                }
-                None => false,
-            };
+                    None => false,
+                };
 
-            #[cfg(feature = "plotting")]
-            strong_counts_inplace.insert(tensor.id(), (tensor.strong_count(), can_inplace));
-            log::trace!(
-                "Can inplace: {:?}, op: {:?} ({:?}), strong: {:?}",
-                can_inplace,
-                tensor.op().name(),
-                tensor.id(),
-                to_modify.as_ref().map(|t| t.strong_count())
-            );
-            let compile_key = tensor.gpu_compile_key(can_inplace, &mut uniform);
-            let ir = tensor.op().ir();
-            ir.shape_hash(&mut hasher, &tensor_hashes, &compile_key);
-            if let Some(compile_key) = compile_key {
-                compile_keys.insert(tensor.id(), compile_key);
-            }
-            let hash = hasher.finish();
-            tensor_hashes.insert(tensor.id(), hash);
-            log::debug!("IR: {:?}", ir);
-            log::debug!("Tensor hash: {:#x} (op: {:?})", hash, tensor.op().name());
-            for src in tensor.op().srcs() {
-                consumed_tensors.insert(src.id());
+                #[cfg(feature = "plotting")]
+                strong_counts_inplace.insert(tensor.id(), (tensor.strong_count(), can_inplace));
+                log::trace!(
+                    "Can inplace: {:?}, op: {:?} ({:?}), strong: {:?}",
+                    can_inplace,
+                    tensor.op().name(),
+                    tensor.id(),
+                    to_modify.as_ref().map(|t| t.strong_count())
+                );
+                let compile_key = tensor.gpu_compile_key(can_inplace, &mut uniform);
+                let ir = tensor.op().ir();
+                ir.shape_hash(&mut hasher, &tensor_hashes, &compile_key);
+                if let Some(compile_key) = compile_key {
+                    compile_keys.insert(tensor.id(), compile_key);
+                }
+                let hash = hasher.finish();
+                tensor_hashes.insert(tensor.id(), hash);
+                log::debug!("IR: {:?}", ir);
+                log::debug!("Tensor hash: {:#x} (op: {:?})", hash, tensor.op().name());
+                for src in tensor.op().srcs() {
+                    used_as_src.insert(src.id());
+                }
+            } else {
+                // If we've already seen this node, just add its hash to the hasher
+                hasher.write_u64(
+                    *tensor_hashes
+                        .get(&tensor.id())
+                        .expect("Missing shape hash for tensor"),
+                );
             }
         }
 
@@ -334,7 +348,7 @@ impl LazyGraphExecutor {
 
         let output_tensors = tensors
             .iter()
-            .filter(|(id, _)| !consumed_tensors.contains(id))
+            .filter(|(id, _)| !used_as_src.contains(id))
             .map(|(id, tensor)| (*id, tensor))
             .collect::<BTreeMap<_, _>>();
 
