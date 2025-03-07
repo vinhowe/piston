@@ -20,9 +20,9 @@ use ratchet_models::gpt2::generate;
 use ratchet_models::gpt2::{Config, GPT2Input, PositionalEncoding};
 use ratchet_models::gpt2::{LayerNormPosition, GPT2};
 use ratchet_nn::{
-    clip_grad_norm, cross_entropy, label_smoothed_nll, log_softmax, nll, Activation, AdamW,
-    ConstantLR, CosineAnnealingLR, LRScheduler, LRSchedulerCore, LinearLR, Module, Optimizer,
-    ParamsAdamW, VarBuilder, VarMap, SGD,
+    clip_grad_norm, cross_entropy, label_smoothed_nll, log_softmax, nll, nll_masked, Activation,
+    AdamW, ConstantLR, CosineAnnealingLR, LRScheduler, LRSchedulerCore, LinearLR, Module,
+    Optimizer, ParamsAdamW, VarBuilder, VarMap, SGD,
 };
 use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
@@ -405,7 +405,7 @@ impl Trainer {
         let loss = if alpha > 0.0 {
             label_smoothed_nll(inp, target_flat, alpha).map_err(|e| e.to_string())?
         } else {
-            nll(inp, target_flat).map_err(|e| e.to_string())?
+            nll_masked(inp, target_flat).map_err(|e| e.to_string())?
         };
 
         let loss_summed = loss.clone().sum_all().map_err(|e| e.to_string())?;
