@@ -1,8 +1,13 @@
 use crate::{gpu::*, DType, GpuCompileKey, Tensor, TensorId};
 use crate::{HashMap, TensorError};
+use maybe_async::maybe_async;
 use parking_lot::RwLock;
 use std::collections::BTreeMap;
 use std::{borrow::Cow, sync::Arc};
+#[cfg(target_arch = "wasm32")]
+use wasm_bindgen::JsCast;
+#[cfg(target_arch = "wasm32")]
+use wasm_bindgen::JsValue;
 use wgpu::{Adapter, Limits};
 
 use crate::DeviceError;
@@ -323,6 +328,13 @@ impl WgpuDevice {
 
     pub fn usage_bytes(&self) -> u64 {
         self.buffer_allocator.usage_bytes()
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    pub fn as_webgpu_device(&self) -> Option<web_sys::GpuDevice> {
+        JsValue::from(self.device.as_webgpu_device())
+            .dyn_into::<web_sys::GpuDevice>()
+            .ok()
     }
 }
 
