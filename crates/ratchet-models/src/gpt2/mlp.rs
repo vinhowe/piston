@@ -1,5 +1,6 @@
 use maybe_async::maybe_async;
 use ratchet::Tensor;
+use ratchet_macros::scoped_module;
 use ratchet_nn::{Linear, Module, VarBuilder};
 
 use super::{
@@ -26,6 +27,7 @@ impl MLP {
     }
 }
 
+#[scoped_module]
 impl Module for MLP {
     type Input = Tensor;
     type Output = Tensor;

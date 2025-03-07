@@ -1,6 +1,6 @@
 use crate::{
-    CpuUniform, Executable, ExecutionError, GPUBuffer, HashMap, HashSet, Hasher as HasherType,
-    Inner, LazyOp, Storage, TensorError, WgpuDevice,
+    reset_scope_context, CpuUniform, Executable, ExecutionError, GPUBuffer, HashMap, HashSet,
+    Hasher as HasherType, Inner, LazyOp, Storage, TensorError, WgpuDevice,
 };
 #[cfg(feature = "debug")]
 use crate::{DebugTensor, Device, DeviceStorage};
@@ -137,6 +137,7 @@ impl LazyGraphExecutor {
         &mut self,
         gpu_device: &WgpuDevice,
     ) -> anyhow::Result<(), TensorError> {
+        reset_scope_context();
         log::trace!("Syncing live tensors graph");
         let tensors = self.get_live_tensors();
         log::debug!("All registered IDs: {:?}", self.tensors.read().keys());

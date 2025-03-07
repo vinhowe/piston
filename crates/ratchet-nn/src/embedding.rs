@@ -1,5 +1,6 @@
 use crate::Module;
 use ratchet::{shape, Shape, Tensor};
+use ratchet_macros::scoped_module;
 
 /// # Embedding
 ///
@@ -21,6 +22,7 @@ impl Embedding {
     }
 }
 
+#[scoped_module]
 impl Module for Embedding {
     type Input = Tensor;
     type Output = Tensor;

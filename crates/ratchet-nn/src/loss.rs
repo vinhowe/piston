@@ -1,6 +1,7 @@
-use ratchet::{DType, Tensor};
+use ratchet::{DType, ScopePusher, Tensor};
 
 pub fn nll(inp: Tensor, target: Tensor) -> anyhow::Result<Tensor> {
+    let _scope_guard = ScopePusher::new("loss:nll");
     let b_sz = match &target.shape().to_vec()[..] {
         &[b_sz] => b_sz,
         dims => anyhow::bail!("the target tensor should have a single dimension ({dims:?})"),
@@ -17,7 +18,8 @@ pub fn nll(inp: Tensor, target: Tensor) -> anyhow::Result<Tensor> {
         .affine(-1f32 / b_sz as f32, 0.)
 }
 
-pub fn nll_with_masking(inp: Tensor, target: Tensor) -> anyhow::Result<Tensor> {
+pub fn nll_masked(inp: Tensor, target: Tensor) -> anyhow::Result<Tensor> {
+    let _scope_guard = ScopePusher::new("loss:nll_masked");
     let b_sz = match &target.shape().to_vec()[..] {
         &[b_sz] => b_sz,
         dims => anyhow::bail!("the target tensor should have a single dimension ({dims:?})"),
@@ -59,6 +61,7 @@ pub fn nll_with_masking(inp: Tensor, target: Tensor) -> anyhow::Result<Tensor> {
 ///
 /// `alpha` is the smoothing parameter in `[0, 1]`. If `alpha == 0.0`, this is just ordinary NLL.
 pub fn label_smoothed_nll(log_probs: Tensor, target: Tensor, alpha: f32) -> anyhow::Result<Tensor> {
+    let _scope_guard = ScopePusher::new("loss:nll_label_smoothed");
     let b_sz = match &target.shape().to_vec()[..] {
         &[b_sz] => b_sz,
         dims => {
@@ -123,6 +126,7 @@ pub fn label_smoothed_nll(log_probs: Tensor, target: Tensor, alpha: f32) -> anyh
 }
 
 pub fn log_softmax(xs: Tensor, d: usize) -> anyhow::Result<Tensor> {
+    let _scope_guard = ScopePusher::new("loss:log_softmax");
     let max = xs.clone().max_keepdim(d)?;
     let diff = xs.clone().sub(max)?;
     let sum_exp = diff.clone().exp()?.sum_keepdim(&[d])?;
@@ -131,6 +135,7 @@ pub fn log_softmax(xs: Tensor, d: usize) -> anyhow::Result<Tensor> {
 }
 
 pub fn cross_entropy(inp: Tensor, target: Tensor) -> anyhow::Result<Tensor> {
+    let _scope_guard = ScopePusher::new("loss:cross_entropy");
     if inp.rank() != 2 {
         anyhow::bail!("cross_entropy expects an input tensor of rank 2")
     }

@@ -2,7 +2,7 @@
 use async_trait::async_trait;
 use half::{bf16, f16};
 use maybe_async::maybe_async;
-use ratchet::{DType, Device, GradStore, Var};
+use ratchet::{DType, Device, GradStore, ScopePusher, Var};
 
 #[maybe_async(AFIT)]
 #[cfg_attr(target_arch = "wasm32", async_trait::async_trait)]
@@ -67,16 +67,20 @@ impl Optimizer for SGD {
 
     async fn step(&mut self, grads: &ratchet::GradStore, device: &Device) -> anyhow::Result<()> {
         let mut updates = Vec::new();
-        for (_, var) in &self.vars {
-            if let Some(grad) = grads.get(var.as_tensor()) {
-                let update =
-                    (var.as_tensor().clone() - (grad.clone() * self.learning_rate as f32)?)?;
-                updates.push(var.set(update));
-            }
+        {
+            let _scope_guard = ScopePusher::new("optim:SGD");
+            for (_, var) in &self.vars {
+                let _scope_guard = optim_var_scope_guard(var);
+                if let Some(grad) = grads.get(var.as_tensor()) {
+                    let update =
+                        (var.as_tensor().clone() - (grad.clone() * self.learning_rate as f32)?)?;
+                    updates.push(var.set(update));
+                }
+            gpu_device.mark_step();
         }
 
         if let Ok(gpu_device) = device.try_gpu() {
-            gpu_device.mark_step()?;
+            gpu_device.mark_step();
         }
 
         Ok(())
@@ -171,40 +175,43 @@ impl Optimizer for AdamW {
     }
 
     async fn step(&mut self, grads: &ratchet::GradStore, device: &Device) -> anyhow::Result<()> {
-        self.step_t += 1;
-        let lr = self.params.lr;
-        let lambda = self.params.weight_decay;
-        let lr_lambda = lr * lambda;
-        let beta1 = self.params.beta1;
-        let beta2 = self.params.beta2;
-        let scale_m = 1f64 / (1f64 - beta1.powi(self.step_t as i32));
-        let scale_v = 1f64 / (1f64 - beta2.powi(self.step_t as i32));
-
         // This makes sure we keep references to the copy tensors.
         let mut updates = Vec::new();
+        {
+            let _scope_guard = ScopePusher::new("optim:AdamW");
+            self.step_t += 1;
+            let lr = self.params.lr;
+            let lambda = self.params.weight_decay;
+            let lr_lambda = lr * lambda;
+            let beta1 = self.params.beta1;
+            let beta2 = self.params.beta2;
+            let scale_m = 1f64 / (1f64 - beta1.powi(self.step_t as i32));
+            let scale_v = 1f64 / (1f64 - beta2.powi(self.step_t as i32));
 
-        for var in self.vars.iter_mut() {
-            let theta = &var.var;
-            let m = &var.first_moment;
-            let v = &var.second_moment;
+            for var in self.vars.iter_mut() {
+                let _scope_guard = optim_var_scope_guard(&var.var);
+                let theta = &var.var;
+                let m = &var.first_moment;
+                let v = &var.second_moment;
 
-            // println!("Optimizer stepping: {:?}", var.label);
-            // println!("Theta op: {:?}", theta.as_tensor().op());
-            // println!("Theta id: {:?}", theta.as_tensor().id());
+                // println!("Optimizer stepping: {:?}", var.label);
+                // println!("Theta op: {:?}", theta.as_tensor().op());
+                // println!("Theta id: {:?}", theta.as_tensor().id());
 
-            if let Some(g) = grads.get(theta.as_tensor()) {
-                let next_m = ((m.as_tensor().clone() * beta1 as f32)?
-                    + (g.clone() * (1.0 - beta1 as f32))?)?;
-                let next_v = ((v.as_tensor().clone() * beta2 as f32)?
-                    + (g.clone().square()? * (1.0 - beta2 as f32))?)?;
-                let m_hat = (next_m.clone() * scale_m as f32)?;
-                let v_hat = (next_v.clone() * scale_v as f32)?;
-                let next_theta = (theta.as_tensor().clone() * (1f32 - lr_lambda as f32))?;
-                let adjusted_grad = (m_hat / (v_hat.sqrt()? + self.params.eps as f32)?)?;
-                let next_theta = (next_theta - (adjusted_grad.clone() * lr as f32)?)?;
+                if let Some(g) = grads.get(theta.as_tensor()) {
+                    let next_m = ((m.as_tensor().clone() * beta1 as f32)?
+                        + (g.clone() * (1.0 - beta1 as f32))?)?;
+                    let next_v = ((v.as_tensor().clone() * beta2 as f32)?
+                        + (g.clone().square()? * (1.0 - beta2 as f32))?)?;
+                    let m_hat = (next_m.clone() * scale_m as f32)?;
+                    let v_hat = (next_v.clone() * scale_v as f32)?;
+                    let next_theta = (theta.as_tensor().clone() * (1f32 - lr_lambda as f32))?;
+                    let adjusted_grad = (m_hat / (v_hat.sqrt()? + self.params.eps as f32)?)?;
+                    let next_theta = (next_theta - (adjusted_grad.clone() * lr as f32)?)?;
 
-                // This ensures we keep references to the copy tensors.
-                updates.push((theta.set(next_theta), m.set(next_m), v.set(next_v)));
+                    // This ensures we keep references to the copy tensors.
+                    updates.push((theta.set(next_theta), m.set(next_m), v.set(next_v)));
+                }
             }
         }
 
@@ -233,4 +240,17 @@ impl AdamW {
     pub fn set_params(&mut self, params: ParamsAdamW) {
         self.params = params;
     }
+}
+
+fn optim_var_scope_guard(var: &Var) -> ScopePusher {
+    ScopePusher::new(
+        format!(
+            "for:({})",
+            var.as_tensor()
+                .scope()
+                .as_ref()
+                .unwrap_or(&"unknown".to_string())
+        )
+        .as_str(),
+    )
 }

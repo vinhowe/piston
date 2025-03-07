@@ -27,6 +27,7 @@ ratchet = { path = "../ratchet-core" }
 ratchet-nn = { path = "../ratchet-nn" }
 ratchet-loader = { path = "../ratchet-loader" }
 ratchet-datasets = { path = "../ratchet-datasets" }
+ratchet-macros = { path = "../ratchet-macros" }
 byteorder.workspace = true
 anyhow.workspace = true
 thiserror.workspace = true

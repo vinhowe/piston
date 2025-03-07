@@ -1,5 +1,6 @@
 use maybe_async::maybe_async;
 use ratchet::{shape, DType, Tensor};
+use ratchet_macros::scoped_module;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct LayerNormConfig {
@@ -52,6 +53,7 @@ impl LayerNorm {
     }
 }
 
+#[scoped_module]
 impl crate::Module for LayerNorm {
     type Input = Tensor;
     type Output = Tensor;
@@ -122,6 +124,7 @@ impl RMSNorm {
     }
 }
 
+#[scoped_module]
 impl crate::Module for RMSNorm {
     type Input = Tensor;
     type Output = Tensor;

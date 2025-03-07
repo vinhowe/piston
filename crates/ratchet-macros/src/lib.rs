@@ -1,4 +1,5 @@
 mod ir_fields;
+mod scoped_module;
 mod wgsl_metadata;
 
 use proc_macro::TokenStream;
@@ -20,4 +21,12 @@ pub fn derive_wgsl_metadata(input: TokenStream) -> TokenStream {
 pub fn derive_ir_fields(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input);
     ir_fields::derive(input).into()
+}
+
+/// Derives the `ScopedModule` trait implementation for a struct.
+///
+/// Automatically adds scoping to Module implementations
+#[proc_macro_attribute]
+pub fn scoped_module(_attr: TokenStream, item: TokenStream) -> TokenStream {
+    scoped_module::scoped_module(item).into()
 }

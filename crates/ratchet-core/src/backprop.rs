@@ -5,7 +5,7 @@ use crate::ops::{BinaryOp, UnaryOp};
 use crate::{
     rvec, Affine, Alibi, Binary, Broadcast, Cast, Cmp, Concat, Conv, DType, Gather, GroupNorm,
     IndexAdd, IndexSelect, LazyOp, Matmul, Norm, NormOp, Permute, Powf, Reduce, ReduceOp, Reindex,
-    RoPE, ScatterAdd, Shape, Slice, Softmax, Tensor, TensorId, Unary, View, WhereCond,
+    RoPE, ScatterAdd, ScopePusher, Shape, Slice, Softmax, Tensor, TensorId, Unary, View, WhereCond,
 };
 use crate::{HashMap, Trilu};
 use anyhow::Result;
@@ -211,10 +211,12 @@ impl Tensor {
     }
 
     pub fn backward(&self) -> Result<GradStore> {
+        let _scope_guard = ScopePusher::new("backward");
         let sorted_nodes = self.sorted_nodes();
         let mut grads = GradStore::new();
         grads.insert(self, self.ones_like::<f32>().contiguous());
         for node in sorted_nodes.iter() {
+            let _op_scope_guard = ScopePusher::new(&format!("for:{}", node.op().name()));
             if node.is_variable() {
                 continue;
             }

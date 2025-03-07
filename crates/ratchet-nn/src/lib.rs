@@ -45,6 +45,8 @@ use ratchet::Tensor;
 pub trait Module {
     type Input;
     type Output;
+
+    fn module_name(&self) -> &str;
     fn schedule(&self, input: Self::Input) -> anyhow::Result<Self::Output>;
 }
 

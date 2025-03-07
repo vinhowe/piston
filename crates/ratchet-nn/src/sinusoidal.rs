@@ -1,4 +1,5 @@
 use ratchet::{rvec, shape, DType, Tensor};
+use ratchet_macros::scoped_module;
 
 use crate::Module;
 
@@ -29,6 +30,7 @@ impl SinusoidalEmbedding {
     }
 }
 
+#[scoped_module]
 impl Module for SinusoidalEmbedding {
     type Input = SinusoidalInput;
     type Output = Tensor;
