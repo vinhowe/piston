@@ -56,12 +56,33 @@ pub struct Tensor {
 
 unsafe impl Send for Tensor {}
 
-macro_rules! ensure_resolved {
+macro_rules! ensure_resolved_sync {
     ($self:ident) => {
+        #[cfg(not(target_arch = "wasm32"))]
         if !$self.resolved() {
             $self
                 .apply_pending_graph()
                 .expect("Failed to apply pending graph");
+        }
+    };
+}
+
+macro_rules! ensure_resolved {
+    ($self:ident) => {
+        if !$self.resolved() {
+            #[cfg(target_arch = "wasm32")]
+            {
+                $self
+                    .apply_pending_graph()
+                    .await
+                    .expect("Failed to apply pending graph");
+            }
+            #[cfg(not(target_arch = "wasm32"))]
+            {
+                $self
+                    .apply_pending_graph()
+                    .expect("Failed to apply pending graph");
+            }
         }
     };
 }
@@ -1503,7 +1524,8 @@ impl Tensor {
         ))
     }
 
-    pub fn item<T: TensorDType>(&self) -> T {
+    #[maybe_async]
+    pub async fn item<T: TensorDType>(&self) -> T {
         assert!(self.is_scalar());
         ensure_resolved!(self);
         let storage_guard = self.storage();
@@ -1550,7 +1572,8 @@ impl Tensor {
     /// Converts the tensor into a 1D vector.
     ///
     /// The 1D vector contains the data from the tensor, as it was laid out in memory.
-    pub fn to_vec<T: TensorDType>(&self) -> anyhow::Result<Vec<T>> {
+    #[maybe_async]
+    pub async fn to_vec<T: TensorDType>(&self) -> anyhow::Result<Vec<T>> {
         ensure_resolved!(self);
         let storage_guard = self.storage();
         let buffer = storage_guard.as_ref().unwrap().try_cpu()?;
@@ -1605,8 +1628,9 @@ impl Tensor {
         order
     }
 
-    pub fn cpu_apply(self, dst: Tensor) -> Option<Tensor> {
-        cpu::apply_operation(self.op().clone(), dst).ok()
+    #[maybe_async]
+    pub async fn cpu_apply(self, dst: Tensor) -> Option<Tensor> {
+        cpu::apply_operation(self.op().clone(), dst).await.ok()
     }
 
     fn gpu_compile_key_for_op<'a>(
@@ -1680,7 +1704,8 @@ impl Tensor {
         }
     }
 
-    fn resolve_cpu(self) -> Result<Tensor, TensorError> {
+    #[maybe_async]
+    async fn resolve_cpu(self) -> Result<Tensor, TensorError> {
         let mut tensor = self.clone();
         let execution_order = self.execution_order();
 
@@ -1690,28 +1715,47 @@ impl Tensor {
             if t.resolved() {
                 continue;
             }
-            tensor = tensor.cpu_apply(t.clone()).unwrap();
+            tensor = tensor.cpu_apply(t.clone()).await.unwrap();
         }
 
         Ok(tensor.clone())
     }
 
     /// Applies the pending graph to the tensor.
-    fn apply_pending_graph(&self) -> Result<Tensor, TensorError> {
+    #[maybe_async]
+    async fn apply_pending_graph(&self) -> Result<Tensor, TensorError> {
         if self.resolved() {
             return Ok(self.clone());
         }
 
         match self.device() {
             Device::GPU(gpu_device) => {
-                gpu_device.sync_tensors_graph(vec![&self])?;
+                #[cfg(target_arch = "wasm32")]
+                {
+                    Box::pin(gpu_device.sync_tensors_graph(vec![&self])).await?;
+                }
+                #[cfg(not(target_arch = "wasm32"))]
+                {
+                    gpu_device.sync_tensors_graph(vec![&self])?;
+                }
                 Ok(self.clone())
             }
-            Device::CPU => self.clone().resolve_cpu(),
+            Device::CPU => {
+                #[cfg(target_arch = "wasm32")]
+                {
+                    Box::pin(self.clone().resolve_cpu()).await?;
+                }
+                #[cfg(not(target_arch = "wasm32"))]
+                {
+                    self.clone().resolve_cpu()?;
+                }
+                Ok(self.clone())
+            }
         }
     }
 
-    fn to_gpu(&self, dst_device: &Device) -> Result<Tensor, TensorError> {
+    #[maybe_async]
+    async fn to_gpu(&self, dst_device: &Device) -> Result<Tensor, TensorError> {
         ensure_resolved!(self);
         let storage_guard = self.storage();
         let cpu_buf = storage_guard
@@ -1730,7 +1774,8 @@ impl Tensor {
         ))
     }
 
-    pub fn deep_clone(&self) -> Tensor {
+    #[maybe_async]
+    pub async fn deep_clone(&self) -> Tensor {
         ensure_resolved!(self);
         let storage_guard = self.storage();
         let storage = storage_guard.as_ref().unwrap();
@@ -1776,7 +1821,7 @@ impl Tensor {
     pub async fn to(&self, device: &Device) -> Result<Tensor, TensorError> {
         match (self.device(), device) {
             (Device::GPU(_), Device::CPU) => self.to_cpu().await,
-            (Device::CPU, Device::GPU(_)) => self.to_gpu(device),
+            (Device::CPU, Device::GPU(_)) => self.to_gpu(device).await,
             _ => Ok(self.clone()),
         }
     }
@@ -1953,7 +1998,7 @@ impl Tensor {
     }
 
     pub fn to_ndarray_view<T: TensorDType>(&self) -> ArrayViewD<T> {
-        ensure_resolved!(self);
+        ensure_resolved_sync!(self);
         assert!(self.device().is_cpu());
         assert!(self.dt() == T::dt());
         let shape = self.shape().to_vec();

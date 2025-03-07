@@ -1,6 +1,7 @@
 use crate::{
     dtype::Quantized, gpu::STORAGE_BUFFER_ALIGN, DType, Device, Tensor, Q4_KF, Q4_KH, Q8_0F, Q8_0H,
 };
+use maybe_async::maybe_async;
 use num::integer::div_floor;
 use num_traits::{AsPrimitive, Float, FromPrimitive, Zero};
 
@@ -48,10 +49,11 @@ pub fn quantize_inner<Q: Quantized>(matrix: &[Q::FP], elements: usize) -> Vec<u3
     quantized_matrix
 }
 
-pub fn quantize<Q: Quantized>(tensor: &Tensor) -> Tensor {
+#[maybe_async]
+pub async fn quantize<Q: Quantized>(tensor: &Tensor) -> Tensor {
     match (tensor.dt(), Q::dt()) {
         (DType::F32, DType::Q8_0F(_)) => {
-            let matrix = tensor.to_vec::<Q::FP>().unwrap();
+            let matrix = tensor.to_vec::<Q::FP>().await.unwrap();
             unsafe {
                 Tensor::from_quantized(
                     quantize_inner::<Q>(&matrix, tensor.shape().numel()),
@@ -62,7 +64,7 @@ pub fn quantize<Q: Quantized>(tensor: &Tensor) -> Tensor {
             }
         }
         (DType::F32, DType::Q4_KF(_)) => {
-            let matrix = tensor.to_vec::<Q::FP>().unwrap();
+            let matrix = tensor.to_vec::<Q::FP>().await.unwrap();
             unsafe {
                 Tensor::from_quantized(
                     quantize_inner::<Q>(&matrix, tensor.shape().numel()),
@@ -73,7 +75,7 @@ pub fn quantize<Q: Quantized>(tensor: &Tensor) -> Tensor {
             }
         }
         (DType::F16, DType::Q8_0H(_)) => {
-            let matrix = tensor.to_vec::<Q::FP>().unwrap();
+            let matrix = tensor.to_vec::<Q::FP>().await.unwrap();
             unsafe {
                 Tensor::from_quantized(
                     quantize_inner::<Q>(&matrix, tensor.shape().numel()),
@@ -84,7 +86,7 @@ pub fn quantize<Q: Quantized>(tensor: &Tensor) -> Tensor {
             }
         }
         (DType::F16, DType::Q4_KH(_)) => {
-            let matrix = tensor.to_vec::<Q::FP>().unwrap();
+            let matrix = tensor.to_vec::<Q::FP>().await.unwrap();
             unsafe {
                 Tensor::from_quantized(
                     quantize_inner::<Q>(&matrix, tensor.shape().numel()),

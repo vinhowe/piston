@@ -1,5 +1,3 @@
-#[cfg(target_arch = "wasm32")]
-use async_trait::async_trait;
 use half::{bf16, f16};
 use maybe_async::maybe_async;
 use ratchet::{DType, Device, GradStore, ScopePusher, Var};
@@ -76,11 +74,11 @@ impl Optimizer for SGD {
                         (var.as_tensor().clone() - (grad.clone() * self.learning_rate as f32)?)?;
                     updates.push(var.set(update));
                 }
-            gpu_device.mark_step();
+            }
         }
 
         if let Ok(gpu_device) = device.try_gpu() {
-            gpu_device.mark_step();
+            gpu_device.mark_step().await;
         }
 
         Ok(())
@@ -217,7 +215,7 @@ impl Optimizer for AdamW {
 
         // Finalize all the tensors we just built above.
         if let Ok(gpu) = device.try_gpu() {
-            gpu.mark_step()?;
+            gpu.mark_step().await?;
         }
 
         Ok(())

@@ -423,7 +423,7 @@ impl Trainer {
 
         // Transfer the loss to CPU and extract its scalar value.
         let loss_cpu = loss.to(&Device::CPU).await.map_err(|e| e.to_string())?;
-        let loss_vec = loss_cpu.to_vec::<f32>().map_err(|e| e.to_string())?;
+        let loss_vec = loss_cpu.to_vec::<f32>().await.map_err(|e| e.to_string())?;
 
         // Transfer attention masks to CPU and get their shape and flattened data
         let attn_masks_cpu = attn_masks
@@ -431,12 +431,18 @@ impl Trainer {
             .await
             .map_err(|e| e.to_string())?;
         let attn_masks_shape = attn_masks_cpu.shape().to_vec();
-        let attn_masks_data = attn_masks_cpu.to_vec::<f32>().map_err(|e| e.to_string())?;
+        let attn_masks_data = attn_masks_cpu
+            .to_vec::<f32>()
+            .await
+            .map_err(|e| e.to_string())?;
 
         // Add logits to the result:
         let logits_cpu = logits.to(&Device::CPU).await.map_err(|e| e.to_string())?;
         let logits_shape = logits_cpu.shape().to_vec();
-        let logits_data = logits_cpu.to_vec::<f32>().map_err(|e| e.to_string())?;
+        let logits_data = logits_cpu
+            .to_vec::<f32>()
+            .await
+            .map_err(|e| e.to_string())?;
 
         // Build a JS-friendly JSON with loss, LR, attn masks, and logits
         let result = serde_json::json!({

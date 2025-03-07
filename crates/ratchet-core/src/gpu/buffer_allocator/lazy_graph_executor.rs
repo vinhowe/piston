@@ -5,6 +5,7 @@ use crate::{
 #[cfg(feature = "debug")]
 use crate::{DebugTensor, Device, DeviceStorage};
 use crate::{Tensor, TensorId};
+use maybe_async::maybe_async;
 use parking_lot::RwLock;
 use std::collections::BTreeMap;
 use std::hash::{BuildHasherDefault, Hasher};
@@ -133,7 +134,8 @@ impl LazyGraphExecutor {
         compute_post_order_from_nodes(tensors)
     }
 
-    pub fn sync_live_tensors_graph(
+    #[maybe_async]
+    pub async fn sync_live_tensors_graph(
         &mut self,
         gpu_device: &WgpuDevice,
     ) -> anyhow::Result<(), TensorError> {
@@ -146,7 +148,8 @@ impl LazyGraphExecutor {
         // self.sync_tensors_graph_impl(tensors, Some(owned_tensors), gpu_device, false)
     }
 
-    pub fn sync_tensors_graph(
+    #[maybe_async]
+    pub async fn sync_tensors_graph(
         &mut self,
         tensors: Vec<&Tensor>,
         gpu_device: &WgpuDevice,
@@ -160,7 +163,8 @@ impl LazyGraphExecutor {
         )
     }
 
-    fn run_executable(
+    #[maybe_async]
+    async fn run_executable(
         &mut self,
         executable: &Executable,
         gpu_device: &WgpuDevice,
@@ -179,7 +183,8 @@ impl LazyGraphExecutor {
         Ok(())
     }
 
-    fn sync_tensors_graph_impl(
+    #[maybe_async]
+    async fn sync_tensors_graph_impl(
         &mut self,
         tensors: BTreeMap<TensorId, Tensor>,
         owned_tensors: Option<HashSet<TensorId>>,
