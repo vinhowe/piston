@@ -2,6 +2,7 @@ use crate::cpu::cpu_store_result;
 use crate::{CPUOperation, DType, OperationError, Tensor, TensorDType, Unary, UnaryOp};
 use core::marker::PhantomData;
 use half::{bf16, f16};
+use maybe_async::maybe_async;
 use num_traits::Float;
 
 #[inline]
@@ -24,12 +25,13 @@ pub(crate) fn unary_map_inplace<T: TensorDType>(src: &mut [T], f: fn(T) -> T) {
 }
 
 #[inline]
-pub(crate) fn unary_apply_fn<T: TensorDType, U: TensorDType>(
+#[maybe_async]
+pub(crate) async fn unary_apply_fn<T: TensorDType, U: TensorDType>(
     input: &Tensor,
     dst: &Tensor,
     f: fn(T) -> U,
 ) -> Result<(), OperationError> {
-    let input = input.to_vec::<T>()?;
+    let input = input.to_vec::<T>().await?;
     let mut result = vec![U::zero(); dst.shape().numel()];
     unary_apply_fn_helper(&input, &mut result, f);
     cpu_store_result(dst, &result);
@@ -70,26 +72,27 @@ macro_rules! impl_unary_ops {
                 * x
                 * ($conv(1.0) / ($conv(1.0) + (-x).exp())));
 
-            fn apply(op: &Unary, dst: Tensor) -> Result<Tensor, OperationError> {
+            #[maybe_async]
+            async fn apply(op: &Unary, dst: Tensor) -> Result<Tensor, OperationError> {
                 match op.op() {
-                    UnaryOp::Gelu => Self::gelu(op.input(), dst),
-                    UnaryOp::Tanh => Self::tanh(op.input(), dst),
-                    UnaryOp::Exp => Self::exp(op.input(), dst),
-                    UnaryOp::Log => Self::log(op.input(), dst),
-                    UnaryOp::Sin => Self::sin(op.input(), dst),
-                    UnaryOp::Cos => Self::cos(op.input(), dst),
-                    UnaryOp::Abs => Self::abs(op.input(), dst),
-                    UnaryOp::Square => Self::square(op.input(), dst),
-                    UnaryOp::Sqrt => Self::sqrt(op.input(), dst),
-                    UnaryOp::Relu => Self::relu(op.input(), dst),
-                    UnaryOp::Relu2 => Self::relu2(op.input(), dst),
-                    UnaryOp::Floor => Self::floor(op.input(), dst),
-                    UnaryOp::Ceil => Self::ceil(op.input(), dst),
-                    UnaryOp::Neg => Self::neg(op.input(), dst),
-                    UnaryOp::Reciprocal => Self::reciprocal(op.input(), dst),
-                    UnaryOp::Silu => Self::silu(op.input(), dst),
-                    UnaryOp::Sigmoid => Self::sigmoid(op.input(), dst),
-                    UnaryOp::Swiglu => Self::swiglu(op.input(), dst),
+                    UnaryOp::Gelu => Self::gelu(op.input(), dst).await,
+                    UnaryOp::Tanh => Self::tanh(op.input(), dst).await,
+                    UnaryOp::Exp => Self::exp(op.input(), dst).await,
+                    UnaryOp::Log => Self::log(op.input(), dst).await,
+                    UnaryOp::Sin => Self::sin(op.input(), dst).await,
+                    UnaryOp::Cos => Self::cos(op.input(), dst).await,
+                    UnaryOp::Abs => Self::abs(op.input(), dst).await,
+                    UnaryOp::Square => Self::square(op.input(), dst).await,
+                    UnaryOp::Sqrt => Self::sqrt(op.input(), dst).await,
+                    UnaryOp::Relu => Self::relu(op.input(), dst).await,
+                    UnaryOp::Relu2 => Self::relu2(op.input(), dst).await,
+                    UnaryOp::Floor => Self::floor(op.input(), dst).await,
+                    UnaryOp::Ceil => Self::ceil(op.input(), dst).await,
+                    UnaryOp::Neg => Self::neg(op.input(), dst).await,
+                    UnaryOp::Reciprocal => Self::reciprocal(op.input(), dst).await,
+                    UnaryOp::Silu => Self::silu(op.input(), dst).await,
+                    UnaryOp::Sigmoid => Self::sigmoid(op.input(), dst).await,
+                    UnaryOp::Swiglu => Self::swiglu(op.input(), dst).await,
                 }
             }
         }
@@ -98,19 +101,23 @@ macro_rules! impl_unary_ops {
 
 macro_rules! impl_cpu_unary_op {
     ($method_name:ident, $op:expr) => {
-        fn $method_name(input: &Tensor, dst: Tensor) -> Result<Tensor, OperationError> {
-            unary_apply_fn(input, &dst, $op)?;
+        #[maybe_async]
+        async fn $method_name(input: &Tensor, dst: Tensor) -> Result<Tensor, OperationError> {
+            unary_apply_fn(input, &dst, $op).await?;
             Ok(dst)
         }
     };
 }
 
+#[maybe_async(AFIT)]
+#[cfg_attr(target_arch = "wasm32", async_trait::async_trait)]
 impl CPUOperation for Unary {
-    fn apply_cpu(&self, dst: Tensor) -> Result<Tensor, OperationError> {
+    #[maybe_async]
+    async fn apply_cpu(&self, dst: Tensor) -> Result<Tensor, OperationError> {
         match dst.dt() {
-            DType::F32 => UnaryOps::<f32>::apply(self, dst),
-            DType::F16 => UnaryOps::<f16>::apply(self, dst),
-            DType::BF16 => UnaryOps::<bf16>::apply(self, dst),
+            DType::F32 => UnaryOps::<f32>::apply(self, dst).await,
+            DType::F16 => UnaryOps::<f16>::apply(self, dst).await,
+            DType::BF16 => UnaryOps::<bf16>::apply(self, dst).await,
             _ => todo!(),
         }
     }
@@ -118,7 +125,7 @@ impl CPUOperation for Unary {
 
 macro_rules! impl_cpu_unary {
     ($dtype:ident) => {
-        impl_cpu_unary!($dtype, |x| x);
+        impl_cpu_unary!($dtype, |x: $dtype| -> $dtype { x });
     };
     ($dtype:ident, $conv:expr) => {
         impl_unary_ops!($dtype, $conv);

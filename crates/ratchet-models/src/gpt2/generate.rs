@@ -81,6 +81,7 @@ pub async fn generate(
         let attn_probs_shape = attn_probs_cpu.shape().to_vec();
         let attn_probs_data = attn_probs_cpu
             .to_vec::<f32>()
+            .await
             .map_err(|e| e.to_string())
             .unwrap();
 

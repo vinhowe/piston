@@ -9,20 +9,25 @@ use crate::{
 };
 use core::iter::Sum;
 use half::{bf16, f16};
+use maybe_async::maybe_async;
 use num::Float;
 use num_traits::NumOps;
 
+#[maybe_async(AFIT)]
+#[cfg_attr(target_arch = "wasm32", async_trait::async_trait)]
 impl CPUOperation for NormOp {
-    fn apply_cpu(&self, dst: Tensor) -> Result<Tensor, OperationError> {
+    #[maybe_async]
+    async fn apply_cpu(&self, dst: Tensor) -> Result<Tensor, OperationError> {
         match self {
-            NormOp::LayerNorm(n) => apply_layer_norm(n, dst),
-            NormOp::RMSNorm(n) => apply_rms_norm(n, dst),
-            NormOp::GroupNorm(g) => apply_group_norm(g, dst),
+            NormOp::LayerNorm(n) => apply_layer_norm(n, dst).await,
+            NormOp::RMSNorm(n) => apply_rms_norm(n, dst).await,
+            NormOp::GroupNorm(g) => apply_group_norm(g, dst).await,
         }
     }
 }
 
-fn apply_layer_norm(
+#[maybe_async]
+async fn apply_layer_norm(
     Norm {
         input,
         scale,
@@ -49,9 +54,9 @@ fn apply_layer_norm(
     }
 
     match input.dt() {
-        DType::F32 => layer_norm::<f32>(input, scale, bias, *eps, &dst)?,
-        DType::F16 => layer_norm::<f16>(input, scale, bias, *eps, &dst)?,
-        DType::BF16 => layer_norm::<bf16>(input, scale, bias, *eps, &dst)?,
+        DType::F32 => layer_norm::<f32>(input, scale, bias, *eps, &dst).await?,
+        DType::F16 => layer_norm::<f16>(input, scale, bias, *eps, &dst).await?,
+        DType::BF16 => layer_norm::<bf16>(input, scale, bias, *eps, &dst).await?,
         _ => todo!(),
     };
 
@@ -88,7 +93,8 @@ where
     result
 }
 
-fn layer_norm<T>(
+#[maybe_async]
+async fn layer_norm<T>(
     input: &Tensor,
     scale: &Tensor,
     bias: &Option<Tensor>,
@@ -103,10 +109,10 @@ where
     let N = src_shape[rank - 1];
     let norm_shape = shape!(N);
 
-    let input = input.to_vec::<T>()?;
-    let scale = scale.to_vec::<T>()?;
+    let input = input.to_vec::<T>().await?;
+    let scale = scale.to_vec::<T>().await?;
     let bias = match bias {
-        Some(b) => Some(b.to_vec::<T>()?),
+        Some(b) => Some(b.to_vec::<T>().await?),
         None => None,
     };
 
@@ -146,7 +152,8 @@ where
     Ok(())
 }
 
-fn apply_rms_norm(
+#[maybe_async]
+async fn apply_rms_norm(
     Norm {
         input,
         scale,
@@ -173,16 +180,22 @@ fn apply_rms_norm(
     }
 
     match input.dt() {
-        DType::F32 => rms_norm::<f32>(input, scale, *eps, &dst)?,
-        DType::F16 => rms_norm::<f16>(input, scale, *eps, &dst)?,
-        DType::BF16 => rms_norm::<bf16>(input, scale, *eps, &dst)?,
+        DType::F32 => rms_norm::<f32>(input, scale, *eps, &dst).await?,
+        DType::F16 => rms_norm::<f16>(input, scale, *eps, &dst).await?,
+        DType::BF16 => rms_norm::<bf16>(input, scale, *eps, &dst).await?,
         _ => todo!(),
     };
 
     Ok(dst)
 }
 
-fn rms_norm<T>(input: &Tensor, scale: &Tensor, eps: f32, dst: &Tensor) -> Result<(), OperationError>
+#[maybe_async]
+async fn rms_norm<T>(
+    input: &Tensor,
+    scale: &Tensor,
+    eps: f32,
+    dst: &Tensor,
+) -> Result<(), OperationError>
 where
     T: TensorDType + Float + NumOps + for<'a> Sum<&'a T>,
 {
@@ -190,8 +203,8 @@ where
     let rank = input.rank();
     let N = src_shape[rank - 1];
 
-    let mut x = input.to_vec::<T>()?;
-    let scale = scale.to_vec::<T>()?;
+    let mut x = input.to_vec::<T>().await?;
+    let scale = scale.to_vec::<T>().await?;
 
     let mut x2 = x.clone();
     square(&mut x2);
@@ -212,7 +225,8 @@ where
     Ok(())
 }
 
-fn apply_group_norm(_n: &GroupNorm, dst: Tensor) -> Result<Tensor, OperationError> {
+#[maybe_async]
+async fn apply_group_norm(_n: &GroupNorm, dst: Tensor) -> Result<Tensor, OperationError> {
     //let result = norm(&b.src.to_vec::<T>()?, b.src.shape(), b.to());
     //cpu_store_result(&dst, &result);
     Ok(dst)

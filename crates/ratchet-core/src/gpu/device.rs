@@ -302,16 +302,20 @@ impl WgpuDevice {
         self.lazy_graph_executor.read().unregister_tensor(id);
     }
 
-    pub fn mark_step(&self) -> Result<(), TensorError> {
+    #[maybe_async]
+    pub async fn mark_step(&self) -> Result<(), TensorError> {
         self.lazy_graph_executor
             .write()
             .sync_live_tensors_graph(self)
+            .await
     }
 
-    pub fn sync_tensors_graph(&self, tensors: Vec<&Tensor>) -> Result<(), TensorError> {
+    #[maybe_async]
+    pub async fn sync_tensors_graph(&self, tensors: Vec<&Tensor>) -> Result<(), TensorError> {
         self.lazy_graph_executor
             .write()
             .sync_tensors_graph(tensors, self)
+            .await
     }
 
     pub fn begin_pass(&self, pass_index: u64) {

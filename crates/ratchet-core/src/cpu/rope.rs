@@ -3,14 +3,16 @@ use crate::{
     cpu::{cpu_store_result, gemm::gemm, reindex::slice},
     shape, DType, OperationError, RoPE, Shape, Strides, Tensor,
 };
+use maybe_async::maybe_async;
 
-pub fn cpu_rope(op: RoPE, dst: Tensor) -> Result<Tensor, OperationError> {
+#[maybe_async]
+pub async fn cpu_rope(op: RoPE, dst: Tensor) -> Result<Tensor, OperationError> {
     match op.input().dt() {
         DType::F32 => {
             let dim = op.dim();
             let base = op.base();
             let offset = op.offset();
-            let src = op.input().to_vec::<f32>()?;
+            let src = op.input().to_vec::<f32>().await?;
             let result = rope(src, op.input().shape(), dim, base, offset)?;
             cpu_store_result(&dst, &result)
         }

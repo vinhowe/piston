@@ -6,6 +6,7 @@ use anyhow::{anyhow, Result};
 use core::str::FromStr;
 use gemm::{gemm as gemm_kernel, Parallelism};
 use half::{bf16, f16};
+use maybe_async::maybe_async;
 use std::num::NonZeroUsize;
 
 fn get_num_threads() -> NonZeroUsize {
@@ -155,16 +156,20 @@ fn gemm_impl<T: TensorDType>(
     )
 }
 
+#[maybe_async(AFIT)]
+#[cfg_attr(target_arch = "wasm32", async_trait::async_trait)]
 impl CPUOperation for Matmul {
-    fn apply_cpu(&self, dst: Tensor) -> Result<Tensor, OperationError> {
-        fn run_gemm<T: TensorDType>(
+    #[maybe_async]
+    async fn apply_cpu(&self, dst: Tensor) -> Result<Tensor, OperationError> {
+        #[maybe_async]
+        async fn run_gemm<T: TensorDType>(
             spec: MatmulSpec,
             lhs: &Tensor,
             rhs: &Tensor,
             dst: &Tensor,
         ) -> Result<(), OperationError> {
-            let lhs = lhs.to_vec::<T>()?;
-            let rhs = rhs.to_vec::<T>()?;
+            let lhs = lhs.to_vec::<T>().await?;
+            let rhs = rhs.to_vec::<T>().await?;
 
             let result = if spec.trans_dst() {
                 gemm_impl::<T>(spec, &rhs, &lhs)?
@@ -179,9 +184,9 @@ impl CPUOperation for Matmul {
         let Matmul { lhs, rhs, .. } = self;
 
         match self.lhs.dt() {
-            DType::F32 => run_gemm::<f32>(spec, lhs, rhs, &dst),
-            DType::F16 => run_gemm::<f16>(spec, lhs, rhs, &dst),
-            DType::BF16 => run_gemm::<bf16>(spec, lhs, rhs, &dst),
+            DType::F32 => run_gemm::<f32>(spec, lhs, rhs, &dst).await,
+            DType::F16 => run_gemm::<f16>(spec, lhs, rhs, &dst).await,
+            DType::BF16 => run_gemm::<bf16>(spec, lhs, rhs, &dst).await,
             dtype => Err(InvariantError::UnsupportedDType(dtype))?,
         }?;
         Ok(dst)

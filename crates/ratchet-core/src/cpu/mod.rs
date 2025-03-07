@@ -13,27 +13,29 @@ use crate::{
 };
 use anyhow::anyhow;
 use half::{bf16, f16};
+use maybe_async::maybe_async;
 use rope::cpu_rope;
 use unary::unary_apply_fn;
 use utils::cpu_store_result;
 
-pub fn apply_operation(op: LazyOp, dst: Tensor) -> Result<Tensor, OperationError> {
+#[maybe_async]
+pub async fn apply_operation(op: LazyOp, dst: Tensor) -> Result<Tensor, OperationError> {
     match op {
-        LazyOp::Binary(b) => b.apply_cpu(dst),
-        LazyOp::Cast(c) => cpu_cast(c, dst),
-        LazyOp::Matmul(m) => m.apply_cpu(dst),
-        LazyOp::Softmax(s) => s.apply_cpu(dst),
-        LazyOp::RoPE(r) => cpu_rope(r, dst),
+        LazyOp::Binary(b) => b.apply_cpu(dst).await,
+        LazyOp::Cast(c) => cpu_cast(c, dst).await,
+        LazyOp::Matmul(m) => m.apply_cpu(dst).await,
+        LazyOp::Softmax(s) => s.apply_cpu(dst).await,
+        LazyOp::RoPE(r) => cpu_rope(r, dst).await,
         LazyOp::Alibi(a) => todo!(),
-        LazyOp::Unary(u) => u.apply_cpu(dst),
-        LazyOp::Reindex(r) => r.apply_cpu(dst),
-        LazyOp::Concat(c) => cpu_concat(c, dst),
-        LazyOp::Norm(n) => n.apply_cpu(dst),
+        LazyOp::Unary(u) => u.apply_cpu(dst).await,
+        LazyOp::Reindex(r) => r.apply_cpu(dst).await,
+        LazyOp::Concat(c) => cpu_concat(c, dst).await,
+        LazyOp::Norm(n) => n.apply_cpu(dst).await,
         LazyOp::Affine(_a) => todo!(),
         LazyOp::Cmp(_c) => todo!(),
         LazyOp::Powf(_p) => todo!(),
         LazyOp::Conv(_c) => todo!(),
-        LazyOp::Select(i) => cpu_index_select(i, dst),
+        LazyOp::Select(i) => cpu_index_select(i, dst).await,
         LazyOp::IndexWrite(_i) => todo!(),
         LazyOp::Cache(_c) => todo!(),
         LazyOp::Trilu(_t) => todo!(),
@@ -52,11 +54,14 @@ pub fn apply_operation(op: LazyOp, dst: Tensor) -> Result<Tensor, OperationError
     }
 }
 
+#[maybe_async(AFIT)]
+#[cfg_attr(target_arch = "wasm32", async_trait::async_trait)]
 pub trait CPUOperation: Operation {
-    fn apply_cpu(&self, dst: Tensor) -> Result<Tensor, OperationError>;
+    async fn apply_cpu(&self, dst: Tensor) -> Result<Tensor, OperationError>;
 }
 
-fn index_select<T: TensorDType>(
+#[maybe_async]
+async fn index_select<T: TensorDType>(
     index_select: IndexSelect,
     dst: Tensor,
 ) -> Result<Tensor, OperationError> {
@@ -84,8 +89,8 @@ fn index_select<T: TensorDType>(
     let left_len: usize = dst_dims[..dim].iter().product();
     let right_len: usize = dst_dims[dim + 1..].iter().product();
 
-    let src = src.to_vec::<T>()?;
-    let indices = indices.to_vec::<i32>()?;
+    let src = src.to_vec::<T>().await?;
+    let indices = indices.to_vec::<i32>().await?;
     let mut result = vec![T::zero(); dst_len];
 
     for left_i in 0..left_len {
@@ -102,67 +107,77 @@ fn index_select<T: TensorDType>(
     Ok(dst)
 }
 
-fn qindex_select(op: IndexSelect, dst: Tensor) -> Result<Tensor, OperationError> {
+#[maybe_async]
+async fn qindex_select(op: IndexSelect, dst: Tensor) -> Result<Tensor, OperationError> {
     // NOTE: qindex_select is functional but not optimized at all.
     // Currently we simply dequantize the entire input tensor to f32 and then call index_select.
     // Because of borrowing rules dequantizing also requires a deep clone of the input tensor, which is less than ideal.
     // In the future we would rather directly index the raw buffer of the quantized tensor and dequantize only what is required.
     // TODO: Add support for direct indexing + partial dequantization
-    let src = op.src().deep_clone();
+    let src = op.src().deep_clone().await;
 
     // NOTE: Support for other quantization types is dependent on the corresponding dequantization functions.
     let src = dequantize(src);
     let indices = op.indices().clone();
     let dim = op.dim();
 
-    index_select::<f32>(IndexSelect::new(src, indices, dim), dst)
+    index_select::<f32>(IndexSelect::new(src, indices, dim), dst).await
 }
 
-pub fn cpu_index_select(i: IndexSelect, dst: Tensor) -> Result<Tensor, OperationError> {
+#[maybe_async]
+pub async fn cpu_index_select(i: IndexSelect, dst: Tensor) -> Result<Tensor, OperationError> {
     match i.src().dt() {
-        DType::F32 => index_select::<f32>(i, dst),
-        DType::F16 => index_select::<f16>(i, dst),
-        DType::BF16 => index_select::<bf16>(i, dst),
-        DType::Q8_0F(_) => qindex_select(i, dst),
+        DType::F32 => index_select::<f32>(i, dst).await,
+        DType::F16 => index_select::<f16>(i, dst).await,
+        DType::BF16 => index_select::<bf16>(i, dst).await,
+        DType::Q8_0F(_) => qindex_select(i, dst).await,
         dtype => Err(InvariantError::UnsupportedDType(dtype).into()),
     }
 }
 
-fn direct_cast<T: TensorDType, U: TensorDType>(
+#[maybe_async]
+async fn direct_cast<T: TensorDType, U: TensorDType>(
     input: &Tensor,
     dst: &Tensor,
 ) -> Result<(), OperationError> {
-    let input = input.to_vec::<T>()?;
+    let input = input.to_vec::<T>().await?;
     let result =
         bytemuck::try_cast_slice::<T, U>(&input).map_err(|_| anyhow!("Failed direct cast"))?;
     cpu_store_result(dst, result);
     Ok(())
 }
 
-pub fn cpu_cast(cast: Cast, dst: Tensor) -> Result<Tensor, OperationError> {
+#[maybe_async]
+pub async fn cpu_cast(cast: Cast, dst: Tensor) -> Result<Tensor, OperationError> {
     if cast.input().dt() == cast.dst_dt() {
         return Ok(cast.input().clone());
     }
     match (cast.input().dt(), cast.dst_dt()) {
         // F32 ->
-        (DType::F32, DType::F16) => unary_apply_fn::<f32, f16>(cast.input(), &dst, f16::from_f32)?,
-        (DType::F32, DType::BF16) => {
-            unary_apply_fn::<f32, bf16>(cast.input(), &dst, bf16::from_f32)?
+        (DType::F32, DType::F16) => {
+            unary_apply_fn::<f32, f16>(cast.input(), &dst, f16::from_f32).await?
         }
-        (DType::F32, DType::I32) => direct_cast::<f32, i32>(cast.input(), &dst)?,
-        (DType::F32, DType::U32) => direct_cast::<f32, u32>(cast.input(), &dst)?,
+        (DType::F32, DType::BF16) => {
+            unary_apply_fn::<f32, bf16>(cast.input(), &dst, bf16::from_f32).await?
+        }
+        (DType::F32, DType::I32) => direct_cast::<f32, i32>(cast.input(), &dst).await?,
+        (DType::F32, DType::U32) => direct_cast::<f32, u32>(cast.input(), &dst).await?,
 
         // F16 ->
-        (DType::F16, DType::F32) => unary_apply_fn::<f16, f32>(cast.input(), &dst, f32::from)?,
+        (DType::F16, DType::F32) => {
+            unary_apply_fn::<f16, f32>(cast.input(), &dst, f32::from).await?
+        }
 
         // BF16 ->
-        (DType::BF16, DType::F32) => unary_apply_fn::<bf16, f32>(cast.input(), &dst, f32::from)?,
+        (DType::BF16, DType::F32) => {
+            unary_apply_fn::<bf16, f32>(cast.input(), &dst, f32::from).await?
+        }
 
         // I32 ->
-        (DType::I32, DType::F32) => direct_cast::<i32, f32>(cast.input(), &dst)?,
+        (DType::I32, DType::F32) => direct_cast::<i32, f32>(cast.input(), &dst).await?,
 
         // U32 ->
-        (DType::U32, DType::F32) => direct_cast::<u32, f32>(cast.input(), &dst)?,
+        (DType::U32, DType::F32) => direct_cast::<u32, f32>(cast.input(), &dst).await?,
 
         _ => unimplemented!("Cannot cast {:?} -> {:?}", cast.input().dt(), cast.dst_dt()),
     };
@@ -195,7 +210,9 @@ pub(crate) fn concat<T: TensorDType>(
     }
     Ok(())
 }
-pub(crate) fn apply_concat<T: TensorDType>(
+
+#[maybe_async]
+pub(crate) async fn apply_concat<T: TensorDType>(
     inputs: RVec<Tensor>,
     dim: usize,
     dst: Tensor,
@@ -203,24 +220,33 @@ pub(crate) fn apply_concat<T: TensorDType>(
     let dst_size = dst.shape().numel();
     let mut result = vec![T::zero(); dst_size];
 
-    let inputs = inputs
-        .iter()
-        .map(|t| match t.to_vec::<T>() {
+    let mut inputs_result = Vec::with_capacity(inputs.len());
+    for t in inputs.iter() {
+        let result = match t.to_vec::<T>().await {
             Ok(v) => Ok((t.shape().clone(), v)),
             Err(e) => Err(e.into()),
-        })
-        .collect::<Result<Vec<_>, OperationError>>();
+        };
+        if let Err(e) = result {
+            return Err(e);
+        }
+        inputs_result.push(result.unwrap());
+    }
+    let inputs = inputs_result;
 
-    concat(&inputs?, dim, dst.shape(), &mut result)?;
+    concat(&inputs, dim, dst.shape(), &mut result)?;
     cpu_store_result(&dst, &result);
     Ok(dst)
 }
 
-pub fn cpu_concat(Concat { inputs, dim }: Concat, dst: Tensor) -> Result<Tensor, OperationError> {
+#[maybe_async]
+pub async fn cpu_concat(
+    Concat { inputs, dim }: Concat,
+    dst: Tensor,
+) -> Result<Tensor, OperationError> {
     match dst.dt() {
-        DType::F32 => apply_concat::<f32>(inputs, dim, dst),
-        DType::F16 => apply_concat::<f16>(inputs, dim, dst),
-        DType::BF16 => apply_concat::<bf16>(inputs, dim, dst),
+        DType::F32 => apply_concat::<f32>(inputs, dim, dst).await,
+        DType::F16 => apply_concat::<f16>(inputs, dim, dst).await,
+        DType::BF16 => apply_concat::<bf16>(inputs, dim, dst).await,
         dtype => Err(InvariantError::UnsupportedDType(dtype).into()),
     }
 }

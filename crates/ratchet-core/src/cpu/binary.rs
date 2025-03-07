@@ -2,6 +2,7 @@ use crate::cpu::cpu_store_result;
 use crate::{Binary, BinaryOp, CPUOperation, DType, OperationError, Tensor, TensorDType};
 use core::marker::PhantomData;
 use half::{bf16, f16};
+use maybe_async::maybe_async;
 use num_traits::NumOps;
 
 #[inline]
@@ -32,14 +33,15 @@ pub(crate) fn binary_map_inplace<T: TensorDType>(lhs: &mut [T], rhs: &[T], f: fn
 }
 
 #[inline]
-pub(crate) fn binary_apply<T: TensorDType, U: TensorDType>(
+#[maybe_async]
+pub(crate) async fn binary_apply<T: TensorDType, U: TensorDType>(
     lhs: &Tensor,
     rhs: &Tensor,
     dst: &Tensor,
     f: fn(T, T) -> U,
 ) -> Result<(), OperationError> {
-    let lhs = lhs.to_vec::<T>()?;
-    let rhs = rhs.to_vec::<T>()?;
+    let lhs = lhs.to_vec::<T>().await?;
+    let rhs = rhs.to_vec::<T>().await?;
     let mut result = vec![U::zero(); dst.shape().numel()];
     binary_map(&lhs, &rhs, &mut result, f);
     cpu_store_result(dst, &result);
@@ -47,14 +49,15 @@ pub(crate) fn binary_apply<T: TensorDType, U: TensorDType>(
 }
 
 #[inline]
-pub(crate) fn binary_apply_inplace<T: TensorDType>(
+#[maybe_async]
+pub(crate) async fn binary_apply_inplace<T: TensorDType>(
     lhs: &Tensor,
     rhs: &Tensor,
     dst: &Tensor,
     f: fn(T, T) -> T,
 ) -> Result<(), OperationError> {
-    let mut lhs = lhs.to_vec::<T>()?;
-    let rhs = rhs.to_vec::<T>()?;
+    let mut lhs = lhs.to_vec::<T>().await?;
+    let rhs = rhs.to_vec::<T>().await?;
     binary_map_inplace(&mut lhs, &rhs, f);
     cpu_store_result(dst, &lhs);
     Ok(())
@@ -66,8 +69,13 @@ pub struct BinaryOps<T: TensorDType> {
 
 macro_rules! impl_cpu_binary_op {
     ($method_name:ident, $dtype:ident, $op:expr) => {
-        fn $method_name(lhs: &Tensor, rhs: &Tensor, dst: Tensor) -> Result<Tensor, OperationError> {
-            binary_apply_inplace::<$dtype>(lhs, rhs, &dst, $op)?;
+        #[maybe_async]
+        async fn $method_name(
+            lhs: &Tensor,
+            rhs: &Tensor,
+            dst: Tensor,
+        ) -> Result<Tensor, OperationError> {
+            binary_apply_inplace::<$dtype>(lhs, rhs, &dst, $op).await?;
             Ok(dst)
         }
     };
@@ -95,24 +103,28 @@ macro_rules! impl_cpu_binary {
             impl_cpu_binary_op!(mul, $dtype, |lhs, rhs| lhs * rhs);
             impl_cpu_binary_op!(div, $dtype, |lhs, rhs| lhs / rhs);
 
-            pub fn apply(op: &Binary, dst: Tensor) -> Result<Tensor, OperationError> {
+            #[maybe_async]
+            pub async fn apply(op: &Binary, dst: Tensor) -> Result<Tensor, OperationError> {
                 match op.op() {
-                    BinaryOp::Add => Self::add(op.lhs(), op.rhs(), dst),
-                    BinaryOp::Sub => Self::sub(op.lhs(), op.rhs(), dst),
-                    BinaryOp::Mul => Self::mul(op.lhs(), op.rhs(), dst),
-                    BinaryOp::Div => Self::div(op.lhs(), op.rhs(), dst),
+                    BinaryOp::Add => Self::add(op.lhs(), op.rhs(), dst).await,
+                    BinaryOp::Sub => Self::sub(op.lhs(), op.rhs(), dst).await,
+                    BinaryOp::Mul => Self::mul(op.lhs(), op.rhs(), dst).await,
+                    BinaryOp::Div => Self::div(op.lhs(), op.rhs(), dst).await,
                 }
             }
         }
     };
 }
 
+#[maybe_async(AFIT)]
+#[cfg_attr(target_arch = "wasm32", async_trait::async_trait)]
 impl CPUOperation for Binary {
-    fn apply_cpu(&self, dst: Tensor) -> Result<Tensor, OperationError> {
+    #[maybe_async]
+    async fn apply_cpu(&self, dst: Tensor) -> Result<Tensor, OperationError> {
         match dst.dt() {
-            DType::F32 => BinaryOps::<f32>::apply(self, dst),
-            DType::F16 => BinaryOps::<f16>::apply(self, dst),
-            DType::BF16 => BinaryOps::<bf16>::apply(self, dst),
+            DType::F32 => BinaryOps::<f32>::apply(self, dst).await,
+            DType::F16 => BinaryOps::<f16>::apply(self, dst).await,
+            DType::BF16 => BinaryOps::<bf16>::apply(self, dst).await,
             _ => todo!(),
         }
     }
