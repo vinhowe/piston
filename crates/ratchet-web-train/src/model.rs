@@ -286,6 +286,7 @@ impl Trainer {
             layernorm_position: match cfg.layernorm_position.to_lowercase().as_str() {
                 "pre" => LayerNormPosition::Pre,
                 "post" => LayerNormPosition::Post,
+                "none" => LayerNormPosition::None,
                 _ => LayerNormPosition::Pre,
             },
         };
