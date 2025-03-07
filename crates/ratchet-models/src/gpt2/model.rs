@@ -27,6 +27,7 @@ pub enum PositionalEncoding {
 pub enum LayerNormPosition {
     Pre,
     Post,
+    None,
 }
 
 // https://huggingface.co/microsoft/Phi-3-mini-4k-instruct/blob/main/config.json
@@ -108,46 +109,38 @@ impl Module for DecoderLayer {
         } = input;
 
         let residual = x.clone();
-        let (attn_output, attn_masks) = match self.layernorm_position {
-            LayerNormPosition::Pre => {
-                let xs = self.input_norm.schedule(x)?;
-                let (attn_output, attn_masks) = self.self_attn.schedule(GPT2AttnInput {
-                    input: xs,
-                    index_pos,
-                    block_idx,
-                    cache,
-                })?;
-                (residual.add(attn_output)?, attn_masks)
-            }
-            LayerNormPosition::Post => {
-                let (attn_output, attn_masks) = self.self_attn.schedule(GPT2AttnInput {
-                    input: x,
-                    index_pos,
-                    block_idx,
-                    cache,
-                })?;
-                let xs = self.input_norm.schedule(residual.add(attn_output)?)?;
-                (xs, attn_masks)
-            }
+        let x = match self.layernorm_position {
+            LayerNormPosition::Pre => self.input_norm.schedule(x)?,
+            LayerNormPosition::Post | LayerNormPosition::None => x,
+        };
+        let (attn_output, attn_masks) = self.self_attn.schedule(GPT2AttnInput {
+            input: x,
+            index_pos,
+            block_idx,
+            cache,
+        })?;
+        let x = residual.add(attn_output)?;
+        let x = match self.layernorm_position {
+            LayerNormPosition::Post => self.input_norm.schedule(x)?,
+            LayerNormPosition::Pre | LayerNormPosition::None => x,
         };
 
         // Skip the feed-forward network if attention_only is true
         if !self.attention_only {
-            let residual = attn_output.clone();
-            let xs = match self.layernorm_position {
-                LayerNormPosition::Pre => {
-                    let xs = self.ffn_norm.schedule(attn_output)?;
-                    let xs = self.mlp.schedule(xs)?;
-                    residual.add(xs)?
-                }
-                LayerNormPosition::Post => {
-                    let xs = self.mlp.schedule(self.ffn_norm.schedule(attn_output)?)?;
-                    self.ffn_norm.schedule(residual.add(xs)?)?
-                }
+            let residual = x.clone();
+            let x = match self.layernorm_position {
+                LayerNormPosition::Pre => self.ffn_norm.schedule(x)?,
+                LayerNormPosition::Post | LayerNormPosition::None => x,
             };
-            Ok((xs, attn_masks))
+            let x = self.mlp.schedule(x)?;
+            let x = residual.add(x)?;
+            let x = match self.layernorm_position {
+                LayerNormPosition::Post => self.ffn_norm.schedule(x)?,
+                LayerNormPosition::Pre | LayerNormPosition::None => x,
+            };
+            Ok((x, attn_masks))
         } else {
-            Ok((attn_output, attn_masks))
+            Ok((x, attn_masks))
         }
     }
 }
