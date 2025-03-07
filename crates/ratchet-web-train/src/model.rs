@@ -463,6 +463,11 @@ impl Trainer {
         self.device.try_gpu().unwrap().usage_bytes()
     }
 
+    #[wasm_bindgen]
+    pub fn webgpu_device(&self) -> Option<web_sys::GpuDevice> {
+        self.device.try_gpu().unwrap().as_webgpu_device()
+    }
+
     /// Autoregressive generation with an optional streaming callback.
     ///
     /// - `prompt` is a JS array of i32 tokens.
