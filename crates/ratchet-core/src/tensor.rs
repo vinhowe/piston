@@ -1,8 +1,9 @@
 use crate::gpu::{BindGroupEntry, CpuUniform, WgpuDevice};
 use crate::{
-    cpu, ops::*, rvec, shape, BufferSegment, CPUBuffer, Compiled, CompiledOp, ComputeCompileKey,
-    DType, Device, DeviceStorage, GPUOperation, GpuCompileKey, InvariantError, LazyOp, Operation,
-    OperationError, RVec, RawCPUBuffer, Shape, Storage, Strides, TensorDType, TensorId,
+    cpu, get_current_scope, ops::*, rvec, shape, BufferSegment, CPUBuffer, Compiled, CompiledOp,
+    ComputeCompileKey, DType, Device, DeviceStorage, GPUOperation, GpuCompileKey, InvariantError,
+    LazyOp, Operation, OperationError, RVec, RawCPUBuffer, ScopePusher, Shape, Storage, Strides,
+    TensorDType, TensorId,
 };
 use bitvec::prelude::*;
 use derive_new::new;
@@ -80,8 +81,16 @@ impl Tensor {
         device: Device,
         is_variable: bool,
     ) -> Self {
+        let _scope_guard = ScopePusher::new(op.name());
         let value = Self {
-            inner: Arc::new(Inner::new(op, meta, storage, device.clone(), is_variable)),
+            inner: Arc::new(Inner::new(
+                op,
+                Some(get_current_scope()),
+                meta,
+                storage,
+                device.clone(),
+                is_variable,
+            )),
         };
         value.register_with_device();
         value
@@ -135,8 +144,16 @@ impl Tensor {
         device: Device,
         is_variable: bool,
     ) -> Self {
+        let _scope_guard = ScopePusher::new(op.name());
         let value = Self {
-            inner: Arc::new(Inner::from_shallow(op, meta, storage, device, is_variable)),
+            inner: Arc::new(Inner::from_shallow(
+                op,
+                Some(get_current_scope()),
+                meta,
+                storage,
+                device,
+                is_variable,
+            )),
         };
         value.register_with_device();
         value
@@ -227,6 +244,7 @@ impl Drop for Inner {
 #[derive(Debug)]
 pub struct Inner {
     id: TensorId,
+    scope: Option<String>,
     op: LazyOp,
     device: Device,
     view: StorageView,
@@ -243,6 +261,7 @@ impl AsRef<Inner> for Inner {
 impl Inner {
     fn new(
         op: LazyOp,
+        scope: Option<String>,
         meta: StorageView,
         storage: Option<Storage>,
         device: Device,
@@ -250,6 +269,7 @@ impl Inner {
     ) -> Self {
         Self {
             id: TensorId::new(),
+            scope,
             view: meta,
             op,
             device,
@@ -260,6 +280,7 @@ impl Inner {
 
     fn from_shallow(
         op: LazyOp,
+        scope: Option<String>,
         meta: StorageView,
         storage: Arc<RwLock<Option<Storage>>>,
         device: Device,
@@ -267,6 +288,7 @@ impl Inner {
     ) -> Self {
         Self {
             id: TensorId::new(),
+            scope,
             view: meta,
             op,
             device,
@@ -320,6 +342,10 @@ impl Tensor {
 
     pub fn op(&self) -> &LazyOp {
         &self.inner.op
+    }
+
+    pub fn scope(&self) -> &Option<String> {
+        &self.inner.scope
     }
 
     pub fn is_scalar(&self) -> bool {

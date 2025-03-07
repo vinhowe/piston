@@ -1,6 +1,6 @@
-use ratchet::Tensor;
-
 use crate::Module;
+use ratchet::Tensor;
+use ratchet_macros::scoped_module;
 
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub enum Activation {
@@ -13,6 +13,7 @@ pub enum Activation {
     Swiglu,
 }
 
+#[scoped_module]
 impl Module for Activation {
     type Input = Tensor;
     type Output = Tensor;

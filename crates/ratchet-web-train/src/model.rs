@@ -1,8 +1,9 @@
 use anyhow::Result;
 use async_trait::async_trait;
 use js_sys::Function;
-use ratchet::{shape, DType, Device, DeviceRequest, GradStore, Tensor, Var};
-use ratchet_datasets::batcher::IterResult2;
+use ratchet::{
+    reset_scope_context, shape, DType, Device, DeviceRequest, GradStore, Tensor, TensorId, Var,
+};
 use ratchet_datasets::{
     nlp::{
         tinystories::{
@@ -351,6 +352,7 @@ impl Trainer {
         input: JsValue,
         target: JsValue,
     ) -> Result<JsValue, JsValue> {
+        reset_scope_context();
         // Convert input and target from JS arrays to Vec<Vec<i32>>
         let input: Vec<Vec<i32>> =
             serde_wasm_bindgen::from_value(input).map_err(|e| JsValue::from(e.to_string()))?;

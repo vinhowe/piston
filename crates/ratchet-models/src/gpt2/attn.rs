@@ -2,6 +2,7 @@ use std::{cell::RefCell, rc::Rc};
 
 use maybe_async::maybe_async;
 use ratchet::{prelude::shape, rvec, Tensor};
+use ratchet_macros::scoped_module;
 use ratchet_nn::{
     AlibiEmbedding, AlibiInput, KVCache, Linear, Module, RotaryEmbedding, RotaryInput, VarBuilder,
 };
@@ -71,6 +72,7 @@ pub struct GPT2AttnInput {
     pub cache: Rc<RefCell<KVCache>>,
 }
 
+#[scoped_module]
 impl Module for GPT2SelfAttention {
     type Input = GPT2AttnInput;
     type Output = (Tensor, Tensor);

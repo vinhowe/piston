@@ -1,4 +1,5 @@
 use ratchet::Tensor;
+use ratchet_macros::scoped_module;
 
 use crate::Module;
 
@@ -33,6 +34,7 @@ pub struct RotaryInput {
     pub offset: usize,
 }
 
+#[scoped_module]
 impl Module for RotaryEmbedding {
     type Input = RotaryInput;
     type Output = Tensor;

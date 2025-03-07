@@ -1,4 +1,5 @@
 use ratchet::Tensor;
+use ratchet_macros::scoped_module;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct GroupNormConfig {
@@ -42,6 +43,7 @@ impl GroupNorm {
     }
 }
 
+#[scoped_module]
 impl crate::Module for GroupNorm {
     type Input = Tensor;
     type Output = Tensor;

@@ -8,6 +8,7 @@ use super::{
 };
 use maybe_async::maybe_async;
 use ratchet::{shape, Device, Tensor};
+use ratchet_macros::scoped_module;
 use ratchet_nn::{
     embedding, layer_norm, Embedding, KVCache, LayerNorm, Linear, Module, SinusoidalEmbedding,
     SinusoidalInput, VarBuilder,
@@ -93,6 +94,7 @@ pub struct DecoderLayerInput {
     pub cache: Rc<RefCell<KVCache>>,
 }
 
+#[scoped_module]
 impl Module for DecoderLayer {
     type Input = DecoderLayerInput;
     type Output = (Tensor, Tensor);
@@ -167,6 +169,7 @@ pub struct GPT2Input {
     pub index_pos: usize,
 }
 
+#[scoped_module]
 impl Module for GPT2 {
     type Input = GPT2Input;
     type Output = (Tensor, Tensor);

@@ -1,5 +1,6 @@
 use maybe_async::maybe_async;
 use ratchet::{shape, Tensor};
+use ratchet_macros::scoped_module;
 
 use crate::Module;
 
@@ -13,6 +14,7 @@ pub struct Linear {
     b: Option<Tensor>,
 }
 
+#[scoped_module]
 impl Module for Linear {
     type Input = Tensor;
     type Output = Tensor;

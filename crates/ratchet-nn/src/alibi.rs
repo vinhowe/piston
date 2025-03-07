@@ -1,4 +1,5 @@
 use ratchet::Tensor;
+use ratchet_macros::scoped_module;
 
 use crate::Module;
 
@@ -12,6 +13,7 @@ pub struct AlibiInput {
     pub input: Tensor,
 }
 
+#[scoped_module]
 impl Module for AlibiEmbedding {
     type Input = AlibiInput;
     type Output = Tensor;
