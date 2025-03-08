@@ -146,7 +146,7 @@ pub async fn rms_norm(size: usize, eps: f32, vb: crate::VarBuilder<'_>) -> anyho
     Ok(RMSNorm::new(weight, eps))
 }
 
-#[cfg(test)]
+#[cfg(feature = "pyo3")]
 mod tests {
     use super::{layer_norm, LayerNorm, LayerNormConfig};
     use crate::{Module, VarBuilder, VarMap};

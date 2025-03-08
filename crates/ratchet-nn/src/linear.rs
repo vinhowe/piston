@@ -81,7 +81,7 @@ pub async fn linear_b(
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "pyo3"))]
 mod tests {
     use crate::{Module, VarBuilder, VarMap};
 

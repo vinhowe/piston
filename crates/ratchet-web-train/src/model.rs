@@ -6,14 +6,8 @@ use ratchet::{
     Var,
 };
 use ratchet_datasets::{
-    nlp::{
-        tinystories::{
-            Dataset as TinyStoriesDataset, DatasetRandomIter as TinyStoriesDatasetRandomIter,
-        },
-        toy::{
-            AddTask, CountTask, ModAddTask, SlapjackTask, SortTask, ToyTaskIter, TwoSumTask,
-            ZerosTask,
-        },
+    nlp::tinystories::{
+        Dataset as TinyStoriesDataset, DatasetRandomIter as TinyStoriesDatasetRandomIter,
     },
     Batcher,
 };
