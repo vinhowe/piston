@@ -1,6 +1,7 @@
 use crate::{
-    reset_scope_context, CpuUniform, Executable, ExecutionError, GPUBuffer, HashMap, HashSet,
-    Hasher as HasherType, Inner, LazyOp, Storage, TensorError, WgpuDevice,
+    reset_scope_context, BufferUsagesExt, Compiled, CpuUniform, DebugSelection, Executable,
+    ExecutionError, ExecutionResult, GPUBuffer, HashMap, HashSet, Hasher as HasherType, Inner,
+    LazyOp, StepLog, StepLogConfig, Storage, TensorError, WgpuDevice,
 };
 #[cfg(feature = "debug")]
 use crate::{DebugTensor, Device, DeviceStorage};
@@ -21,14 +22,16 @@ type PostOrderData<'a> = Vec<&'a Tensor>;
 
 struct CachedExecutable {
     executable: Arc<Executable>,
-    shared_realloc: bool,
+    is_shared_realloc: bool,
 }
 
 pub struct LazyGraphExecutor {
     tensors: Arc<RwLock<BTreeMap<TensorId, Weak<Inner>>>>,
     cache: HashMap<u64, CachedExecutable>,
+    step_log_config: Option<StepLogConfig>,
     pass_index: u64,
     inplace_support: bool,
+    caching_enabled: bool,
 }
 
 fn panic_cycle(id: TensorId) {
@@ -93,12 +96,14 @@ fn compute_post_order_from_nodes(roots: Vec<&Tensor>) -> PostOrderData {
 }
 
 impl LazyGraphExecutor {
-    pub fn new(inplace_support: bool) -> Self {
+    pub fn new(inplace_support: bool, caching_enabled: bool) -> Self {
         Self {
             tensors: Arc::new(RwLock::new(BTreeMap::default())),
             cache: HashMap::default(),
             pass_index: Default::default(),
             inplace_support,
+            step_log_config: None,
+            caching_enabled,
         }
     }
 
@@ -144,8 +149,8 @@ impl LazyGraphExecutor {
         let tensors = self.get_live_tensors();
         log::debug!("All registered IDs: {:?}", self.tensors.read().keys());
         let owned_tensors = tensors.keys().cloned().collect();
-        self.sync_tensors_graph_impl(tensors, Some(owned_tensors), gpu_device, true)
-        // self.sync_tensors_graph_impl(tensors, Some(owned_tensors), gpu_device, false)
+        self.sync_tensors_graph_impl(tensors, Some(owned_tensors), gpu_device)
+            .await
     }
 
     #[maybe_async]
@@ -158,29 +163,30 @@ impl LazyGraphExecutor {
             tensors.into_iter().map(|t| (t.id(), t.clone())).collect(),
             None,
             gpu_device,
-            true,
-            // false,
         )
+        .await
     }
 
     #[maybe_async]
     async fn run_executable(
         &mut self,
-        executable: &Executable,
+        executable: &mut Executable,
         gpu_device: &WgpuDevice,
         immediate: bool,
-    ) -> anyhow::Result<(), ExecutionError> {
+    ) -> anyhow::Result<ExecutionResult, ExecutionError> {
         log::debug!("Running executable");
         #[cfg(feature = "debug")]
         let index = executable.dispatch_debugging(gpu_device)?;
 
         #[cfg(not(feature = "debug"))]
-        let index = executable.dispatch(gpu_device)?;
+        let (index, result) = executable
+            .dispatch(gpu_device, self.step_log_config.as_ref())
+            .await?;
 
         if immediate {
             gpu_device.poll(wgpu::MaintainBase::WaitForSubmissionIndex(index));
         }
-        Ok(())
+        Ok(result)
     }
 
     #[maybe_async]
@@ -189,13 +195,14 @@ impl LazyGraphExecutor {
         tensors: BTreeMap<TensorId, Tensor>,
         owned_tensors: Option<HashSet<TensorId>>,
         gpu_device: &WgpuDevice,
-        use_cache: bool,
     ) -> Result<(), TensorError> {
         // First check if the tensors are already resolved
         log::debug!("Syncing tensors graph");
         if tensors.values().all(|t| t.resolved()) {
             return Ok(());
         }
+
+        let use_cache = self.caching_enabled;
 
         // Notably, we compute post order first because we want to hash the tensors in post order,
         // since each hash depends on the hashes of its sources. It's not clear to me that this
@@ -206,19 +213,13 @@ impl LazyGraphExecutor {
         let combined_post_orders = self.run_post_order(tensors.values().collect());
 
         let mut indices = Vec::with_capacity(tensors.len());
-        let mut tensor_ids = HashSet::with_capacity_and_hasher(
-            tensors.len(),
-            BuildHasherDefault::<HasherType>::default(),
-        );
+        let mut tensor_ids = HashSet::with_capacity_and_hasher(tensors.len(), Default::default());
 
         let mut hasher = HasherType::default();
         let mut tensor_hashes = BTreeMap::default();
 
         // Keep track of tensors that have been used as an src by another tensor
-        let mut used_as_src = HashSet::with_capacity_and_hasher(
-            tensors.len(),
-            BuildHasherDefault::<HasherType>::default(),
-        );
+        let mut used_as_src = HashSet::with_capacity_and_hasher(tensors.len(), Default::default());
 
         let mut uniform = CpuUniform::new();
         let mut compile_keys = HashMap::default();
@@ -412,20 +413,15 @@ impl LazyGraphExecutor {
             }
         }
 
-        let (mut cached_exec, do_shared_realloc) = if use_cache {
+        let mut cached_exec = if use_cache {
             self.cache
                 .remove(&hash)
-                .map(|cached_exec| {
-                    if cached_exec.shared_realloc {
-                        (Arc::try_unwrap(cached_exec.executable).ok(), false)
-                    } else {
-                        (None, true)
-                    }
-                })
-                .unwrap_or((None, false))
+                .and_then(|cached_exec| Arc::try_unwrap(cached_exec.executable).ok())
         } else {
-            (None, false)
+            None
         };
+        let do_shared_realloc = false;
+        let is_shared_realloc = false;
 
         let mut compiled_ops = Vec::with_capacity(post_order.len());
 
@@ -466,6 +462,10 @@ impl LazyGraphExecutor {
         )
         .unwrap();
 
+        #[cfg(not(feature = "debug"))]
+        let mut debug_list = BTreeMap::new();
+
+        let mut i = 0;
         for t in &post_order {
             if t.op().is_const() || t.resolved() {
                 continue;
@@ -482,16 +482,63 @@ impl LazyGraphExecutor {
             }
 
             if let Some(compile_key) = compile_keys.get(&t.id()) {
-                if cached_exec.is_some() {
-                    // TODO: Update debug things if needed here, otherwise, delete this branch
-                } else if let Some(compiled_op) =
-                    t.compile_gpu(compile_key, gpu_device, cfg!(feature = "debug"))
+                let selected_for_debug = self
+                    .step_log_config
+                    .as_ref()
+                    .map(|c| c.debug_selection.as_ref())
+                    .and_then(|s| {
+                        s.as_ref().map(|s| match s {
+                            DebugSelection::All => true,
+                            DebugSelection::Some(scopes) => {
+                                if let Some(scope) = t.scope() {
+                                    scopes.contains(&scope)
+                                } else {
+                                    false
+                                }
+                            }
+                        })
+                    })
+                    .unwrap_or(false);
+
+                #[cfg(not(feature = "debug"))]
+                let debug_list_ref = &mut debug_list;
+
+                // TODO(vinhowe): Rethink this whole thing and don't use a function here.
+                #[cfg(not(feature = "debug"))]
+                let mut set_debug_buffer = move |compiled_op: &mut Compiled| {
+                    if selected_for_debug {
+                        // We ignore any requests to debug copy items
+                        if let Compiled::Compute(op) = compiled_op {
+                            op.debug_buffer = Some(Arc::new(gpu_device.create_buffer(
+                                &wgpu::BufferDescriptor {
+                                    label: Some("debug buffer"),
+                                    size: t.num_bytes() as _,
+                                    // If we want the values in CPU land, we'll eventually have to
+                                    // copy again to a buffer with a usage of COPY_DST | MAP_READ.
+                                    usage: wgpu::BufferUsages::standard(),
+                                    mapped_at_creation: false,
+                                },
+                            )));
+                            debug_list_ref.insert(t.id(), (*t).clone());
+                        };
+                    };
+                };
+
+                if let Some(exec) = cached_exec.as_mut() {
+                    let compiled_op = &mut exec.steps[i];
+                    #[cfg(not(feature = "debug"))]
+                    set_debug_buffer(compiled_op);
+                } else if let Some(mut compiled_op) =
+                    t.compile_gpu(compile_key, gpu_device, selected_for_debug)
                 {
+                    #[cfg(not(feature = "debug"))]
+                    set_debug_buffer(&mut compiled_op);
                     compiled_ops.push(Some(compiled_op));
                 } else {
                     log::warn!("Compilation failed for operation: {:?}", t.op().name());
                     compiled_ops.push(None);
-                }
+                };
+                i += 1;
 
                 #[cfg(feature = "debug")]
                 compute_dsts.push((*t).clone());
@@ -520,97 +567,81 @@ impl LazyGraphExecutor {
             })
             .collect::<Vec<_>>();
 
-        if use_cache {
-            if let Some(mut_in_debug!(cached_exec)) = cached_exec {
-                log::debug!("Using cached executable");
+        let is_cached = cached_exec.is_some();
 
-                #[cfg(feature = "debug")]
-                let mut cpu_bufs = HashMap::default();
+        let mut executable;
+        if let Some(mut_in_debug!(cached_exec)) = cached_exec {
+            log::debug!("Using cached executable");
 
-                #[cfg(feature = "debug")]
-                // Get CPU buffers from existing allocations
-                for tensor in &post_order {
-                    let storage_guard = tensor.storage();
-                    match storage_guard.as_ref() {
-                        Some(Storage::GPU(gpu_buf)) => {
-                            log::trace!("Getting CPU buffer for {:?}", tensor.id());
-                            cpu_bufs.insert(
-                                tensor.id(),
-                                gpu_buf.to_cpu(&Device::GPU(gpu_device.clone()))?,
-                            );
-                        }
-                        Some(Storage::CPU(cpu_buf)) => {
-                            log::trace!("Using existing CPU buffer for {:?}", tensor.id());
-                            cpu_bufs.insert(tensor.id(), cpu_buf.clone());
-                        }
-                        None => {}
+            #[cfg(feature = "debug")]
+            let mut cpu_bufs = HashMap::default();
+
+            #[cfg(feature = "debug")]
+            // Get CPU buffers from existing allocations
+            for tensor in &post_order {
+                let storage_guard = tensor.storage();
+                match storage_guard.as_ref() {
+                    Some(Storage::GPU(gpu_buf)) => {
+                        log::trace!("Getting CPU buffer for {:?}", tensor.id());
+                        cpu_bufs.insert(
+                            tensor.id(),
+                            gpu_buf.to_cpu(&Device::GPU(gpu_device.clone()))?,
+                        );
                     }
+                    Some(Storage::CPU(cpu_buf)) => {
+                        log::trace!("Using existing CPU buffer for {:?}", tensor.id());
+                        cpu_bufs.insert(tensor.id(), cpu_buf.clone());
+                    }
+                    None => {}
                 }
-
-                #[cfg(feature = "debug")]
-                {
-                    cached_exec.debug_list = Some(debug_list);
-                    cached_exec.cpu_bufs = Some(Arc::new(RwLock::new(cpu_bufs)));
-                }
-
-                self.run_executable(&cached_exec, gpu_device, false)
-                    .unwrap();
-
-                #[cfg(all(feature = "debug", feature = "plotting"))]
-                {
-                    let cpu_bufs_guard = cached_exec.cpu_bufs.as_ref().map(|arc| arc.read());
-
-                    crate::plot::render_to_file(
-                        &post_order,
-                        &output_tensors,
-                        &strong_counts_inplace,
-                        cpu_bufs_guard.as_deref(),
-                        construct_plot_filename("post_exec", self.pass_index, self.inplace_support),
-                    )
-                    .unwrap();
-                }
-
-                self.cache.insert(
-                    hash,
-                    CachedExecutable {
-                        executable: Arc::new(cached_exec),
-                        // shared_realloc: true,
-                        shared_realloc: false,
-                    },
-                );
-                self.pass_index += 1;
-                return Ok(());
             }
 
-            // // On a cache miss: Clear cache because currently I don't know how to make sure
-            // // allocations are compatible between runs.
-            // self.cache.clear();
+            #[cfg(feature = "debug")]
+            {
+                cached_exec.debug_list = Some(debug_list);
+                cached_exec.cpu_bufs = Some(Arc::new(RwLock::new(cpu_bufs)));
+            }
+
+            executable = cached_exec;
+        } else {
+            if use_cache {
+                // On a cache miss: Clear cache because currently I don't know how to make sure
+                // allocations are compatible between runs.
+                self.cache.clear();
+            }
+
+            #[cfg(feature = "plotting")]
+            crate::plot::render_to_file(
+                &post_order,
+                &output_tensors,
+                &strong_counts_inplace,
+                None,
+                construct_plot_filename("alloc", self.pass_index, self.inplace_support),
+            )
+            .unwrap();
+
+            // Only keep the ops that successfully compiled.
+            let filtered_compiled_ops: Vec<_> = compiled_ops.into_iter().flatten().collect();
+
+            executable = Executable::new(
+                None,
+                filtered_compiled_ops,
+                uniform.into_gpu(gpu_device)?,
+                #[cfg(not(feature = "debug"))]
+                if debug_list.is_empty() {
+                    None
+                } else {
+                    Some(debug_list)
+                },
+                #[cfg(feature = "debug")]
+                Some(Arc::new(RwLock::new(cpu_bufs))),
+            );
         }
 
-        #[cfg(feature = "plotting")]
-        crate::plot::render_to_file(
-            &post_order,
-            &output_tensors,
-            &strong_counts_inplace,
-            None,
-            construct_plot_filename("alloc", self.pass_index, self.inplace_support),
-        )
-        .unwrap();
-
-        // Only keep the ops that successfully compiled.
-        let filtered_compiled_ops: Vec<_> = compiled_ops.into_iter().flatten().collect();
-
-        let mut executable = Executable::new(
-            None,
-            filtered_compiled_ops,
-            uniform.into_gpu(gpu_device)?,
-            #[cfg(feature = "debug")]
-            Some(debug_list),
-            #[cfg(feature = "debug")]
-            Some(Arc::new(RwLock::new(cpu_bufs))),
-        );
-
-        self.run_executable(&executable, gpu_device, false).unwrap();
+        let result = self
+            .run_executable(&mut executable, gpu_device, false)
+            .await
+            .unwrap();
 
         #[cfg(all(feature = "debug", feature = "plotting"))]
         {
@@ -626,7 +657,22 @@ impl LazyGraphExecutor {
             .unwrap();
         }
 
-        executable.set_storage(post_order.iter().map(|t| t.storage().clone()).collect());
+        if !is_cached && use_cache {
+            // We save the storage of the executable to be used in the next pass
+            executable.set_storage(post_order.iter().map(|t| t.storage().clone()).collect());
+        }
+
+        if self.step_log_config.is_some() {
+            let step_log = StepLog::from_post_order(
+                post_order,
+                result.profiling_entries,
+                result.gpu_bufs,
+                hash,
+                is_cached,
+                is_shared_realloc,
+            );
+            gpu_device.set_last_step_log(step_log);
+        }
 
         if use_cache {
             // After creating/running the executable, we cache it
@@ -634,7 +680,7 @@ impl LazyGraphExecutor {
                 hash,
                 CachedExecutable {
                     executable: Arc::new(executable),
-                    shared_realloc: do_shared_realloc,
+                    is_shared_realloc: do_shared_realloc,
                 },
             );
         }
@@ -642,11 +688,48 @@ impl LazyGraphExecutor {
         self.pass_index += 1;
         Ok(())
     }
+
+    pub fn step_log_config(&self) -> Option<&StepLogConfig> {
+        self.step_log_config.as_ref()
+    }
+
+    pub fn set_step_log_config(&mut self, config: StepLogConfig) {
+        let old_config_debug_selection = self
+            .step_log_config
+            .as_ref()
+            .map(|c| c.debug_selection.clone());
+        // If the debug selection has changed, clear the cache; we'll need to recompile all the ops
+        let new_config_debug_selection = self
+            .step_log_config
+            .as_ref()
+            .map(|c| c.debug_selection.clone());
+        if old_config_debug_selection != new_config_debug_selection {
+            log::debug!("Debug selection changed, clearing cache");
+            self.cache.clear();
+        }
+        self.step_log_config = Some(config);
+    }
+
+    pub fn set_caching_enabled(&mut self, enabled: bool) {
+        self.caching_enabled = enabled;
+    }
+
+    pub fn caching_enabled(&self) -> bool {
+        self.caching_enabled
+    }
+
+    pub fn set_inplace_support(&mut self, enabled: bool) {
+        self.inplace_support = enabled;
+    }
+
+    pub fn inplace_support(&self) -> bool {
+        self.inplace_support
+    }
 }
 
 impl Default for LazyGraphExecutor {
     fn default() -> Self {
-        Self::new(false)
+        Self::new(false, false)
     }
 }
 
