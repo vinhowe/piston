@@ -760,8 +760,7 @@ pub trait GPUOperation: Operation {
         &self,
         gpu_compile_key: &ComputeCompileKey<'a>,
         device: &'a WgpuDevice,
-        #[cfg(feature = "debug")] debug: bool,
-        #[cfg(not(feature = "debug"))] _debug: bool,
+        debug: bool,
     ) -> Result<CompiledOp, OperationError> {
         let ComputeCompileKey {
             dst,
@@ -891,8 +890,9 @@ pub trait GPUOperation: Operation {
             storage_bind_groups,
             *offset as _,
             kernel_src_desc.key,
-            #[cfg(feature = "debug")]
-            debug_buffer,
+            // TODO(vinhowe): Figure out how to handle when this should be None
+            Some(dst.id()),
+            None,
             #[cfg(feature = "debug")]
             debug_input_buffers,
             #[cfg(feature = "debug")]

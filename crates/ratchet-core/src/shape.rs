@@ -4,8 +4,11 @@ use std::{
     ops::{RangeFrom, RangeTo},
     slice::Iter,
 };
+#[cfg(target_arch = "wasm32")]
+use wasm_bindgen::prelude::*;
 
 #[cfg_attr(target_arch = "wasm32", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
 #[derive(Clone, PartialEq, Eq, Hash, Default)]
 pub struct Shape(RVec<usize>);
 

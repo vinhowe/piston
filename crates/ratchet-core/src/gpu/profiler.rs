@@ -1,17 +1,24 @@
-#![cfg(feature = "gpu-profiling")]
+use crate::{HashMap, TensorId};
+#[cfg(feature = "gpu-profiling")]
 use itertools::Itertools;
-use std::collections::HashMap;
+use maybe_async::maybe_async;
+#[cfg(feature = "gpu-profiling")]
 use tabled::settings::{object::Rows, Alignment, Modify, Panel, Style};
+#[cfg(feature = "gpu-profiling")]
 use tabled::{Table, Tabled};
+#[cfg(target_arch = "wasm32")]
+use wasm_bindgen::prelude::*;
 use wgpu::QuerySet;
 
 use super::WgpuDevice;
 
+#[cfg(feature = "gpu-profiling")]
 //used for formatting table cells
 fn float2(n: &f64) -> String {
     format!("{:.2}", n)
 }
 
+#[cfg(feature = "gpu-profiling")]
 #[derive(Tabled)]
 struct SummaryTableEntry {
     #[tabled(rename = "Op Type")]
@@ -26,6 +33,7 @@ struct SummaryTableEntry {
     percent_runtime: f64,
 }
 
+#[cfg(feature = "gpu-profiling")]
 pub fn build_summary_table(
     elapsed_map: HashMap<String, usize>,
     op_counts: HashMap<String, usize>,
@@ -55,6 +63,7 @@ pub fn build_summary_table(
         .to_owned()
 }
 
+#[cfg(feature = "gpu-profiling")]
 #[derive(Tabled)]
 struct IndividualTableEntry {
     #[tabled(rename = "Node ID")]
@@ -67,6 +76,7 @@ struct IndividualTableEntry {
     percent_runtime: f64,
 }
 
+#[cfg(feature = "gpu-profiling")]
 pub fn build_individual_table(elapsed_map: HashMap<usize, (String, usize)>) -> Table {
     let total_elapsed: usize = elapsed_map.values().map(|(_, e)| e).sum();
 
@@ -92,6 +102,24 @@ pub fn build_individual_table(elapsed_map: HashMap<usize, (String, usize)>) -> T
         .to_owned()
 }
 
+#[cfg_attr(target_arch = "wasm32", wasm_bindgen(getter_with_clone))]
+#[derive(Debug, Clone)]
+pub struct ExportedTensorProfilingEntry {
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen(skip))]
+    pub id: TensorId,
+    pub kernel_name: String,
+    pub elapsed: usize,
+}
+
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen]
+impl ExportedTensorProfilingEntry {
+    #[wasm_bindgen(getter)]
+    pub fn id(&self) -> TensorId {
+        self.id
+    }
+}
+
 pub struct Profiler {
     device: WgpuDevice,
     query_set: QuerySet,
@@ -99,7 +127,10 @@ pub struct Profiler {
     destination_buffer: wgpu::Buffer,
     query_index: u32,
     timestamp_period: f32,
+    #[cfg(feature = "gpu-profiling")]
     query_to_node: HashMap<(u32, u32), (usize, String)>,
+    #[cfg(not(feature = "gpu-profiling"))]
+    query_to_tensor: HashMap<(u32, u32), (TensorId, String)>,
 }
 
 impl Profiler {
@@ -133,14 +164,17 @@ impl Profiler {
             destination_buffer,
             query_index: 0,
             timestamp_period,
-            query_to_node: HashMap::with_capacity(count as usize),
+            #[cfg(feature = "gpu-profiling")]
+            query_to_node: HashMap::with_capacity_and_hasher(count as usize, Default::default()),
+            #[cfg(not(feature = "gpu-profiling"))]
+            query_to_tensor: HashMap::with_capacity_and_hasher(count as usize, Default::default()),
         }
     }
 
-    #[cfg(feature = "gpu-profiling")]
     pub fn create_timestamp_queries(
         &mut self,
-        id: usize,
+        #[cfg(feature = "gpu-profiling")] id: usize,
+        #[cfg(not(feature = "gpu-profiling"))] id: TensorId,
         name: &str,
     ) -> wgpu::ComputePassTimestampWrites {
         let beginning_index = self.query_index;
@@ -154,13 +188,17 @@ impl Profiler {
             end_of_pass_write_index: Some(end_index),
         };
 
+        #[cfg(feature = "gpu-profiling")]
         self.query_to_node
+            .insert((beginning_index, end_index), (id, name.to_string()));
+        #[cfg(not(feature = "gpu-profiling"))]
+        self.query_to_tensor
             .insert((beginning_index, end_index), (id, name.to_string()));
 
         timestamp_writes
     }
 
-    pub fn resolve(&self, encoder: &mut wgpu::CommandEncoder) {
+    pub fn resolve(&mut self, encoder: &mut wgpu::CommandEncoder) {
         encoder.resolve_query_set(
             &self.query_set,
             0..self.query_index,
@@ -176,6 +214,7 @@ impl Profiler {
         );
     }
 
+    #[cfg(feature = "gpu-profiling")]
     fn summary_table(&self, timestamps: &[u64]) {
         let mut elapsed_map = HashMap::new();
         let mut op_counts = HashMap::new();
@@ -198,6 +237,7 @@ impl Profiler {
         println!("{}", build_summary_table(elapsed_map, op_counts));
     }
 
+    #[cfg(feature = "gpu-profiling")]
     fn node_table(&self, timestamps: &[u64]) {
         let mut node_map = HashMap::new();
         for (idx, (begin, end)) in timestamps.iter().tuples().enumerate() {
@@ -215,7 +255,8 @@ impl Profiler {
         println!("{}", build_individual_table(node_map));
     }
 
-    pub fn read_timestamps(&self, summary: bool) {
+    #[cfg(feature = "gpu-profiling")]
+    pub fn print_timestamps(&self, summary: bool) {
         self.destination_buffer
             .slice(..)
             .map_async(wgpu::MapMode::Read, |_| ());
@@ -234,5 +275,52 @@ impl Profiler {
         } else {
             self.node_table(timestamps);
         }
+    }
+
+    #[cfg(not(feature = "gpu-profiling"))]
+    #[maybe_async]
+    pub async fn read_timestamps(&self) -> HashMap<TensorId, ExportedTensorProfilingEntry> {
+        // I guess in principle we could do all of this in a shader...
+        #[cfg(target_arch = "wasm32")]
+        let (tx, rx) = futures_intrusive::channel::shared::oneshot_channel();
+        #[cfg(not(target_arch = "wasm32"))]
+        let (tx, rx) = std::sync::mpsc::channel();
+        self.destination_buffer
+            .slice(..)
+            .map_async(wgpu::MapMode::Read, move |_| {
+                tx.send(()).expect("Failed to sync for profiling");
+            });
+        self.device.poll(wgpu::Maintain::Wait);
+        #[cfg(target_arch = "wasm32")]
+        rx.receive().await.unwrap();
+        #[cfg(not(target_arch = "wasm32"))]
+        rx.recv().unwrap();
+        let timestamp_view = self
+            .destination_buffer
+            .slice(
+                ..(std::mem::size_of::<u64>() * self.query_index as usize) as wgpu::BufferAddress,
+            )
+            .get_mapped_range();
+
+        let timestamps: &[u64] = bytemuck::cast_slice(&timestamp_view);
+        let mut exported_tensors = HashMap::default();
+        for (idx, chunk) in timestamps.chunks(2).enumerate() {
+            if let &[begin, end] = chunk {
+                let elapsed_ns = (end - begin) as f64 * self.timestamp_period as f64;
+                let (id, name) = self
+                    .query_to_tensor
+                    .get(&(idx as u32 * 2, idx as u32 * 2 + 1))
+                    .unwrap();
+                exported_tensors.insert(
+                    *id,
+                    ExportedTensorProfilingEntry {
+                        id: *id,
+                        kernel_name: name.clone(),
+                        elapsed: elapsed_ns as usize,
+                    },
+                );
+            }
+        }
+        exported_tensors
     }
 }

@@ -72,7 +72,7 @@ async-trait = "0.1.77"
 smallvec = { workspace = true, features = ["serde"] }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies.web-sys]
-features = ["GpuDevice"]
+features = ["GpuBuffer", "GpuDevice"]
 workspace = true
 
 [dev-dependencies]

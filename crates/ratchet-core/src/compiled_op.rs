@@ -1,12 +1,15 @@
 #[cfg(feature = "debug")]
 use crate::gpu::BindGroupLayoutEntryDescriptor;
-use crate::gpu::{
-    BindGroupDescriptor, BindGroupLayoutHandle, ComputePipelineHandle, GpuBindGroup, WgpuDevice,
-    WorkgroupCount,
-};
 #[cfg(feature = "debug")]
 use crate::TensorId;
 use crate::{drvec, rvec, KernelKey, OperationError, PooledGPUBuffer, RVec, Tensor};
+use crate::{
+    gpu::{
+        BindGroupDescriptor, BindGroupLayoutHandle, ComputePipelineHandle, GpuBindGroup,
+        WgpuDevice, WorkgroupCount,
+    },
+    TensorId,
+};
 use derive_new::new;
 use std::sync::Arc;
 use wgpu::DynamicOffset;
@@ -40,6 +43,11 @@ pub struct CompiledOp {
     pub(crate) storage_groups: RVec<GpuBindGroup>,
     pub(crate) offset: DynamicOffset, //offset into the metadata uniform buffer
     pub kernel_key: KernelKey,
+    // Mapping between tensor and compiled op is not necessarily 1:1—for example: things like AMP
+    // likely insert casts between tensor operations.
+    pub tensor_id: Option<TensorId>,
+    #[cfg(not(feature = "debug"))]
+    pub debug_buffer: Option<Arc<wgpu::Buffer>>,
     #[cfg(feature = "debug")]
     pub debug_buffer: Option<(TensorId, Arc<wgpu::Buffer>)>,
     #[cfg(feature = "debug")]

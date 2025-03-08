@@ -35,6 +35,7 @@ pub struct WgpuDevice {
     device_features: DeviceFeatures,
     device: Arc<wgpu::Device>,
     queue: Arc<wgpu::Queue>,
+    last_step_log: Arc<RwLock<Option<StepLog>>>,
 }
 
 impl std::ops::Deref for WgpuDevice {
@@ -70,10 +71,7 @@ impl WgpuDevice {
         let mut required_features = wgpu::Features::default();
         required_features |= wgpu::Features::SHADER_F16;
         required_features |= wgpu::Features::SUBGROUP;
-        #[cfg(feature = "gpu-profiling")]
-        {
-            required_features |= wgpu::Features::TIMESTAMP_QUERY;
-        }
+        required_features |= wgpu::Features::TIMESTAMP_QUERY;
 
         let mut device_descriptor = wgpu::DeviceDescriptor {
             label: Some("Ratchet"),
@@ -123,10 +121,11 @@ impl WgpuDevice {
             kernel_module_pool: Arc::new(KernelModulePool::new()),
             compute_pipeline_pool: Arc::new(ComputePipelinePool::new()),
             // TODO: Decide if we need some nice thing to encapsulate the lazy graph executor
-            lazy_graph_executor: Arc::new(RwLock::new(LazyGraphExecutor::new(true))),
+            lazy_graph_executor: Arc::new(RwLock::new(LazyGraphExecutor::new(false, false))),
             device: Arc::new(device),
             device_limits: limits,
             device_features: features,
+            last_step_log: Arc::new(RwLock::new(None)),
         })
     }
 
@@ -318,6 +317,26 @@ impl WgpuDevice {
             .await
     }
 
+    pub fn set_caching_enabled(&self, enabled: bool) {
+        self.lazy_graph_executor
+            .write()
+            .set_caching_enabled(enabled);
+    }
+
+    pub fn caching_enabled(&self) -> bool {
+        self.lazy_graph_executor.read().caching_enabled()
+    }
+
+    pub fn set_inplace_support(&self, enabled: bool) {
+        self.lazy_graph_executor
+            .write()
+            .set_inplace_support(enabled);
+    }
+
+    pub fn inplace_support(&self) -> bool {
+        self.lazy_graph_executor.read().inplace_support()
+    }
+
     pub fn begin_pass(&self, pass_index: u64) {
         self.buffer_allocator.begin_pass(pass_index);
     }
@@ -334,11 +353,23 @@ impl WgpuDevice {
         self.buffer_allocator.usage_bytes()
     }
 
+    pub fn set_step_log_config(&self, config: StepLogConfig) {
+        self.lazy_graph_executor.write().set_step_log_config(config);
+    }
+
+    pub fn take_step_log(&self) -> Option<StepLog> {
+        self.last_step_log.write().take()
+    }
+
     #[cfg(target_arch = "wasm32")]
     pub fn as_webgpu_device(&self) -> Option<web_sys::GpuDevice> {
         JsValue::from(self.device.as_webgpu_device())
             .dyn_into::<web_sys::GpuDevice>()
             .ok()
+    }
+
+    pub(crate) fn set_last_step_log(&self, log: StepLog) {
+        *self.last_step_log.write() = Some(log);
     }
 }
 

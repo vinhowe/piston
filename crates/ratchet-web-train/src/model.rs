@@ -2,7 +2,8 @@ use anyhow::Result;
 use async_trait::async_trait;
 use js_sys::Function;
 use ratchet::{
-    reset_scope_context, shape, DType, Device, DeviceRequest, GradStore, Tensor, TensorId, Var,
+    reset_scope_context, shape, DType, Device, DeviceRequest, GradStore, StepLog, Tensor, TensorId,
+    Var,
 };
 use ratchet_datasets::{
     nlp::{
@@ -104,6 +105,29 @@ fn default_scheduler_eta_min() -> f64 {
     0.0
 }
 
+#[derive(Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum JsDebugSelection {
+    String(String),
+    Array(Vec<String>),
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct JsStepLogConfig {
+    #[serde(default = "default_profiling")]
+    pub profiling: bool,
+    #[serde(default = "default_debug_selection")]
+    pub debug_selection: Option<JsDebugSelection>,
+}
+
+fn default_profiling() -> bool {
+    false
+}
+
+fn default_debug_selection() -> Option<JsDebugSelection> {
+    None
+}
+
 // -------------------------------------------------------------------
 // Trainer configuration that is deserializable from JavaScript.
 // Note the additional fields for batch size and dataset selection.
@@ -116,6 +140,10 @@ pub struct TrainerConfig {
     pub n_head: usize,
     pub block_size: usize,
     pub batch_size: usize,
+    #[serde(default = "default_caching_enabled")]
+    pub caching_enabled: bool,
+    #[serde(default = "default_inplace_support")]
+    pub inplace_support: bool,
     /// A string specifying which dataset to use: "two_sum" (default), "zeros", or "tinystories".
     pub dataset: String,
     #[serde(default = "default_optimizer_config")]
@@ -132,6 +160,14 @@ pub struct TrainerConfig {
     pub seed: Option<u64>,
     #[serde(default = "default_label_smoothing")]
     pub label_smoothing: f32,
+}
+
+fn default_caching_enabled() -> bool {
+    true
+}
+
+fn default_inplace_support() -> bool {
+    true
 }
 
 fn default_optimizer_config() -> OptimizerConfig {
@@ -290,6 +326,17 @@ impl Trainer {
                 _ => LayerNormPosition::Pre,
             },
         };
+
+        device
+            .try_gpu()
+            .unwrap()
+            .set_caching_enabled(cfg.caching_enabled);
+
+        device
+            .try_gpu()
+            .unwrap()
+            .set_inplace_support(cfg.inplace_support);
+
         // Initialize the GPT2 model.
         let model = GPT2::new(&gpt2_config, vb, false)
             .await
@@ -472,6 +519,32 @@ impl Trainer {
     #[wasm_bindgen]
     pub fn webgpu_device(&self) -> Option<web_sys::GpuDevice> {
         self.device.try_gpu().unwrap().as_webgpu_device()
+    }
+
+    #[wasm_bindgen]
+    pub fn set_step_log_config(&mut self, config: JsValue) -> Result<(), JsValue> {
+        let config: JsStepLogConfig =
+            serde_wasm_bindgen::from_value(config).map_err(|e| JsValue::from(e.to_string()))?;
+        self.device
+            .try_gpu()
+            .unwrap()
+            .set_step_log_config(ratchet::StepLogConfig {
+                profiling: config.profiling,
+                debug_selection: match config.debug_selection {
+                    Some(JsDebugSelection::String(s)) => match s.as_str() {
+                        "all" => Some(ratchet::DebugSelection::All),
+                        _ => None,
+                    },
+                    Some(JsDebugSelection::Array(a)) => Some(ratchet::DebugSelection::Some(a)),
+                    None => None,
+                },
+            });
+        Ok(())
+    }
+
+    #[wasm_bindgen]
+    pub fn take_step_log(&mut self) -> Option<StepLog> {
+        self.device.try_gpu().unwrap().take_step_log()
     }
 
     /// Autoregressive generation with an optional streaming callback.
