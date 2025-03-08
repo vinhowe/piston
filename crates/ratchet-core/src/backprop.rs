@@ -194,6 +194,7 @@ impl Tensor {
                     })
                     | LazyOp::FillConstant(_)
                     | LazyOp::FillRandn(_)
+                    | LazyOp::Bernoulli(_)
                     | LazyOp::Arange(_)
                     | LazyOp::Cache(_)
                     | LazyOp::Trilu(_) => nodes,
@@ -584,6 +585,7 @@ impl Tensor {
                 })
                 | LazyOp::FillConstant(_)
                 | LazyOp::FillRandn(_)
+                | LazyOp::Bernoulli(_)
                 | LazyOp::Arange(_) => {}
                 LazyOp::View(View { src: arg, .. }) => {
                     let arg_grad = grad.clone().view(arg.shape().clone())?;

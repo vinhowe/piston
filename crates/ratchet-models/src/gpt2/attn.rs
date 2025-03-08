@@ -4,7 +4,8 @@ use maybe_async::maybe_async;
 use ratchet::{prelude::shape, rvec, Tensor};
 use ratchet_macros::scoped_module;
 use ratchet_nn::{
-    AlibiEmbedding, AlibiInput, KVCache, Linear, Module, RotaryEmbedding, RotaryInput, VarBuilder,
+    AlibiEmbedding, AlibiInput, Dropout, KVCache, Linear, Module, RotaryEmbedding, RotaryInput,
+    VarBuilder,
 };
 
 use super::{
@@ -23,6 +24,8 @@ pub struct GPT2SelfAttention {
     h_dim: usize,
     rope: Option<RotaryEmbedding>,
     alibi: Option<AlibiEmbedding>,
+    attn_dropout: Option<Dropout>,
+    resid_dropout: Option<Dropout>,
 }
 
 impl GPT2SelfAttention {
@@ -52,6 +55,17 @@ impl GPT2SelfAttention {
             | PositionalEncoding::None => (None, None),
         };
 
+        let attn_dropout = if cfg.attn_pdrop > 0.0 {
+            Some(Dropout::new(cfg.attn_pdrop))
+        } else {
+            None
+        };
+        let resid_dropout = if cfg.resid_pdrop > 0.0 {
+            Some(Dropout::new(cfg.resid_pdrop))
+        } else {
+            None
+        };
+
         Ok(Self {
             c_attn,
             c_proj,
@@ -61,6 +75,8 @@ impl GPT2SelfAttention {
             h_dim,
             rope,
             alibi,
+            attn_dropout,
+            resid_dropout,
         })
     }
 }
@@ -151,6 +167,10 @@ impl Module for GPT2SelfAttention {
         };
 
         let att = att.softmax(3)?;
+        let att = match &self.attn_dropout {
+            Some(dropout) => dropout.schedule(att)?,
+            None => att,
+        };
         let y = att
             .clone()
             .matmul(v.clone(), false, false)?
@@ -158,6 +178,10 @@ impl Module for GPT2SelfAttention {
             .view(shape![batch_size as _, q_len, self.n_embd])?;
 
         let y = self.c_proj.schedule(y)?;
+        let y = match &self.resid_dropout {
+            Some(dropout) => dropout.schedule(y)?,
+            None => y,
+        };
 
         Ok((y, att))
     }

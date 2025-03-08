@@ -48,6 +48,9 @@
 	let dataset = 'sort';
 	let activation = 'swiglu';
 	let label_smoothing = -5; // log10 scale
+	let embd_pdrop = 0.1;
+	let attn_pdrop = 0.1;
+	let resid_pdrop = 0.1;
 
 	// Optimizer parameters
 	let lr = -3; // log10 scale
@@ -73,6 +76,9 @@
 			positional_encoding,
 			seed,
 			label_smoothing,
+			embd_pdrop,
+			attn_pdrop,
+			resid_pdrop,
 			lr,
 			beta1,
 			beta2,
@@ -311,6 +317,9 @@
 			positional_encoding,
 			seed: stringToSeed(seed),
 			label_smoothing: label_smoothing === -5 ? 0 : Math.pow(10, label_smoothing),
+			embd_pdrop,
+			attn_pdrop,
+			resid_pdrop,
 			optimizer: {
 				optimizer_type,
 				lr: Math.pow(10, lr),
@@ -1126,6 +1135,10 @@
 						</div>
 					</div>
 				</div>
+
+				<TickSlider bind:value={embd_pdrop} min={0} max={1} step={0.01} label="Embedding Dropout" />
+				<TickSlider bind:value={attn_pdrop} min={0} max={1} step={0.01} label="Attention Dropout" />
+				<TickSlider bind:value={resid_pdrop} min={0} max={1} step={0.01} label="Residual Dropout" />
 
 				<div class="form-group mt-3">
 					<div class="flex items-center gap-2">

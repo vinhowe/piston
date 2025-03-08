@@ -154,6 +154,12 @@ pub struct TrainerConfig {
     pub seed: Option<u64>,
     #[serde(default = "default_label_smoothing")]
     pub label_smoothing: f32,
+    #[serde(default = "default_embd_pdrop")]
+    pub embd_pdrop: f32,
+    #[serde(default = "default_attn_pdrop")]
+    pub attn_pdrop: f32,
+    #[serde(default = "default_resid_pdrop")]
+    pub resid_pdrop: f32,
 }
 
 fn default_caching_enabled() -> bool {
@@ -194,6 +200,18 @@ fn default_positional_encoding() -> String {
 
 fn default_layernorm_position() -> String {
     "pre".to_string()
+}
+
+fn default_embd_pdrop() -> f32 {
+    0.1
+}
+
+fn default_attn_pdrop() -> f32 {
+    0.1
+}
+
+fn default_resid_pdrop() -> f32 {
+    0.1
 }
 
 fn default_seed() -> Option<u64> {
@@ -319,6 +337,9 @@ impl Trainer {
                 "none" => LayerNormPosition::None,
                 _ => LayerNormPosition::Pre,
             },
+            embd_pdrop: cfg.embd_pdrop,
+            attn_pdrop: cfg.attn_pdrop,
+            resid_pdrop: cfg.resid_pdrop,
         };
 
         device
