@@ -387,6 +387,44 @@ impl Trainer {
         })
     }
 
+    async fn forward(&mut self, input: Vec<Vec<i32>>) -> anyhow::Result<(Tensor, Tensor)> {
+        let batch_size = input.len();
+        let seq_len = input[0].len();
+
+        // Flatten the vectors and create tensors
+        let input_flat: Vec<i32> = input.into_iter().flatten().collect();
+
+        // Create tensors and move to device
+        let input_tensor =
+            Tensor::from_data(input_flat, shape![batch_size, seq_len], self.device.clone());
+
+        // Forward pass: compute logits from the model.
+        let (logits, attn_masks) = self.model.schedule(GPT2Input {
+            x: input_tensor,
+            index_pos: 0,
+        })?;
+        Ok((logits, attn_masks))
+    }
+
+    #[wasm_bindgen(js_name = "forward")]
+    pub async fn forward_js(&mut self, input: JsValue) -> Result<JsValue, JsValue> {
+        reset_scope_context();
+        let input: Vec<Vec<i32>> =
+            serde_wasm_bindgen::from_value(input).map_err(|e| JsValue::from(e.to_string()))?;
+        let (logits, _) = self.forward(input).await.map_err(|e| e.to_string())?;
+        // Add logits to the result:
+        let logits_cpu = logits.to(&Device::CPU).await.map_err(|e| e.to_string())?;
+        let logits_shape = logits_cpu.shape().to_vec();
+        let logits_data = logits_cpu
+            .to_vec::<f32>()
+            .await
+            .map_err(|e| e.to_string())?;
+        Ok(
+            serde_wasm_bindgen::to_value(&(logits_data, logits_shape))
+                .map_err(|e| e.to_string())?,
+        )
+    }
+
     /// Train on a single batch of data provided directly from JavaScript
     #[wasm_bindgen]
     pub async fn train_on_batch(
@@ -404,7 +442,8 @@ impl Trainer {
         // Validate batch dimensions
         if input.is_empty() || target.is_empty() {
             return Err("Empty batch provided".into());
-        }
+        };
+
         let batch_size = input.len();
         let seq_len = input[0].len();
         if batch_size != target.len()
@@ -414,28 +453,14 @@ impl Trainer {
             return Err("Inconsistent batch dimensions".into());
         }
 
-        // Flatten the vectors and create tensors
-        let input_flat: Vec<i32> = input.into_iter().flatten().collect();
+        let (logits, attn_masks) = self.forward(input).await.map_err(|e| e.to_string())?;
+
         let target_flat: Vec<i32> = target.into_iter().flatten().collect();
-
-        // Create tensors and move to device
-        let input_tensor =
-            Tensor::from_data(input_flat, shape![batch_size, seq_len], self.device.clone());
-
         let target_tensor = Tensor::from_data(
             target_flat,
             shape![batch_size, seq_len],
             self.device.clone(),
         );
-
-        // Forward pass: compute logits from the model.
-        let (logits, attn_masks) = self
-            .model
-            .schedule(GPT2Input {
-                x: input_tensor,
-                index_pos: 0,
-            })
-            .map_err(|e| e.to_string())?;
 
         // Flatten the logits and targets, compute the cross-entropy loss with label smoothing
         let logits_flat = logits.clone().flatten_to(1).map_err(|e| e.to_string())?;
