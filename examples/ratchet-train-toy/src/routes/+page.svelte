@@ -39,6 +39,8 @@
 	let layernorm_position = 'pre';
 	let hasWebGPU = true;
 
+	let caching_enabled = false;
+	let inplace_support = true;
 	// Model parameters
 	let n_layer = 1;
 	let n_head = 6;
@@ -71,6 +73,8 @@
 			n_embd,
 			batch_size,
 			dataset,
+			caching_enabled,
+			inplace_support,
 			activation,
 			attentionOnly,
 			positional_encoding,
@@ -309,6 +313,8 @@
 			n_layer,
 			n_head,
 			block_size: 24,
+			caching_enabled,
+			inplace_support,
 			batch_size,
 			dataset,
 			task_parameters: taskParameters,
@@ -1326,6 +1332,29 @@
 						placeholder="Enter any text for seed"
 						class="w-full p-2 border focus:outline-none focus:border-gray-400 border-gray-400 bg-white"
 					/>
+				</div>
+				<div class="form-group mt-3">
+					<div class="flex items-center gap-2">
+						<input
+							type="checkbox"
+							id="caching_enabled"
+							bind:checked={caching_enabled}
+							class="w-4 h-4 text-black focus:ring-0"
+						/>
+						<label for="caching_enabled" class="text-sm"> Caching Enabled</label>
+					</div>
+				</div>
+
+				<div class="form-group mt-3">
+					<div class="flex items-center gap-2">
+						<input
+							type="checkbox"
+							id="inplace_support"
+							bind:checked={inplace_support}
+							class="w-4 h-4 text-black focus:ring-0"
+						/>
+						<label for="inplace_support" class="text-sm"> Inplace Support</label>
+					</div>
 				</div>
 			</div>
 		</div>
