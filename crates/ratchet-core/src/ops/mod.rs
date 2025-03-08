@@ -1,6 +1,7 @@
 mod affine;
 mod alibi;
 mod arange;
+mod bernoulli;
 mod binary;
 mod cache;
 mod cast;
@@ -31,6 +32,7 @@ use std::sync::Arc;
 pub use affine::*;
 pub use alibi::*;
 pub use arange::*;
+pub use bernoulli::*;
 pub use binary::*;
 pub use cache::*;
 pub use cast::*;

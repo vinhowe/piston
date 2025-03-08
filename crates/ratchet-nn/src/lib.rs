@@ -1,5 +1,6 @@
 mod activation;
 mod alibi;
+mod dropout;
 mod embedding;
 mod groupnorm;
 mod init;
@@ -17,6 +18,7 @@ mod var_map;
 
 pub use activation::*;
 pub use alibi::*;
+pub use dropout::*;
 pub use embedding::*;
 pub use groupnorm::*;
 pub use init::*;

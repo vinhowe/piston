@@ -10,8 +10,8 @@ use maybe_async::maybe_async;
 use ratchet::{shape, Device, Tensor};
 use ratchet_macros::scoped_module;
 use ratchet_nn::{
-    embedding, layer_norm, Embedding, KVCache, LayerNorm, Linear, Module, SinusoidalEmbedding,
-    SinusoidalInput, VarBuilder,
+    embedding, layer_norm, Dropout, Embedding, KVCache, LayerNorm, Linear, Module,
+    SinusoidalEmbedding, SinusoidalInput, VarBuilder,
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -42,6 +42,9 @@ pub struct Config {
     pub attention_only: bool,
     pub positional_encoding: PositionalEncoding,
     pub layernorm_position: LayerNormPosition,
+    pub embd_pdrop: f32,
+    pub attn_pdrop: f32,
+    pub resid_pdrop: f32,
 }
 
 impl Config {
@@ -58,6 +61,7 @@ pub struct DecoderLayer {
     mlp: MLP,
     attention_only: bool,
     layernorm_position: LayerNormPosition,
+    dropout: Option<Dropout>,
 }
 
 impl DecoderLayer {
@@ -75,6 +79,11 @@ impl DecoderLayer {
         .await?;
 
         let mlp = MLP::new(cfg, vb.pp("mlp")).await?;
+        let dropout = if cfg.resid_pdrop > 0.0 {
+            Some(Dropout::new(cfg.resid_pdrop))
+        } else {
+            None
+        };
 
         Ok(Self {
             self_attn,
@@ -83,6 +92,7 @@ impl DecoderLayer {
             ffn_norm,
             attention_only: cfg.attention_only,
             layernorm_position: cfg.layernorm_position.clone(),
+            dropout,
         })
     }
 }
@@ -133,6 +143,10 @@ impl Module for DecoderLayer {
                 LayerNormPosition::Post | LayerNormPosition::None => x,
             };
             let x = self.mlp.schedule(x)?;
+            let x = match &self.dropout {
+                Some(dropout) => dropout.schedule(x)?,
+                None => x,
+            };
             let x = residual.add(x)?;
             let x = match self.layernorm_position {
                 LayerNormPosition::Post => self.ffn_norm.schedule(x)?,
@@ -153,6 +167,7 @@ pub struct GPT2 {
     pub layers: Vec<DecoderLayer>,
     pub ln_post: LayerNorm,
     pub lm_head: Linear,
+    pub embd_dropout: Option<Dropout>,
     pub kv_cache: Rc<RefCell<KVCache>>,
     pub device: Device,
 }
@@ -188,6 +203,11 @@ impl Module for GPT2 {
             })?;
         }
         // For RoPE and ALiBi, positional encoding is handled in the attention layer
+
+        let mut x = match &self.embd_dropout {
+            Some(dropout) => dropout.schedule(x)?,
+            None => x,
+        };
 
         let mut attn_masks = vec![];
 
@@ -243,6 +263,11 @@ impl GPT2 {
 
         let ln_post = layer_norm(cfg.n_embd, Default::default(), vb_m.pp("norm")).await?;
         let lm_head = linear_no_bias_gpt2(cfg.n_embd, cfg.vocab_size, vb.pp("lm_head")).await?;
+        let embd_dropout = if cfg.embd_pdrop > 0.0 {
+            Some(Dropout::new(cfg.embd_pdrop))
+        } else {
+            None
+        };
 
         let cache_shape = shape![1, cfg.n_head as _, Self::MAX_CACHE, cfg.head_dim() as _];
 
@@ -253,6 +278,7 @@ impl GPT2 {
             layers,
             ln_post,
             lm_head,
+            embd_dropout,
             kv_cache: Rc::new(RefCell::new(KVCache::new::<f32>(
                 n_layers as _,
                 use_kv_cache,
@@ -313,6 +339,9 @@ mod tests {
             attention_only: false,
             positional_encoding: PositionalEncoding::Learned,
             layernorm_position: LayerNormPosition::Pre,
+            embd_pdrop: 0.1,
+            attn_pdrop: 0.1,
+            resid_pdrop: 0.1,
         };
 
         let varmap = VarMap::new();
@@ -382,6 +411,9 @@ mod tests {
             attention_only: false,
             positional_encoding: PositionalEncoding::Learned,
             layernorm_position: LayerNormPosition::Pre,
+            embd_pdrop: 0.1,
+            attn_pdrop: 0.1,
+            resid_pdrop: 0.1,
         };
 
         let varmap = VarMap::new();
@@ -536,6 +568,9 @@ mod tests {
             attention_only: false,
             positional_encoding: PositionalEncoding::Learned,
             layernorm_position: LayerNormPosition::Pre,
+            embd_pdrop: 0.1,
+            attn_pdrop: 0.1,
+            resid_pdrop: 0.1,
         };
 
         let iter = DatasetRandomIter::new(&dataset, false, config.block_size, device.clone());
@@ -600,6 +635,9 @@ mod tests {
             attention_only: false,
             positional_encoding: PositionalEncoding::Learned,
             layernorm_position: LayerNormPosition::Pre,
+            embd_pdrop: 0.1,
+            attn_pdrop: 0.1,
+            resid_pdrop: 0.1,
         };
 
         let mut model = GPT2::new(&config, vb, false)?;

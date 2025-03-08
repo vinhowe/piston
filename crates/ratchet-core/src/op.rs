@@ -46,6 +46,7 @@ pub enum LazyOp {
     // ---- Everything below this line shouldn't exist ----
     FillConstant(FillConstant),
     FillRandn(FillRandn),
+    Bernoulli(Bernoulli),
     RoPE(RoPE),
     Alibi(Alibi),
     Softmax(Softmax),
@@ -86,6 +87,7 @@ impl LazyOp {
             LazyOp::Trilu(t) => t.name(),
             LazyOp::FillConstant(f) => f.name(),
             LazyOp::FillRandn(f) => f.name(),
+            LazyOp::Bernoulli(b) => b.name(),
             LazyOp::Arange(a) => a.name(),
             LazyOp::RoPE(r) => r.name(),
             LazyOp::Alibi(a) => a.name(),
@@ -126,6 +128,7 @@ impl LazyOp {
             LazyOp::Detach(d) => d.srcs(),
             LazyOp::View(v) => v.srcs(),
             LazyOp::Copy(c) => c.srcs(),
+            LazyOp::Bernoulli(b) => b.srcs(),
             LazyOp::FillConstant(_) | LazyOp::FillRandn(_) | LazyOp::Arange(_) | LazyOp::Const => {
                 rvec![]
             } //end of the line kid
@@ -158,6 +161,7 @@ impl LazyOp {
             LazyOp::Trilu(t) => t.supports_inplace(),
             LazyOp::FillConstant(fc) => fc.supports_inplace(),
             LazyOp::FillRandn(fr) => fr.supports_inplace(),
+            LazyOp::Bernoulli(b) => b.supports_inplace(),
             LazyOp::Arange(a) => a.supports_inplace(),
             LazyOp::Cache(c) => c.supports_inplace(),
             LazyOp::View(_v) => true,
@@ -202,6 +206,7 @@ impl LazyOp {
             LazyOp::Trilu(t) => t.check_invariants(),
             LazyOp::FillConstant(f) => f.check_invariants(),
             LazyOp::FillRandn(f) => f.check_invariants(),
+            LazyOp::Bernoulli(b) => b.check_invariants(),
             LazyOp::Arange(a) => a.check_invariants(),
             LazyOp::Cache(c) => c.check_invariants(),
             LazyOp::View(v) => v.check_invariants(),
@@ -237,6 +242,7 @@ impl LazyOp {
             LazyOp::Trilu(t) => t.ir(),
             LazyOp::FillConstant(f) => f.ir(),
             LazyOp::FillRandn(f) => f.ir(),
+            LazyOp::Bernoulli(b) => b.ir(),
             LazyOp::Arange(a) => a.ir(),
             LazyOp::Cache(c) => c.ir(),
             LazyOp::View(v) => v.ir(),

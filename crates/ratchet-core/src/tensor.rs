@@ -1269,6 +1269,28 @@ impl Tensor {
         Self::rand_impl::<T>(lo, up, shape, device, false)
     }
 
+    #[cfg(feature = "rand")]
+    pub fn bernoulli(self) -> anyhow::Result<Tensor> {
+        let rng = self.device().get_rng();
+        let seed = rng.write().next_u32();
+        let shape = self.shape();
+        let device = self.device().clone();
+
+        let meta = StorageView {
+            shape: shape.clone(),
+            dt: DType::F32,
+            strides: Strides::from(shape),
+        };
+
+        Ok(Self::new_impl(
+            LazyOp::Bernoulli(Bernoulli::new(self, Some(seed))),
+            meta,
+            None,
+            device,
+            false,
+        ))
+    }
+
     pub(crate) fn zeros_impl<T: TensorDType + num_traits::AsPrimitive<f32>>(
         shape: &Shape,
         device: &Device,
@@ -1666,6 +1688,7 @@ impl Tensor {
             LazyOp::Gather(g) => g.create_gpu_compile_key(self, can_inplace, uniform).ok(),
             LazyOp::FillConstant(f) => f.create_gpu_compile_key(self, can_inplace, uniform).ok(),
             LazyOp::FillRandn(f) => f.create_gpu_compile_key(self, can_inplace, uniform).ok(),
+            LazyOp::Bernoulli(b) => b.create_gpu_compile_key(self, can_inplace, uniform).ok(),
             LazyOp::Arange(a) => a.create_gpu_compile_key(self, can_inplace, uniform).ok(),
             LazyOp::Copy(_) | LazyOp::View(_) | LazyOp::Const => None,
         }
@@ -1873,6 +1896,7 @@ pub fn compile_gpu_for_op(
         LazyOp::Gather(g) => g.compile_gpu(gpu_compile_key, gpu_device, debug).ok(),
         LazyOp::FillConstant(f) => f.compile_gpu(gpu_compile_key, gpu_device, debug).ok(),
         LazyOp::FillRandn(f) => f.compile_gpu(gpu_compile_key, gpu_device, debug).ok(),
+        LazyOp::Bernoulli(b) => b.compile_gpu(gpu_compile_key, gpu_device, debug).ok(),
         LazyOp::Arange(a) => a.compile_gpu(gpu_compile_key, gpu_device, debug).ok(),
         LazyOp::View(_) | LazyOp::Const => None,
         LazyOp::Copy(_) => panic!("Copy should not have a gpu_compile_key"),
