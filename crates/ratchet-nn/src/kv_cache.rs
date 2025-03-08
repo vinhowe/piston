@@ -106,7 +106,7 @@ impl KVCache {
             log::debug!("Creating mask for {:?}", t);
             log::debug!("masks: {:?}", self.masks);
             let ones = Tensor::ones::<f32>(&shape![t, t], &self.device);
-            let mask = ones.tril(Some(0))?;
+            let mask = ones.tril(None)?;
             self.masks.insert(t, mask.clone());
             Ok(mask)
         }
