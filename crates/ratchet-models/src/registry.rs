@@ -32,7 +32,6 @@ pub enum PhiVariants {
 #[cfg_attr(target_arch = "wasm32", tsify(from_wasm_abi))]
 pub enum AvailableModels {
     Phi(PhiVariants),
-    Moondream,
 }
 
 impl AvailableModels {
@@ -42,7 +41,6 @@ impl AvailableModels {
                 PhiVariants::Phi2 => "FL33TW00D-HF/phi2",
                 PhiVariants::Phi3 => "FL33TW00D-HF/phi3",
             },
-            AvailableModels::Moondream => "ratchet-community/ratchet-moondream-2",
         };
         id.to_string()
     }
@@ -53,7 +51,6 @@ impl AvailableModels {
                 PhiVariants::Phi2 => "phi2",
                 PhiVariants::Phi3 => "phi3-mini-4k",
             },
-            AvailableModels::Moondream => "moondream",
         };
         match quantization {
             Quantization::Q8_0 => format!("{}_q8_0.gguf", model_stem),

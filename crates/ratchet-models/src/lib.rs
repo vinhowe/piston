@@ -1,6 +1,5 @@
 #![allow(clippy::upper_case_acronyms)]
 pub mod gpt2;
-// pub mod moondream;
 // pub mod phi2;
 // pub mod phi3;
 pub mod registry;
