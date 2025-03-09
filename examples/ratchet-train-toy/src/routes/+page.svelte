@@ -1126,6 +1126,7 @@
 						>
 							<option value="pre">Pre LayerNorm</option>
 							<option value="post">Post LayerNorm</option>
+							<option value="none">No LayerNorm (unstable)</option>
 						</select>
 						<div
 							class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-400"
