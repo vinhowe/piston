@@ -523,7 +523,7 @@ mod tests {
         let batch_iter = Batcher::new_r2(dataset_iter).batch_size(BATCH_SIZE);
 
         for (batch_index, batch) in batch_iter.enumerate() {
-            if batch_index > 10 {
+            if batch_index > 100 {
                 break;
             }
 
