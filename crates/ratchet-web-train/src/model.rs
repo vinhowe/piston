@@ -19,6 +19,7 @@ use ratchet_nn::{
     AdamW, ConstantLR, CosineAnnealingLR, LRScheduler, LRSchedulerCore, LinearLR, Module,
     Optimizer, ParamsAdamW, VarBuilder, VarMap, SGD,
 };
+use ratchet_nn::{ModuleMode, ModuleModeGuard};
 use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
 use std::iter::Iterator;
@@ -454,6 +455,7 @@ impl Trainer {
         target: JsValue,
     ) -> Result<JsValue, JsValue> {
         reset_scope_context();
+        let _train_mode_guard = ModuleModeGuard::new(ModuleMode::Train);
         // Convert input and target from JS arrays to Vec<Vec<i32>>
         let input: Vec<Vec<i32>> =
             serde_wasm_bindgen::from_value(input).map_err(|e| JsValue::from(e.to_string()))?;

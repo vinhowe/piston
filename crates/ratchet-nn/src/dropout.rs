@@ -1,4 +1,4 @@
-use crate::Module;
+use crate::{current_module_mode, Module, ModuleMode};
 use derive_new::new;
 use ratchet::Tensor;
 use ratchet_macros::scoped_module;
@@ -19,7 +19,7 @@ impl Module for Dropout {
     type Output = Tensor;
 
     fn schedule(&self, input: Self::Input) -> anyhow::Result<Self::Output> {
-        if self.p <= 0.0 {
+        if self.p <= 0.0 || current_module_mode() == ModuleMode::Eval {
             return Ok(input);
         }
 

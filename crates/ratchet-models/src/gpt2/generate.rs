@@ -3,7 +3,7 @@ use maybe_async::maybe_async;
 use ndarray::{Array3, Axis, Ix3};
 use ndarray_stats::QuantileExt;
 use ratchet::{shape, Device, Tensor};
-use ratchet_nn::Module;
+use ratchet_nn::{Module, ModuleMode, ModuleModeGuard};
 
 #[maybe_async]
 pub async fn generate(
@@ -16,6 +16,8 @@ pub async fn generate(
     callback: impl Fn(Vec<i32>, Array3<f32>, Vec<f32>),
     max_tokens: usize,
 ) -> anyhow::Result<Vec<Array3<f32>>> {
+    let _eval_mode_guard = ModuleModeGuard::new(ModuleMode::Eval);
+
     // Preserve original cache setting and enable kv-cache for generation.
     let use_kv_cache = model.cache_mut().use_kv_cache();
     model.cache_mut().set_use_kv_cache(true);
