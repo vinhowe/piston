@@ -579,23 +579,6 @@ impl Trainer {
     }
 
     /// Autoregressive generation with an optional streaming callback.
-    ///
-    /// - `prompt` is a JS array of i32 tokens.
-    /// - `max_tokens` is how many tokens to generate.
-    /// - `callback` is optional; if provided, it is invoked once per model call with:
-    ///   `callback(tokens_to_feed, { shape: [...], data: [...] })`
-    /// - If `callback` is not provided (i.e., `null` or `undefined`),
-    ///   we accumulate the final tokens and logits internally, and return them as a single
-    ///   JS object of the form:
-    ///   ```json
-    ///   {
-    ///       "tokens": [...],
-    ///       "logits": {
-    ///           "shape": [1, total_seq_len, vocab_size],
-    ///           "data": [...]
-    ///       }
-    ///   }
-    ///   ```
     #[wasm_bindgen]
     pub async fn generate(
         &mut self,
