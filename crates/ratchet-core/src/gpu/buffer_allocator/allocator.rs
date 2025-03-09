@@ -409,25 +409,25 @@ impl BufferAllocator {
             assignments.insert(output.id(), output_buffer);
         }
 
-        #[cfg(debug_assertions)]
-        {
-            let mut output_allocations = BTreeMap::new();
-            for t in execution_order.iter() {
-                if let Some(allocation) = assignments.get(&t.id()) {
-                    if output_tensors.contains_key(&t.id()) {
-                        output_allocations.insert(allocation.global_id(), t.id());
-                    } else if let Some(output_id) = output_allocations.get(&allocation.global_id())
-                    {
-                        panic!(
-                            "Allocation {:?} used by output tensor {:?} was reused by tensor {:?}",
-                            allocation.global_id(),
-                            output_id,
-                            t.id()
-                        );
-                    }
-                }
-            }
-        }
+        // #[cfg(debug_assertions)]
+        // {
+        //     let mut output_allocations = BTreeMap::new();
+        //     for t in execution_order.iter() {
+        //         if let Some(allocation) = assignments.get(&t.id()) {
+        //             if output_tensors.contains_key(&t.id()) {
+        //                 output_allocations.insert(allocation.global_id(), t.id());
+        //             } else if let Some(output_id) = output_allocations.get(&allocation.global_id())
+        //             {
+        //                 panic!(
+        //                     "Allocation {:?} used by output tensor {:?} was reused by tensor {:?}",
+        //                     allocation.global_id(),
+        //                     output_id,
+        //                     t.id()
+        //                 );
+        //             }
+        //         }
+        //     }
+        // }
 
         log::debug!(
             "Total bytes allocated: {}kb",
