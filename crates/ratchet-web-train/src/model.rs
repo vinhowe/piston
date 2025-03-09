@@ -219,7 +219,7 @@ fn string_to_activation(s: &str) -> Activation {
         "silu" => Activation::Silu,
         "sigmoid" => Activation::Sigmoid,
         "swiglu" => Activation::Swiglu,
-        _ => Activation::Relu2,
+        _ => Activation::Gelu,
     }
 }
 
