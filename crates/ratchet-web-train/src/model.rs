@@ -2,8 +2,7 @@ use anyhow::Result;
 use async_trait::async_trait;
 use js_sys::Function;
 use ratchet::{
-    reset_scope_context, shape, DType, Device, DeviceRequest, GradStore, StepLog, Tensor, TensorId,
-    Var,
+    reset_scope_context, shape, DType, Device, DeviceRequest, GradStore, StepLog, Tensor, Var,
 };
 use ratchet_models::gpt2::generate;
 use ratchet_models::gpt2::{Config, GPT2Input, PositionalEncoding};
