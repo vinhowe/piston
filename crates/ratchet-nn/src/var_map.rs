@@ -69,11 +69,10 @@ impl VarMap {
     }
 
     #[cfg(target_arch = "wasm32")]
-    async fn download_safetensors(
+    async fn create_safetensors_download_url(
         &self,
-        file_name: &str,
         data: Vec<(String, Tensor)>,
-    ) -> anyhow::Result<(), JsValue> {
+    ) -> anyhow::Result<String, JsValue> {
         // Convert (String, Tensor) -> (&String, &Tensor) for serialization
         let data_ref: Vec<(&String, &Tensor)> = data.iter().map(|(k, v)| (k, v)).collect();
 
@@ -88,29 +87,12 @@ impl VarMap {
         // Create a URL for the Blob
         let url = Url::create_object_url_with_blob(&blob)?;
 
-        // Create an anchor element and trigger the download
-        let document = web_sys::window().unwrap().document().unwrap();
-        let a: HtmlAnchorElement = document.create_element("a")?.dyn_into()?;
-        a.set_href(&url);
-        a.set_download(file_name);
-        a.style().set_property("display", "none")?;
-        document.body().unwrap().append_child(&a)?;
-        a.click();
-        document.body().unwrap().remove_child(&a)?;
-
-        // Revoke the object URL to free memory
-        Url::revoke_object_url(&url)?;
-
-        Ok(())
+        Ok(url)
     }
 
     /// Download the gradients as a safetensors file using web APIs.
     #[cfg(target_arch = "wasm32")]
-    pub async fn download_grads(
-        &self,
-        file_name: &str,
-        grads: &GradStore,
-    ) -> anyhow::Result<(), JsValue> {
+    pub async fn grads_download_url(&self, grads: &GradStore) -> anyhow::Result<String, JsValue> {
         let tensor_data = self.data.lock().unwrap();
         let data = Arc::new(Mutex::new(Vec::new()));
         let mut futures = Vec::new();
@@ -135,15 +117,13 @@ impl VarMap {
         let data = Arc::try_unwrap(data).unwrap().into_inner().unwrap();
 
         // Use the shared helper to download the safetensors data
-        self.download_safetensors(file_name, data).await?;
-
-        Ok(())
+        self.create_safetensors_download_url(data).await
     }
 
     /// Download the variables (instead of grads) as a safetensors file using web APIs.
     /// This avoids logic duplication by calling the same `_download_safetensors` helper.
     #[cfg(target_arch = "wasm32")]
-    pub async fn download(&self, file_name: &str) -> anyhow::Result<(), JsValue> {
+    pub async fn download_url(&self) -> anyhow::Result<String, JsValue> {
         let tensor_data = self.data.lock().unwrap();
         let data = Arc::new(Mutex::new(Vec::new()));
         let mut futures = Vec::new();
@@ -168,9 +148,7 @@ impl VarMap {
         let data = Arc::try_unwrap(data).unwrap().into_inner().unwrap();
 
         // Use the shared helper
-        self.download_safetensors(file_name, data).await?;
-
-        Ok(())
+        self.create_safetensors_download_url(data).await
     }
 
     /// Set a named variable to some value.
