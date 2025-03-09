@@ -69,7 +69,7 @@ export const taskMetadata: Record<string, TaskMetadata> = {
 			maskOutPrefix: {
 				name: 'Mask Out Prefix',
 				type: 'boolean',
-				default: false
+				default: true
 			},
 			includeCommas: {
 				name: 'Include Commas',
@@ -91,22 +91,22 @@ export const taskMetadata: Record<string, TaskMetadata> = {
 				name: 'Sequence Length',
 				description: 'Number of items to repeat',
 				type: 'number',
-				min: 2,
+				min: 1,
 				max: 10,
-				default: 2
+				default: 3,
 			},
 			maxNum: {
 				name: 'Max Number',
 				description: 'Maximum value in the sequence',
 				type: 'number',
-				min: 10,
+				min: 5,
 				max: 26,
-				default: 26
+				default: 5
 			},
 			maskOutPrefix: {
 				name: 'Mask Out Prefix',
 				type: 'boolean',
-				default: false
+				default: true,
 			},
 			includeCommas: {
 				name: 'Include Commas',
