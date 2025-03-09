@@ -33,3 +33,6 @@ proptest-regressions/
 
 # samply profile
 profile.json
+
+# webdriver configs
+webdriver.json
