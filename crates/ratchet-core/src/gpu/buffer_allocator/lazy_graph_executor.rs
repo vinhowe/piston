@@ -670,6 +670,7 @@ impl LazyGraphExecutor {
                 hash,
                 is_cached,
                 is_shared_realloc,
+                gpu_device,
             );
             gpu_device.set_last_step_log(step_log);
         }
