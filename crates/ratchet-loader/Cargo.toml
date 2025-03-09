@@ -17,7 +17,7 @@ itertools = { workspace = true }
 env_logger.workspace = true
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
-wasm-bindgen = "0.2.84"
+wasm-bindgen = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 
 [dev-dependencies]
