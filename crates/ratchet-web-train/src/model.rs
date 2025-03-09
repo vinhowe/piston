@@ -139,8 +139,6 @@ pub struct TrainerConfig {
     pub caching_enabled: bool,
     #[serde(default = "default_inplace_support")]
     pub inplace_support: bool,
-    /// A string specifying which dataset to use: "two_sum" (default), "zeros", or "tinystories".
-    pub dataset: String,
     #[serde(default = "default_optimizer_config")]
     pub optimizer: OptimizerConfig,
     #[serde(default = "default_activation")]
@@ -294,9 +292,6 @@ pub struct Trainer {
 
 #[wasm_bindgen]
 impl Trainer {
-    /// Create a new Trainer from a JavaScript configuration object.
-    /// This async constructor initializes the device, model, optimizer,
-    /// and dataset iterator (wrapped in a Batcher) based on the config.
     #[wasm_bindgen(constructor)]
     pub async fn new(config: JsValue) -> Result<Trainer, JsValue> {
         // Deserialize the configuration from JS.
@@ -773,7 +768,6 @@ mod tests {
     //             "n_head": 6,
     //             "block_size": 24,
     //             "batch_size": 1,
-    //             "dataset": "two_sum",
     //             "optimizer": {
     //                 "lr": 1e-3
     //             }
