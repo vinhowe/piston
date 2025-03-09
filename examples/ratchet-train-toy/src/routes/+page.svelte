@@ -580,7 +580,7 @@
 
 								// Convert attention values to grayscale
 								for (let i = 0; i < attentionMap.length; i++) {
-									const value = Math.floor(attentionMap[attentionMap.length - 1 - i] * 255);
+									const value = Math.floor(attentionMap[i] * 255);
 									const idx = i * 4;
 									imageData.data[idx] = value; // R
 									imageData.data[idx + 1] = 0; // G
