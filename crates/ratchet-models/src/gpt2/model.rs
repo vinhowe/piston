@@ -479,6 +479,9 @@ mod tests {
             attention_only: false,
             positional_encoding: PositionalEncoding::Sinusoidal,
             layernorm_position: LayerNormPosition::Pre,
+            embd_pdrop: 0.1,
+            attn_pdrop: 0.1,
+            resid_pdrop: 0.1,
         };
 
         let device = Device::request_device(ratchet::DeviceRequest::GPU).unwrap();
