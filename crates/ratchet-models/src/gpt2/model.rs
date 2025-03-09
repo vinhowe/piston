@@ -1,4 +1,25 @@
-/// This is not a true GPT2 model, in that we probably couldn't load the weights from a GGML file.
+/// GPT2 model, state-dict-compatible with minGPT, except for "bias" buffer, which is easy enough
+/// to add back in:
+///
+/// ```python
+/// from safetensors.torch import load_file
+/// n_layer = 6
+/// state_dict = load_file("our-gpt2.safetensors")
+/// bias_buffer = torch.tril(torch.ones(24, 24)).view(1, 1, 24, 24)
+/// state_dict["lm_head.bias"] = bias_buffer
+/// for i in range(n_layer):
+///     state_dict[f"transformer.h.{i}.attn.bias"] = bias_buffer
+/// ```
+///
+/// You can then load the state_dict into minGPT with:
+///
+/// ```python
+/// from mingpt.model import GPT
+/// config = GPT.get_default_config()
+/// # ... set config appropriately ...
+/// model = GPT(config)
+/// model.load_state_dict(state_dict)
+/// ```
 use std::{cell::RefCell, rc::Rc};
 
 use super::{
@@ -55,9 +76,9 @@ impl Config {
 
 #[derive(Debug)]
 pub struct DecoderLayer {
-    input_norm: LayerNorm,
-    self_attn: GPT2SelfAttention,
-    ffn_norm: LayerNorm,
+    ln_1: LayerNorm,
+    attn: GPT2SelfAttention,
+    ln_2: LayerNorm,
     mlp: MLP,
     attention_only: bool,
     layernorm_position: LayerNormPosition,
@@ -67,16 +88,10 @@ pub struct DecoderLayer {
 impl DecoderLayer {
     #[maybe_async]
     async fn new(cfg: &Config, vb: VarBuilder<'_>) -> anyhow::Result<Self> {
-        let self_attn = GPT2SelfAttention::new(cfg, vb.pp("self_attn")).await?;
+        let attn = GPT2SelfAttention::new(cfg, vb.pp("attn")).await?;
 
-        let input_norm =
-            layer_norm(cfg.n_embd, Default::default(), vb.pp("input_layernorm")).await?;
-        let ffn_norm = layer_norm(
-            cfg.n_embd,
-            Default::default(),
-            vb.pp("post_attention_layernorm"),
-        )
-        .await?;
+        let ln_1 = layer_norm(cfg.n_embd, Default::default(), vb.pp("ln_1")).await?;
+        let ln_2 = layer_norm(cfg.n_embd, Default::default(), vb.pp("ln_2")).await?;
 
         let mlp = MLP::new(cfg, vb.pp("mlp")).await?;
         let dropout = if cfg.resid_pdrop > 0.0 {
@@ -86,10 +101,10 @@ impl DecoderLayer {
         };
 
         Ok(Self {
-            self_attn,
+            attn,
             mlp,
-            input_norm,
-            ffn_norm,
+            ln_1,
+            ln_2,
             attention_only: cfg.attention_only,
             layernorm_position: cfg.layernorm_position.clone(),
             dropout,
@@ -120,10 +135,10 @@ impl Module for DecoderLayer {
 
         let residual = x.clone();
         let x = match self.layernorm_position {
-            LayerNormPosition::Pre => self.input_norm.schedule(x)?,
+            LayerNormPosition::Pre => self.ln_1.schedule(x)?,
             LayerNormPosition::Post | LayerNormPosition::None => x,
         };
-        let (attn_output, attn_masks) = self.self_attn.schedule(GPT2AttnInput {
+        let (attn_output, attn_masks) = self.attn.schedule(GPT2AttnInput {
             input: x,
             index_pos,
             block_idx,
@@ -131,7 +146,7 @@ impl Module for DecoderLayer {
         })?;
         let x = residual.add(attn_output)?;
         let x = match self.layernorm_position {
-            LayerNormPosition::Post => self.input_norm.schedule(x)?,
+            LayerNormPosition::Post => self.ln_1.schedule(x)?,
             LayerNormPosition::Pre | LayerNormPosition::None => x,
         };
 
@@ -139,7 +154,7 @@ impl Module for DecoderLayer {
         if !self.attention_only {
             let residual = x.clone();
             let x = match self.layernorm_position {
-                LayerNormPosition::Pre => self.ffn_norm.schedule(x)?,
+                LayerNormPosition::Pre => self.ln_2.schedule(x)?,
                 LayerNormPosition::Post | LayerNormPosition::None => x,
             };
             let x = self.mlp.schedule(x)?;
@@ -149,7 +164,7 @@ impl Module for DecoderLayer {
             };
             let x = residual.add(x)?;
             let x = match self.layernorm_position {
-                LayerNormPosition::Post => self.ffn_norm.schedule(x)?,
+                LayerNormPosition::Post => self.ln_2.schedule(x)?,
                 LayerNormPosition::Pre | LayerNormPosition::None => x,
             };
             Ok((x, attn_masks))
@@ -165,7 +180,7 @@ pub struct GPT2 {
     pub wpe: Option<Embedding>,
     pub sinusoidal: Option<SinusoidalEmbedding>,
     pub layers: Vec<DecoderLayer>,
-    pub ln_post: LayerNorm,
+    pub ln_f: LayerNorm,
     pub lm_head: Linear,
     pub embd_dropout: Option<Dropout>,
     pub kv_cache: Rc<RefCell<KVCache>>,
@@ -224,7 +239,7 @@ impl Module for GPT2 {
         }
 
         let attn_masks = Tensor::stack(attn_masks.into(), 0)?;
-        x = self.ln_post.schedule(x)?;
+        x = self.ln_f.schedule(x)?;
         let logits = self.lm_head.schedule(x)?;
         Ok((logits, attn_masks))
     }
@@ -235,7 +250,7 @@ impl GPT2 {
     const MAX_CACHE: usize = 4096;
 
     pub async fn new(cfg: &Config, vb: VarBuilder<'_>, use_kv_cache: bool) -> anyhow::Result<Self> {
-        let vb_m = vb.pp("model");
+        let vb_m = vb.pp("transformer");
         let wte = embedding(cfg.vocab_size, cfg.n_embd, vb_m.pp("wte")).await?;
 
         // Initialize positional encoding based on the type
@@ -255,13 +270,13 @@ impl GPT2 {
         let n_layers = cfg.n_layer as _;
 
         let mut layers = Vec::with_capacity(n_layers);
-        let vb_l = vb_m.pp("layers");
+        let vb_l = vb_m.pp("h");
         for layer_idx in 0..n_layers {
             let layer = DecoderLayer::new(cfg, vb_l.pp(layer_idx)).await?;
             layers.push(layer)
         }
 
-        let ln_post = layer_norm(cfg.n_embd, Default::default(), vb_m.pp("norm")).await?;
+        let ln_f = layer_norm(cfg.n_embd, Default::default(), vb_m.pp("ln_f")).await?;
         let lm_head = linear_no_bias_gpt2(cfg.n_embd, cfg.vocab_size, vb.pp("lm_head")).await?;
         let embd_dropout = if cfg.embd_pdrop > 0.0 {
             Some(Dropout::new(cfg.embd_pdrop))
@@ -276,7 +291,7 @@ impl GPT2 {
             wpe,
             sinusoidal,
             layers,
-            ln_post,
+            ln_f,
             lm_head,
             embd_dropout,
             kv_cache: Rc::new(RefCell::new(KVCache::new::<f32>(
@@ -300,7 +315,7 @@ impl GPT2 {
 
 #[cfg(all(test, not(target_arch = "wasm32"), feature = "pyo3"))]
 mod tests {
-    use ratchet::{prelude::shape, DType, Device, DeviceRequest, Tensor, Var};
+    use ratchet::{prelude::shape, DType, Device, DeviceRequest, StepLogConfig, Tensor, Var};
     use ratchet_datasets::{
         nlp::{
             tinystories::{Dataset, DatasetRandomIter},
