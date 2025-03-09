@@ -1,12 +1,12 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import TrainWorker from '../trainWorker.ts?worker';
 	import { Chart, type ChartItem } from 'chart.js/auto';
 	import Slider from '$lib/components/Slider.svelte';
 	import LogSlider from '$lib/components/LogSlider.svelte';
 	import TickSlider from '$lib/components/TickSlider.svelte';
 	import ActivationPicker from '$lib/components/ActivationPicker.svelte';
-	import { taskMetadata } from '../tasks';
+	import { taskMetadata } from '$lib/tasks';
+	import TrainWorker from '$lib/trainWorker.ts?worker';
 
 	let loss = 0;
 	let evalAccuracy = 0;
