@@ -499,7 +499,6 @@ impl Trainer {
             .await
             .map_err(|e| e.to_string())?;
 
-        log::debug!("Done training step");
 
         // Transfer the loss to CPU and extract its scalar value.
         let loss_cpu = loss.to(&Device::CPU).await.map_err(|e| e.to_string())?;
