@@ -5,12 +5,6 @@ use ratchet::{
     reset_scope_context, shape, DType, Device, DeviceRequest, GradStore, StepLog, Tensor, TensorId,
     Var,
 };
-use ratchet_datasets::{
-    nlp::tinystories::{
-        Dataset as TinyStoriesDataset, DatasetRandomIter as TinyStoriesDatasetRandomIter,
-    },
-    Batcher,
-};
 use ratchet_models::gpt2::generate;
 use ratchet_models::gpt2::{Config, GPT2Input, PositionalEncoding};
 use ratchet_models::gpt2::{LayerNormPosition, GPT2};
