@@ -21,6 +21,9 @@ export interface TrainerConfig {
 	seed?: number;
 	layernorm_position: string;
 	label_smoothing: number;
+	caching_enabled: boolean;
+	inplace_support: boolean;
+	debug_selection: string;
 	optimizer: {
 		optimizer_type: string;
 		lr: number;
@@ -94,6 +97,9 @@ async function trainingLoop(
 
 			// Train on the batch
 			const result = await trainer.train_on_batch(input, target);
+
+			const logOutput = await trainer.take_step_log();
+			const usingCache = logOutput?.cached ?? false;
 			const logits = result.get('logits') as Map<string, Uint8Array | number[]>;
 			const loss = result.get('loss') as Map<string, number>;
 			const attn_masks = result.get('attn_masks') as Map<string, Uint8Array | number[]>;
@@ -171,6 +177,7 @@ async function trainingLoop(
 			if (sessionId === currentSession) {
 				self.postMessage({
 					type: 'step',
+					usingCache,
 					input: input.map((x) => x.map((t) => tokenizer.ids[t])),
 					target: target.map((t) => t.map((t) => tokenizer.ids[t])),
 					accuracy: winCount === null ? null : winCount / EVAL_TRIAL_COUNT,
