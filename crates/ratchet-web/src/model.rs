@@ -3,7 +3,6 @@ use futures::stream::TryStreamExt;
 use futures::StreamExt;
 use ratchet_hub::{Api, ApiBuilder, RepoType};
 use ratchet_loader::gguf::gguf::{self, Header, TensorInfo};
-use ratchet_models::moondream::{self, Moondream};
 use ratchet_models::phi2;
 use ratchet_models::phi2::Phi2;
 use ratchet_models::phi3::{self, Phi3};
@@ -16,7 +15,6 @@ use wasm_bindgen::prelude::*;
 pub enum WebModel {
     Phi2(Phi2),
     Phi3(Phi3),
-    Moondream(Moondream),
 }
 
 impl WebModel {
@@ -54,26 +52,6 @@ impl WebModel {
                     .unwrap();
                 Ok(JsValue::NULL)
             }
-            WebModel::Moondream(model) => {
-                let input: MoondreamInputs = serde_wasm_bindgen::from_value(input)?;
-                let rs_callback = |output: String| {
-                    let _ = input.callback.call1(&JsValue::NULL, &output.into());
-                };
-                let model_repo =
-                    ApiBuilder::from_hf("tgestson/ratchet-moondream2", RepoType::Model).build();
-                let model_bytes = model_repo.get("tokenizer.json").await?;
-                let tokenizer = Tokenizer::from_bytes(model_bytes.to_vec()).unwrap();
-                moondream::generate(
-                    model,
-                    input.image_bytes,
-                    input.question,
-                    tokenizer,
-                    rs_callback,
-                )
-                .await
-                .unwrap();
-                Ok(JsValue::NULL)
-            }
         }
     }
 
@@ -93,10 +71,6 @@ impl WebModel {
                     Ok(WebModel::Phi3(model))
                 }
             },
-            AvailableModels::Moondream => {
-                let model = Moondream::from_web(header, tensor_map).await?;
-                Ok(WebModel::Moondream(model))
-            }
             _ => Err(anyhow::anyhow!("Unknown model type")),
         }
     }
@@ -105,14 +79,6 @@ impl WebModel {
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct PhiInputs {
     pub prompt: String,
-    #[serde(with = "serde_wasm_bindgen::preserve")]
-    pub callback: js_sys::Function,
-}
-
-#[derive(serde::Serialize, serde::Deserialize)]
-pub struct MoondreamInputs {
-    pub question: String,
-    pub image_bytes: Vec<u8>,
     #[serde(with = "serde_wasm_bindgen::preserve")]
     pub callback: js_sys::Function,
 }
