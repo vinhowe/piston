@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
 use crate::{
-    wgpu_buffer_to_cpu_buffer, CPUBuffer, DType, ExportedTensorProfilingEntry, HashMap, Shape,
-    Tensor, TensorId,
+    wgpu_buffer_to_cpu_buffer, DType, ExportedTensorProfilingEntry, HashMap, Shape, Tensor,
+    TensorId,
 };
 use derive_new::new;
 #[cfg(target_arch = "wasm32")]
