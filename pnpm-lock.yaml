@@ -26,9 +26,9 @@ importers:
       '@ffmpeg/util':
         specifier: ^0.12.1
         version: 0.12.1
-      '@ratchet-ml/ratchet-web-train':
-        specifier: link:../../target/pkg/ratchet-web-train
-        version: link:../../target/pkg/ratchet-web-train
+      '@ratchet-ml/ratchet-web':
+        specifier: link:../../target/pkg/ratchet-web
+        version: link:../../target/pkg/ratchet-web
       fix-webm-duration:
         specifier: ^1.0.5
         version: 1.0.5
