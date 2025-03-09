@@ -117,10 +117,6 @@ fn default_debug_selection() -> Option<JsDebugSelection> {
     None
 }
 
-// -------------------------------------------------------------------
-// Trainer configuration that is deserializable from JavaScript.
-// Note the additional fields for batch size and dataset selection.
-// -------------------------------------------------------------------
 #[derive(Serialize, Deserialize)]
 pub struct TrainerConfig {
     pub vocab_size: usize,
@@ -223,18 +219,16 @@ fn string_to_activation(s: &str) -> Activation {
         "silu" => Activation::Silu,
         "sigmoid" => Activation::Sigmoid,
         "swiglu" => Activation::Swiglu,
-        _ => Activation::Relu2, // Default to Relu2 for unrecognized values
+        _ => Activation::Relu2,
     }
 }
 
-/// An enum for optimizer configurations
 #[derive(Debug, Clone)]
 pub enum OptimizerConfigEnum {
     AdamW(ParamsAdamW),
     SGD(f64),
 }
 
-/// An enum that wraps the concrete optimizer types
 pub enum OptimizerEnum {
     AdamW(AdamW),
     SGD(SGD),
@@ -273,9 +267,6 @@ impl Optimizer for OptimizerEnum {
     }
 }
 
-// -------------------------------------------------------------------
-// The Trainer manages the model, optimizer, device, and dataset batcher.
-// -------------------------------------------------------------------
 #[wasm_bindgen]
 pub struct Trainer {
     model: GPT2,
@@ -289,25 +280,21 @@ pub struct Trainer {
 impl Trainer {
     #[wasm_bindgen(constructor)]
     pub async fn new(config: JsValue) -> Result<Trainer, JsValue> {
-        // Deserialize the configuration from JS.
         let cfg: TrainerConfig =
             serde_wasm_bindgen::from_value(config).map_err(|e| JsValue::from(e.to_string()))?;
 
-        // Request a GPU device.
         let device = Device::request_device(DeviceRequest::GPU)
             .await
             .map_err(|e| e.to_string())?;
 
-        // Set the seed if provided
+        // Set seed on device if provided
         if let Some(seed) = cfg.seed {
             device.set_seed(seed);
         }
 
-        // Set up the variable map and variable builder for model initialization.
         let varmap = VarMap::new();
         let vb = VarBuilder::from_varmap(&varmap, DType::F32, &device);
 
-        // Create the GPT2 model configuration.
         let gpt2_config = Config {
             vocab_size: cfg.vocab_size,
             hidden_act: string_to_activation(&cfg.activation),
@@ -343,12 +330,10 @@ impl Trainer {
             .unwrap()
             .set_inplace_support(cfg.inplace_support);
 
-        // Initialize the GPT2 model.
         let model = GPT2::new(&gpt2_config, vb, false)
             .await
             .map_err(|e| e.to_string())?;
 
-        // Set up the optimizer based on the configuration
         let vars = varmap
             .all_labeled_vars()
             .iter()
@@ -379,8 +364,8 @@ impl Trainer {
                 )),
                 "linear" => Box::new(LinearLR::new(
                     base_optimizer,
-                    1.0,                            // start_factor
-                    cfg.optimizer.scheduler_factor, // end_factor
+                    1.0,
+                    cfg.optimizer.scheduler_factor,
                     cfg.optimizer.scheduler_steps,
                 )),
                 "cosine" => Box::new(CosineAnnealingLR::new(
@@ -388,7 +373,7 @@ impl Trainer {
                     cfg.optimizer.scheduler_steps,
                     cfg.optimizer.scheduler_eta_min,
                 )),
-                _ => Box::new(NoopScheduler::new(base_optimizer)), // Default to no scheduler
+                _ => Box::new(NoopScheduler::new(base_optimizer)),
             };
 
         Ok(Trainer {
@@ -404,14 +389,10 @@ impl Trainer {
         let batch_size = input.len();
         let seq_len = input[0].len();
 
-        // Flatten the vectors and create tensors
         let input_flat: Vec<i32> = input.into_iter().flatten().collect();
-
-        // Create tensors and move to device
         let input_tensor =
             Tensor::from_data(input_flat, shape![batch_size, seq_len], self.device.clone());
 
-        // Forward pass: compute logits from the model.
         let (logits, attn_masks) = self.model.schedule(GPT2Input {
             x: input_tensor,
             index_pos: 0,
@@ -425,13 +406,14 @@ impl Trainer {
         let input: Vec<Vec<i32>> =
             serde_wasm_bindgen::from_value(input).map_err(|e| JsValue::from(e.to_string()))?;
         let (logits, _) = self.forward(input).await.map_err(|e| e.to_string())?;
-        // Add logits to the result:
+
         let logits_cpu = logits.to(&Device::CPU).await.map_err(|e| e.to_string())?;
         let logits_shape = logits_cpu.shape().to_vec();
         let logits_data = logits_cpu
             .to_vec::<f32>()
             .await
             .map_err(|e| e.to_string())?;
+
         Ok(
             serde_wasm_bindgen::to_value(&(logits_data, logits_shape))
                 .map_err(|e| e.to_string())?,
@@ -453,7 +435,6 @@ impl Trainer {
         let target: Vec<Vec<i32>> =
             serde_wasm_bindgen::from_value(target).map_err(|e| JsValue::from(e.to_string()))?;
 
-        // Validate batch dimensions
         if input.is_empty() || target.is_empty() {
             return Err("Empty batch provided".into());
         };
@@ -488,9 +469,9 @@ impl Trainer {
             nll_masked(inp, target_flat).map_err(|e| e.to_string())?
         };
 
+        // We sum the loss outside of x entropy because we want to see per-token loss
         let loss_summed = loss.clone().sum_all().map_err(|e| e.to_string())?;
 
-        // Backpropagate to compute gradients.
         let grads = loss_summed.backward().map_err(|e| e.to_string())?;
 
         // Run an optimizer step (updating model parameters).
@@ -499,8 +480,7 @@ impl Trainer {
             .await
             .map_err(|e| e.to_string())?;
 
-
-        // Transfer the loss to CPU and extract its scalar value.
+        // Transfer tensors to CPU
         let loss_cpu = loss.to(&Device::CPU).await.map_err(|e| e.to_string())?;
         let loss_vec = loss_cpu.to_vec::<f32>().await.map_err(|e| e.to_string())?;
 
@@ -523,7 +503,6 @@ impl Trainer {
             .await
             .map_err(|e| e.to_string())?;
 
-        // Build a JS-friendly JSON with loss, LR, attn masks, and logits
         let result = serde_json::json!({
             "loss": {
                 "tokens": loss_vec,
@@ -584,7 +563,6 @@ impl Trainer {
         self.device.try_gpu().unwrap().take_step_log()
     }
 
-    /// Autoregressive generation with an optional streaming callback.
     #[wasm_bindgen]
     pub async fn generate(
         &mut self,
@@ -676,7 +654,6 @@ impl Trainer {
             .await
             .map_err(|e| JsValue::from(e.to_string()))?;
 
-            // Build a JSON object with final tokens and final logits
             let result = serde_json::json!({
                 "tokens": final_tokens.borrow()[prompt_len..].to_vec(),
                 "logits": {
@@ -685,7 +662,6 @@ impl Trainer {
                 },
             });
 
-            // Convert to JsValue
             Ok(serde_wasm_bindgen::to_value(&result).map_err(|e| e.to_string())?)
         }
     }
