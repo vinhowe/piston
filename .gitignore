@@ -30,3 +30,6 @@ venv/
 
 # proptest regression tests
 proptest-regressions/
+
+# samply profile
+profile.json
