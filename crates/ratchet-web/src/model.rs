@@ -8,14 +8,12 @@ use ratchet_models::phi2;
 use ratchet_models::phi2::Phi2;
 use ratchet_models::phi3::{self, Phi3};
 use ratchet_models::registry::{AvailableModels, PhiVariants, Quantization};
-use ratchet_models::whisper::{transcribe::transcribe, transcript::StreamedSegment, Whisper};
 use ratchet_models::TensorMap;
 use tokenizers::Tokenizer;
 use wasm_bindgen::prelude::*;
 
 #[derive(Debug)]
 pub enum WebModel {
-    Whisper(Whisper),
     Phi2(Phi2),
     Phi3(Phi3),
     Moondream(Moondream),
@@ -24,25 +22,6 @@ pub enum WebModel {
 impl WebModel {
     pub async fn run(&mut self, input: JsValue) -> Result<JsValue, JsValue> {
         match self {
-            WebModel::Whisper(model) => {
-                let input: WhisperInputs = serde_wasm_bindgen::from_value(input)?;
-                let options = serde_wasm_bindgen::from_value(input.decode_options)?;
-
-                let callback = if !input.callback.is_null() {
-                    let rs_callback = |decoded: StreamedSegment| {
-                        let js_decoded = serde_wasm_bindgen::to_value(&decoded).unwrap();
-                        let _ = input.callback.call1(&JsValue::NULL, &js_decoded);
-                    };
-                    Some(rs_callback)
-                } else {
-                    None
-                };
-
-                let result = transcribe(model, input.audio, options, callback)
-                    .await
-                    .unwrap();
-                serde_wasm_bindgen::to_value(&result).map_err(|e| e.into())
-            }
             WebModel::Phi2(model) => {
                 let input: PhiInputs = serde_wasm_bindgen::from_value(input)?;
                 let rs_callback = |output: String| {
@@ -104,10 +83,6 @@ impl WebModel {
     ) -> Result<WebModel, anyhow::Error> {
         let header = serde_wasm_bindgen::from_value::<Header>(model_record.header).unwrap();
         match model_record.model {
-            AvailableModels::Whisper(variant) => {
-                let model = Whisper::from_web(header, tensor_map, variant).await?;
-                Ok(WebModel::Whisper(model))
-            }
             AvailableModels::Phi(variant) => match variant {
                 PhiVariants::Phi2 => {
                     let model = Phi2::from_web(header, tensor_map).await?;
@@ -125,15 +100,6 @@ impl WebModel {
             _ => Err(anyhow::anyhow!("Unknown model type")),
         }
     }
-}
-
-#[derive(serde::Serialize, serde::Deserialize)]
-pub struct WhisperInputs {
-    pub audio: Vec<f32>,
-    #[serde(with = "serde_wasm_bindgen::preserve")]
-    pub decode_options: JsValue,
-    #[serde(with = "serde_wasm_bindgen::preserve")]
-    pub callback: js_sys::Function,
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -283,126 +249,6 @@ impl Model {
             .collect::<()>()
             .await;
 
-        Ok(())
-    }
-}
-
-#[cfg(all(test, target_arch = "wasm32"))]
-mod tests {
-    use super::*;
-    use ratchet_hub::{ApiBuilder, RepoType};
-    use ratchet_models::registry::PhiVariants;
-    use ratchet_models::registry::WhisperVariants;
-    use ratchet_models::whisper::options::DecodingOptionsBuilder;
-    use tokenizers::Tokenizer;
-    use wasm_bindgen_test::*;
-
-    wasm_bindgen_test::wasm_bindgen_test_configure!(run_in_browser);
-
-    fn log_init() {
-        console_error_panic_hook::set_once();
-        let logger = fern::Dispatch::new()
-            .format(|out, message, record| {
-                out.finish(format_args!(
-                    "{}[{}][{}] {}",
-                    chrono::Local::now().format("[%Y-%m-%d][%H:%M:%S]"),
-                    record.target(),
-                    record.level(),
-                    message
-                ))
-            })
-            .level_for("tokenizers", log::LevelFilter::Off)
-            .level(log::LevelFilter::Warn)
-            .chain(fern::Output::call(console_log::log))
-            .apply();
-        match logger {
-            Ok(_) => log::info!("Logging initialized."),
-            Err(error) => eprintln!("Error initializing logging: {:?}", error),
-        }
-    }
-
-    fn load_sample(bytes: &[u8]) -> Vec<f32> {
-        let mut reader = hound::WavReader::new(std::io::Cursor::new(bytes)).unwrap();
-        reader
-            .samples::<i16>()
-            .map(|x| x.unwrap() as f32 / 32768.0)
-            .collect::<Vec<_>>()
-    }
-
-    #[wasm_bindgen_test]
-    async fn whisper_browser() -> Result<(), JsValue> {
-        log_init();
-        let download_cb: Closure<dyn Fn(f64)> = Closure::new(|p| {
-            log::info!("Provided closure got progress: {}", p);
-        });
-        let js_cb: &js_sys::Function = download_cb.as_ref().unchecked_ref();
-
-        let mut model = Model::load(
-            AvailableModels::Whisper(WhisperVariants::Base),
-            Quantization::F16,
-            js_cb,
-        )
-        .await
-        .unwrap();
-
-        let data_repo = ApiBuilder::from_hf("FL33TW00D-HF/ratchet-util", RepoType::Dataset).build();
-        let audio_bytes = data_repo.get("mm0.wav").await?;
-        let sample = load_sample(&audio_bytes.to_vec());
-
-        let decode_options = DecodingOptionsBuilder::default().build();
-
-        let cb: Closure<dyn Fn(JsValue)> = Closure::new(|s| {
-            log::info!("GENERATED SEGMENT: {:?}", s);
-        });
-        let js_cb: &js_sys::Function = cb.as_ref().unchecked_ref();
-
-        let input = WhisperInputs {
-            audio: sample,
-            decode_options,
-            callback: js_cb.clone(),
-        };
-        let input = serde_wasm_bindgen::to_value(&input).unwrap();
-        let result = model.run(input).await.unwrap();
-        log::warn!("Result: {:?}", result);
-        Ok(())
-    }
-
-    #[wasm_bindgen_test]
-    async fn whisper_browser_custom() -> Result<(), JsValue> {
-        log_init();
-        let download_cb: Closure<dyn Fn(f64)> = Closure::new(|p| {
-            log::info!("Provided closure got progress: {}", p);
-        });
-        let js_cb: &js_sys::Function = download_cb.as_ref().unchecked_ref();
-
-        let mut model = Model::load_custom(
-            "https://huggingface.co/FL33TW00D-HF/whisper-base/resolve/main".to_string(),
-            AvailableModels::Whisper(WhisperVariants::Base),
-            Quantization::F16,
-            js_cb,
-        )
-        .await
-        .unwrap();
-
-        let data_repo = ApiBuilder::from_hf("FL33TW00D-HF/ratchet-util", RepoType::Dataset).build();
-        let audio_bytes = data_repo.get("mm0.wav").await?;
-        let sample = load_sample(&audio_bytes.to_vec());
-
-        let decode_options = DecodingOptionsBuilder::default().build();
-
-        let cb: Closure<dyn Fn(JsValue)> = Closure::new(|s| {
-            log::info!("GENERATED SEGMENT: {:?}", s);
-        });
-        let js_cb: &js_sys::Function = cb.as_ref().unchecked_ref();
-
-        let input = WhisperInputs {
-            audio: sample,
-            decode_options,
-            callback: js_cb.clone(),
-        };
-        let input = serde_wasm_bindgen::to_value(&input).unwrap();
-        let result = model.run(input).await.unwrap();
-        log::warn!("Result: {:?}", result);
         Ok(())
     }
 }

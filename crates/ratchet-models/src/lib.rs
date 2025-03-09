@@ -5,7 +5,6 @@ pub mod gpt2;
 // pub mod phi3;
 pub mod registry;
 mod token_stream;
-// pub mod whisper;
 pub use token_stream::TokenOutputStream;
 
 #[cfg(target_arch = "wasm32")]
