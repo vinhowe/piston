@@ -257,6 +257,66 @@ impl Executable {
             None
         };
 
+        // let cpu_bufs = if let Some(debug_list) = &self.debug_list {
+        //     let cpu_bufs = Arc::new(RwLock::new(HashMap::with_capacity_and_hasher(
+        //         debug_list.len(),
+        //         Default::default(),
+        //     )));
+
+        //     #[cfg(target_arch = "wasm32")]
+        //     let mut buf_futures = vec![];
+
+        //     // Dump all of our debug results
+        //     for step in debug_steps.iter() {
+        //         let d = device.clone();
+        //         let dt = debug_list
+        //             .get(&step.tensor_id.expect("Tensor id is not set"))
+        //             .expect("Tensor not found in debug list")
+        //             .dt();
+        //         let tensor_id = step.tensor_id.expect("Tensor id is not set");
+        //         let debug_buffer = step.debug_buffer.clone().expect("Debug buffer is not set");
+        //         let alignment = dt.size_of();
+
+        //         #[maybe_async]
+        //         async fn buffer_fn(
+        //             d: WgpuDevice,
+        //             debug_buffer: Arc<wgpu::Buffer>,
+        //             alignment: usize,
+        //         ) -> CPUBuffer {
+        //             wgpu_buffer_to_cpu_buffer(debug_buffer.as_ref(), alignment, None, &d).await
+        //         }
+
+        //         #[cfg(target_arch = "wasm32")]
+        //         {
+        //             let cpu_bufs = cpu_bufs.clone();
+        //             let future = async move {
+        //                 let cpu_buf = buffer_fn(d, debug_buffer, alignment).await;
+        //                 cpu_bufs.write().insert(tensor_id, cpu_buf);
+        //             };
+        //             buf_futures.push(future);
+        //         }
+
+        //         #[cfg(not(target_arch = "wasm32"))]
+        //         {
+        //             let cpu_buf = buffer_fn(d, debug_buffer, alignment);
+        //             cpu_bufs.write().insert(tensor_id, cpu_buf);
+        //         }
+        //     }
+
+        //     #[cfg(target_arch = "wasm32")]
+        //     {
+        //         futures::future::join_all(buf_futures).await;
+        //     }
+
+        //     log::debug!("Created {} debug cpu buffers", cpu_bufs.read().len());
+
+        //     Some(Arc::try_unwrap(cpu_bufs).unwrap().into_inner())
+        // } else {
+        //     None
+        // };
+
+        // log::error!("GPU bufs: {:?}", gpu_bufs.as_ref().map(|m| m.len()));
+
         Ok((
             index,
             ExecutionResult {
