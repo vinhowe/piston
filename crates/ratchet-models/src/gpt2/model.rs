@@ -477,7 +477,7 @@ mod tests {
             n_head: 4,
             block_size: SEQUENCE_LENGTH,
             attention_only: false,
-            positional_encoding: PositionalEncoding::Sinusoidal,
+            positional_encoding: PositionalEncoding::Learned,
             layernorm_position: LayerNormPosition::Pre,
             embd_pdrop: 0.1,
             attn_pdrop: 0.1,
@@ -485,6 +485,15 @@ mod tests {
         };
 
         let device = Device::request_device(ratchet::DeviceRequest::GPU).unwrap();
+
+        // If you want to enable profiling:
+        // device
+        //     .try_gpu()
+        //     .unwrap()
+        //     .set_step_log_config(StepLogConfig {
+        //         profiling: true,
+        //         ..Default::default()
+        //     });
 
         let varmap = VarMap::new();
         let vb = VarBuilder::from_varmap(&varmap, DType::F32, &device.clone());
@@ -538,16 +547,17 @@ mod tests {
 
         model.reset();
 
-        generate(
-            &mut model,
-            "12,35,07,99,03:134=".chars().map(|c| c as i32).collect(),
-            |s, _logits| {
-                println!("{}", s.iter().map(|&c| c as u8 as char).collect::<String>());
-                // println!("{:?}", logits);
-            },
-            24,
-        )
-        .unwrap();
+        // Uncomment this to generate a sequence from the model:
+        // generate(
+        //     &mut model,
+        //     "12,35,07,99,03:134=".chars().map(|c| c as i32).collect(),
+        //     |s, _logits| {
+        //         println!("{}", s.iter().map(|&c| c as u8 as char).collect::<String>());
+        //         // println!("{:?}", logits);
+        //     },
+        //     24,
+        // )
+        // .unwrap();
 
         Ok(())
     }
@@ -660,16 +670,17 @@ mod tests {
 
         let mut model = GPT2::new(&config, vb, false)?;
 
-        generate(
-            &mut model,
-            "Hello, world".chars().map(|c| c as i32).collect(),
-            |s, logits| {
-                println!("{:?}", s);
-                println!("{:?}", logits);
-            },
-            24,
-        )
-        .unwrap();
+        // Uncomment this to generate a uninitialized sequence from the model:
+        // generate(
+        //     &mut model,
+        //     "Hello, world".chars().map(|c| c as i32).collect(),
+        //     |s, logits| {
+        //         println!("{:?}", s);
+        //         println!("{:?}", logits);
+        //     },
+        //     24,
+        // )
+        // .unwrap();
 
         Ok(())
     }
