@@ -9,7 +9,7 @@ use crate::{Tensor, TensorId};
 use maybe_async::maybe_async;
 use parking_lot::RwLock;
 use std::collections::BTreeMap;
-use std::hash::{BuildHasherDefault, Hasher};
+use std::hash::Hasher;
 use std::sync::{Arc, Weak};
 
 enum EmitStatus {
