@@ -747,4 +747,86 @@ mod tests {
     //     // log::error!("config_js: {:?}", config_js);
     //     Ok(())
     // }
+
+    #[wasm_bindgen_test]
+    async fn adamw_linear_regression() -> anyhow::Result<()> {
+        log_init();
+        let device = Device::request_device(ratchet::DeviceRequest::GPU)
+            .await
+            .unwrap();
+
+        let wgpu_device = device.try_gpu().unwrap();
+        let w_gen = Tensor::from_data(vec![3f32, 1.], shape![1, 2], Device::CPU)
+            .to(&device)
+            .await
+            .unwrap();
+        let b_gen = Tensor::from_data(vec![-2f32], shape![1, 1], Device::CPU)
+            .to(&device)
+            .await
+            .unwrap();
+
+        let gen = Linear::new(w_gen, Some(b_gen));
+        let sample_xs = Tensor::from_data(
+            vec![2f32, 1., 7., 4., -4., 12., 5., 8.],
+            shape![4, 2],
+            Device::CPU,
+        );
+        let sample_xs = sample_xs.to(&device).await.unwrap();
+        let sample_ys = gen.schedule(sample_xs.clone())?;
+
+        // Now use backprop to run a linear regression between samples and get the coefficients back.
+        let w = Var::from_tensor(
+            &Tensor::from_data(vec![0f32, 0.], shape![1, 2], Device::CPU)
+                .to(&device)
+                .await
+                .unwrap(),
+        )?;
+        // let b = Var::from_data(vec![0f32], shape![1], Device::CPU);
+        let b = Var::from_tensor(
+            &Tensor::from_data(vec![0f32], shape![1, 1], Device::CPU)
+                .to(&device)
+                .await
+                .unwrap(),
+        )?;
+        let params = ParamsAdamW {
+            lr: 0.1,
+            ..Default::default()
+        };
+        let mut opt = AdamW::new(
+            vec![
+                (Some(String::from("b")), b.clone()),
+                (Some(String::from("w")), w.clone()),
+            ],
+            params,
+        )?;
+        let lin = Linear::new(w.as_tensor().clone(), Some(b.as_tensor().clone()));
+        for _step in 0..100 {
+            let ys = lin.schedule(sample_xs.clone())?;
+            let loss = ys.sub(sample_ys.clone())?.square()?.sum(&[0])?;
+            // ratchet::plot::render_to_file(&loss, "forward-pre-schedule.svg").unwrap();
+            let mut grads = loss.backward()?;
+            // ratchet::plot::render_to_file(&loss, "forward-post-schedule.svg").unwrap();
+            let loss_cpu = loss.clone().to(&Device::CPU).await.unwrap();
+            let loss_vec = loss_cpu.to_vec::<f32>().await.unwrap();
+            log::error!("loss: {:?}", loss_vec[0]);
+            let b = b.as_tensor().to(&Device::CPU).await.unwrap();
+            let w = w.as_tensor().to(&Device::CPU).await.unwrap();
+            log::error!(
+                "b: {:?}, w: {:?}",
+                b.to_vec::<f32>().await.unwrap(),
+                w.to_vec::<f32>().await.unwrap()
+            );
+            opt.backward_step(&mut grads, &device).await?;
+        }
+        let b = b.as_tensor().to(&Device::CPU).await.unwrap();
+        let w = w.as_tensor().to(&Device::CPU).await.unwrap();
+        log::error!(
+            "b: {:?}, w: {:?}",
+            b.to_vec::<f32>().await.unwrap(),
+            w.to_vec::<f32>().await.unwrap()
+        );
+        assert_eq!(to_vec0_round(&b, 4).await?, 0.7872);
+        assert_eq!(to_vec1_round(&w, 4).await?, &[2.7257, 0.7097]);
+        Ok(())
+    }
 }
