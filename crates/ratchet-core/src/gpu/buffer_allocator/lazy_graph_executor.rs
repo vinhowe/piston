@@ -32,6 +32,7 @@ pub struct LazyGraphExecutor {
     pass_index: u64,
     inplace_support: bool,
     caching_enabled: bool,
+    shared_object_allocation_enabled: bool,
 }
 
 fn panic_cycle(id: TensorId) {
@@ -96,7 +97,11 @@ fn compute_post_order_from_nodes(roots: Vec<&Tensor>) -> PostOrderData {
 }
 
 impl LazyGraphExecutor {
-    pub fn new(inplace_support: bool, caching_enabled: bool) -> Self {
+    pub fn new(
+        inplace_support: bool,
+        caching_enabled: bool,
+        shared_object_allocation_enabled: bool,
+    ) -> Self {
         Self {
             tensors: Arc::new(RwLock::new(BTreeMap::default())),
             cache: HashMap::default(),
@@ -104,6 +109,7 @@ impl LazyGraphExecutor {
             inplace_support,
             step_log_config: None,
             caching_enabled,
+            shared_object_allocation_enabled,
         }
     }
 
@@ -413,15 +419,25 @@ impl LazyGraphExecutor {
             }
         }
 
-        let mut cached_exec = if use_cache {
+        let (mut cached_exec, do_shared_realloc, is_shared_realloc) = if use_cache {
             self.cache
                 .remove(&hash)
-                .and_then(|cached_exec| Arc::try_unwrap(cached_exec.executable).ok())
+                .map(|cached_exec| {
+                    if cached_exec.is_shared_realloc {
+                        // Cache hit, no need to realloc, shared realloc
+                        (Arc::try_unwrap(cached_exec.executable).ok(), false, true)
+                    } else {
+                        // Cache hit, not shared realloc and needs shared realloc, not yet shared
+                        // realloc
+                        (None, true, false)
+                    }
+                })
+                // Cache miss, no need to realloc, can't be shared realloc
+                .unwrap_or((None, false, false))
         } else {
-            None
+            // Not using cache, no need to realloc, we don't allow shared realloc
+            (None, false, false)
         };
-        let do_shared_realloc = false;
-        let is_shared_realloc = false;
 
         let mut compiled_ops = Vec::with_capacity(post_order.len());
 
@@ -681,7 +697,8 @@ impl LazyGraphExecutor {
                 hash,
                 CachedExecutable {
                     executable: Arc::new(executable),
-                    is_shared_realloc: do_shared_realloc,
+                    // If we already did a shared realloc, we don't need to do it again
+                    is_shared_realloc: is_shared_realloc || do_shared_realloc,
                 },
             );
         }
@@ -719,6 +736,14 @@ impl LazyGraphExecutor {
         self.caching_enabled
     }
 
+    pub fn set_shared_object_allocation_enabled(&mut self, enabled: bool) {
+        self.shared_object_allocation_enabled = enabled;
+    }
+
+    pub fn shared_object_allocation_enabled(&self) -> bool {
+        self.shared_object_allocation_enabled
+    }
+
     pub fn set_inplace_support(&mut self, enabled: bool) {
         self.inplace_support = enabled;
     }
@@ -730,7 +755,7 @@ impl LazyGraphExecutor {
 
 impl Default for LazyGraphExecutor {
     fn default() -> Self {
-        Self::new(false, false)
+        Self::new(false, false, false)
     }
 }
 

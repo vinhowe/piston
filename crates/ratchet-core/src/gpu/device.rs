@@ -121,7 +121,7 @@ impl WgpuDevice {
             kernel_module_pool: Arc::new(KernelModulePool::new()),
             compute_pipeline_pool: Arc::new(ComputePipelinePool::new()),
             // TODO: Decide if we need some nice thing to encapsulate the lazy graph executor
-            lazy_graph_executor: Arc::new(RwLock::new(LazyGraphExecutor::new(false, false))),
+            lazy_graph_executor: Arc::new(RwLock::new(LazyGraphExecutor::default())),
             device: Arc::new(device),
             device_limits: limits,
             device_features: features,
@@ -325,6 +325,18 @@ impl WgpuDevice {
 
     pub fn caching_enabled(&self) -> bool {
         self.lazy_graph_executor.read().caching_enabled()
+    }
+
+    pub fn set_shared_object_allocation_enabled(&self, enabled: bool) {
+        self.lazy_graph_executor
+            .write()
+            .set_shared_object_allocation_enabled(enabled);
+    }
+
+    pub fn shared_object_allocation_enabled(&self) -> bool {
+        self.lazy_graph_executor
+            .read()
+            .shared_object_allocation_enabled()
     }
 
     pub fn set_inplace_support(&self, enabled: bool) {
