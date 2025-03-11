@@ -124,7 +124,7 @@ impl KernelRenderable for BernoulliKernels {
             let prob = X[index];
             let seed = index + metadata.seed;
             let random_value = rand(seed);
-            
+
             // If random value is less than probability, set to 1.0, otherwise 0.0
             Y[index] = f32(random_value < prob);
         });
@@ -207,29 +207,40 @@ mod tests {
     use crate::{shape, Device, DeviceRequest, Tensor};
 
     fn run_bernoulli_trial(problem: BernoulliProblem, device: Device) {
-        let BernoulliProblem { B, M, N, seed  } = problem;
+        let BernoulliProblem { B, M, N, seed } = problem;
 
         device.set_seed(seed as u64);
 
         // Create a tensor with random probabilities between 0 and 1
         let probs = Tensor::rand::<f32>(0f32, 1f32, shape![B, M, N], Device::CPU);
         let probs_gpu = probs.to(&device).unwrap();
-        
+
         // Apply Bernoulli sampling to the probabilities tensor
         let a = probs_gpu.bernoulli().unwrap();
 
         // Check that all values are either 0 or 1
         let values = a.to(&Device::CPU).unwrap().to_vec::<f32>().unwrap();
         for val in values.iter() {
-            assert!(*val == 0.0 || *val == 1.0, "Expected binary values (0 or 1)");
+            assert!(
+                *val == 0.0 || *val == 1.0,
+                "Expected binary values (0 or 1)"
+            );
         }
 
         // Get statistics to verify that sampling distribution is reasonable
         let mean = values.iter().sum::<f32>() / values.len() as f32;
-        let expected_mean = probs.to(&Device::CPU).unwrap().to_vec::<f32>().unwrap().iter().sum::<f32>() / values.len() as f32;
+        let expected_mean = probs
+            .to(&Device::CPU)
+            .unwrap()
+            .to_vec::<f32>()
+            .unwrap()
+            .iter()
+            .sum::<f32>()
+            / values.len() as f32;
 
         // Calculate observed std of the binary outcomes.
-        let std = (values.iter().map(|v| (v - mean).powi(2)).sum::<f32>() / values.len() as f32).sqrt();
+        let std =
+            (values.iter().map(|v| (v - mean).powi(2)).sum::<f32>() / values.len() as f32).sqrt();
         // For a uniformly distributed probabilities tensor, the overall variance (by total variance law) is expected to be ~0.25.
         // So we square root it to get the standard deviation, 0.5.
         let expected_std = 0.5;
@@ -270,4 +281,4 @@ mod tests {
         let device = Device::request_device(DeviceRequest::GPU).unwrap();
         run_bernoulli_trial(prob, device);
     }
-} 
+}
