@@ -1,4 +1,4 @@
-use crate::{CPUBuffer, Shape, Storage, Strides, Tensor};
+use crate::{CPUBuffer, Shape, Storage, Stride, Tensor};
 use bytemuck::NoUninit;
 use std::ops::Range;
 
@@ -13,10 +13,10 @@ pub enum TensorIterator<'a> {
 }
 
 impl<'a> TensorIterator<'a> {
-    pub fn new(shape: &'a Shape, strides: &'a Strides, offset: usize) -> Self {
+    pub fn new(shape: &'a Shape, stride: &'a Stride, offset: usize) -> Self {
         let mut block_size: usize = 1;
         let mut contiguous_dims: usize = 0;
-        for (&stride, &dim) in strides.iter().zip(shape.iter()).rev() {
+        for (&stride, &dim) in stride.iter().zip(shape.iter()).rev() {
             if stride as usize != block_size {
                 break;
             }
@@ -27,7 +27,7 @@ impl<'a> TensorIterator<'a> {
         if index_dims == 0 {
             Self::Contiguous(offset..block_size)
         } else {
-            Self::Strided(StridedIterator::new(&shape, &strides, offset, block_size))
+            Self::Strided(StridedIterator::new(&shape, &stride, offset, block_size))
         }
     }
 }
@@ -46,7 +46,7 @@ impl<'a> Iterator for TensorIterator<'a> {
 #[derive(Clone)]
 pub struct StridedIterator<'a> {
     shape: &'a [usize],
-    strides: &'a [isize],
+    stride: &'a [isize],
     next_index: Option<usize>,
     multi_index: Vec<usize>,
     block_size: usize,
@@ -56,13 +56,13 @@ pub struct StridedIterator<'a> {
 impl<'a> StridedIterator<'a> {
     pub fn new(
         shape: &'a [usize],
-        strides: &'a [isize],
+        stride: &'a [isize],
         start_offset: usize,
         block_len: usize,
     ) -> Self {
         Self {
             shape,
-            strides,
+            stride,
             next_index: if shape.iter().product::<usize>() == 0 {
                 None
             } else {
@@ -99,7 +99,7 @@ impl<'a> Iterator for StridedIterator<'a> {
             .multi_index
             .iter_mut()
             .zip(self.shape.iter())
-            .zip(self.strides.iter())
+            .zip(self.stride.iter())
             .rev()
         {
             let next_i = *multi_i + 1;
@@ -122,15 +122,15 @@ impl<'a> Iterator for StridedIterator<'a> {
     }
 }
 
-impl<'a> From<(&'a Shape, &'a Strides)> for StridedIterator<'a> {
-    fn from((shape, strides): (&'a Shape, &'a Strides)) -> Self {
-        StridedIterator::new(shape.as_slice(), strides.as_slice(), 0, 1)
+impl<'a> From<(&'a Shape, &'a Stride)> for StridedIterator<'a> {
+    fn from((shape, stride): (&'a Shape, &'a Stride)) -> Self {
+        StridedIterator::new(shape.as_slice(), stride.as_slice(), 0, 1)
     }
 }
 
-impl<'a> From<(&'a Shape, &'a Strides, usize)> for StridedIterator<'a> {
-    fn from((shape, strides, offset): (&'a Shape, &'a Strides, usize)) -> Self {
-        StridedIterator::new(shape.as_slice(), strides.as_slice(), offset, 1)
+impl<'a> From<(&'a Shape, &'a Stride, usize)> for StridedIterator<'a> {
+    fn from((shape, stride, offset): (&'a Shape, &'a Stride, usize)) -> Self {
+        StridedIterator::new(shape.as_slice(), stride.as_slice(), offset, 1)
     }
 }
 
@@ -139,7 +139,7 @@ mod tests {
     use proptest::prelude::*;
     use test_strategy::proptest;
 
-    use crate::{shape, Shape, Strides};
+    use crate::{shape, Shape, Stride};
 
     use super::TensorIterator;
 
@@ -165,10 +165,10 @@ mod tests {
     #[proptest(cases = 16)]
     fn test_tensor_iter_contiguous(prob: IterProblem) {
         let shape = prob.shape;
-        let strides = Strides::from(&shape);
+        let stride = Stride::from(&shape);
         let offset = prob.offset;
 
-        let iter = TensorIterator::new(&shape, &strides, offset);
+        let iter = TensorIterator::new(&shape, &stride, offset);
         assert!(matches!(iter, TensorIterator::Contiguous(_)));
 
         match iter {
@@ -180,12 +180,12 @@ mod tests {
     #[proptest(cases = 16)]
     fn test_tensor_iter_strided(prob: IterProblem) {
         let mut shape = prob.shape;
-        let mut strides = Strides::from(&shape);
-        strides.transpose();
+        let mut stride = Stride::from(&shape);
+        stride.transpose();
         shape.transpose();
         let offset = prob.offset;
 
-        let iter = TensorIterator::new(&shape, &strides, offset);
+        let iter = TensorIterator::new(&shape, &stride, offset);
         assert!(matches!(iter, TensorIterator::Strided(_)));
 
         match iter {
@@ -204,12 +204,12 @@ mod tests {
     #[test]
     fn test_tensor_iter_strided_sanity() {
         let mut shape = shape!(2, 4, 3);
-        let mut strides = Strides::from(&shape);
-        strides.transpose();
+        let mut stride = Stride::from(&shape);
+        stride.transpose();
         shape.transpose();
         let offset = 2;
 
-        let iter = TensorIterator::new(&shape, &strides, offset);
+        let iter = TensorIterator::new(&shape, &stride, offset);
         let actual: Vec<usize> = iter.collect();
         let expected = vec![
             2, 5, 8, 11, 3, 6, 9, 12, 4, 7, 10, 13, 14, 17, 20, 23, 15, 18, 21, 24, 16, 19, 22, 25,

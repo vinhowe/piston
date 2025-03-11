@@ -5,11 +5,11 @@ use crate::{rvec, RVec, Shape};
 use encase::impl_wrapper;
 
 #[derive(Clone, PartialEq, Eq, Default, Hash)]
-pub struct Strides(RVec<isize>);
+pub struct Stride(RVec<isize>);
 
-impl_wrapper!(Strides; using);
+impl_wrapper!(Stride; using);
 
-impl Strides {
+impl Stride {
     pub fn to_vec(&self) -> Vec<isize> {
         self.0.to_vec()
     }
@@ -35,7 +35,7 @@ impl Strides {
     }
 }
 
-impl std::fmt::Debug for Strides {
+impl std::fmt::Debug for Stride {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut shape = format!("[{}", self.0.first().unwrap_or(&0));
         for dim in self.0.iter().skip(1) {
@@ -45,14 +45,14 @@ impl std::fmt::Debug for Strides {
     }
 }
 
-impl core::ops::Deref for Strides {
+impl core::ops::Deref for Stride {
     type Target = [isize];
     fn deref(&self) -> &Self::Target {
         &self.0
     }
 }
 
-impl Index<usize> for Strides {
+impl Index<usize> for Stride {
     type Output = isize;
 
     fn index(&self, index: usize) -> &Self::Output {
@@ -60,13 +60,13 @@ impl Index<usize> for Strides {
     }
 }
 
-impl IndexMut<usize> for Strides {
+impl IndexMut<usize> for Stride {
     fn index_mut(&mut self, index: usize) -> &mut Self::Output {
         &mut self.0[index]
     }
 }
 
-impl Index<RangeFrom<usize>> for Strides {
+impl Index<RangeFrom<usize>> for Stride {
     type Output = [isize];
 
     fn index(&self, index: RangeFrom<usize>) -> &Self::Output {
@@ -74,7 +74,7 @@ impl Index<RangeFrom<usize>> for Strides {
     }
 }
 
-impl Index<RangeTo<usize>> for Strides {
+impl Index<RangeTo<usize>> for Stride {
     type Output = [isize];
 
     fn index(&self, index: RangeTo<usize>) -> &Self::Output {
@@ -82,7 +82,7 @@ impl Index<RangeTo<usize>> for Strides {
     }
 }
 
-impl From<&Shape> for Strides {
+impl From<&Shape> for Stride {
     fn from(shape: &Shape) -> Self {
         let mut strides = rvec![];
         let mut stride = 1;
@@ -95,74 +95,74 @@ impl From<&Shape> for Strides {
     }
 }
 
-impl From<Vec<isize>> for Strides {
-    fn from(strides: Vec<isize>) -> Self {
-        Self(strides.into())
+impl From<Vec<isize>> for Stride {
+    fn from(stride: Vec<isize>) -> Self {
+        Self(stride.into())
     }
 }
 
-impl From<&[isize]> for Strides {
-    fn from(strides: &[isize]) -> Self {
-        Self(strides.into())
+impl From<&[isize]> for Stride {
+    fn from(stride: &[isize]) -> Self {
+        Self(stride.into())
     }
 }
 
-impl From<&Strides> for [u32; 3] {
-    fn from(strides: &Strides) -> Self {
-        assert!(strides.0.len() <= 3);
+impl From<&Stride> for [u32; 3] {
+    fn from(stride: &Stride) -> Self {
+        assert!(stride.0.len() <= 3);
         let mut array = [0; 3];
-        for (i, &stride) in strides.0.iter().enumerate() {
+        for (i, &stride) in stride.0.iter().enumerate() {
             array[i] = stride as u32;
         }
         array
     }
 }
 
-impl From<&Strides> for glam::UVec3 {
-    fn from(strides: &Strides) -> Self {
-        let array: [u32; 3] = strides.into();
+impl From<&Stride> for glam::UVec3 {
+    fn from(stride: &Stride) -> Self {
+        let array: [u32; 3] = stride.into();
         glam::UVec3::from(array)
     }
 }
 
-impl From<&Strides> for [u32; 4] {
-    fn from(strides: &Strides) -> Self {
-        assert!(strides.0.len() <= 4);
+impl From<&Stride> for [u32; 4] {
+    fn from(stride: &Stride) -> Self {
+        assert!(stride.0.len() <= 4);
         let mut array = [0; 4];
-        for (i, &stride) in strides.0.iter().enumerate() {
+        for (i, &stride) in stride.0.iter().enumerate() {
             array[i] = stride as u32;
         }
         array
     }
 }
 
-impl From<&Strides> for [usize; 4] {
-    fn from(strides: &Strides) -> Self {
-        assert!(strides.0.len() <= 4);
+impl From<&Stride> for [usize; 4] {
+    fn from(stride: &Stride) -> Self {
+        assert!(stride.0.len() <= 4);
         let mut array = [0; 4];
-        for (i, &stride) in strides.0.iter().enumerate() {
+        for (i, &stride) in stride.0.iter().enumerate() {
             array[i] = stride as usize;
         }
         array
     }
 }
 
-impl From<&Strides> for glam::UVec4 {
-    fn from(strides: &Strides) -> Self {
-        let array: [u32; 4] = strides.into();
+impl From<&Stride> for glam::UVec4 {
+    fn from(stride: &Stride) -> Self {
+        let array: [u32; 4] = stride.into();
         glam::UVec4::from(array)
     }
 }
 
-impl From<Strides> for glam::IVec3 {
-    fn from(strides: Strides) -> Self {
-        (&strides).into()
+impl From<Stride> for glam::IVec3 {
+    fn from(stride: Stride) -> Self {
+        (&stride).into()
     }
 }
 
-impl From<&Strides> for glam::IVec3 {
-    fn from(strides: &Strides) -> Self {
-        glam::IVec3::new(strides.0[0] as _, strides.0[1] as _, strides.0[2] as _)
+impl From<&Stride> for glam::IVec3 {
+    fn from(stride: &Stride) -> Self {
+        glam::IVec3::new(stride.0[0] as _, stride.0[1] as _, stride.0[2] as _)
     }
 }
 
@@ -171,10 +171,10 @@ mod tests {
     use crate::shape;
 
     #[test]
-    fn test_strides() {
+    fn test_stride() {
         use super::*;
         let shape = shape![2, 3, 4];
-        let strides = Strides::from(&shape);
-        assert_eq!(strides.to_vec(), vec![12, 4, 1]);
+        let stride = Stride::from(&shape);
+        assert_eq!(stride.to_vec(), vec![12, 4, 1]);
     }
 }

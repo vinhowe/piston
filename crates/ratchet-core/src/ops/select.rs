@@ -7,7 +7,7 @@ use crate::{
     gpu::{BindGroupLayoutDescriptor, WorkgroupCount},
     rvec, wgc, wgs, Array, BindingMode, BuiltIn, DType, GPUOperation, Kernel, KernelElement,
     KernelRenderable, KernelSource, OpGuards, Operation, OperationError, RVec, Scalar, StorageView,
-    Strides, Tensor, Vec2, Vec4, WgslKernelBuilder, WgslPrimitive, WorkgroupSize, Workload,
+    Stride, Tensor, Vec2, Vec4, WgslKernelBuilder, WgslPrimitive, WorkgroupSize, Workload,
 };
 use inline_wgsl::wgsl;
 
@@ -51,11 +51,11 @@ impl Operation for IndexSelect {
 
         let mut output_shape = input_shape.clone();
         output_shape[self.dim] = indices_shape[0];
-        let strides = Strides::from(&output_shape);
+        let stride = Stride::from(&output_shape);
         Ok(StorageView::new(
             output_shape,
             self.src.dtype().activation_dtype(),
-            strides,
+            stride,
         ))
     }
 

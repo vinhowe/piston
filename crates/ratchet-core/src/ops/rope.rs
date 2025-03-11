@@ -7,7 +7,7 @@ use crate::gpu::dtype::WgslDType;
 use crate::{
     gpu::{BindGroupLayoutDescriptor, WorkgroupCount},
     rvec, wgc, wgs, Array, BindingMode, BuiltIn, DType, KernelElement, KernelSource, OpGuards,
-    Operation, OperationError, RVec, Scalar, StorageView, Strides, Tensor, Vec2, Vec4,
+    Operation, OperationError, RVec, Scalar, StorageView, Stride, Tensor, Vec2, Vec4,
     WgslKernelBuilder, WgslPrimitive, WorkgroupSize, Workload,
 };
 use crate::{GPUOperation, Kernel, KernelRenderable};
@@ -48,8 +48,8 @@ impl RoPE {
 
 #[derive(Debug, derive_new::new, ShaderType, WgslMetadata)]
 pub struct RoPEMeta {
-    in_strides: glam::UVec3,
-    out_strides: glam::UVec3,
+    in_stride: glam::UVec3,
+    out_stride: glam::UVec3,
     seq_len: u32,
     offset: u32,
     base: f32,
@@ -171,11 +171,11 @@ impl KernelRenderable for RoPEKernels {
 
             let grid = vec3<u32>(num_workgroups.x * 8u, num_workgroups.y * 8u, num_workgroups.z * 1u);
 
-            let out_index_1 = dot(global_invocation_id, vec3<u32>(metadata.out_strides[2], metadata.out_strides[1], metadata.out_strides[0]));
-            let out_index_2 = out_index_1 + grid.x * metadata.out_strides[2];
+            let out_index_1 = dot(global_invocation_id, vec3<u32>(metadata.out_stride[2], metadata.out_stride[1], metadata.out_stride[0]));
+            let out_index_2 = out_index_1 + grid.x * metadata.out_stride[2];
 
-            let in_index_1 = dot(global_invocation_id, vec3<u32>(metadata.in_strides[2], metadata.in_strides[1], metadata.in_strides[0]));
-            let in_index_2 = in_index_1 + grid.x * metadata.in_strides[2];
+            let in_index_1 = dot(global_invocation_id, vec3<u32>(metadata.in_stride[2], metadata.in_stride[1], metadata.in_stride[0]));
+            let in_index_2 = in_index_1 + grid.x * metadata.in_stride[2];
 
             let L = metadata.scale * f32(global_invocation_id.y + metadata.offset);
             let d = f32(global_invocation_id.x) / f32(grid.x);
@@ -228,11 +228,11 @@ impl Kernel for RoPEKernels {
         let mut out_shape = dst.shape().clone();
         input_shape.remove(0);
         out_shape.remove(0);
-        let in_strides = Strides::from(&input_shape);
-        let out_strides = Strides::from(&out_shape);
+        let in_stride = Stride::from(&input_shape);
+        let out_stride = Stride::from(&out_shape);
         Ok(RoPEMeta::new(
-            (&in_strides).into(),
-            (&out_strides).into(),
+            (&in_stride).into(),
+            (&out_stride).into(),
             SL as u32,
             inner.offset as u32,
             f32::log2(inner.base),

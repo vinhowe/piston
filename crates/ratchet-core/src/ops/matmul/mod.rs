@@ -15,7 +15,7 @@ use crate::{
     gpu::{BindGroupLayoutDescriptor, CpuUniform},
     rvec, DType, Device, GPUOperation, Kernel, KernelElement, KernelKey, KernelMetadata,
     KernelRenderable, KernelSource, OpGuards, Operation, OperationError, RVec, Shape, StorageView,
-    Strides, Tensor, WorkgroupSize, Workload, Q4_KF, Q4_KH, Q8_0F, Q8_0H,
+    Stride, Tensor, WorkgroupSize, Workload, Q4_KF, Q4_KH, Q8_0F, Q8_0H,
 };
 
 //https://link.springer.com/chapter/10.1007/978-3-642-29737-3_42
@@ -55,9 +55,9 @@ pub struct MatmulSpec {
     lhs_shape: Shape,
     rhs_shape: Shape,
     dst_shape: Shape,
-    lhs_strides: Strides,
-    rhs_strides: Strides,
-    dst_strides: Strides,
+    lhs_stride: Stride,
+    rhs_stride: Stride,
+    dst_stride: Stride,
     lhs_stack: usize,
     rhs_stack: usize,
     dst_stack: usize,
@@ -129,9 +129,9 @@ impl MatmulSpec {
             rhs_shape.insert(0, 1);
         }
 
-        let mut lhs_strides = Strides::from(&lhs_shape);
-        let mut rhs_strides = Strides::from(&rhs_shape);
-        let dst_strides = Strides::from(&dst_shape);
+        let mut lhs_stride = Stride::from(&lhs_shape);
+        let mut rhs_stride = Stride::from(&rhs_shape);
+        let dst_stride = Stride::from(&dst_shape);
 
         let is_cpu = matches!(LHS.device(), Device::CPU);
 
@@ -141,18 +141,18 @@ impl MatmulSpec {
             // This is just the xor operator (^).
             if trans_lhs ^ trans_dst {
                 lhs_shape.transpose();
-                lhs_strides.transpose();
+                lhs_stride.transpose();
             }
             if trans_rhs ^ trans_dst {
                 rhs_shape.transpose();
-                rhs_strides.transpose();
+                rhs_stride.transpose();
             }
             if trans_dst {
                 // (a b)T => bT aT
                 // aT bT has already been applied correctly above, so we can just swap.
                 mem::swap(&mut lhs_shape, &mut rhs_shape);
                 // strides and transposes must follow their shapes
-                mem::swap(&mut lhs_strides, &mut rhs_strides);
+                mem::swap(&mut lhs_stride, &mut rhs_stride);
                 mem::swap(&mut trans_lhs, &mut trans_rhs);
             }
         }
@@ -172,9 +172,9 @@ impl MatmulSpec {
             lhs_shape,
             rhs_shape,
             dst_shape,
-            lhs_strides,
-            rhs_strides,
-            dst_strides,
+            lhs_stride,
+            rhs_stride,
+            dst_stride,
             lhs_stack,
             rhs_stack,
             dst_stack,
@@ -246,16 +246,16 @@ impl MatmulSpec {
         &self.dst_shape
     }
 
-    pub fn lhs_strides(&self) -> &Strides {
-        &self.lhs_strides
+    pub fn lhs_stride(&self) -> &Stride {
+        &self.lhs_stride
     }
 
-    pub fn rhs_strides(&self) -> &Strides {
-        &self.rhs_strides
+    pub fn rhs_stride(&self) -> &Stride {
+        &self.rhs_stride
     }
 
-    pub fn dst_strides(&self) -> &Strides {
-        &self.dst_strides
+    pub fn dst_stride(&self) -> &Stride {
+        &self.dst_stride
     }
 
     pub fn dim_lhs_outer(&self) -> usize {
@@ -491,8 +491,8 @@ impl Operation for Matmul {
             self.trans_dst,
         )
         .unwrap();
-        let dst_strides = Strides::from(&dst_shape);
-        Ok(StorageView::new(dst_shape, self.rhs.dtype(), dst_strides))
+        let dst_stride = Stride::from(&dst_shape);
+        Ok(StorageView::new(dst_shape, self.rhs.dtype(), dst_stride))
     }
 
     #[inline]

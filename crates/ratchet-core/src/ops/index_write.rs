@@ -7,7 +7,7 @@ use ratchet_macros::{IrFields, WgslMetadata};
 use crate::{
     gpu::BindGroupLayoutDescriptor, rvec, Array, BindingMode, BuiltIn, DType, GPUOperation, Kernel,
     KernelElement, KernelRenderable, KernelSource, OpGuards, Operation, OperationError, RVec,
-    Scalar, Shape, StorageView, Strides, Tensor, Vec2, Vec4, WgslKernelBuilder, WgslPrimitive,
+    Scalar, Shape, StorageView, Stride, Tensor, Vec2, Vec4, WgslKernelBuilder, WgslPrimitive,
     WorkgroupSize, Workload,
 };
 
@@ -22,7 +22,7 @@ impl IndexWrite {}
 
 #[derive(Debug, derive_new::new, ShaderType, WgslMetadata)]
 pub struct IndexWriteMeta {
-    dst_strides: glam::UVec4,
+    dst_stride: glam::UVec4,
     src_numel: u32,
     write_start: glam::UVec4,
 }
@@ -104,7 +104,7 @@ impl KernelRenderable for IndexWriteKernels {
             if (thread_offset >= metadata.src_numel) {
                 return;
             }
-            let offset_index = ndIndexToOffset(metadata.write_start, metadata.dst_strides);
+            let offset_index = ndIndexToOffset(metadata.write_start, metadata.dst_stride);
             D[offset_index + thread_offset] = S[thread_offset];
         });
 
@@ -135,10 +135,10 @@ impl Kernel for IndexWriteKernels {
         let IndexWriteKernels::Standard(inner) = self;
         let padder = |mut shape: Shape| {
             shape.left_pad_to(1, 4);
-            let strides = Strides::from(&shape);
-            (shape, strides)
+            let stride = Stride::from(&shape);
+            (shape, stride)
         };
-        let (_, dst_strides) = padder(dst.shape().clone());
+        let (_, dst_stride) = padder(dst.shape().clone());
         let (src_shape, _) = padder(inner.src.shape().clone());
 
         let mut start = [0u32; 4];
@@ -148,7 +148,7 @@ impl Kernel for IndexWriteKernels {
         }
 
         Ok(IndexWriteMeta {
-            dst_strides: glam::UVec4::from(&dst_strides),
+            dst_stride: glam::UVec4::from(&dst_stride),
             src_numel: src_shape.numel() as u32,
             write_start: start.into(),
         })

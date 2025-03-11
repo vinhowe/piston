@@ -131,7 +131,7 @@ pub trait KernelMetadata {
 pub trait Kernel: KernelRenderable {
     /// # Metadata
     ///
-    /// Each kernel has zero or more required metadata fields (e.g shape, strides, etc).
+    /// Each kernel has zero or more required metadata fields (e.g shape, stride, etc).
     /// This is stored in a uniform buffer, for faster access.
     ///
     /// The metadata is limited to 256 bytes per kernel.

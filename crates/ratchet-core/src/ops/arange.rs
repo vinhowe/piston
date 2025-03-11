@@ -5,7 +5,7 @@ use ratchet_macros::IrFields;
 use crate::{
     gpu::BindGroupLayoutDescriptor, rvec, shape, wgc, wgs, Array, BindingMode, BuiltIn, DType,
     DynKernelMetadata, GPUOperation, Kernel, KernelElement, KernelRenderable, KernelSource,
-    OpGuards, Operation, OperationError, RVec, Scalar, StorageView, Strides, Tensor,
+    OpGuards, Operation, OperationError, RVec, Scalar, StorageView, Stride, Tensor,
     WgslKernelBuilder, WgslPrimitive, WorkgroupCount, WorkgroupSize, Workload,
 };
 
@@ -28,8 +28,8 @@ impl Operation for Arange {
     fn compute_view(&self) -> Result<StorageView, OperationError> {
         let numel = self.numel();
         let shape = shape![numel];
-        let strides = Strides::from(&shape);
-        Ok(StorageView::new(shape, DType::F32, strides))
+        let stride = Stride::from(&shape);
+        Ok(StorageView::new(shape, DType::F32, stride))
     }
 
     /// The arange op has no input tensors, so return an empty array.

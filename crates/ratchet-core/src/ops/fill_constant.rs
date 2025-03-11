@@ -8,7 +8,7 @@ use crate::{
     gpu::{dtype::WgslDType, BindGroupLayoutDescriptor},
     rvec, Array, BindingMode, BuiltIn, DType, DynKernelMetadata, GPUOperation, Kernel,
     KernelElement, KernelRenderable, KernelSource, OpGuards, Operation, OperationError, RVec,
-    Scalar, Shape, StorageView, Strides, Tensor, Vec2, Vec4, WgslKernelBuilder, WgslPrimitive,
+    Scalar, Shape, StorageView, Stride, Tensor, Vec2, Vec4, WgslKernelBuilder, WgslPrimitive,
     WorkgroupSize, Workload,
 };
 
@@ -24,8 +24,8 @@ impl Operation for FillConstant {
     }
     fn compute_view(&self) -> Result<StorageView, OperationError> {
         let shape: Shape = self.shape.clone();
-        let strides = Strides::from(&shape);
-        Ok(StorageView::new(shape, DType::F32, strides))
+        let stride = Stride::from(&shape);
+        Ok(StorageView::new(shape, DType::F32, stride))
     }
 
     fn srcs(&self) -> RVec<&Tensor> {

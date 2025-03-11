@@ -1,4 +1,4 @@
-use crate::{shape, RVec, Strides};
+use crate::{shape, RVec, Stride};
 use encase::impl_wrapper;
 use std::{
     ops::{RangeFrom, RangeTo},
@@ -143,14 +143,14 @@ impl Shape {
         Some(shape)
     }
 
-    /// Returns true if the strides are C contiguous (aka row major).
-    pub fn is_contiguous(&self, strides: &Strides) -> bool {
-        let strides_vec = strides.to_vec();
-        if self.0.len() != strides_vec.len() {
+    /// Returns true if the stride is C contiguous (aka row major).
+    pub fn is_contiguous(&self, stride: &Stride) -> bool {
+        let stride_vec = stride.to_vec();
+        if self.0.len() != stride_vec.len() {
             return false;
         }
         let mut acc = 1;
-        for (&stride, &dim) in strides_vec.iter().zip(self.0.iter()).rev() {
+        for (&stride, &dim) in stride_vec.iter().zip(self.0.iter()).rev() {
             if dim > 1 && stride != acc {
                 return false;
             }

@@ -5,7 +5,7 @@ use encase::ShaderType;
 use ratchet_macros::{IrFields, WgslMetadata};
 
 use crate::{
-    rvec, InvariantError, OpGuards, Operation, OperationError, RVec, StorageView, Strides, Tensor,
+    rvec, InvariantError, OpGuards, Operation, OperationError, RVec, StorageView, Stride, Tensor,
 };
 
 #[derive(Debug, derive_new::new, WgslMetadata, ShaderType)]
@@ -54,8 +54,8 @@ impl Operation for Permute {
         for i in 0..input_shape.rank() {
             output_shape[i] = input_shape[self.dims[i]];
         }
-        let strides = Strides::from(&output_shape);
-        Ok(StorageView::new(output_shape, self.src.dtype(), strides))
+        let stride = Stride::from(&output_shape);
+        Ok(StorageView::new(output_shape, self.src.dtype(), stride))
     }
 
     fn srcs(&self) -> RVec<&Tensor> {

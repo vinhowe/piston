@@ -1,7 +1,7 @@
 use crate::{
     concat,
     cpu::{cpu_store_result, gemm::gemm, reindex::slice},
-    shape, DType, OperationError, RoPE, Shape, Strides, Tensor,
+    shape, DType, OperationError, RoPE, Shape, Stride, Tensor,
 };
 use maybe_async::maybe_async;
 
@@ -41,18 +41,18 @@ fn compute_theta(
         .collect::<Vec<f32>>();
 
     let p_shape = shape!(seq_len, 1);
-    let p_strides = Strides::from(&p_shape);
+    let p_stride = Stride::from(&p_shape);
     let i_shape = shape!(1, half_dim);
-    let i_strides = Strides::from(&i_shape);
-    let dst_strides = Strides::from(&shape!(seq_len, half_dim));
+    let i_stride = Stride::from(&i_shape);
+    let dst_stride = Stride::from(&shape!(seq_len, half_dim));
     let theta = gemm(
         &positions,
         &p_shape,
-        &p_strides,
+        &p_stride,
         &inv_freqs,
         &i_shape,
-        &i_strides,
-        &dst_strides,
+        &i_stride,
+        &dst_stride,
         1,
         seq_len,
         half_dim,
@@ -74,16 +74,16 @@ fn rope(
     let half_dim = dim / 2;
     let theta = compute_theta(dim, seq_len, base, offset)?;
     let (sin, cos): (Vec<f32>, Vec<f32>) = theta.iter().map(|i| i.sin_cos()).unzip();
-    let src_strides = Strides::from(shape);
+    let src_stride = Stride::from(shape);
     let x1 = slice(
         &src,
-        &src_strides,
+        &src_stride,
         &[0, 0, 0, 0],
         &[batches, num_heads, seq_len, half_dim],
     );
     let x2 = slice(
         &src,
-        &src_strides,
+        &src_stride,
         &[0, 0, 0, half_dim],
         &[batches, num_heads, seq_len, dim],
     );
@@ -131,7 +131,7 @@ fn rope(
     if dim < shape[3] {
         let r3 = slice(
             &src,
-            &src_strides,
+            &src_stride,
             &[0, 0, 0, dim],
             &[batches, num_heads, seq_len, head_dim],
         );
