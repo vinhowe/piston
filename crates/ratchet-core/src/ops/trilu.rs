@@ -104,16 +104,16 @@ impl KernelRenderable for TriluKernels {
         kernel_builder.write_main(wgsl! {
             let x_offset = workgroup_id.x * 64u;
             let index = (workgroup_id.y * num_workgroups.x * 64u) + x_offset + local_invocation_index;
-        
+
             if (index >= metadata.numel) {
                 return;
             }
-        
+
             let batch_size = metadata.rows * metadata.cols * metadata.stride;
             let batch_index = index / batch_size;
-        
+
             let local_index = index % batch_size;
-        
+
             let col = local_index % metadata.cols;
             let row = (local_index / metadata.cols) % metadata.rows;
         });
@@ -178,11 +178,7 @@ impl Kernel for TriluKernels {
         }
     }
 
-    fn metadata(
-        &self,
-        _: &Tensor,
-        _: &KernelElement,
-    ) -> Result<Self::Metadata, OperationError> {
+    fn metadata(&self, _: &Tensor, _: &KernelElement) -> Result<Self::Metadata, OperationError> {
         let TriluKernels::Standard(inner) = self;
         let shape = inner.src.shape();
         let ndim = shape.len();

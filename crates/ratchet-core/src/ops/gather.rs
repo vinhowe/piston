@@ -114,7 +114,7 @@ impl KernelRenderable for GatherKernels {
             if (index >= metadata.ids_numel / 'N) {
                 return;
             }
-        
+
             for (var i: u32 = index; i < metadata.ids_numel; i += 64u * num_workgroups.x) {
                 let post = i % metadata.right_size;
                 let idx = u32(I[i]);
