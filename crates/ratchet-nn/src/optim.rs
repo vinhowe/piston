@@ -137,16 +137,16 @@ impl Optimizer for AdamW {
                 let device = var_t.device();
                 let (first_moment, second_moment) = match dtype {
                     DType::F32 => (
-                        Var::zeros::<f32>(shape, device),
-                        Var::zeros::<f32>(shape, device),
+                        Var::zeros::<f32>(shape, device)?,
+                        Var::zeros::<f32>(shape, device)?,
                     ),
                     DType::F16 => (
-                        Var::zeros::<f16>(shape, device),
-                        Var::zeros::<f16>(shape, device),
+                        Var::zeros::<f16>(shape, device)?,
+                        Var::zeros::<f16>(shape, device)?,
                     ),
                     DType::BF16 => (
-                        Var::zeros::<bf16>(shape, device),
-                        Var::zeros::<bf16>(shape, device),
+                        Var::zeros::<bf16>(shape, device)?,
+                        Var::zeros::<bf16>(shape, device)?,
                     ),
                     _ => return Err(anyhow::anyhow!("Unsupported dtype for AdamW: {:?}", dtype)),
                 };

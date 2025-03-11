@@ -134,7 +134,7 @@ mod tests {
                         let indices = sub_slices.into_iter().map(|sub| sub.0).collect();
                         SliceProblem {
                             op: Slice::new(
-                                Tensor::randn::<f32>(0., 1., shape.clone(), Device::CPU),
+                                Tensor::randn::<f32>(0., 1., shape.clone(), Device::CPU).unwrap(),
                                 indices,
                             ),
                         }

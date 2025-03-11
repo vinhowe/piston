@@ -324,9 +324,9 @@ def conv(input, filters, bias, stride, padding):
             Cout,
             stride,
         } = problem;
-        let input = Tensor::randn::<f32>(0., 1., shape![1, Cin, Lin], Device::CPU);
-        let weight = Tensor::randn::<f32>(0., 1., shape![Cout, Cin, 3], Device::CPU);
-        let bias = Tensor::randn::<f32>(0., 1., shape![Cout], Device::CPU);
+        let input = Tensor::randn::<f32>(0., 1., shape![1, Cin, Lin], Device::CPU).unwrap();
+        let weight = Tensor::randn::<f32>(0., 1., shape![Cout, Cin, 3], Device::CPU).unwrap();
+        let bias = Tensor::randn::<f32>(0., 1., shape![Cout], Device::CPU).unwrap();
         let ground = ground_truth(&input, &weight, &bias, stride, 1).unwrap();
 
         let input = input.to(device).unwrap();

@@ -5,6 +5,7 @@ use crate::{
     LazyOp, Operation, OperationError, RVec, RawCPUBuffer, ScopePusher, Shape, Storage, Stride,
     TensorDType, TensorId,
 };
+use anyhow::Result;
 use bitvec::prelude::*;
 use derive_new::new;
 use maybe_async::maybe_async;
@@ -126,13 +127,13 @@ impl Tensor {
         value: T,
         device: &Device,
         is_variable: bool,
-    ) -> Self {
+    ) -> Result<Self> {
         let meta = StorageView {
             shape: shape.clone(),
             dtype: T::dtype(),
             stride: Stride::from(&shape.clone()),
         };
-        Self::new_impl(
+        Ok(Self::new_impl(
             LazyOp::FillConstant(FillConstant {
                 shape: shape.clone(),
                 value: value.as_(),
@@ -141,14 +142,14 @@ impl Tensor {
             None,
             device.clone(),
             is_variable,
-        )
+        ))
     }
 
     pub fn full<T: TensorDType + num_traits::AsPrimitive<f32>>(
         shape: &Shape,
         value: T,
         device: &Device,
-    ) -> Self {
+    ) -> Result<Self> {
         Self::full_impl::<T>(shape, value, device, false)
     }
 
@@ -403,7 +404,7 @@ impl Tensor {
 macro_rules! impl_binary_op {
     ($method_name:ident, $op:expr) => {
         #[allow(clippy::should_implement_trait)]
-        pub fn $method_name(self, other: Tensor) -> anyhow::Result<Tensor> {
+        pub fn $method_name(self, other: Tensor) -> Result<Self> {
             let device = self.device.clone();
             //TODO: avoid broadcasting if either operand is scalar
             let (mut lhs, mut rhs) = (self, other);
@@ -441,7 +442,7 @@ macro_rules! impl_binary_op {
 macro_rules! impl_cmp_op {
     ($method_name:ident, $op:expr) => {
         #[allow(clippy::should_implement_trait)]
-        pub fn $method_name(self, other: Tensor) -> anyhow::Result<Tensor> {
+        pub fn $method_name(self, other: Tensor) -> Result<Self> {
             let device = self.device.clone();
             //TODO: avoid broadcasting if either operand is scalar
             let (mut lhs, mut rhs) = (self, other);
@@ -474,7 +475,7 @@ macro_rules! impl_cmp_op {
 macro_rules! impl_unary_op {
     ($method_name:ident, $op:expr) => {
         #[allow(clippy::should_implement_trait)]
-        pub fn $method_name(self) -> anyhow::Result<Tensor> {
+        pub fn $method_name(self) -> Result<Self> {
             let device = self.device.clone();
             let unary = Unary::new(self.clone(), $op);
             let new_view = unary.compute_view()?;
@@ -515,7 +516,7 @@ impl Tensor {
     impl_unary_op!(square, UnaryOp::Square);
     impl_unary_op!(recip, UnaryOp::Reciprocal);
 
-    pub fn cast(self, dst_dtype: DType) -> anyhow::Result<Tensor> {
+    pub fn cast(self, dst_dtype: DType) -> Result<Self> {
         if self.dtype() == dst_dtype {
             return Ok(self);
         }
@@ -527,12 +528,12 @@ impl Tensor {
     }
 
     /// Cast a tensor to full precision (IEEE 754 32-bit floating point).
-    pub fn float(self) -> anyhow::Result<Tensor> {
+    pub fn float(self) -> Result<Self> {
         self.cast(DType::F32)
     }
 
     /// Cast a tensor to half precision (IEEE 754 16-bit floating point).
-    pub fn half(self) -> anyhow::Result<Tensor> {
+    pub fn half(self) -> Result<Self> {
         self.cast(DType::F16)
     }
 
@@ -542,7 +543,7 @@ impl Tensor {
         weight: Tensor,
         bias: Option<Tensor>,
         eps: f32,
-    ) -> anyhow::Result<Tensor> {
+    ) -> Result<Self> {
         let device = self.device.clone();
         let group_norm = GroupNorm::new(Norm::new(self, weight, bias, eps), num_groups);
         let norm_op = NormOp::GroupNorm(group_norm);
@@ -550,12 +551,7 @@ impl Tensor {
         Ok(Tensor::lazy(LazyOp::Norm(norm_op), new_view, device, false))
     }
 
-    pub fn layer_norm(
-        self,
-        weight: Tensor,
-        bias: Option<Tensor>,
-        eps: f32,
-    ) -> anyhow::Result<Tensor> {
+    pub fn layer_norm(self, weight: Tensor, bias: Option<Tensor>, eps: f32) -> Result<Self> {
         let device = self.device.clone();
         let layer_norm = Norm::new(self, weight, bias, eps);
         let op = NormOp::LayerNorm(layer_norm);
@@ -563,7 +559,7 @@ impl Tensor {
         Ok(Tensor::lazy(LazyOp::Norm(op), new_view, device, false))
     }
 
-    pub fn rms_norm(self, weight: Tensor, eps: f32) -> anyhow::Result<Tensor> {
+    pub fn rms_norm(self, weight: Tensor, eps: f32) -> Result<Self> {
         let device = self.device.clone();
         let rms = Norm::new(self, weight, None, eps);
         let op = NormOp::RMSNorm(rms);
@@ -577,7 +573,7 @@ impl Tensor {
         bias: Option<Tensor>,
         stride: usize,
         padding: usize,
-    ) -> anyhow::Result<Tensor> {
+    ) -> Result<Self> {
         let device = self.device.clone();
         let conv = Conv::new(self, weight, bias, stride, padding);
         let new_view = conv.compute_view()?;
@@ -585,7 +581,7 @@ impl Tensor {
     }
 
     //TODO: switch dim to isize and allow negative indexing
-    pub fn softmax(self, dim: usize) -> anyhow::Result<Tensor> {
+    pub fn softmax(self, dim: usize) -> Result<Self> {
         let device = self.device.clone();
         let softmax = Softmax::new(self, dim);
         let new_view = softmax.compute_view()?;
@@ -597,33 +593,22 @@ impl Tensor {
         ))
     }
 
-    fn rope_impl(
-        self,
-        dim: usize,
-        base: f32,
-        offset: usize,
-        is_backward: bool,
-    ) -> anyhow::Result<Tensor> {
+    fn rope_impl(self, dim: usize, base: f32, offset: usize, is_backward: bool) -> Result<Self> {
         let device = self.device.clone();
         let rope = RoPE::new(self, dim, base, offset, is_backward);
         let new_view = rope.compute_view()?;
         Ok(Tensor::lazy(LazyOp::RoPE(rope), new_view, device, false))
     }
 
-    pub fn rope(self, dim: usize, base: f32, offset: usize) -> anyhow::Result<Tensor> {
+    pub fn rope(self, dim: usize, base: f32, offset: usize) -> Result<Self> {
         self.rope_impl(dim, base, offset, false)
     }
 
-    pub(crate) fn rope_backward(
-        self,
-        dim: usize,
-        base: f32,
-        offset: usize,
-    ) -> anyhow::Result<Tensor> {
+    pub(crate) fn rope_backward(self, dim: usize, base: f32, offset: usize) -> Result<Self> {
         self.rope_impl(dim, base, offset, true)
     }
 
-    pub fn alibi(self, max_bias: f32) -> anyhow::Result<Tensor> {
+    pub fn alibi(self, max_bias: f32) -> Result<Self> {
         let device = self.device.clone();
         let alibi = Alibi::new(self, max_bias);
         let new_view = alibi.compute_view()?;
@@ -631,7 +616,7 @@ impl Tensor {
     }
 
     //TODO: horrific interface
-    pub fn matmul(self, rhs: Tensor, trans_lhs: bool, trans_rhs: bool) -> anyhow::Result<Tensor> {
+    pub fn matmul(self, rhs: Tensor, trans_lhs: bool, trans_rhs: bool) -> Result<Self> {
         let device = self.device.clone();
         let matmul = Matmul::new(self, rhs, None, trans_lhs, trans_rhs, false);
         let new_view = matmul.compute_view()?;
@@ -650,14 +635,14 @@ impl Tensor {
         trans_lhs: bool,
         trans_rhs: bool,
         trans_out: bool,
-    ) -> anyhow::Result<Tensor> {
+    ) -> Result<Self> {
         let device = self.device.clone();
         let gemm = Matmul::new(self, rhs, bias, trans_lhs, trans_rhs, trans_out);
         let new_view = gemm.compute_view()?;
         Ok(Tensor::lazy(LazyOp::Matmul(gemm), new_view, device, false))
     }
 
-    pub fn affine(self, mul: f32, add: f32) -> anyhow::Result<Tensor> {
+    pub fn affine(self, mul: f32, add: f32) -> Result<Self> {
         let device = self.device.clone();
         let affine = Affine::new(self, mul, add);
         let new_view = affine.compute_view()?;
@@ -669,14 +654,14 @@ impl Tensor {
         ))
     }
 
-    pub fn powf(self, e: f32) -> anyhow::Result<Tensor> {
+    pub fn powf(self, e: f32) -> Result<Self> {
         let device = self.device.clone();
         let powf = Powf::new(self, e);
         let new_view = powf.compute_view()?;
         Ok(Tensor::lazy(LazyOp::Powf(powf), new_view, device, false))
     }
 
-    fn reduce_impl(self, dim: usize, keepdim: bool, op: ReduceOp) -> anyhow::Result<Tensor> {
+    fn reduce_impl(self, dim: usize, keepdim: bool, op: ReduceOp) -> Result<Self> {
         let device = self.device.clone();
         let reduce = Reduce::new(self, op, rvec![dim], keepdim);
         let new_view = reduce.compute_view()?;
@@ -688,68 +673,64 @@ impl Tensor {
         ))
     }
 
-    fn sum_impl(self, sum_dims: &[usize], keepdim: bool) -> anyhow::Result<Tensor> {
+    fn sum_impl(self, sum_dims: &[usize], keepdim: bool) -> Result<Self> {
         let device = self.device.clone();
         let sum = Reduce::new(self, ReduceOp::Sum, sum_dims.into(), keepdim);
         let new_view = sum.compute_view()?;
         Ok(Tensor::lazy(LazyOp::Reduce(sum), new_view, device, false))
     }
 
-    pub fn sum_keepdim(self, sum_dims: &[usize]) -> anyhow::Result<Tensor> {
+    pub fn sum_keepdim(self, sum_dims: &[usize]) -> Result<Self> {
         self.sum_impl(sum_dims, true)
     }
 
-    pub fn sum(self, sum_dims: &[usize]) -> anyhow::Result<Tensor> {
+    pub fn sum(self, sum_dims: &[usize]) -> Result<Self> {
         self.sum_impl(sum_dims, false)
     }
 
-    pub fn sum_all(self) -> anyhow::Result<Tensor> {
+    pub fn sum_all(self) -> Result<Self> {
         let dims: Vec<_> = (0..self.rank()).collect();
         self.sum(&dims)
     }
 
-    pub fn max_keepdim(self, dim: usize) -> anyhow::Result<Tensor> {
+    pub fn max_keepdim(self, dim: usize) -> Result<Self> {
         self.reduce_impl(dim, true, ReduceOp::Max)
     }
 
-    pub fn max(self, dim: usize) -> anyhow::Result<Tensor> {
+    pub fn max(self, dim: usize) -> Result<Self> {
         self.reduce_impl(dim, false, ReduceOp::Max)
     }
 
-    pub fn min_keepdim(self, dim: usize) -> anyhow::Result<Tensor> {
+    pub fn min_keepdim(self, dim: usize) -> Result<Self> {
         self.reduce_impl(dim, true, ReduceOp::Min)
     }
 
-    pub fn min(self, dim: usize) -> anyhow::Result<Tensor> {
+    pub fn min(self, dim: usize) -> Result<Self> {
         self.reduce_impl(dim, false, ReduceOp::Min)
     }
 
-    pub fn argmax_keepdim(self, dim: usize) -> anyhow::Result<Tensor> {
+    pub fn argmax_keepdim(self, dim: usize) -> Result<Self> {
         self.reduce_impl(dim, true, ReduceOp::ArgMax)
     }
 
-    pub fn argmax(self, dim: usize) -> anyhow::Result<Tensor> {
+    pub fn argmax(self, dim: usize) -> Result<Self> {
         self.reduce_impl(dim, false, ReduceOp::ArgMax)
     }
 
-    pub fn argmin_keepdim(self, dim: usize) -> anyhow::Result<Tensor> {
+    pub fn argmin_keepdim(self, dim: usize) -> Result<Self> {
         self.reduce_impl(dim, true, ReduceOp::ArgMin)
     }
 
     /// Similar to `argmin_keepdim` but the target dimension is squeezed.
-    pub fn argmin(self, dim: usize) -> anyhow::Result<Tensor> {
+    pub fn argmin(self, dim: usize) -> Result<Self> {
         self.reduce_impl(dim, false, ReduceOp::ArgMin)
     }
 
-    pub fn norm(self) -> anyhow::Result<Tensor> {
+    pub fn norm(self) -> Result<Self> {
         self.square()?.sum_all()?.sqrt()
     }
 
-    fn flatten_impl(
-        self,
-        start_dim: Option<usize>,
-        end_dim: Option<usize>,
-    ) -> anyhow::Result<Tensor> {
+    fn flatten_impl(self, start_dim: Option<usize>, end_dim: Option<usize>) -> Result<Self> {
         if self.rank() == 0 {
             self.view(shape![1])
         } else {
@@ -773,19 +754,19 @@ impl Tensor {
         }
     }
 
-    pub fn flatten(self, start_dim: usize, end_dim: usize) -> anyhow::Result<Tensor> {
+    pub fn flatten(self, start_dim: usize, end_dim: usize) -> Result<Self> {
         self.flatten_impl(Some(start_dim), Some(end_dim))
     }
 
-    pub fn flatten_to(self, end_dim: usize) -> anyhow::Result<Tensor> {
+    pub fn flatten_to(self, end_dim: usize) -> Result<Self> {
         self.flatten_impl(None::<usize>, Some(end_dim))
     }
 
-    pub fn flatten_from(self, start_dim: usize) -> anyhow::Result<Tensor> {
+    pub fn flatten_from(self, start_dim: usize) -> Result<Self> {
         self.flatten_impl(Some(start_dim), None::<usize>)
     }
 
-    pub fn flatten_all(self) -> anyhow::Result<Tensor> {
+    pub fn flatten_all(self) -> Result<Self> {
         self.flatten_impl(None::<usize>, None::<usize>)
     }
 
@@ -794,7 +775,7 @@ impl Tensor {
     /// Current slice implementation requires specification of all dimensions.
     /// Currently very user hostile, but will be improved.
     /// TODO: should allow mixed range types
-    pub fn slice<D: std::ops::RangeBounds<usize>>(self, ranges: &[D]) -> anyhow::Result<Tensor> {
+    pub fn slice<D: std::ops::RangeBounds<usize>>(self, ranges: &[D]) -> Result<Self> {
         let device = self.device.clone();
         let mut resolved_ranges = rvec![];
 
@@ -822,7 +803,7 @@ impl Tensor {
     ///
     /// Creates a new tensor with the same data, but a different shape.
     /// The new shape must have the same number of elements as the original shape.
-    pub fn view(self, shape: Shape) -> anyhow::Result<Tensor> {
+    pub fn view(self, shape: Shape) -> Result<Self> {
         if self.shape().numel() != shape.numel() {
             anyhow::bail!(
                 "Cannot reshape tensor with {} elements to shape {:?} ({} elements)",
@@ -846,19 +827,19 @@ impl Tensor {
     }
 
     // Use view to add a singleton dimension
-    pub fn unsqueeze(self, dim: usize) -> anyhow::Result<Tensor> {
+    pub fn unsqueeze(self, dim: usize) -> Result<Self> {
         let mut new_shape = self.shape().clone();
         new_shape.unsqueeze(dim);
         self.view(new_shape)
     }
 
-    pub fn squeeze(self) -> anyhow::Result<Tensor> {
+    pub fn squeeze(self) -> Result<Self> {
         let mut new_shape = self.shape().clone();
         new_shape.squeeze();
         self.view(new_shape)
     }
 
-    pub fn cat(tensors: RVec<Tensor>, dim: usize) -> anyhow::Result<Tensor> {
+    pub fn cat(tensors: RVec<Tensor>, dim: usize) -> Result<Self> {
         let device = tensors[0].device.clone();
         assert!(tensors.iter().all(|t| t.device == device), "Mixed devices");
 
@@ -867,7 +848,7 @@ impl Tensor {
         Ok(Tensor::lazy(LazyOp::Concat(cat), new_view, device, false))
     }
 
-    fn stack_impl(tensors: RVec<Tensor>, dim: usize, root: bool) -> anyhow::Result<Tensor> {
+    fn stack_impl(tensors: RVec<Tensor>, dim: usize, root: bool) -> Result<Self> {
         match tensors.len() {
             0 => anyhow::bail!("Cannot stack empty list of tensors"),
             1 => {
@@ -914,11 +895,11 @@ impl Tensor {
         }
     }
 
-    pub fn stack(tensors: RVec<Tensor>, dim: usize) -> anyhow::Result<Tensor> {
+    pub fn stack(tensors: RVec<Tensor>, dim: usize) -> Result<Self> {
         Self::stack_impl(tensors, dim, true)
     }
 
-    pub fn permute(self, dims: &[usize]) -> anyhow::Result<Tensor> {
+    pub fn permute(self, dims: &[usize]) -> Result<Self> {
         let device = self.device.clone();
         let permute = Permute::new(self, dims.into());
         let out_view = permute.compute_view()?;
@@ -927,7 +908,7 @@ impl Tensor {
         Ok(Tensor::lazy(op, out_view, device, false))
     }
 
-    pub fn cache(self, source: Tensor, dim: usize, offset: usize) -> anyhow::Result<Tensor> {
+    pub fn cache(self, source: Tensor, dim: usize, offset: usize) -> Result<Self> {
         let device = self.device.clone();
         let cache = Cache::new(self, source, dim, offset);
         let new_view = cache.compute_view()?;
@@ -936,13 +917,13 @@ impl Tensor {
 
     /// Returns a new tensor duplicating data from the original tensor. New dimensions are inserted
     /// on the left.
-    pub fn broadcast_left(self, left_shape: Shape) -> anyhow::Result<Tensor> {
+    pub fn broadcast_left(self, left_shape: Shape) -> Result<Self> {
         let mut dims = left_shape.to_vec();
         dims.extend(self.shape().to_vec());
         self.broadcast_to(Shape::from(dims))
     }
 
-    pub fn broadcast_to(self, shape: Shape) -> anyhow::Result<Tensor> {
+    pub fn broadcast_to(self, shape: Shape) -> Result<Self> {
         let device = self.device.clone();
         let broadcast = Broadcast::new(self, shape);
         let new_view = broadcast.compute_view()?;
@@ -951,7 +932,7 @@ impl Tensor {
         Ok(Tensor::lazy(op, new_view, device, false))
     }
 
-    pub fn index_select(self, indices: Tensor, dim: usize) -> anyhow::Result<Tensor> {
+    pub fn index_select(self, indices: Tensor, dim: usize) -> Result<Self> {
         let device = self.device.clone();
         let index_select = IndexSelect::new(self, indices, dim);
         let new_view = index_select.compute_view()?;
@@ -963,7 +944,7 @@ impl Tensor {
         ))
     }
 
-    pub fn index_write(self, src: Tensor, write_start: RVec<usize>) -> anyhow::Result<Tensor> {
+    pub fn index_write(self, src: Tensor, write_start: RVec<usize>) -> Result<Self> {
         let device = self.device.clone();
         let index_write = IndexWrite::new(self, src, write_start);
         let new_view = index_write.compute_view()?;
@@ -971,7 +952,7 @@ impl Tensor {
         Ok(Tensor::lazy(op, new_view, device, false))
     }
 
-    pub fn where_cond(self, on_true: Tensor, on_false: Tensor) -> anyhow::Result<Tensor> {
+    pub fn where_cond(self, on_true: Tensor, on_false: Tensor) -> Result<Self> {
         let device = self.device.clone();
         let where_cond = WhereCond::new(self, on_true, on_false);
         let new_view = where_cond.compute_view()?;
@@ -983,12 +964,7 @@ impl Tensor {
         ))
     }
 
-    pub fn scatter_add(
-        self,
-        indices: Tensor,
-        source: Tensor,
-        dim: usize,
-    ) -> anyhow::Result<Tensor> {
+    pub fn scatter_add(self, indices: Tensor, source: Tensor, dim: usize) -> Result<Self> {
         let source_dims = source.shape().to_vec();
         let self_dims = self.shape().to_vec();
         let mismatch = if source_dims.len() != self_dims.len() {
@@ -1028,7 +1004,7 @@ impl Tensor {
         ))
     }
 
-    pub fn index_add(self, indices: Tensor, source: Tensor, dim: usize) -> anyhow::Result<Tensor> {
+    pub fn index_add(self, indices: Tensor, source: Tensor, dim: usize) -> Result<Self> {
         let source_dims = source.shape().to_vec();
         let self_dims = self.shape().to_vec();
         let mismatch = if source_dims.len() != self_dims.len() {
@@ -1075,7 +1051,7 @@ impl Tensor {
         ))
     }
 
-    pub fn gather(self, indices: Tensor, dim: usize) -> anyhow::Result<Tensor> {
+    pub fn gather(self, indices: Tensor, dim: usize) -> Result<Self> {
         let self_dims = self.shape().to_vec();
         let indices_dims = indices.shape().to_vec();
         let mismatch = if indices_dims.len() != self_dims.len() {
@@ -1112,7 +1088,7 @@ impl Tensor {
         start: T,
         end: T,
         device: &Device,
-    ) -> anyhow::Result<Tensor> {
+    ) -> Result<Self> {
         Self::arange_step::<T>(start, end, T::one(), device)
     }
 
@@ -1123,7 +1099,7 @@ impl Tensor {
         end: T,
         step: T,
         device: &Device,
-    ) -> anyhow::Result<Tensor> {
+    ) -> Result<Self> {
         if step == T::zero() {
             anyhow::bail!("step cannot be zero")
         }
@@ -1166,7 +1142,7 @@ impl Tensor {
         shape: Shape,
         device: Device,
         is_variable: bool,
-    ) -> Tensor {
+    ) -> Result<Self> {
         let rng = device.get_rng();
         let data = (0..shape.numel())
             .map(|_| {
@@ -1174,7 +1150,7 @@ impl Tensor {
                 sample
             })
             .collect::<Vec<_>>();
-        Tensor::from_data_impl(data, shape, device, is_variable)
+        Ok(Tensor::from_data_impl(data, shape, device, is_variable))
     }
 
     #[cfg(feature = "rand")]
@@ -1183,7 +1159,7 @@ impl Tensor {
         high: T,
         shape: Shape,
         device: Device,
-    ) -> Tensor {
+    ) -> Result<Self> {
         Self::randint_impl(low, high, shape, device, false)
     }
 
@@ -1194,7 +1170,7 @@ impl Tensor {
         shape: Shape,
         device: Device,
         is_variable: bool,
-    ) -> Self {
+    ) -> Result<Self> {
         let rng = device.get_rng();
         if device.is_cpu() {
             let distr = Normal::new(mean as f64, std as f64).unwrap();
@@ -1207,14 +1183,20 @@ impl Tensor {
             let storage = Storage::from_slice(&data, &shape, &device);
             let stride = Stride::from(&shape);
             let meta = StorageView::new(shape, T::dtype(), stride);
-            Self::new_impl(LazyOp::Const, meta, Some(storage), device, is_variable)
+            Ok(Self::new_impl(
+                LazyOp::Const,
+                meta,
+                Some(storage),
+                device,
+                is_variable,
+            ))
         } else {
             let meta = StorageView {
                 shape: shape.clone(),
                 dtype: DType::F32,
                 stride: Stride::from(&shape.clone()),
             };
-            Self::new_impl(
+            Ok(Self::new_impl(
                 LazyOp::FillRandn(FillRandn {
                     shape,
                     mean,
@@ -1225,7 +1207,7 @@ impl Tensor {
                 None,
                 device,
                 is_variable,
-            )
+            ))
         }
     }
 
@@ -1235,7 +1217,7 @@ impl Tensor {
         std: f32,
         shape: Shape,
         device: Device,
-    ) -> Tensor {
+    ) -> Result<Self> {
         Self::randn_impl::<T>(mean, std, shape, device, false)
     }
 
@@ -1246,7 +1228,7 @@ impl Tensor {
         shape: Shape,
         device: Device,
         is_variable: bool,
-    ) -> Self {
+    ) -> Result<Self> {
         let rng = device.get_rng();
         let distr = Uniform::new(lo, up);
         let data = (0..shape.numel())
@@ -1256,7 +1238,7 @@ impl Tensor {
             })
             .collect::<Vec<_>>();
 
-        Self::from_data_impl(data, shape, device, is_variable)
+        Ok(Self::from_data_impl(data, shape, device, is_variable))
     }
 
     #[cfg(feature = "rand")]
@@ -1265,12 +1247,12 @@ impl Tensor {
         up: f32,
         shape: Shape,
         device: Device,
-    ) -> Tensor {
+    ) -> Result<Self> {
         Self::rand_impl::<T>(lo, up, shape, device, false)
     }
 
     #[cfg(feature = "rand")]
-    pub fn bernoulli(self) -> anyhow::Result<Tensor> {
+    pub fn bernoulli(self) -> Result<Self> {
         let rng = self.device().get_rng();
         let seed = rng.write().next_u32();
         let shape = self.shape();
@@ -1295,38 +1277,41 @@ impl Tensor {
         shape: &Shape,
         device: &Device,
         is_variable: bool,
-    ) -> Tensor {
+    ) -> Result<Self> {
         if device.is_cpu() {
             let storage = Storage::zeros::<T>(shape, device);
             let stride = Stride::from(shape);
             let meta = StorageView::new(shape.clone(), T::dtype(), stride);
-            Tensor::new_impl(
+            Ok(Tensor::new_impl(
                 LazyOp::Const,
                 meta,
                 Some(storage),
                 device.clone(),
                 is_variable,
-            )
+            ))
         } else {
             Self::full_impl(shape, T::zero(), device, is_variable)
         }
     }
 
-    pub fn range<T: TensorDType + num_traits::Float>(shape: &Shape, device: Device) -> Tensor {
+    pub fn range<T: TensorDType + num_traits::Float>(
+        shape: &Shape,
+        device: Device,
+    ) -> Result<Self> {
         let data: Vec<T> = (0..shape.numel())
             .map(|i| T::from(i).expect("Failed to convert index to T"))
             .collect();
-        Tensor::from_data(data, shape.clone(), device)
+        Ok(Tensor::from_data(data, shape.clone(), device))
     }
 
     pub fn zeros<T: TensorDType + num_traits::AsPrimitive<f32>>(
         shape: &Shape,
         device: &Device,
-    ) -> Tensor {
+    ) -> Result<Self> {
         Self::zeros_impl::<T>(shape, device, false)
     }
 
-    pub fn zeros_like<T: TensorDType + num_traits::AsPrimitive<f32>>(self) -> Tensor {
+    pub fn zeros_like<T: TensorDType + num_traits::AsPrimitive<f32>>(self) -> Result<Self> {
         Self::zeros::<T>(self.shape(), self.device())
     }
 
@@ -1334,18 +1319,18 @@ impl Tensor {
         shape: &Shape,
         device: &Device,
         is_variable: bool,
-    ) -> Tensor {
+    ) -> Result<Self> {
         if device.is_cpu() {
             let storage = Storage::ones::<T>(shape, device);
             let stride = Stride::from(shape);
             let meta = StorageView::new(shape.clone(), T::dtype(), stride);
-            Tensor::new_impl(
+            Ok(Tensor::new_impl(
                 LazyOp::Const,
                 meta,
                 Some(storage),
                 device.clone(),
                 is_variable,
-            )
+            ))
         } else {
             Self::full_impl(shape, T::one(), device, is_variable)
         }
@@ -1354,26 +1339,26 @@ impl Tensor {
     pub fn ones<T: TensorDType + num_traits::AsPrimitive<f32>>(
         shape: &Shape,
         device: &Device,
-    ) -> Tensor {
+    ) -> Result<Self> {
         Self::ones_impl::<T>(shape, device, false)
     }
 
-    pub fn ones_like<T: TensorDType + num_traits::AsPrimitive<f32>>(&self) -> Tensor {
+    pub fn ones_like<T: TensorDType + num_traits::AsPrimitive<f32>>(&self) -> Result<Self> {
         Self::ones::<T>(self.shape(), self.device())
     }
 
-    fn trilu(self, upper: bool, k: Option<i32>) -> anyhow::Result<Tensor> {
+    fn trilu(self, upper: bool, k: Option<i32>) -> Result<Self> {
         let device = self.device.clone();
         let trilu = Trilu::new(self, upper, k);
         let new_view = trilu.compute_view()?;
         Ok(Tensor::lazy(LazyOp::Trilu(trilu), new_view, device, false))
     }
 
-    pub fn triu(self, k: Option<i32>) -> anyhow::Result<Tensor> {
+    pub fn triu(self, k: Option<i32>) -> Result<Self> {
         self.trilu(true, k)
     }
 
-    pub fn tril(self, k: Option<i32>) -> anyhow::Result<Tensor> {
+    pub fn tril(self, k: Option<i32>) -> Result<Self> {
         self.trilu(false, k)
     }
 
@@ -1384,20 +1369,20 @@ impl Tensor {
 
     /// Returns a tensor that is in row major order. This is the same as the original tensor if it
     /// was already contiguous, otherwise a copy is triggered.
-    pub fn contiguous(self) -> Tensor {
+    pub fn contiguous(self) -> Result<Self> {
         if self.is_contiguous() {
-            self.clone()
+            Ok(self.clone())
         } else {
             let storage_guard = self.storage();
             let storage = storage_guard.as_ref().unwrap();
             let cloned_storage = storage.deep_clone(self.device()).unwrap();
-            Tensor::new_impl(
+            Ok(Tensor::new_impl(
                 LazyOp::Const,
                 self.view.clone(),
                 Some(cloned_storage),
                 self.device.clone(),
                 false,
-            )
+            ))
         }
     }
 
@@ -1416,27 +1401,18 @@ impl Tensor {
         shape: Shape,
         device: Device,
         is_variable: bool,
-    ) -> Tensor {
+    ) -> Self {
         let storage = Storage::from_slice(data.as_ref(), &shape, &device);
         let stride = Stride::from(&shape);
         let meta = StorageView::new(shape, T::dtype(), stride);
         Tensor::new_impl(LazyOp::Const, meta, Some(storage), device, is_variable)
     }
 
-    pub fn from_data<T: TensorDType, U: AsRef<[T]>>(
-        data: U,
-        shape: Shape,
-        device: Device,
-    ) -> Tensor {
+    pub fn from_data<T: TensorDType, U: AsRef<[T]>>(data: U, shape: Shape, device: Device) -> Self {
         Self::from_data_impl(data, shape, device, false)
     }
 
-    pub fn from_bytes(
-        data: &[u8],
-        dtype: DType,
-        shape: Shape,
-        device: Device,
-    ) -> anyhow::Result<Tensor> {
+    pub fn from_bytes(data: &[u8], dtype: DType, shape: Shape, device: Device) -> Result<Self> {
         let storage = Storage::from_bytes(data, dtype.size_of(), &device);
         let stride = Stride::from(&shape);
         let meta = StorageView::new(shape, dtype, stride);
@@ -1451,7 +1427,7 @@ impl Tensor {
 
     /// Create a variable based on the values currently stored in a tensor. The storage is always
     /// copied.
-    pub(crate) fn make_var(&self) -> anyhow::Result<Tensor> {
+    pub(crate) fn make_var(&self) -> Result<Self> {
         let storage_guard = self.storage();
         let storage = storage_guard.as_ref().unwrap();
         let cloned_storage = storage.deep_clone(self.device()).unwrap();
@@ -1468,7 +1444,7 @@ impl Tensor {
     /// this new node. The storage of this tensor is shared with the initial tensor.
     ///
     /// If the tensor is already detached from the computation graph, the same tensor is returned.
-    pub fn detach(&self) -> Tensor {
+    pub fn detach(&self) -> Self {
         match self.op {
             LazyOp::Const if !self.is_variable => self.clone(),
             _ => {
@@ -1484,7 +1460,7 @@ impl Tensor {
         }
     }
 
-    pub fn copy(&self, dst: &Self) -> Tensor {
+    pub fn copy(&self, dst: &Self) -> Self {
         Tensor::new_impl(
             LazyOp::Copy(TensorCopy {
                 src: self.clone(),
@@ -1522,7 +1498,7 @@ impl Tensor {
         dtype: DType,
         shape: Shape,
         device: Device,
-    ) -> Tensor {
+    ) -> Self {
         let storage = unsafe { Storage::from_quantized(data.as_ref(), &device) };
         let stride = Stride::from(&shape);
         let meta = StorageView::new(shape, dtype, stride);
@@ -1533,7 +1509,7 @@ impl Tensor {
         reader: &mut R,
         shape: Shape,
         device: Device,
-    ) -> anyhow::Result<Tensor> {
+    ) -> Result<Self> {
         let storage = Storage::from_disk::<T, R>(reader, &shape, &device)?;
         let stride = Stride::from(&shape);
         let meta = StorageView::new(shape, T::dtype(), stride);
@@ -1798,7 +1774,7 @@ impl Tensor {
     }
 
     #[maybe_async]
-    pub async fn deep_clone(&self) -> Tensor {
+    pub async fn deep_clone(&self) -> Self {
         ensure_resolved!(self);
         let storage_guard = self.storage();
         let storage = storage_guard.as_ref().unwrap();
@@ -1960,7 +1936,7 @@ impl<T: TensorDType + Default + num_traits::Float> CloseStats<T> {
 
 #[cfg(feature = "testing")]
 impl Tensor {
-    pub fn read_npy<T, P>(path: P, device: &Device, is_variable: bool) -> anyhow::Result<Tensor>
+    pub fn read_npy<T, P>(path: P, device: &Device, is_variable: bool) -> Result<Self>
     where
         T: TensorDType + npyz::Deserialize,
         P: AsRef<Path>,
@@ -2000,7 +1976,7 @@ impl Tensor {
         bytes: &[u8],
         device: &Device,
         is_variable: bool,
-    ) -> anyhow::Result<Tensor> {
+    ) -> Result<Self> {
         let reader = npyz::NpyFile::new(bytes)?;
         let shape = reader
             .shape()
@@ -2117,31 +2093,31 @@ impl<T: TensorDType> From<ArrayD<T>> for Tensor {
 macro_rules! bin_trait {
     ($trait:ident, $fn1:ident, $mul:expr, $add:expr) => {
         impl std::ops::$trait<Tensor> for Tensor {
-            type Output = anyhow::Result<Tensor>;
+            type Output = Result<Tensor>;
 
             fn $fn1(self, rhs: Tensor) -> Self::Output {
                 Tensor::$fn1(self, rhs)
             }
         }
 
-        impl std::ops::$trait<Tensor> for anyhow::Result<Tensor> {
-            type Output = anyhow::Result<Tensor>;
+        impl std::ops::$trait<Tensor> for Result<Tensor> {
+            type Output = Result<Tensor>;
 
             fn $fn1(self, rhs: Tensor) -> Self::Output {
                 Tensor::$fn1(self?, rhs)
             }
         }
 
-        impl std::ops::$trait<anyhow::Result<Tensor>> for Tensor {
-            type Output = anyhow::Result<Tensor>;
+        impl std::ops::$trait<Result<Tensor>> for Tensor {
+            type Output = Result<Tensor>;
 
-            fn $fn1(self, rhs: anyhow::Result<Tensor>) -> Self::Output {
+            fn $fn1(self, rhs: Result<Tensor>) -> Self::Output {
                 Tensor::$fn1(self, rhs?)
             }
         }
 
         impl std::ops::$trait<f32> for Tensor {
-            type Output = anyhow::Result<Tensor>;
+            type Output = Result<Self>;
 
             fn $fn1(self, rhs: f32) -> Self::Output {
                 self.affine($mul(rhs), $add(rhs))
@@ -2156,7 +2132,7 @@ bin_trait!(Mul, mul, |v| v, |_| 0.);
 bin_trait!(Div, div, |v| 1. / v, |_| 0.);
 
 impl std::ops::Add<Tensor> for f32 {
-    type Output = anyhow::Result<Tensor>;
+    type Output = Result<Tensor>;
 
     fn add(self, rhs: Tensor) -> Self::Output {
         rhs + self
@@ -2164,7 +2140,7 @@ impl std::ops::Add<Tensor> for f32 {
 }
 
 impl std::ops::Mul<Tensor> for f32 {
-    type Output = anyhow::Result<Tensor>;
+    type Output = Result<Tensor>;
 
     fn mul(self, rhs: Tensor) -> Self::Output {
         rhs * self
@@ -2172,7 +2148,7 @@ impl std::ops::Mul<Tensor> for f32 {
 }
 
 impl std::ops::Sub<Tensor> for f32 {
-    type Output = anyhow::Result<Tensor>;
+    type Output = Result<Tensor>;
 
     fn sub(self, rhs: Tensor) -> Self::Output {
         rhs.affine(-1., self)
@@ -2180,7 +2156,7 @@ impl std::ops::Sub<Tensor> for f32 {
 }
 
 impl std::ops::Div<Tensor> for f32 {
-    type Output = anyhow::Result<Tensor>;
+    type Output = Result<Tensor>;
 
     #[allow(clippy::suspicious_arithmetic_impl)]
     fn div(self, rhs: Tensor) -> Self::Output {
@@ -2228,7 +2204,7 @@ mod tests {
     #[test]
     fn has_nan_works() {
         let device = Device::request_device(crate::DeviceRequest::GPU).unwrap();
-        let rand = Tensor::randn::<f32>(0., 1., shape![1, 1500, 384], device.clone());
+        let rand = Tensor::randn::<f32>(0., 1., shape![1, 1500, 384], device.clone()).unwrap();
         let nans = Tensor::from_data(vec![f32::NAN; 1500 * 384], shape![1, 1500, 384], device);
 
         let bingo = Tensor::cat(rvec![rand, nans], 2).unwrap();

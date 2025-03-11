@@ -267,7 +267,7 @@ def layer_norm_backward(x, weight, bias = None):
             1.,
             shape![batch_size, seq_len, hidden_size],
             Device::CPU,
-        );
+        )?;
         let varmap = VarMap::new();
         let vb = VarBuilder::from_varmap(&varmap, ratchet::DType::F32, &device);
 
@@ -312,7 +312,7 @@ def layer_norm_backward(x, weight, bias = None):
             1.,
             shape![batch_size, seq_len, hidden_size],
             Device::CPU,
-        );
+        )?;
         let x_gpu = x.to(&device)?;
         let x_var = Var::from_tensor(&x_gpu)?;
         let varmap = VarMap::new();

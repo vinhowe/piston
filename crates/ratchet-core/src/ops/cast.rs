@@ -265,7 +265,7 @@ def cast(a):
             return Ok(());
         }
         let CastProblem { dst_dtype, B, M, N } = prob;
-        let input = Tensor::randn::<f32>(0., 1., shape![B, M, N], Device::CPU);
+        let input = Tensor::randn::<f32>(0., 1., shape![B, M, N], Device::CPU)?;
         let ground = ground_truth(&input, dst_dtype)?;
 
         let input = input.to(&device)?;

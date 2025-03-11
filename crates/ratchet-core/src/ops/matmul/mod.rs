@@ -925,7 +925,7 @@ def matmul(a, b{}):
                 1.0,
                 shape![N],
                 cpu_device.clone(),
-            ))
+            )?)
         } else {
             None
         };
@@ -934,8 +934,8 @@ def matmul(a, b{}):
         println!("RHS shape: {:?}", rhs_shape);
         println!("Bias: {:?}", bias.as_ref().map(|b| b.shape()));
 
-        let a = Tensor::randn::<f32>(0.0, 1.0, lhs_shape, cpu_device.clone());
-        let b = Tensor::randn::<f32>(0.0, 1.0, rhs_shape, cpu_device.clone());
+        let a = Tensor::randn::<f32>(0.0, 1.0, lhs_shape, cpu_device.clone())?;
+        let b = Tensor::randn::<f32>(0.0, 1.0, rhs_shape, cpu_device.clone())?;
         let ground = ground_truth(&a, &b, bias.as_ref(), trans_lhs, trans_rhs, trans_dst)?;
         println!("Ground shape: {:?}", ground.shape());
 
@@ -956,8 +956,8 @@ def matmul(a, b{}):
     fn test_qgemm() -> anyhow::Result<()> {
         let device = Device::request_device(DeviceRequest::GPU).unwrap();
         let cpu_device = Device::request_device(DeviceRequest::CPU)?;
-        let a = Tensor::randn::<f32>(0.0, 1.0, shape![6, 1500, 64], cpu_device.clone());
-        let b = Tensor::randn::<f32>(0.0, 1.0, shape![6, 64, 1500], cpu_device.clone());
+        let a = Tensor::randn::<f32>(0.0, 1.0, shape![6, 1500, 64], cpu_device.clone())?;
+        let b = Tensor::randn::<f32>(0.0, 1.0, shape![6, 64, 1500], cpu_device.clone())?;
         let ground = ground_truth(&a, &b, None, false, false, false)?;
 
         let aq = quantize::<Q8_0F>(&a);
@@ -980,14 +980,14 @@ def matmul(a, b{}):
 
         let device = Device::request_device(DeviceRequest::GPU).unwrap();
         let cpu_device = Device::request_device(DeviceRequest::CPU)?;
-        let a = Tensor::randn::<f32>(0.0, 1.0, shape![2, 175, 240], cpu_device.clone());
-        let b = Tensor::randn::<f32>(0.0, 1.0, shape![2, 240, 182], cpu_device.clone());
+        let a = Tensor::randn::<f32>(0.0, 1.0, shape![2, 175, 240], cpu_device.clone())?;
+        let b = Tensor::randn::<f32>(0.0, 1.0, shape![2, 240, 182], cpu_device.clone())?;
         let bias = Some(Tensor::randn::<f32>(
             0.0,
             1.0,
             shape![182],
             cpu_device.clone(),
-        ));
+        )?);
 
         let TRANS_LHS = false;
         let TRANS_RHS = false;
@@ -1022,8 +1022,8 @@ def matmul(a, b{}):
 
         let device = Device::request_device(DeviceRequest::GPU).unwrap();
         let cpu_device = Device::request_device(DeviceRequest::CPU)?;
-        let a = Tensor::randn::<f32>(0.0, 1.0, shape![1, 51865, 384], cpu_device.clone());
-        let b = Tensor::randn::<f32>(0.0, 1.0, shape![1, 1, 384], cpu_device.clone());
+        let a = Tensor::randn::<f32>(0.0, 1.0, shape![1, 51865, 384], cpu_device.clone())?;
+        let b = Tensor::randn::<f32>(0.0, 1.0, shape![1, 1, 384], cpu_device.clone())?;
 
         let TRANS_LHS = false;
         let TRANS_RHS = true;

@@ -269,14 +269,14 @@ mod tests {
         let device = Device::request_device(DeviceRequest::GPU).unwrap();
         let populated = 2;
         //Create cache with 2 populated entries, and 14 blank entries
-        let mut dst0 = Tensor::randn::<f32>(0., 1., shape![1, 2, populated, 16], Device::CPU);
+        let mut dst0 = Tensor::randn::<f32>(0., 1., shape![1, 2, populated, 16], Device::CPU)?;
         println!("PREVIOUS CACHE\n {:?}\n", dst0.to_ndarray_view::<f32>());
         dst0 = dst0.to(&device)?;
-        let dst1 = Tensor::zeros::<f32>(&shape![1, 2, 4, 16], &device);
+        let dst1 = Tensor::zeros::<f32>(&shape![1, 2, 4, 16], &device)?;
         let cur_cache = Tensor::cat(rvec![dst0.clone(), dst1], 2)?;
 
         //This is the k or v vector we write
-        let mut src = Tensor::randn::<f32>(0., 1., shape![1, 2, 1, 16], Device::CPU);
+        let mut src = Tensor::randn::<f32>(0., 1., shape![1, 2, 1, 16], Device::CPU)?;
         println!("SRC \n {:?}\n", src.to_ndarray_view::<f32>());
         src = src.to(&device)?;
 

@@ -36,7 +36,7 @@ impl GPT2SelfAttention {
             linear_gpt2_residual(cfg.n_embd, cfg.n_embd, cfg.n_layer, vb.pp("c_proj")).await?;
         let h_dim = cfg.head_dim();
 
-        let softmax_scale = Tensor::full(&shape![1], 1.0 / (h_dim as f32).sqrt(), vb.device());
+        let softmax_scale = Tensor::full(&shape![1], 1.0 / (h_dim as f32).sqrt(), vb.device())?;
 
         let (rope, alibi) = match cfg.positional_encoding {
             PositionalEncoding::RoPE => {
@@ -189,7 +189,7 @@ impl Module for GPT2SelfAttention {
 
 fn masked_fill(on_false: &Tensor, mask: &Tensor, on_true: f32) -> anyhow::Result<Tensor> {
     let shape = mask.shape();
-    let on_true = Tensor::full(shape, on_true, on_false.device());
+    let on_true = Tensor::full(shape, on_true, on_false.device())?;
     let m = mask.clone().where_cond(on_true, on_false.clone())?;
     Ok(m)
 }

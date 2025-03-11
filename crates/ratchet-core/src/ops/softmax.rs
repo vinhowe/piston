@@ -325,7 +325,7 @@ def softmax(a):
 
     fn run_softmax_trial(problem: SoftmaxProblem, device: Device) {
         let SoftmaxProblem { B, M, N } = problem;
-        let a = Tensor::randn::<f32>(0., 1., shape![B, M, N], Device::CPU);
+        let a = Tensor::randn::<f32>(0., 1., shape![B, M, N], Device::CPU).unwrap();
         let ground = ground_truth(&a).unwrap();
 
         let a_gpu = a.to(&device).unwrap();

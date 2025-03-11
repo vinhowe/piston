@@ -99,7 +99,8 @@ mod tests {
             .prop_flat_map(|vocab_shape| (Just(vocab_shape), 1..64usize))
             .prop_map(|(vocab_shape, num_indices)| {
                 let indices =
-                    Tensor::randint(0, vocab_shape[0] as i32, shape![num_indices], Device::CPU);
+                    Tensor::randint(0, vocab_shape[0] as i32, shape![num_indices], Device::CPU)
+                        .unwrap();
                 EmbeddingProblem {
                     vocab_shape,
                     indices,
@@ -131,7 +132,7 @@ def embedding(weight, indices):
             vocab_shape,
             indices,
         } = problem;
-        let weight = Tensor::randn::<f32>(vocab_shape, Device::CPU);
+        let weight = Tensor::randn::<f32>(vocab_shape, Device::CPU).unwrap();
 
         let ground_truth = ground_truth(&weight, &indices).unwrap();
 

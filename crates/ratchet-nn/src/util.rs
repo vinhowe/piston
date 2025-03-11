@@ -7,7 +7,7 @@ pub fn clip_grad_norm(
     max_norm: f32,
     device: &Device,
 ) -> anyhow::Result<Tensor> {
-    let mut total_norm = Tensor::full(&shape![1], 0., device);
+    let mut total_norm = Tensor::full(&shape![1], 0., device)?;
     let mut any_grads = false;
 
     for (_, grad) in grads.iter() {
@@ -20,7 +20,7 @@ pub fn clip_grad_norm(
     }
 
     let clip_coef = (max_norm / (total_norm.clone() + 1e-6)?)?;
-    let ones_max = Tensor::ones::<f32>(&shape![1], device);
+    let ones_max = Tensor::ones::<f32>(&shape![1], device)?;
     let clip_coef = (clip_coef.clone().lt(ones_max.clone()))?
         .where_cond(clip_coef.clone(), ones_max)?
         .detach();

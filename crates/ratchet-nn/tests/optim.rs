@@ -22,8 +22,8 @@ fn run_linear_regression<O: Optimizer>(optimizer: OptimizerFactory<O>) -> anyhow
     let sample_ys = gen.schedule(sample_xs.clone())?;
 
     // Now use backprop to run a linear regression between samples and get the coefficients back.
-    let w = Var::zeros::<f32>(&shape![1, 2], &device);
-    let b = Var::zeros::<f32>(&shape![1, 1], &device);
+    let w = Var::zeros::<f32>(&shape![1, 2], &device)?;
+    let b = Var::zeros::<f32>(&shape![1, 1], &device)?;
     let mut opt = optimizer(vec![
         (Some(String::from("b")), b.clone()),
         (Some(String::from("w")), w.clone()),

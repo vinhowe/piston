@@ -22,6 +22,8 @@ pub enum VarBuilderError {
         shape: Shape,
         tensor_shape: Shape,
     },
+    #[error(transparent)]
+    Other(#[from] anyhow::Error),
 }
 
 /// A structure used to retrieve variables, these variables can either come from storage or be
@@ -259,7 +261,7 @@ impl SimpleBackend for Zeros {
         _: crate::Init,
         dev: Device,
     ) -> anyhow::Result<Tensor, VarBuilderError> {
-        Ok(Tensor::zeros::<f32>(&s, &dev))
+        Ok(Tensor::zeros::<f32>(&s, &dev)?)
     }
 
     fn contains_tensor(&self, _name: &str) -> bool {

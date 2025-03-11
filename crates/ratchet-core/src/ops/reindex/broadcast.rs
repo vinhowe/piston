@@ -117,7 +117,7 @@ mod tests {
                 })
                 .prop_map(|(original_shape, to)| BroadcastProblem {
                     op: Broadcast::new(
-                        Tensor::randn::<f32>(0., 1., original_shape, Device::CPU),
+                        Tensor::randn::<f32>(0., 1., original_shape, Device::CPU).unwrap(),
                         to,
                     ),
                 })
@@ -174,7 +174,7 @@ def slice(a):
         let device = Device::request_device(DeviceRequest::GPU).unwrap();
         let prob = BroadcastProblem {
             op: Broadcast::new(
-                Tensor::randn::<f32>(0., 1., shape![1], Device::CPU),
+                Tensor::randn::<f32>(0., 1., shape![1], Device::CPU).unwrap(),
                 shape![4, 32, 128, 128],
             ),
         };

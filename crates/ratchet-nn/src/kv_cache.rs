@@ -1,3 +1,4 @@
+use anyhow::Result;
 use num_traits::AsPrimitive;
 use ratchet::{shape, Device, HashMap, Shape, Tensor, TensorDType};
 
@@ -9,12 +10,15 @@ pub struct KVEntry {
 }
 
 impl KVEntry {
-    pub fn allocate<T: TensorDType + AsPrimitive<f32>>(shape: &Shape, device: &Device) -> Self {
-        KVEntry {
-            k_cache: Tensor::zeros::<T>(shape, device),
-            v_cache: Tensor::zeros::<T>(shape, device),
+    pub fn allocate<T: TensorDType + AsPrimitive<f32>>(
+        shape: &Shape,
+        device: &Device,
+    ) -> Result<Self> {
+        Ok(KVEntry {
+            k_cache: Tensor::zeros::<T>(shape, device)?,
+            v_cache: Tensor::zeros::<T>(shape, device)?,
             entries: 0,
-        }
+        })
     }
 }
 
@@ -43,17 +47,17 @@ impl KVCache {
         use_kv_cache: bool,
         shape: Shape,
         device: &Device,
-    ) -> Self {
+    ) -> Result<Self> {
         let mut entries = Vec::with_capacity(n_layers as _);
         // TODO: This is really bad; look at actual patterns for how people do KV caches
         let mut allocated = false;
         if use_kv_cache {
             for _ in 0..n_layers {
-                entries.push(KVEntry::allocate::<T>(&shape, device));
+                entries.push(KVEntry::allocate::<T>(&shape, device)?);
             }
             allocated = true;
         }
-        KVCache {
+        Ok(KVCache {
             entries,
             masks: HashMap::default(),
             device: device.clone(),
@@ -61,7 +65,7 @@ impl KVCache {
             use_kv_cache,
             allocated,
             shape,
-        }
+        })
     }
 
     pub fn update(&mut self, offset: usize) {
@@ -84,7 +88,7 @@ impl KVCache {
         self.use_kv_cache
     }
 
-    pub fn set_use_kv_cache(&mut self, use_kv_cache: bool) {
+    pub fn set_use_kv_cache(&mut self, use_kv_cache: bool) -> Result<()> {
         self.use_kv_cache = use_kv_cache;
         if !use_kv_cache && self.allocated {
             self.entries.clear();
@@ -92,19 +96,20 @@ impl KVCache {
         } else if use_kv_cache && !self.allocated {
             for _ in 0..self.n_layers {
                 self.entries
-                    .push(KVEntry::allocate::<f32>(&self.shape, &self.device));
+                    .push(KVEntry::allocate::<f32>(&self.shape, &self.device)?);
             }
             self.allocated = true;
         }
+        Ok(())
     }
 
-    pub fn mask(&mut self, t: usize) -> anyhow::Result<Tensor> {
+    pub fn mask(&mut self, t: usize) -> Result<Tensor> {
         if let Some(mask) = self.masks.get(&t) {
             log::debug!("Using existing mask for {:?}", t);
             Ok(mask.clone())
         } else {
             log::debug!("Creating mask for {:?}", t);
-            let ones = Tensor::ones::<f32>(&shape![t, t], &self.device);
+            let ones = Tensor::ones::<f32>(&shape![t, t], &self.device)?;
             let mask = ones.tril(None)?;
             self.masks.insert(t, mask.clone());
             Ok(mask)

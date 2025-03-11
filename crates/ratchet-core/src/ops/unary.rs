@@ -461,7 +461,7 @@ def {}(a):
 
     fn run_unary_trial(prob: UnaryProblem, device: Device) -> anyhow::Result<()> {
         let UnaryProblem { op, B, M } = prob;
-        let a = Tensor::randn::<f32>(0., 1., shape![B, M], Device::CPU);
+        let a = Tensor::randn::<f32>(0., 1., shape![B, M], Device::CPU)?;
 
         let args = match op {
             UnaryOp::Gelu => "approximate=\"tanh\"",

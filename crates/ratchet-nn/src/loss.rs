@@ -37,7 +37,7 @@ pub fn nll_masked(inp: Tensor, target: Tensor) -> anyhow::Result<Tensor> {
     let ignore_index = -100;
     let mask = target
         .clone()
-        .ne(Tensor::full(target.shape(), ignore_index, target.device()))?;
+        .ne(Tensor::full(target.shape(), ignore_index, target.device())?)?;
 
     // Note here that we seem to be able to get away with passing negative indices to gather.
     // If we were more careful about this, we'd replace the indices with 0s where the mask is 0,
@@ -85,7 +85,7 @@ pub fn label_smoothed_nll(log_probs: Tensor, target: Tensor, alpha: f32) -> anyh
     let ignore_index = -100;
     let mask = target
         .clone()
-        .ne(Tensor::full(target.shape(), ignore_index, target.device()))?
+        .ne(Tensor::full(target.shape(), ignore_index, target.device())?)?
         .cast(ratchet::DType::F32)?;
 
     // Gather the negative log-prob for the correct class:
@@ -208,8 +208,8 @@ def cross_entropy(input, target):
         } = problem;
 
         // Generate random input and target tensors
-        let input = Tensor::randn::<f32>(0., 1., shape![batch_size, num_classes], Device::CPU);
-        let target = Tensor::randint(0, num_classes as i32, shape![batch_size], Device::CPU);
+        let input = Tensor::randn::<f32>(0., 1., shape![batch_size, num_classes], Device::CPU)?;
+        let target = Tensor::randint(0, num_classes as i32, shape![batch_size], Device::CPU)?;
 
         // Compute ground truth
         let (ground_loss, ground_grad) = ground_truth_cross_entropy(&input, &target)?;

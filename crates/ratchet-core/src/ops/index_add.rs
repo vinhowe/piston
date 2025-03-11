@@ -227,7 +227,8 @@ mod tests {
                 .prop_flat_map(|input_shape| (Just(input_shape), 1..64usize))
                 .prop_map(|(input_shape, num_indices)| {
                     let indices =
-                        Tensor::randint(0, input_shape[0] as i32, shape![num_indices], Device::CPU);
+                        Tensor::randint(0, input_shape[0] as i32, shape![num_indices], Device::CPU)
+                            .unwrap();
                     IndexAddProblem {
                         input_shape,
                         indices,
@@ -268,10 +269,12 @@ def index_add(input, source, indices):
         source_shape[0] = indices.shape()[0];
 
         let input = Tensor::randn::<f32>(0., 1., input_shape.clone(), device.clone())
+            .unwrap()
             .to(&Device::CPU)
             .unwrap();
 
         let source = Tensor::randn::<f32>(0., 1., source_shape.clone(), device.clone())
+            .unwrap()
             .to(&Device::CPU)
             .unwrap();
 

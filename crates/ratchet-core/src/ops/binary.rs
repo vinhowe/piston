@@ -301,8 +301,8 @@ def {}(a, b):
     fn run_binary_trial(prob: BinaryProblem, device: Device) -> anyhow::Result<()> {
         let cpu_device = Device::request_device(DeviceRequest::CPU)?;
         let BinaryProblem { op, shape } = prob;
-        let a = Tensor::randn::<f32>(0., 1., shape.clone(), cpu_device.clone());
-        let b = Tensor::randn::<f32>(0., 1., shape, cpu_device.clone());
+        let a = Tensor::randn::<f32>(0., 1., shape.clone(), cpu_device.clone())?;
+        let b = Tensor::randn::<f32>(0., 1., shape, cpu_device.clone())?;
         let ground = ground_truth(&a, &b, &op)?;
 
         let a = a.to(&device)?;
