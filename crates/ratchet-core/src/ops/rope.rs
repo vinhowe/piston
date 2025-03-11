@@ -67,7 +67,7 @@ impl OpGuards for RoPE {
 
     fn check_dtypes(&self) {
         let input = &self.input;
-        assert!(input.dt().is_float());
+        assert!(input.dtype().is_float());
     }
 }
 
@@ -163,7 +163,7 @@ impl KernelRenderable for RoPEKernels {
 
         let body_code = rope_body(is_backward);
 
-        let dt = P::T::DT;
+        let dtype = P::T::DT;
         kernel_builder.write_main(wgsl! {
             if(global_invocation_id.y >= metadata.seq_len) {
               return;
@@ -181,8 +181,8 @@ impl KernelRenderable for RoPEKernels {
             let d = f32(global_invocation_id.x) / f32(grid.x);
 
             let theta = L * exp2(-d * metadata.base);
-            let costheta = 'dt(cos(theta));
-            let sintheta = 'dt(sin(theta));
+            let costheta = 'dtype(cos(theta));
+            let sintheta = 'dtype(sin(theta));
 
             let x1 = in[in_index_1];
             let x2 = in[in_index_2];
@@ -282,7 +282,7 @@ impl Kernel for RoPEKernels {
             RoPEKernels::Forward(x) => x,
             RoPEKernels::Backward(x) => x,
         };
-        match (inner.input.dt(), &kernel_element) {
+        match (inner.input.dtype(), &kernel_element) {
             (DType::F32, KernelElement::Scalar) => {
                 self.render::<Scalar<f32>>(inplace, dst, workgroup_size)
             }
@@ -303,7 +303,7 @@ impl Kernel for RoPEKernels {
             }
             _ => Err(OperationError::CompileError(format!(
                 "Unsupported dtype {:?} or kernel element {:?}",
-                inner.input.dt(),
+                inner.input.dtype(),
                 kernel_element
             ))),
         }
@@ -330,7 +330,7 @@ def mlx_rope(input, dim, offset):
     mx.eval(y)
     return np.array(y)
 "#;
-        run_py_prg(prg.to_string(), &[a], &[&dim, &offset], a.dt())
+        run_py_prg(prg.to_string(), &[a], &[&dim, &offset], a.dtype())
     }
 
     fn run_rope_trial(problem: RoPEProblem, device: Device) {

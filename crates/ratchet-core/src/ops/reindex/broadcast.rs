@@ -56,7 +56,7 @@ impl OpGuards for Broadcast {
     }
 
     fn check_dtypes(&self) {
-        assert!(!self.src.dt().is_quantized());
+        assert!(!self.src.dtype().is_quantized());
     }
 }
 
@@ -74,7 +74,7 @@ impl Operation for Broadcast {
         }
 
         let strides = Strides::from(&self.to);
-        Ok(StorageView::new(self.to.clone(), self.src.dt(), strides))
+        Ok(StorageView::new(self.to.clone(), self.src.dtype(), strides))
     }
 
     fn srcs(&self) -> RVec<&Tensor> {
@@ -141,7 +141,7 @@ def slice(a):
 "#,
             args
         );
-        run_py_prg(prg.to_string(), &[a], &[], a.dt())
+        run_py_prg(prg.to_string(), &[a], &[], a.dtype())
     }
 
     fn run_reindex_trial(prob: BroadcastProblem, device: Device) -> anyhow::Result<()> {

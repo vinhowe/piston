@@ -56,16 +56,16 @@ impl KernelRenderable for ConvKernels {
         self.register_bindings::<P>(&mut kernel_builder, inplace)?;
         kernel_builder.render_metadata(&self.metadata(dst, &self.kernel_element(dst))?);
 
-        let dt = P::T::DT;
+        let dtype = P::T::DT;
         kernel_builder.write_global(wgsl! {
-            var<workgroup> F: array<'dt, 4096u>;
+            var<workgroup> F: array<'dtype, 4096u>;
         });
 
         kernel_builder.write_global(wgsl! {
             fn inner(input_index: u32, filter_index: u32, output_index: u32, bias_index: u32, start: u32, end: u32) {
-                var inp = vec3<'dt>(0f);
-                var kernel = vec3<'dt>(0f);
-                var acc = vec3<'dt>(0f);
+                var inp = vec3<'dtype>(0f);
+                var kernel = vec3<'dtype>(0f);
+                var acc = vec3<'dtype>(0f);
                 for(var i = 0u; i < metadata.Cin; i++) {
                     let input_start = input_index + (i * metadata.Lin) - metadata.padding; //-1 is for padding
                     //We only populate the input between the provided indices, used for padding
@@ -145,12 +145,12 @@ impl OpGuards for Conv {
     }
 
     fn check_dtypes(&self) {
-        assert!(self.input.dt().is_float());
-        assert!(self.weight.dt().is_float());
+        assert!(self.input.dtype().is_float());
+        assert!(self.weight.dtype().is_float());
         assert!(self
             .bias
             .as_ref()
-            .map(|t| t.dt().is_float())
+            .map(|t| t.dtype().is_float())
             .unwrap_or(true));
     }
 }
@@ -174,7 +174,7 @@ impl Operation for Conv {
         let L_out = calc_dim(L_in, KS, self.padding, 1, self.stride);
         let out_shape = shape![N, C_out, L_out];
         let out_strides = Strides::from(&out_shape);
-        Ok(StorageView::new(out_shape, input_t.dt(), out_strides))
+        Ok(StorageView::new(out_shape, input_t.dtype(), out_strides))
     }
 
     #[inline]
@@ -250,7 +250,7 @@ impl Kernel for ConvKernels {
     ) -> Result<KernelSource, OperationError> {
         let kernel_element = self.kernel_element(dst);
         let ConvKernels::Threebythree(inner) = self;
-        match (inner.input.dt(), &kernel_element) {
+        match (inner.input.dtype(), &kernel_element) {
             (DType::F32, KernelElement::Scalar) => {
                 self.render::<Scalar<f32>>(inplace, dst, workgroup_size)
             }
@@ -271,7 +271,7 @@ impl Kernel for ConvKernels {
             }
             _ => Err(OperationError::CompileError(format!(
                 "Unsupported dtype {:?} or kernel element {:?}",
-                inner.input.dt(),
+                inner.input.dtype(),
                 kernel_element
             ))),
         }
@@ -313,7 +313,7 @@ def conv(input, filters, bias, stride, padding):
             prg.to_string(),
             &[input, filters, bias],
             &[&stride, &padding],
-            input.dt(),
+            input.dtype(),
         )
     }
 

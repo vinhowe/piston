@@ -193,7 +193,7 @@ pub trait Quantized {
     const MASK: i32 = (1 << Self::LSHIFT) - 1;
     const RSHIFT: usize = Self::GROUP_SIZE - Self::LSHIFT;
 
-    fn dt() -> DType;
+    fn dtype() -> DType;
 }
 impl Quantized for Q8_0F {
     type FP = f32;
@@ -201,7 +201,7 @@ impl Quantized for Q8_0F {
     const GROUP_SIZE: usize = 32;
     const SF: f32 = ((1 << 7) - 1) as f32;
 
-    fn dt() -> DType {
+    fn dtype() -> DType {
         DType::Q8_0F(Q8_0F::default())
     }
 }
@@ -211,7 +211,7 @@ impl Quantized for Q8_0H {
     const GROUP_SIZE: usize = 32;
     const SF: f16 = f16::from_f32_const(Q8_0F::SF);
 
-    fn dt() -> DType {
+    fn dtype() -> DType {
         DType::Q8_0H(Q8_0H::default())
     }
 }
@@ -221,7 +221,7 @@ impl Quantized for Q4_KF {
     const GROUP_SIZE: usize = 32;
     const SF: f32 = 7.0;
 
-    fn dt() -> DType {
+    fn dtype() -> DType {
         DType::Q4_KF(Q4_KF::default())
     }
 }
@@ -231,7 +231,7 @@ impl Quantized for Q4_KH {
     const GROUP_SIZE: usize = 32;
     const SF: f16 = f16::from_f32_const(7.0);
 
-    fn dt() -> DType {
+    fn dtype() -> DType {
         DType::Q4_KH(Q4_KH::default())
     }
 }

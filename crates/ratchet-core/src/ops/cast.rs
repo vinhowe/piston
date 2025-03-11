@@ -14,7 +14,7 @@ use crate::{
 #[derive(new, Debug, Clone, IrFields)]
 pub struct Cast {
     pub input: Tensor,
-    pub dst_dt: DType,
+    pub dst_dtype: DType,
 }
 
 impl Cast {
@@ -22,8 +22,8 @@ impl Cast {
         &self.input
     }
 
-    pub fn dst_dt(&self) -> DType {
-        self.dst_dt
+    pub fn dst_dtype(&self) -> DType {
+        self.dst_dtype
     }
 }
 
@@ -37,8 +37,8 @@ impl KernelRenderable for CastKernels {
         let CastKernels::Standard(inner) = self;
         //TODO: This is a bit of a hack, this match should be formalized
         let dst_accessor = match SP::W {
-            1 => inner.dst_dt.as_wgsl().to_string(),
-            2 | 4 => format!("vec{}<{}>", SP::W, inner.dst_dt.as_wgsl()),
+            1 => inner.dst_dtype.as_wgsl().to_string(),
+            2 | 4 => format!("vec{}<{}>", SP::W, inner.dst_dtype.as_wgsl()),
             _ => unimplemented!(),
         };
 
@@ -86,8 +86,8 @@ impl KernelRenderable for CastKernels {
 
         //Bit of a hack
         let dst_accessor = match n {
-            1 => inner.dst_dt.as_wgsl().to_string(),
-            2 | 4 => format!("vec{}<{}>", n, inner.dst_dt.as_wgsl()),
+            1 => inner.dst_dtype.as_wgsl().to_string(),
+            2 | 4 => format!("vec{}<{}>", n, inner.dst_dtype.as_wgsl()),
             _ => unimplemented!(),
         };
 
@@ -118,7 +118,7 @@ impl Operation for Cast {
     fn compute_view(&self) -> Result<StorageView, OperationError> {
         let shape = self.input.shape().clone();
         let strides = Strides::from(&shape);
-        Ok(StorageView::new(shape, self.dst_dt, strides))
+        Ok(StorageView::new(shape, self.dst_dtype, strides))
     }
 
     #[inline]
@@ -191,7 +191,7 @@ impl Kernel for CastKernels {
     ) -> Result<KernelSource, OperationError> {
         let kernel_element = self.kernel_element(dst);
         let CastKernels::Standard(inner) = self;
-        match (inner.input.dt(), &kernel_element) {
+        match (inner.input.dtype(), &kernel_element) {
             (DType::F32, KernelElement::Scalar) => {
                 self.render::<Scalar<f32>>(inplace, dst, workgroup_size)
             }
@@ -219,7 +219,11 @@ impl Kernel for CastKernels {
             (DType::I32, KernelElement::Vec4) => {
                 self.render::<Vec4<i32>>(inplace, dst, workgroup_size)
             }
-            _ => unimplemented!("Cannot cast {:?} -> {:?}", inner.input.dt(), inner.dst_dt),
+            _ => unimplemented!(
+                "Cannot cast {:?} -> {:?}",
+                inner.input.dtype(),
+                inner.dst_dtype
+            ),
         }
     }
 }
@@ -233,7 +237,7 @@ mod tests {
 
     #[derive(Arbitrary, Debug)]
     struct CastProblem {
-        dst_dt: DType,
+        dst_dtype: DType,
         #[strategy(1..=2usize)]
         B: usize,
         #[strategy(1..=128usize)]
@@ -242,17 +246,17 @@ mod tests {
         N: usize,
     }
 
-    fn ground_truth(input: &Tensor, dst_dt: DType) -> anyhow::Result<Tensor> {
+    fn ground_truth(input: &Tensor, dst_dtype: DType) -> anyhow::Result<Tensor> {
         let prg = format!(
             r#"
 import torch
 def cast(a):
     return torch.from_numpy(a).to({}).numpy()
 "#,
-            dst_dt.as_torch()
+            dst_dtype.as_torch()
         );
 
-        run_py_prg(prg.to_string(), &[input], &[], dst_dt)
+        run_py_prg(prg.to_string(), &[input], &[], dst_dtype)
     }
 
     fn run_cast_trial(prob: CastProblem, device: Device) -> anyhow::Result<()> {
@@ -260,15 +264,15 @@ def cast(a):
         if matches!(device_precision, DType::F32) {
             return Ok(());
         }
-        let CastProblem { dst_dt, B, M, N } = prob;
+        let CastProblem { dst_dtype, B, M, N } = prob;
         let input = Tensor::randn::<f32>(0., 1., shape![B, M, N], Device::CPU);
-        let ground = ground_truth(&input, dst_dt)?;
+        let ground = ground_truth(&input, dst_dtype)?;
 
         let input = input.to(&device)?;
-        let casted = input.cast(dst_dt)?;
+        let casted = input.cast(dst_dtype)?;
 
         let casted = casted.to(&Device::CPU)?;
-        match dst_dt {
+        match dst_dtype {
             DType::F16 => {
                 ground.all_close::<f16>(&casted, f16::from_f32(1e-4), f16::from_f32(1e-4))?
             }

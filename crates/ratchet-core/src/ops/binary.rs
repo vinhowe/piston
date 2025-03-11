@@ -140,7 +140,7 @@ impl OpGuards for Binary {
     }
 
     fn check_dtypes(&self) {
-        assert_eq!(self.lhs.dt(), self.rhs.dt());
+        assert_eq!(self.lhs.dtype(), self.rhs.dtype());
     }
 }
 
@@ -169,7 +169,7 @@ impl Operation for Binary {
         }
         let broadcasted = broadcasted.unwrap();
         let ostrides = Strides::from(&broadcasted);
-        Ok(StorageView::new(broadcasted, lhs.dt(), ostrides))
+        Ok(StorageView::new(broadcasted, lhs.dtype(), ostrides))
     }
 
     #[inline]
@@ -245,7 +245,7 @@ impl Kernel for BinaryKernels {
     ) -> Result<KernelSource, OperationError> {
         let BinaryKernels::Standard(inner) = self;
         let kernel_element = self.kernel_element(dst);
-        match (inner.lhs.dt(), &kernel_element) {
+        match (inner.lhs.dtype(), &kernel_element) {
             (DType::F32, KernelElement::Scalar) => {
                 self.render::<Scalar<f32>>(inplace, dst, workgroup_size)
             }
@@ -266,7 +266,7 @@ impl Kernel for BinaryKernels {
             }
             _ => Err(OperationError::CompileError(format!(
                 "Unsupported dtype {:?} or kernel element {:?}",
-                inner.lhs.dt(),
+                inner.lhs.dtype(),
                 kernel_element
             ))),
         }
@@ -295,7 +295,7 @@ def {}(a, b):
 "#,
             kn, kn
         );
-        run_py_prg(prg.to_string(), &[a, b], &[], a.dt())
+        run_py_prg(prg.to_string(), &[a, b], &[], a.dtype())
     }
 
     fn run_binary_trial(prob: BinaryProblem, device: Device) -> anyhow::Result<()> {

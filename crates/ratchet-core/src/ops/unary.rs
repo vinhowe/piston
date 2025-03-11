@@ -381,7 +381,7 @@ impl Kernel for UnaryKernels {
         workgroup_size: &WorkgroupSize,
     ) -> Result<KernelSource, OperationError> {
         let kernel_element = self.kernel_element(dst);
-        match (dst.dt(), &kernel_element) {
+        match (dst.dtype(), &kernel_element) {
             (DType::F32, KernelElement::Scalar) => {
                 self.render::<Scalar<f32>>(inplace, dst, workgroup_size)
             }
@@ -402,7 +402,7 @@ impl Kernel for UnaryKernels {
             }
             _ => Err(OperationError::CompileError(format!(
                 "Unsupported dtype {:?} or kernel element {:?}",
-                dst.dt(),
+                dst.dtype(),
                 kernel_element
             ))),
         }
@@ -456,7 +456,7 @@ def {}(a):
             _ => imp_prg,
         };
 
-        run_py_prg(prg.to_string(), &[a], &[], a.dt())
+        run_py_prg(prg.to_string(), &[a], &[], a.dtype())
     }
 
     fn run_unary_trial(prob: UnaryProblem, device: Device) -> anyhow::Result<()> {

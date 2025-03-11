@@ -129,7 +129,7 @@ impl Var {
         let dst = self.as_tensor();
         dst.update_storage(Storage::GPU(GPUBuffer {
             inner: src.storage().as_ref().unwrap().try_gpu()?.inner.clone(),
-            alignment: dst.dt().size_of(),
+            alignment: dst.dtype().size_of(),
             cpu_size: Some(dst.num_bytes()),
         }));
         Ok(())

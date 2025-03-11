@@ -35,7 +35,7 @@ impl OpGuards for IndexAdd {
 
     fn check_dtypes(&self) {
         let indices = &self.ids;
-        assert_eq!(indices.dt(), DType::I32);
+        assert_eq!(indices.dtype(), DType::I32);
     }
 }
 
@@ -181,7 +181,7 @@ impl Kernel for IndexAddKernels {
     ) -> Result<KernelSource, OperationError> {
         let kernel_element = self.kernel_element(dst);
         let IndexAddKernels::Standard(inner) = self;
-        match (inner.src.dt(), &kernel_element) {
+        match (inner.src.dtype(), &kernel_element) {
             (DType::F32, KernelElement::Scalar) => {
                 self.render::<Scalar<f32>>(inplace, dst, workgroup_size)
             }
@@ -202,7 +202,7 @@ impl Kernel for IndexAddKernels {
             }
             _ => Err(OperationError::CompileError(format!(
                 "Unsupported dtype {:?} or kernel element {:?}",
-                inner.src.dt(),
+                inner.src.dtype(),
                 kernel_element
             ))),
         }
@@ -251,7 +251,12 @@ def index_add(input, source, indices):
 "#,
             dim
         );
-        run_py_prg(prg.to_string(), &[input, source, indices], &[], input.dt())
+        run_py_prg(
+            prg.to_string(),
+            &[input, source, indices],
+            &[],
+            input.dtype(),
+        )
     }
 
     fn run_index_add_trial(problem: IndexAddProblem, device: Device) {

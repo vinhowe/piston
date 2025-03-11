@@ -99,21 +99,21 @@ impl CPUBuffer {
     }
 
     pub fn zeros<T: TensorDType>(shape: &Shape) -> Self {
-        let n_bytes = shape.numel() * T::dt().size_of();
+        let n_bytes = shape.numel() * T::dtype().size_of();
         let mut raw = RawCPUBuffer::uninitialized(n_bytes, std::mem::align_of::<T>());
         raw.as_bytes_mut().fill(0);
         Self::new(raw)
     }
 
     pub fn ones<T: TensorDType>(shape: &Shape) -> Self {
-        match T::dt() {
+        match T::dtype() {
             DType::Q8_0H(_) => Self::from_slice(&vec![1u8; shape.numel()], shape),
             DType::Q8_0F(_) => Self::from_slice(&vec![1u8; shape.numel()], shape),
             DType::F16 => Self::from_slice(&vec![f16::from_f32(1.0); shape.numel()], shape),
             DType::I32 => Self::from_slice(&vec![1i32; shape.numel()], shape),
             DType::F32 => Self::from_slice(&vec![1.0f32; shape.numel()], shape),
             DType::U32 => Self::from_slice(&vec![1u32; shape.numel()], shape),
-            _ => unimplemented!("Unable to create ones for {:?}", T::dt()),
+            _ => unimplemented!("Unable to create ones for {:?}", T::dtype()),
         }
     }
 
@@ -121,8 +121,8 @@ impl CPUBuffer {
         reader: &mut R,
         shape: &Shape,
     ) -> Result<Self, DeviceError> {
-        let dt = T::dt();
-        let n_bytes = shape.numel() * dt.size_of();
+        let dtype = T::dtype();
+        let n_bytes = shape.numel() * dtype.size_of();
         let mut buf: Vec<MaybeUninit<u8>> = Vec::with_capacity(n_bytes);
         unsafe {
             buf.set_len(n_bytes);
@@ -133,7 +133,7 @@ impl CPUBuffer {
         let buf = unsafe {
             std::mem::transmute::<std::vec::Vec<std::mem::MaybeUninit<u8>>, std::vec::Vec<u8>>(buf)
         };
-        Ok(Self::from_bytes(&buf, dt.size_of()))
+        Ok(Self::from_bytes(&buf, dtype.size_of()))
     }
 
     pub fn inner(&self) -> &RawCPUBuffer {
@@ -197,7 +197,7 @@ impl DeviceStorage for CPUBuffer {
             DType::I32 => dump_inner(bytemuck::cast_slice::<u8, i32>(bytes), full),
             DType::U32 => dump_inner(bytemuck::cast_slice::<u8, u32>(bytes), full),
             DType::F16 => dump_inner(bytemuck::cast_slice::<u8, f16>(bytes), full),
-            dt => format!("[{:?} dump not yet supported]", dt),
+            dtype => format!("[{:?} dump not yet supported]", dtype),
         }
     }
 }

@@ -96,7 +96,7 @@ impl DType {
     }
 
     /// Returns the activation dtype for the given quantized dtype.
-    pub fn activation_dt(&self) -> DType {
+    pub fn activation_dtype(&self) -> DType {
         match self {
             DType::Q8_0H(_) => DType::F16,
             DType::Q8_0F(_) => DType::F32,
@@ -177,7 +177,7 @@ impl BufferSegment {
 pub trait TensorDType:
     Clone + std::fmt::Debug + PartialEq + 'static + num_traits::Zero + Send + Sync + bytemuck::Pod
 {
-    fn dt() -> DType;
+    fn dtype() -> DType;
 
     fn one() -> Self;
 }
@@ -185,7 +185,7 @@ pub trait TensorDType:
 macro_rules! map_type {
     ($t:ty, $v:ident) => {
         impl TensorDType for $t {
-            fn dt() -> DType {
+            fn dtype() -> DType {
                 DType::$v
             }
 
@@ -199,7 +199,7 @@ macro_rules! map_type {
 macro_rules! map_half_type {
     ($t:ty, $v:ident) => {
         impl TensorDType for $t {
-            fn dt() -> DType {
+            fn dtype() -> DType {
                 DType::$v
             }
 

@@ -65,7 +65,7 @@ impl crate::Module for LayerNorm {
     // }
 
     fn schedule(&self, x: Self::Input) -> anyhow::Result<Tensor> {
-        let x_dtype = x.dt();
+        let x_dtype = x.dtype();
         let internal_dtype = match x_dtype {
             DType::F16 => DType::F32,
             d => d,
@@ -130,11 +130,11 @@ impl crate::Module for RMSNorm {
     type Output = Tensor;
 
     fn schedule(&self, input: Self::Input) -> anyhow::Result<Self::Output> {
-        let src_dt = input.dt();
+        let src_dtype = input.dtype();
         input
             .float()?
             .rms_norm(self.weight.clone(), self.eps)?
-            .cast(src_dt)
+            .cast(src_dtype)
     }
 }
 
@@ -190,8 +190,8 @@ def layer_norm(x, weight, bias=None):
         );
 
         let result = match bias {
-            Some(b) => run_py_prg(prg, &[x, weight, b], &[], x.dt())?,
-            None => run_py_prg(prg, &[x, weight], &[], x.dt())?,
+            Some(b) => run_py_prg(prg, &[x, weight, b], &[], x.dtype())?,
+            None => run_py_prg(prg, &[x, weight], &[], x.dtype())?,
         };
         Ok(result)
     }

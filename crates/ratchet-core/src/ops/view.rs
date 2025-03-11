@@ -31,7 +31,11 @@ impl Operation for View {
 
     fn compute_view(&self) -> Result<StorageView, crate::OperationError> {
         let strides = Strides::from(&self.shape);
-        Ok(StorageView::new(self.shape.clone(), self.src.dt(), strides))
+        Ok(StorageView::new(
+            self.shape.clone(),
+            self.src.dtype(),
+            strides,
+        ))
     }
 
     #[inline]

@@ -122,7 +122,7 @@ impl OpGuards for Cache {
     }
 
     fn check_dtypes(&self) {
-        assert_eq!(self.cache.dt(), self.source.dt());
+        assert_eq!(self.cache.dtype(), self.source.dtype());
     }
 }
 
@@ -142,7 +142,7 @@ impl Operation for Cache {
         let result_strides = Strides::from(&result_shape);
         Ok(StorageView::new(
             result_shape,
-            self.cache.dt(),
+            self.cache.dtype(),
             result_strides,
         ))
     }
@@ -232,7 +232,7 @@ impl Kernel for CacheKernels {
         workgroup_size: &WorkgroupSize,
     ) -> Result<KernelSource, OperationError> {
         let kernel_element = self.kernel_element(dst);
-        match (dst.dt(), &kernel_element) {
+        match (dst.dtype(), &kernel_element) {
             (DType::F32, KernelElement::Scalar) => {
                 self.render::<Scalar<f32>>(inplace, dst, workgroup_size)
             }
@@ -253,7 +253,7 @@ impl Kernel for CacheKernels {
             }
             _ => Err(OperationError::CompileError(format!(
                 "Unsupported dtype {:?} or kernel element {:?}",
-                dst.dt(),
+                dst.dtype(),
                 kernel_element
             ))),
         }

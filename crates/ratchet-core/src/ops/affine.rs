@@ -30,7 +30,7 @@ impl OpGuards for Affine {
 
     fn check_dtypes(&self) {
         let a = &self.src;
-        assert!(matches!(a.dt(), crate::DType::F32 | crate::DType::F16));
+        assert!(matches!(a.dtype(), crate::DType::F32 | crate::DType::F16));
     }
 }
 
@@ -103,7 +103,7 @@ impl KernelRenderable for AffineKernels {
         kernel_builder.render_metadata(&self.metadata(dst, &self.kernel_element(dst))?);
 
         let N = (P::W as u32).render();
-        let dt = P::render_type();
+        let dtype = P::render_type();
 
         kernel_builder.write_main(wgsl! {
             let x_offset = workgroup_id.x * 64u;
@@ -113,13 +113,13 @@ impl KernelRenderable for AffineKernels {
             }
         });
 
-        let mul_rep = if dst.dt() == DType::F16 {
+        let mul_rep = if dst.dtype() == DType::F16 {
             wgsl!(f16(metadata.mul))
         } else {
             wgsl!(metadata.mul)
         };
 
-        let add_rep = if dst.dt() == DType::F16 {
+        let add_rep = if dst.dtype() == DType::F16 {
             wgsl!(f16(metadata.add))
         } else {
             wgsl!(metadata.add)
@@ -128,10 +128,10 @@ impl KernelRenderable for AffineKernels {
         let apply = if inplace {
             wgsl! {
                 let val = X[index];
-                X[index] = fma(val, 'dt('mul_rep), 'dt('add_rep));
+                X[index] = fma(val, 'dtype('mul_rep), 'dtype('add_rep));
             }
         } else {
-            wgsl! { Y[index] = fma(X[index], 'dt('mul_rep), 'dt('add_rep)); }
+            wgsl! { Y[index] = fma(X[index], 'dtype('mul_rep), 'dtype('add_rep)); }
         };
         kernel_builder.write_main(apply);
         Ok(kernel_builder.build()?)
@@ -201,7 +201,7 @@ impl Kernel for AffineKernels {
     ) -> Result<KernelSource, OperationError> {
         let kernel_element = self.kernel_element(dst);
         let AffineKernels::Standard(inner) = self;
-        match (inner.src.dt(), &kernel_element) {
+        match (inner.src.dtype(), &kernel_element) {
             (DType::F32, KernelElement::Scalar) => {
                 self.render::<Scalar<f32>>(inplace, dst, workgroup_size)
             }
@@ -222,7 +222,7 @@ impl Kernel for AffineKernels {
             }
             _ => Err(OperationError::CompileError(format!(
                 "Unsupported dtype {:?} or kernel element {:?}",
-                inner.src.dt(),
+                inner.src.dtype(),
                 kernel_element
             ))),
         }
@@ -244,7 +244,7 @@ def affine(a, mul, add):
 "#
         .to_string();
 
-        run_py_prg(prg.to_string(), &[a], &[&mul, &add], a.dt())
+        run_py_prg(prg.to_string(), &[a], &[&mul, &add], a.dtype())
     }
 
     fn run_affine_trial(problem: AffineProblem, device: Device) {

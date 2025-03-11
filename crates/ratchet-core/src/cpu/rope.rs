@@ -7,7 +7,7 @@ use maybe_async::maybe_async;
 
 #[maybe_async]
 pub async fn cpu_rope(op: RoPE, dst: Tensor) -> Result<Tensor, OperationError> {
-    match op.input().dt() {
+    match op.input().dtype() {
         DType::F32 => {
             let dim = op.dim();
             let base = op.base();

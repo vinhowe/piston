@@ -28,7 +28,7 @@ impl OpGuards for Powf {
 
     fn check_dtypes(&self) {
         let a = &self.src;
-        assert!(matches!(a.dt(), crate::DType::F32));
+        assert!(matches!(a.dtype(), crate::DType::F32));
     }
 }
 
@@ -101,7 +101,7 @@ impl KernelRenderable for PowfKernels {
         kernel_builder.render_metadata(&self.metadata(dst, &self.kernel_element(dst))?);
 
         let N = (P::W as u32).render();
-        let dt = P::render_type();
+        let dtype = P::render_type();
 
         kernel_builder.write_main(wgsl! {
             let x_offset = workgroup_id.x * 64u;
@@ -121,10 +121,10 @@ impl KernelRenderable for PowfKernels {
         // Multiplying by the sign is a fix to make this shader work correctly in Chrome.
         let apply = if inplace {
             wgsl! {
-                X[index] = sign(val) * pow(abs(val), 'dt(metadata.e));
+                X[index] = sign(val) * pow(abs(val), 'dtype(metadata.e));
             }
         } else {
-            wgsl! { Y[index] = sign(val) * pow(abs(val), 'dt(metadata.e)); }
+            wgsl! { Y[index] = sign(val) * pow(abs(val), 'dtype(metadata.e)); }
         };
 
         kernel_builder.write_main(apply);
@@ -192,7 +192,7 @@ impl Kernel for PowfKernels {
     ) -> Result<KernelSource, OperationError> {
         let kernel_element = self.kernel_element(dst);
         let PowfKernels::Standard(inner) = self;
-        match (inner.src.dt(), &kernel_element) {
+        match (inner.src.dtype(), &kernel_element) {
             (DType::F32, KernelElement::Scalar) => {
                 self.render::<Scalar<f32>>(inplace, dst, workgroup_size)
             }
@@ -213,7 +213,7 @@ impl Kernel for PowfKernels {
             }
             _ => Err(OperationError::CompileError(format!(
                 "Unsupported dtype {:?} or kernel element {:?}",
-                inner.src.dt(),
+                inner.src.dtype(),
                 kernel_element
             ))),
         }
@@ -239,7 +239,7 @@ def powf(a, e):
 
         let prg = func_prg;
 
-        run_py_prg(prg.to_string(), &[a], &[&e], a.dt())
+        run_py_prg(prg.to_string(), &[a], &[&e], a.dtype())
     }
 
     fn run_powf_trial(problem: PowfProblem, device: Device) {

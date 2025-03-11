@@ -77,10 +77,10 @@ impl Storage {
         }
     }
 
-    pub fn dump(&self, dt: DType, full: bool) -> String {
+    pub fn dump(&self, dtype: DType, full: bool) -> String {
         match self {
-            Storage::CPU(c) => c.dump(dt, full),
-            Storage::GPU(g) => g.dump(dt, full),
+            Storage::CPU(c) => c.dump(dtype, full),
+            Storage::GPU(g) => g.dump(dtype, full),
         }
     }
 
@@ -142,5 +142,5 @@ pub trait DeviceStorage: std::fmt::Debug + Clone + 'static {
     /// Creates a copy of the device buffer on the CPU
     async fn to_cpu(&self, device: &Device) -> Result<CPUBuffer, DeviceError>;
     fn n_bytes(&self) -> usize;
-    fn dump(&self, dt: DType, full: bool) -> String;
+    fn dump(&self, dtype: DType, full: bool) -> String;
 }

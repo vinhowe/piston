@@ -11,7 +11,7 @@ impl CPUOperation for Softmax {
     #[maybe_async]
     async fn apply_cpu(&self, dst: Tensor) -> Result<Tensor, OperationError> {
         let Softmax { input, dim } = self;
-        match input.dt() {
+        match input.dtype() {
             DType::F32 => softmax::<f32>(input, *dim, &dst).await?,
             DType::F16 => softmax::<f16>(input, *dim, &dst).await?,
             DType::BF16 => softmax::<bf16>(input, *dim, &dst).await?,

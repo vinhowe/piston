@@ -68,7 +68,7 @@ impl KernelRenderable for GEMM {
         let float_arr = Array::<P>::default();
 
         let ro = BindingMode::ReadOnly;
-        match A.dt() {
+        match A.dtype() {
             DType::F32 | DType::F16 => {
                 builder.register_storage("A", ro, float_arr);
                 builder.register_storage("B", ro, float_arr);
@@ -86,7 +86,7 @@ impl KernelRenderable for GEMM {
                 }
                 builder.register_storage("result", BindingMode::ReadWrite, float_arr);
             }
-            _ => return Err(InvariantError::UnsupportedDType(A.dt()).into()),
+            _ => return Err(InvariantError::UnsupportedDType(A.dtype()).into()),
         }
 
         builder.register_uniform();
@@ -230,7 +230,7 @@ impl Kernel for GEMM {
         workgroup_size: &WorkgroupSize,
     ) -> Result<KernelSource, OperationError> {
         let kernel_element = self.spec.select_kernel_element();
-        match (self.lhs.dt(), kernel_element) {
+        match (self.lhs.dtype(), kernel_element) {
             (DType::F32, KernelElement::Scalar) => {
                 self.render::<Scalar<f32>>(inplace, dst, workgroup_size)
             }
@@ -253,7 +253,7 @@ impl Kernel for GEMM {
             (DType::Q8_0H(_), _) => self.render::<Scalar<f16>>(inplace, dst, workgroup_size),
             (DType::Q4_KF(_), _) => self.render::<Scalar<f32>>(inplace, dst, workgroup_size),
             (DType::Q4_KH(_), _) => self.render::<Scalar<f16>>(inplace, dst, workgroup_size),
-            _ => Err(InvariantError::UnsupportedDType(self.lhs.dt()).into()),
+            _ => Err(InvariantError::UnsupportedDType(self.lhs.dtype()).into()),
         }
     }
 
@@ -263,12 +263,12 @@ impl Kernel for GEMM {
 
     fn storage_bind_group_layout(&self, _inplace: bool) -> Result<BGLD, OperationError> {
         let (LHS, RHS, bias) = (&self.lhs, &self.rhs, &self.bias);
-        let layout = match (LHS.dt(), RHS.dt(), bias.is_some()) {
+        let layout = match (LHS.dtype(), RHS.dtype(), bias.is_some()) {
             (DType::F32 | DType::F16, DType::F32 | DType::F16, false) => BGLD::binary(),
             (DType::F32 | DType::F16, DType::F32 | DType::F16, true) => BGLD::ternary(),
             (DType::Q8_0F(_) | DType::Q8_0H(_), DType::F32 | DType::F16, false) => BGLD::ternary(),
             (DType::Q8_0F(_) | DType::Q8_0H(_), DType::F32 | DType::F16, true) => BGLD::nthary(4),
-            _ => return Err(InvariantError::UnsupportedDType(RHS.dt()).into()),
+            _ => return Err(InvariantError::UnsupportedDType(RHS.dtype()).into()),
         };
         Ok(layout)
     }
@@ -310,10 +310,10 @@ impl GEMM {
         let (A, _, _) = (&self.lhs, &self.rhs, &self.bias);
         let accessor = P::render_type();
         let W = P::W;
-        let dt = P::T::DT;
-        builder.write_unpack(A.dt());
+        let dtype = P::T::DT;
+        builder.write_unpack(A.dtype());
 
-        let a_getters = match A.dt() {
+        let a_getters = match A.dtype() {
             DType::F32 | DType::F16 => {
                 wgsl! {
                     fn getA(d0 : i32, d1 : i32, d2 : i32) -> 'accessor {
@@ -323,21 +323,21 @@ impl GEMM {
             }
             DType::Q8_0F(_) | DType::Q8_0H(_) => {
                 wgsl! {
-                    fn getA(d0 : i32, d1 : i32, d2 : i32) -> vec4<'dt> {
+                    fn getA(d0 : i32, d1 : i32, d2 : i32) -> vec4<'dtype> {
                         return unpack(A[getAIndexFromCoords3D(vec3<i32>(d0,d1,d2)) / 4]);
                     }
 
-                    fn getAbsMax(d0 : i32, d1 : i32, d2 : i32) -> 'dt {
+                    fn getAbsMax(d0 : i32, d1 : i32, d2 : i32) -> 'dtype {
                         let abs_index = getAIndexFromCoords3D(vec3<i32>(d0,d1,d2)) / 32;
                         return scale[abs_index];
                     }
                 }
             }
-            _ => return Err(InvariantError::UnsupportedDType(A.dt()).into()),
+            _ => return Err(InvariantError::UnsupportedDType(A.dtype()).into()),
         };
         builder.write_global(a_getters);
 
-        match A.dt() {
+        match A.dtype() {
             DType::F32 | DType::F16 => {
                 builder.write_global(wgsl! {
                     fn getB(d0 : i32, d1 : i32, d2 : i32) -> 'accessor {
@@ -347,12 +347,12 @@ impl GEMM {
             }
             DType::Q8_0F(_) | DType::Q8_0H(_) => {
                 builder.write_global(wgsl! {
-                    fn getB(d0 : i32, d1 : i32, d2 : i32) -> 'dt {
-                        return 'dt(B[getBIndexFromCoords3D(vec3<i32>(d0,d1,d2)) / 'W]);
+                    fn getB(d0 : i32, d1 : i32, d2 : i32) -> 'dtype {
+                        return 'dtype(B[getBIndexFromCoords3D(vec3<i32>(d0,d1,d2)) / 'W]);
                     }
                 });
             }
-            _ => return Err(InvariantError::UnsupportedDType(A.dt()).into()),
+            _ => return Err(InvariantError::UnsupportedDType(A.dtype()).into()),
         }
 
         Ok(())
@@ -390,7 +390,7 @@ impl GEMM {
             }
         };
 
-        let aAccessor = match self.lhs.dt() {
+        let aAccessor = match self.lhs.dtype() {
             DType::Q8_0F(_) => Vec4::<f32>::render_type(),
             DType::Q8_0H(_) => Vec4::<f16>::render_type(),
             _ => accessor.clone(),
@@ -467,7 +467,7 @@ impl GEMM {
         const TILE_DIM: usize = 32;
 
         let accessor = P::render_type();
-        let dt = P::T::DT;
+        let dtype = P::T::DT;
         let W = P::W;
         let T_W = TILE_DIM / W;
         kernel_builder.write_global(wgsl! {
@@ -499,7 +499,7 @@ impl GEMM {
             // Loop over shared dimension.
         });
 
-        let a_inner = match self.lhs.dt() {
+        let a_inner = match self.lhs.dtype() {
             DType::F32 | DType::F16 => {
                 wgsl! {
                     for (var innerCol = 0; innerCol < 'ROW_PER_THREAD; innerCol++) {
@@ -602,7 +602,7 @@ impl GEMM {
                 };
 
                 kernel_builder.write_main(wgsl! {
-                    val = 'dt(acc['row]['col]) + 'bias_val;
+                    val = 'dtype(acc['row]['col]) + 'bias_val;
                     'writer
                 });
             }
@@ -655,7 +655,7 @@ impl GEMM {
             let tileRowB = localRow * 'ROW_PER_THREAD;
         });
 
-        let load_a_inner = match self.lhs.dt() {
+        let load_a_inner = match self.lhs.dtype() {
             DType::F32 | DType::F16 => {
                 wgsl! { mm_Asub[inputRow][inputCol] = mm_readA(batchA, globalRow + innerRow, kStart + inputCol * 'W); }
             }

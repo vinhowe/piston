@@ -114,7 +114,7 @@ macro_rules! impl_cpu_unary_op {
 impl CPUOperation for Unary {
     #[maybe_async]
     async fn apply_cpu(&self, dst: Tensor) -> Result<Tensor, OperationError> {
-        match dst.dt() {
+        match dst.dtype() {
             DType::F32 => UnaryOps::<f32>::apply(self, dst).await,
             DType::F16 => UnaryOps::<f16>::apply(self, dst).await,
             DType::BF16 => UnaryOps::<bf16>::apply(self, dst).await,

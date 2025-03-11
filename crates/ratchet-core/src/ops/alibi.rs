@@ -32,7 +32,7 @@ impl OpGuards for Alibi {
     fn check_dtypes(&self) {
         // For simplicity, require float32 for now.
         assert!(
-            self.input.dt() == DType::F32,
+            self.input.dtype() == DType::F32,
             "Alibi only supports F32 for now"
         );
     }
@@ -122,7 +122,7 @@ impl KernelRenderable for AlibiKernels {
         self.register_bindings::<P>(&mut kernel_builder, inplace)?;
         kernel_builder.render_metadata(&self.metadata(dst, &self.kernel_element(dst))?);
 
-        let dt = P::render_type();
+        let dtype = P::render_type();
 
         let kernel = if inplace {
             wgsl! {
@@ -145,7 +145,7 @@ impl KernelRenderable for AlibiKernels {
                     m_k = pow(metadata.m1, exponent);
                 }
 
-                in[i] = in[i] + 'dt(col) * m_k;
+                in[i] = in[i] + 'dtype(col) * m_k;
             }
         } else {
             wgsl! {
@@ -168,7 +168,7 @@ impl KernelRenderable for AlibiKernels {
                     m_k = pow(metadata.m1, exponent);
                 }
 
-                out[i] = in[i] + 'dt(col) * m_k;
+                out[i] = in[i] + 'dtype(col) * m_k;
             }
         };
 
@@ -259,14 +259,14 @@ impl Kernel for AlibiKernels {
     ) -> Result<KernelSource, OperationError> {
         let kernel_element = self.kernel_element(dst);
         let AlibiKernels::Standard(inner) = self;
-        match (inner.input.dt(), &kernel_element) {
+        match (inner.input.dtype(), &kernel_element) {
             (DType::F32, KernelElement::Scalar) => {
                 self.render::<Scalar<f32>>(inplace, dst, workgroup_size)
             }
             // TODO: extend to F16/vector types
             _ => Err(OperationError::CompileError(format!(
                 "Unsupported dtype {:?} or kernel element {:?}",
-                inner.input.dt(),
+                inner.input.dtype(),
                 kernel_element
             ))),
         }
@@ -318,7 +318,7 @@ def alibi(input, max_bias):
                 out[ib, ih, c] += c * factor
     return out
 "#;
-        run_py_prg(prg.to_string(), &[a], &[&max_bias], a.dt())
+        run_py_prg(prg.to_string(), &[a], &[&max_bias], a.dtype())
     }
 
     #[derive(Arbitrary, Debug)]

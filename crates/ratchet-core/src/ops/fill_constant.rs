@@ -91,7 +91,7 @@ impl KernelRenderable for FillConstantKernels {
         kernel_builder.render_metadata(&self.metadata(dst, &self.kernel_element(dst))?);
 
         let N = (P::W as u32).render();
-        let dt = P::render_type();
+        let dtype = P::render_type();
 
         kernel_builder.write_main(wgsl! {
             let x_offset = workgroup_id.x * 64u;
@@ -99,7 +99,7 @@ impl KernelRenderable for FillConstantKernels {
             if (index >= metadata.numel / 'N) {
                 return;
             }
-            Y[index] = 'dt(metadata.value);
+            Y[index] = 'dtype(metadata.value);
         });
 
         Ok(kernel_builder.build()?)
@@ -143,7 +143,7 @@ impl Kernel for FillConstantKernels {
         let FillConstantKernels::Standard(op) = self;
         let mut dyn_meta = DynKernelMetadata::new();
         dyn_meta.add_field("numel", dst.shape().numel() as u32);
-        if dst.dt().is_float() {
+        if dst.dtype().is_float() {
             dyn_meta.add_field("value", op.value);
         } else {
             dyn_meta.add_field("value", op.value as i32);
@@ -158,7 +158,7 @@ impl Kernel for FillConstantKernels {
         workgroup_size: &WorkgroupSize,
     ) -> Result<KernelSource, OperationError> {
         let kernel_element = self.kernel_element(dst);
-        match (dst.dt(), &kernel_element) {
+        match (dst.dtype(), &kernel_element) {
             (DType::F32, KernelElement::Scalar) => {
                 self.render::<Scalar<f32>>(inplace, dst, workgroup_size)
             }
@@ -188,7 +188,7 @@ impl Kernel for FillConstantKernels {
             }
             _ => Err(OperationError::CompileError(format!(
                 "Unsupported dtype {:?} or kernel element {:?}",
-                dst.dt(),
+                dst.dtype(),
                 kernel_element
             ))),
         }

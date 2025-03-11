@@ -48,8 +48,8 @@ impl GEMVHeuristic {
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct MatmulSpec {
-    lhs_dt: DType,
-    rhs_dt: DType,
+    lhs_dtype: DType,
+    rhs_dtype: DType,
     raw_lhs_shape: Shape,
     raw_rhs_shape: Shape,
     lhs_shape: Shape,
@@ -87,8 +87,8 @@ impl MatmulSpec {
         let mut trans_lhs = trans_lhs;
         let mut trans_rhs = trans_rhs;
 
-        let lhs_dt = LHS.dt();
-        let rhs_dt = RHS.dt();
+        let lhs_dtype = LHS.dtype();
+        let rhs_dtype = RHS.dtype();
 
         if (lhs_shape.rank() < 2) || (rhs_shape.rank() < 2) {
             panic!("MatMul: inputs must be at least 2D");
@@ -165,8 +165,8 @@ impl MatmulSpec {
         let heuristic = GEMVHeuristic::new(rhs_shape[0], rhs_shape[1]);
 
         Self {
-            lhs_dt,
-            rhs_dt,
+            lhs_dtype,
+            rhs_dtype,
             raw_lhs_shape,
             raw_rhs_shape,
             lhs_shape,
@@ -349,8 +349,8 @@ impl MatmulSpec {
         self.stack_shape.numel()
     }
 
-    pub fn rhs_dt(&self) -> DType {
-        self.rhs_dt
+    pub fn rhs_dtype(&self) -> DType {
+        self.rhs_dtype
     }
 
     pub fn is_gemv(&self) -> bool {
@@ -492,7 +492,7 @@ impl Operation for Matmul {
         )
         .unwrap();
         let dst_strides = Strides::from(&dst_shape);
-        Ok(StorageView::new(dst_shape, self.rhs.dt(), dst_strides))
+        Ok(StorageView::new(dst_shape, self.rhs.dtype(), dst_strides))
     }
 
     #[inline]
@@ -527,20 +527,20 @@ impl OpGuards for Matmul {
             (DType::Q4_KH(Q4_KH::default()), DType::F16),
         ];
 
-        if !allowed_pairs.contains(&(self.lhs.dt(), self.rhs.dt())) {
+        if !allowed_pairs.contains(&(self.lhs.dtype(), self.rhs.dtype())) {
             panic!(
                 "DType mismatch: lhs: {:?}, rhs: {:?}",
-                self.lhs.dt(),
-                self.rhs.dt()
+                self.lhs.dtype(),
+                self.rhs.dtype()
             );
         }
 
         if let Some(bias) = &self.bias {
-            if bias.dt() != self.rhs.dt() {
+            if bias.dtype() != self.rhs.dtype() {
                 panic!(
                     "DType mismatch: bias: {:?}, rhs: {:?}",
-                    bias.dt(),
-                    self.rhs.dt()
+                    bias.dtype(),
+                    self.rhs.dtype()
                 );
             }
         }
@@ -720,12 +720,12 @@ impl GPUOperation for Matmul {
             panic!("Bias must be a vector: {:?}", self.bias);
         }
 
-        if self.lhs.dt().is_quantized() && self.trans_lhs {
+        if self.lhs.dtype().is_quantized() && self.trans_lhs {
             panic!("Transposed quantized inputs are not supported");
         }
 
         let is_gemv = self.rhs.shape().is_vector() && !self.trans_lhs;
-        let is_q4 = self.lhs.dt().is_q4();
+        let is_q4 = self.lhs.dtype().is_q4();
         let supports_subgroup = self
             .lhs
             .device()
@@ -814,7 +814,7 @@ def matmul(a, b{}):
             vec![a, b]
         };
 
-        run_py_prg(prg.to_string(), &args, &[], a.dt())
+        run_py_prg(prg.to_string(), &args, &[], a.dtype())
     }
 
     #[derive(Arbitrary, Clone, Debug)]

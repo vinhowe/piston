@@ -61,14 +61,14 @@ impl KernelRenderable for SubgroupGEMV {
         let bias = &self.bias;
         let float_arr = Array::<P>::default();
 
-        if A.dt().is_float() {
+        if A.dtype().is_float() {
             builder.register_storage("mat", BindingMode::ReadOnly, float_arr);
             builder.register_storage("inVec", BindingMode::ReadOnly, float_arr);
             if bias.is_some() {
                 builder.register_storage("bias", BindingMode::ReadOnly, float_arr);
             }
             builder.register_storage("outVec", BindingMode::ReadWrite, float_arr);
-        } else if A.dt().is_quantized() {
+        } else if A.dtype().is_quantized() {
             let scalar = Array::<Scalar<P::T>>::default();
             let u32_arr = Array::<Scalar<u32>>::default();
             builder.register_storage("mat", BindingMode::ReadOnly, u32_arr);
@@ -79,7 +79,7 @@ impl KernelRenderable for SubgroupGEMV {
             }
             builder.register_storage("outVec", BindingMode::ReadWrite, scalar);
         } else {
-            return Err(InvariantError::UnsupportedDType(A.dt()).into());
+            return Err(InvariantError::UnsupportedDType(A.dtype()).into());
         }
 
         builder.register_uniform();
@@ -110,31 +110,31 @@ impl KernelRenderable for SubgroupGEMV {
         );
 
         kernel_builder.render_metadata(&self.metadata(dst, &self.kernel_element(dst))?);
-        kernel_builder.write_unpack(self.lhs.dt());
+        kernel_builder.write_unpack(self.lhs.dtype());
 
         self.register_bindings::<P>(&mut kernel_builder, inplace)
             .unwrap();
 
-        let dt = P::T::DT;
+        let dtype = P::T::DT;
         let work_size = BN * TN * 2;
         kernel_builder.write_global(wgsl! {
-            var<workgroup> tgpMemory: array<'dt, 'work_size>;
+            var<workgroup> tgpMemory: array<'dtype, 'work_size>;
         });
 
         let zero = P::T::zero().render();
-        let thread_locals = match self.lhs.dt() {
+        let thread_locals = match self.lhs.dtype() {
             DType::F32 | DType::F16 => {
                 wgsl! {
                     var result: array<f32, 'TM>;
-                    var inter: array<'dt, 'TN>;
-                    var vCoeff: array<'dt, 'TN>;
+                    var inter: array<'dtype, 'TN>;
+                    var vCoeff: array<'dtype, 'TN>;
                 }
             }
             DType::Q8_0F(_) | DType::Q8_0H(_) => {
                 wgsl! {
                     var result: array<f32, 'TM>;
-                    var inter = vec4<'dt>('zero);
-                    var vCoeff = vec4<'dt>('zero);
+                    var inter = vec4<'dtype>('zero);
+                    var vCoeff = vec4<'dtype>('zero);
                 }
             }
             _ => unimplemented!(),
@@ -181,7 +181,7 @@ impl KernelRenderable for SubgroupGEMV {
         let edge_tgp_load = (0..TN)
             .map(|tn| {
                 wgsl! {
-                    tgpMemory[inVecBlockOffset + 'tn] = select('dt(0.0), inVec[inVecBatchOffset + bn + 'tn], bn + 'tn < metadata.IVL);
+                    tgpMemory[inVecBlockOffset + 'tn] = select('dtype(0.0), inVec[inVecBatchOffset + bn + 'tn], bn + 'tn < metadata.IVL);
                 }
                 .into()
             })
@@ -227,19 +227,19 @@ impl KernelRenderable for SubgroupGEMV {
             .map(|tm| {
                 if self.bias.is_some() {
                     wgsl! {
-                        outVec[outVecBatchOffset + outRow + 'tm] = 'dt(result['tm]) + bias[outRow + 'tm];
+                        outVec[outVecBatchOffset + outRow + 'tm] = 'dtype(result['tm]) + bias[outRow + 'tm];
                     }
                     .into()
                 } else {
                     wgsl! {
-                        outVec[outVecBatchOffset + outRow + 'tm] = 'dt(result['tm]);
+                        outVec[outVecBatchOffset + outRow + 'tm] = 'dtype(result['tm]);
                     }
                     .into()
                 }
             })
             .collect::<WgslFragment>();
 
-        let work_loop_inner = match self.lhs.dt() {
+        let work_loop_inner = match self.lhs.dtype() {
             DType::F32 | DType::F16 => {
                 wgsl! {
                     // Load for the row
@@ -376,7 +376,7 @@ impl Kernel for SubgroupGEMV {
         _inplace: bool,
     ) -> Result<BindGroupLayoutDescriptor, OperationError> {
         let (LHS, RHS, bias) = (&self.lhs, &self.rhs, &self.bias);
-        let layout = match (LHS.dt(), RHS.dt(), bias.is_some()) {
+        let layout = match (LHS.dtype(), RHS.dtype(), bias.is_some()) {
             (DType::F32, DType::F32, false) => BindGroupLayoutDescriptor::binary(),
             (DType::F32, DType::F32, true) => BindGroupLayoutDescriptor::ternary(),
             (DType::F16, DType::F16, false) => BindGroupLayoutDescriptor::binary(),
@@ -385,7 +385,7 @@ impl Kernel for SubgroupGEMV {
             (DType::Q8_0H(_), DType::F16, false) => BindGroupLayoutDescriptor::ternary(),
             (DType::Q8_0F(_), DType::F32, true) => BindGroupLayoutDescriptor::nthary(4),
             (DType::Q8_0H(_), DType::F16, true) => BindGroupLayoutDescriptor::nthary(4),
-            _ => return Err(InvariantError::UnsupportedDType(RHS.dt()).into()),
+            _ => return Err(InvariantError::UnsupportedDType(RHS.dtype()).into()),
         };
         Ok(layout)
     }
@@ -397,7 +397,7 @@ impl Kernel for SubgroupGEMV {
         workgroup_size: &crate::WorkgroupSize,
     ) -> Result<crate::KernelSource, crate::OperationError> {
         let kernel_element = self.kernel_element(dst);
-        match (self.lhs.dt(), kernel_element) {
+        match (self.lhs.dtype(), kernel_element) {
             (DType::F32, KernelElement::Scalar) => {
                 self.render::<Scalar<f32>>(inplace, dst, workgroup_size)
             }

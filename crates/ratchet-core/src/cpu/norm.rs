@@ -36,24 +36,24 @@ async fn apply_layer_norm(
     }: &Norm,
     dst: Tensor,
 ) -> Result<Tensor, OperationError> {
-    if input.dt() != scale.dt() {
+    if input.dtype() != scale.dtype() {
         return Err(InvariantError::DTypeMismatch {
-            expected: input.dt(),
-            actual: scale.dt(),
+            expected: input.dtype(),
+            actual: scale.dtype(),
         }
         .into());
     }
     if let Some(b) = bias {
-        if b.dt() != input.dt() {
+        if b.dtype() != input.dtype() {
             return Err(InvariantError::DTypeMismatch {
-                expected: input.dt(),
-                actual: b.dt(),
+                expected: input.dtype(),
+                actual: b.dtype(),
             }
             .into());
         }
     }
 
-    match input.dt() {
+    match input.dtype() {
         DType::F32 => layer_norm::<f32>(input, scale, bias, *eps, &dst).await?,
         DType::F16 => layer_norm::<f16>(input, scale, bias, *eps, &dst).await?,
         DType::BF16 => layer_norm::<bf16>(input, scale, bias, *eps, &dst).await?,
@@ -162,24 +162,24 @@ async fn apply_rms_norm(
     }: &Norm,
     dst: Tensor,
 ) -> Result<Tensor, OperationError> {
-    if input.dt() != scale.dt() {
+    if input.dtype() != scale.dtype() {
         return Err(InvariantError::DTypeMismatch {
-            expected: input.dt(),
-            actual: scale.dt(),
+            expected: input.dtype(),
+            actual: scale.dtype(),
         }
         .into());
     }
     if let Some(b) = bias {
-        if b.dt() != input.dt() {
+        if b.dtype() != input.dtype() {
             return Err(InvariantError::DTypeMismatch {
-                expected: input.dt(),
-                actual: b.dt(),
+                expected: input.dtype(),
+                actual: b.dtype(),
             }
             .into());
         }
     }
 
-    match input.dt() {
+    match input.dtype() {
         DType::F32 => rms_norm::<f32>(input, scale, *eps, &dst).await?,
         DType::F16 => rms_norm::<f16>(input, scale, *eps, &dst).await?,
         DType::BF16 => rms_norm::<bf16>(input, scale, *eps, &dst).await?,

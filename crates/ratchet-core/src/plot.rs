@@ -146,7 +146,7 @@ impl RenderableGraph {
                     t.plot_fmt(),
                     cpu_bufs
                         .and_then(|bufs| bufs.get(&t.id()))
-                        .map(|buf| buf.dump(t.dt(), (buf.n_bytes() / 4) <= 8))
+                        .map(|buf| buf.dump(t.dtype(), (buf.n_bytes() / 4) <= 8))
                         .unwrap_or_default()
                 )
             } else {
@@ -187,7 +187,7 @@ impl RenderableGraph {
                             strong_count,
                             cpu_bufs
                                 .and_then(|bufs| bufs.get(&src_t.id()))
-                                .map(|buf| buf.dump(src_t.dt(), (buf.n_bytes() / 4) <= 8))
+                                .map(|buf| buf.dump(src_t.dtype(), (buf.n_bytes() / 4) <= 8))
                                 .unwrap_or_default()
                         )),
                         *src_id,

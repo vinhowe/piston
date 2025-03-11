@@ -332,7 +332,7 @@ impl Kernel for ReduceKernels {
     ) -> Result<KernelSource, OperationError> {
         let ReduceKernels::Standard(inner) = self;
         let kernel_element = self.kernel_element(dst);
-        match (inner.input.dt(), &kernel_element) {
+        match (inner.input.dtype(), &kernel_element) {
             (DType::F32, KernelElement::Scalar) => {
                 self.render::<Scalar<f32>>(inplace, dst, workgroup_size)
             }
@@ -344,7 +344,7 @@ impl Kernel for ReduceKernels {
             }
             _ => Err(OperationError::CompileError(format!(
                 "Unsupported dtype {:?} or kernel element {:?}",
-                inner.input.dt(),
+                inner.input.dtype(),
                 kernel_element
             ))),
         }
@@ -398,13 +398,13 @@ impl KernelRenderable for ReduceKernels {
 
         let ReduceKernels::Standard(inner) = self;
 
-        let dt = P::T::DT;
+        let dtype = P::T::DT;
         let op = inner.op.kernel_name();
 
         kernel_builder.write_global(wgsl! {
             const BLOCK_SIZE: u32 = 256u;
             const maxFloat: f32 = 3.402823e+38f;
-            var<workgroup> smem: array<'dt, BLOCK_SIZE>; //max 16kb
+            var<workgroup> smem: array<'dtype, BLOCK_SIZE>; //max 16kb
         });
 
         match inner.op {
@@ -433,13 +433,13 @@ impl KernelRenderable for ReduceKernels {
 
         let smem_initialize = match inner.op {
             ReduceOp::Sum => wgsl! {
-                smem[thread_id] = 'dt(0.0);
+                smem[thread_id] = 'dtype(0.0);
             },
             ReduceOp::Max | ReduceOp::ArgMax => wgsl! {
-                smem[thread_id] = 'dt(-maxFloat);
+                smem[thread_id] = 'dtype(-maxFloat);
             },
             ReduceOp::Min | ReduceOp::ArgMin => wgsl! {
-                smem[thread_id] = 'dt(maxFloat);
+                smem[thread_id] = 'dtype(maxFloat);
             },
         };
 

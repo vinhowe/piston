@@ -120,7 +120,7 @@ impl KernelRenderable for ArangeKernels {
 
         kernel_builder.render_metadata(&self.metadata(dst, &self.kernel_element(dst))?);
 
-        let dt = P::render_type();
+        let dtype = P::render_type();
 
         // Minimal compute shader: for each index, compute start + step * idx.
         // We skip any index >= metadata.numel.
@@ -130,7 +130,7 @@ impl KernelRenderable for ArangeKernels {
                 return;
             }
 
-            Y[idx] = metadata.start + 'dt(idx) * metadata.step;
+            Y[idx] = metadata.start + 'dtype(idx) * metadata.step;
         });
 
         Ok(kernel_builder.build()?)
@@ -181,7 +181,7 @@ impl Kernel for ArangeKernels {
     fn metadata(&self, dst: &Tensor, _: &KernelElement) -> Result<Self::Metadata, OperationError> {
         let ArangeKernels::Standard(op) = self;
         let mut dyn_meta = DynKernelMetadata::new();
-        if dst.dt().is_float() {
+        if dst.dtype().is_float() {
             dyn_meta.add_field("start", op.start);
             dyn_meta.add_field("step", op.step);
         } else {
@@ -200,7 +200,7 @@ impl Kernel for ArangeKernels {
     ) -> Result<KernelSource, OperationError> {
         let kernel_element = self.kernel_element(dst);
         // Our arange op is f32 only, but you could add more branches for f16, etc.
-        match (dst.dt(), &kernel_element) {
+        match (dst.dtype(), &kernel_element) {
             (DType::F32, KernelElement::Scalar) => {
                 self.render::<Scalar<f32>>(inplace, dst, workgroup_size)
             }
@@ -209,7 +209,7 @@ impl Kernel for ArangeKernels {
             }
             _ => Err(OperationError::CompileError(format!(
                 "Unsupported dtype {:?} or kernel element {:?}",
-                dst.dt(),
+                dst.dtype(),
                 kernel_element
             ))),
         }
