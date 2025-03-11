@@ -329,7 +329,7 @@ impl Tensor {
     }
 
     pub fn rank(&self) -> usize {
-        self.view.shape.len()
+        self.view.shape.rank()
     }
 
     pub fn dtype(&self) -> DType {
