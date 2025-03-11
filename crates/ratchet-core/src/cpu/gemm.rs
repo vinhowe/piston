@@ -1,6 +1,6 @@
 use crate::{
     cpu::cpu_store_result, CPUOperation, DType, InvariantError, Matmul, MatmulSpec, OperationError,
-    Shape, Strides, Tensor, TensorDType,
+    Shape, Stride, Tensor, TensorDType,
 };
 use anyhow::{anyhow, Result};
 use core::str::FromStr;
@@ -30,15 +30,15 @@ fn get_parallelism() -> Parallelism {
 
 fn calculate_skips(
     lhs_shape: &Shape,
-    lhs_strides: &[isize],
+    lhs_stride: &[isize],
     rhs_shape: &Shape,
-    rhs_strides: &[isize],
+    rhs_stride: &[isize],
     rank: usize,
     m: usize,
     n: usize,
     k: usize,
 ) -> Result<(usize, usize)> {
-    let lhs_skip: usize = match lhs_strides[..rank - 2] {
+    let lhs_skip: usize = match lhs_stride[..rank - 2] {
         [s1, stride] if s1 == stride * lhs_shape[1] as isize => stride as usize,
         [_, stride] if lhs_shape[0] == 1 => stride as usize,
         [stride, _] if lhs_shape[1] == 1 => stride as usize,
@@ -46,7 +46,7 @@ fn calculate_skips(
         [] => m * k,
         _ => Err(anyhow!("non-contiguous lhs"))?,
     };
-    let rhs_skip: usize = match rhs_strides[..rank - 2] {
+    let rhs_skip: usize = match rhs_stride[..rank - 2] {
         [s1, stride] if s1 == stride * rhs_shape[1] as isize => stride as usize,
         [_, stride] if rhs_shape[0] == 1 => stride as usize,
         [stride, _] if rhs_shape[1] == 1 => stride as usize,
@@ -60,39 +60,39 @@ fn calculate_skips(
 pub(crate) fn gemm<T: TensorDType>(
     lhs: &[T],
     lhs_shape: &Shape,
-    lhs_strides: &Strides,
+    lhs_stride: &Stride,
     rhs: &[T],
     rhs_shape: &Shape,
-    rhs_strides: &Strides,
-    dst_strides: &Strides,
+    rhs_stride: &Stride,
+    dst_stride: &Stride,
     b: usize,
     m: usize,
     n: usize,
     k: usize,
 ) -> Result<Vec<T>, OperationError> {
-    let lhs_strides = lhs_strides.to_vec();
-    let rhs_strides = rhs_strides.to_vec();
+    let lhs_stride = lhs_stride.to_vec();
+    let rhs_stride = rhs_stride.to_vec();
     let rank = lhs_shape.rank();
 
-    let lhs_cs = lhs_strides[rank - 1];
-    let lhs_rs = lhs_strides[rank - 2];
+    let lhs_cs = lhs_stride[rank - 1];
+    let lhs_rs = lhs_stride[rank - 2];
 
-    let rhs_cs = rhs_strides[rank - 1];
-    let rhs_rs = rhs_strides[rank - 2];
+    let rhs_cs = rhs_stride[rank - 1];
+    let rhs_rs = rhs_stride[rank - 2];
 
     let (lhs_skip, rhs_skip) = calculate_skips(
         lhs_shape,
-        &lhs_strides,
+        &lhs_stride,
         rhs_shape,
-        &rhs_strides,
+        &rhs_stride,
         rank,
         m,
         n,
         k,
     )?;
     let dst_skip: usize = m * n;
-    let dst_rs = dst_strides[0];
-    let dst_cs = dst_strides[1];
+    let dst_rs = dst_stride[0];
+    let dst_cs = dst_stride[1];
 
     let mut dst = vec![T::zero(); b * m * n];
 
@@ -134,25 +134,15 @@ fn gemm_impl<T: TensorDType>(
 ) -> Result<Vec<T>, OperationError> {
     let lhs_shape = spec.lhs_shape();
     let rhs_shape = spec.rhs_shape();
-    let lhs_strides = spec.lhs_strides();
-    let rhs_strides = spec.rhs_strides();
-    let dst_strides = spec.dst_strides();
+    let lhs_stride = spec.lhs_stride();
+    let rhs_stride = spec.rhs_stride();
+    let dst_stride = spec.dst_stride();
     let b = spec.stacks();
     let m = spec.m();
     let n = spec.n();
     let k = spec.k();
     gemm(
-        lhs,
-        lhs_shape,
-        lhs_strides,
-        rhs,
-        rhs_shape,
-        rhs_strides,
-        dst_strides,
-        b,
-        m,
-        n,
-        k,
+        lhs, lhs_shape, lhs_stride, rhs, rhs_shape, rhs_stride, dst_stride, b, m, n, k,
     )
 }
 

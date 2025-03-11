@@ -689,7 +689,7 @@ pub trait Operation: OpGuards + IrFields + Debug + 'static {
     }
     /// # Compute View
     ///
-    /// Determine the type, shape & strides of the resultant tensor.
+    /// Determine the type, shape & stride of the resultant tensor.
     fn compute_view(&self) -> Result<StorageView, OperationError>;
 
     /// # Source Tensors

@@ -45,7 +45,7 @@ impl Operation for Gather {
         Ok(StorageView::new(
             self.ids.shape().clone(),
             self.src.dtype(),
-            self.ids.strides().clone(),
+            self.ids.stride().clone(),
         ))
     }
 

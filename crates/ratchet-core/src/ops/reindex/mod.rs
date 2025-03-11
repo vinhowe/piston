@@ -18,7 +18,7 @@ use crate::{
     gpu::{BindGroupLayoutDescriptor, CpuUniform},
     rvec, Array, BindingMode, BuiltIn, DType, GPUOperation, Kernel, KernelElement, KernelMetadata,
     KernelRenderable, KernelSource, OpGuards, Operation, OperationError, RVec, Scalar, Shape,
-    Strides, Tensor, WgslKernelBuilder, WgslPrimitive, WorkgroupSize, Workload,
+    Stride, Tensor, WgslKernelBuilder, WgslPrimitive, WorkgroupSize, Workload,
 };
 use glam::UVec4;
 
@@ -177,11 +177,11 @@ impl Kernel for ReindexKernels {
         let src_numel = src_shape.numel() as u32;
         let dst_numel = dst_shape.numel() as u32;
 
-        let src_strides = Strides::from(&src_shape);
-        let dst_strides = Strides::from(&dst_shape);
+        let src_stride = Stride::from(&src_shape);
+        let dst_stride = Stride::from(&dst_shape);
 
-        let src_stride = UVec4::from(&src_strides);
-        let dst_stride = UVec4::from(&dst_strides);
+        let src_stride = UVec4::from(&src_stride);
+        let dst_stride = UVec4::from(&dst_stride);
 
         let src_shape = UVec4::from(&src_shape);
         let dst_shape = UVec4::from(&dst_shape);

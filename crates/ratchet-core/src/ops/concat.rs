@@ -7,7 +7,7 @@ use ratchet_macros::IrFields;
 use crate::{
     gpu::BindGroupLayoutDescriptor, rvec, Array, BindingMode, BuiltIn, DType, DynKernelMetadata,
     GPUOperation, Kernel, KernelElement, KernelRenderable, KernelSource, OpGuards, Operation,
-    OperationError, RVec, Scalar, Shape, StorageView, Strides, Tensor, Vec2, Vec4,
+    OperationError, RVec, Scalar, Shape, StorageView, Stride, Tensor, Vec2, Vec4,
     WgslKernelBuilder, WgslPrimitive, WorkgroupSize, Workload,
 };
 
@@ -121,12 +121,8 @@ impl Operation for Concat {
         let stacked_dim = self.inputs.iter().map(|x| x.shape()[self.dim]).sum();
         let mut output_shape = first.shape().clone();
         output_shape[self.dim] = stacked_dim;
-        let output_strides = Strides::from(&output_shape);
-        Ok(StorageView::new(
-            output_shape,
-            first.dtype(),
-            output_strides,
-        ))
+        let output_stride = Stride::from(&output_shape);
+        Ok(StorageView::new(output_shape, first.dtype(), output_stride))
     }
 
     #[inline]
@@ -199,10 +195,10 @@ impl Kernel for ConcatKernels {
             .iter()
             .map(|x| Shape::promote(x.shape().clone(), 4))
             .collect();
-        let input_strides: Vec<Strides> = input_shapes.iter().map(Strides::from).collect();
+        let input_stride: Vec<Stride> = input_shapes.iter().map(Stride::from).collect();
         let promoted_dim = inner.dim + promotion;
         let dst_shape = Shape::promote(dst.shape().clone(), 4);
-        let dst_strides = Strides::from(&dst_shape);
+        let dst_stride = Stride::from(&dst_shape);
 
         let mut dyn_meta = DynKernelMetadata::new();
 
@@ -215,11 +211,11 @@ impl Kernel for ConcatKernels {
             })
             .collect::<Vec<u32>>();
 
-        for (si, strides) in input_strides.iter().enumerate() {
-            dyn_meta.add_field(format!("x{}_stride", si), UVec4::from(strides));
+        for (si, stride) in input_stride.iter().enumerate() {
+            dyn_meta.add_field(format!("x{}_stride", si), UVec4::from(stride));
         }
 
-        dyn_meta.add_field("dst_stride", UVec4::from(&dst_strides));
+        dyn_meta.add_field("dst_stride", UVec4::from(&dst_stride));
         dyn_meta.add_field("dst_numel", dst_shape.numel() as u32);
 
         for (ci, c) in cumsum.iter().enumerate() {

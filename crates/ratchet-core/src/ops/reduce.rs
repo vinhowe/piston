@@ -7,7 +7,7 @@ use crate::{
     gpu::{dtype::WgslDType, BindGroupLayoutDescriptor},
     rvec, wgc, wgs, Array, BindingMode, BuiltIn, DType, GPUOperation, Kernel, KernelElement,
     KernelRenderable, KernelSource, OpGuards, Operation, OperationError, RVec, Scalar, Shape,
-    StorageView, Strides, Tensor, WgslKernelBuilder, WgslPrimitive, WorkgroupSize, Workload,
+    StorageView, Stride, Tensor, WgslKernelBuilder, WgslPrimitive, WorkgroupSize, Workload,
 };
 
 #[cfg(test)]
@@ -45,31 +45,31 @@ pub struct Reduce {
     src_numel: usize,
     dst_numel: usize,
     dims: RVec<usize>,
-    strides: RVec<usize>,
+    stride: RVec<usize>,
     el_to_reduce_per_block: usize,
 }
 
 impl Reduce {
     pub fn new(input: Tensor, op: ReduceOp, reduce_dims: RVec<usize>, keepdim: bool) -> Self {
         // TODO: These are common to all reduce operations; we should make this more general
-        let src_stride = input.strides().to_vec();
+        let src_stride = input.stride().to_vec();
         let src_dims = input.shape().to_vec();
         let src_numel = src_dims.iter().product();
 
         let mut dims = rvec![];
-        let mut strides = rvec![];
+        let mut stride = rvec![];
         let mut dst_numel: usize = 1;
 
         for (dim_idx, &d) in src_dims.iter().enumerate() {
             if !reduce_dims.contains(&dim_idx) {
                 dst_numel *= d;
                 dims.push(d);
-                strides.push(src_stride[dim_idx] as usize);
+                stride.push(src_stride[dim_idx] as usize);
             }
         }
         for &dim_idx in reduce_dims.iter() {
             dims.push(src_dims[dim_idx]);
-            strides.push(src_stride[dim_idx] as usize);
+            stride.push(src_stride[dim_idx] as usize);
         }
 
         // I _think_ this stays the same if we split on the right dimension
@@ -90,7 +90,7 @@ impl Reduce {
             src_numel,
             dst_numel,
             dims,
-            strides,
+            stride,
             el_to_reduce_per_block: el_to_sum_per_block,
         }
     }
@@ -144,12 +144,12 @@ impl Reduce {
         kernel_builder: &mut WgslKernelBuilder,
     ) -> Result<(), OperationError> {
         kernel_builder.write_global(wgsl! {
-            fn get_strided_index(idx: u32, num_dims: u32, shape: vec4<u32>, strides: vec4<u32>) -> u32 {
+            fn get_strided_index(idx: u32, num_dims: u32, shape: vec4<u32>, stride: vec4<u32>) -> u32 {
                 var strided_i: u32 = 0;
                 var idx_: u32 = idx;
                 for (var d: u32 = 0; d < num_dims; d++) {
                     var dim_idx: u32 = num_dims - 1 - d;
-                    strided_i += (idx_ % shape[dim_idx]) * strides[dim_idx];
+                    strided_i += (idx_ % shape[dim_idx]) * stride[dim_idx];
                     idx_ /= shape[dim_idx];
                 }
                 return strided_i;
@@ -168,7 +168,7 @@ pub struct ReduceMeta {
     el_to_reduce_per_block: u32,
     // Hard limit of summing along 4 dimensions; we might be able to improve this.
     shape: glam::UVec4,
-    strides: glam::UVec4,
+    stride: glam::UVec4,
 }
 
 impl OpGuards for Reduce {
@@ -217,8 +217,8 @@ impl Operation for Reduce {
         }
 
         let output_shape = Shape::from(output_shape_vec);
-        let strides = Strides::from(&output_shape);
-        Ok(StorageView::new(output_shape, output_dtype, strides))
+        let stride = Stride::from(&output_shape);
+        Ok(StorageView::new(output_shape, output_dtype, stride))
     }
 
     #[inline]
@@ -310,7 +310,7 @@ impl Kernel for ReduceKernels {
             shape[i] = dim as u32;
         }
         let mut strides = [0; 4];
-        for (i, &stride) in inner.strides.iter().enumerate() {
+        for (i, &stride) in inner.stride.iter().enumerate() {
             strides[i] = stride as u32;
         }
 
@@ -320,7 +320,7 @@ impl Kernel for ReduceKernels {
             num_reduce_dims: inner.reduce_dims.len() as u32,
             el_to_reduce_per_block: inner.el_to_reduce_per_block as u32,
             shape: shape.into(),
-            strides: strides.into(),
+            stride: strides.into(),
         })
     }
 
@@ -486,7 +486,7 @@ impl KernelRenderable for ReduceKernels {
 
         kernel_builder.write_main(wgsl! {
             while (idx < stop_idx) {
-                let strided_i = get_strided_index(idx, metadata.num_dims, metadata.shape, metadata.strides);
+                let strided_i = get_strided_index(idx, metadata.num_dims, metadata.shape, metadata.stride);
                 'smem_update
                 idx += BLOCK_SIZE;
             }
@@ -601,7 +601,7 @@ def reduce(a):
 
         let ours = b_gpu.to(&Device::CPU)?.cast(DType::F32)?;
         // println!("input = {:?}", a);
-        // println!("input strides = {:?}", a.strides());
+        // println!("input stride = {:?}", a.stride());
         // println!("ours = {:?}", ours);
         // println!("ground = {:?}", ground);
         ground.all_close(&ours, 1e-5, 1e-5)?;

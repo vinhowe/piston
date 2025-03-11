@@ -9,7 +9,7 @@ use crate::{
     gpu::BindGroupLayoutDescriptor, rvec, Array, BindGroupLayoutEntryDescriptor,
     BindGroupLayoutEntryExt, BindingMode, BuiltIn, DType, GPUOperation, Kernel, KernelElement,
     KernelRenderable, KernelSource, OpGuards, Operation, OperationError, RVec, Scalar, Shape,
-    StorageView, Strides, Tensor, Vec2, Vec4, WgslKernelBuilder, WgslPrimitive, WorkgroupSize,
+    StorageView, Stride, Tensor, Vec2, Vec4, WgslKernelBuilder, WgslPrimitive, WorkgroupSize,
     Workload,
 };
 
@@ -139,11 +139,11 @@ impl Operation for Cache {
     fn compute_view(&self) -> Result<StorageView, OperationError> {
         let mut result_shape = self.cache.shape().clone();
         result_shape[self.dim] = self.offset + self.source.shape()[self.dim];
-        let result_strides = Strides::from(&result_shape);
+        let result_stride = Stride::from(&result_shape);
         Ok(StorageView::new(
             result_shape,
             self.cache.dtype(),
-            result_strides,
+            result_stride,
         ))
     }
 
@@ -195,21 +195,21 @@ impl Kernel for CacheKernels {
         let promoted_dim = inner.dim + promotion;
 
         let cache_shape = Shape::promote(inner.cache.shape().clone(), 4);
-        let cache_strides = Strides::from(&cache_shape);
+        let cache_stride = Stride::from(&cache_shape);
 
         let source_shape = Shape::promote(inner.source.shape().clone(), 4);
-        let source_strides = Strides::from(&source_shape);
+        let source_stride = Stride::from(&source_shape);
 
         let dst_shape = Shape::promote(dst.shape().clone(), 4);
-        let dst_strides = Strides::from(&dst_shape);
+        let dst_stride = Stride::from(&dst_shape);
 
         let cum0 = inner.offset as u32;
         let cum1 = cum0 + source_shape[promoted_dim] as u32;
 
         Ok(CacheMeta {
-            cache_stride: UVec4::from(&cache_strides),
-            src_stride: UVec4::from(&source_strides),
-            dst_stride: UVec4::from(&dst_strides),
+            cache_stride: UVec4::from(&cache_stride),
+            src_stride: UVec4::from(&source_stride),
+            dst_stride: UVec4::from(&dst_stride),
             dst_numel: dst_shape.numel() as u32,
             cum0,
             cum1,

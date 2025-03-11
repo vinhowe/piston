@@ -5,7 +5,7 @@ use ratchet_macros::WgslMetadata;
 use crate::{
     gpu::dtype::WgslDType, rvec, wgc, wgs, Array, BindGroupLayoutDescriptor, BindingMode, BuiltIn,
     DType, InvariantError, Kernel, KernelElement, KernelKey, KernelRenderable, KernelSource,
-    Matmul, MatmulSpec, OperationError, Scalar, Strides, Tensor, Vec4, WgslKernelBuilder,
+    Matmul, MatmulSpec, OperationError, Scalar, Stride, Tensor, Vec4, WgslKernelBuilder,
     WgslPrimitive, WorkgroupCount, WorkgroupSize, Workload,
 };
 use glam::IVec3;
@@ -16,11 +16,11 @@ use num_traits::Zero;
 #[derive(Debug, Clone, ShaderType, WgslMetadata)]
 pub struct WorkgroupGEMVMeta {
     lhs_shape: IVec3,
-    lhs_strides: IVec3,
+    lhs_stride: IVec3,
     rhs_shape: IVec3,
-    rhs_strides: IVec3,
+    rhs_stride: IVec3,
     dst_shape: IVec3,
-    dst_strides: IVec3,
+    dst_stride: IVec3,
     dim_lhs_outer: i32,
     dim_rhs_outer: i32,
     dim_inner: i32,
@@ -103,15 +103,15 @@ impl Kernel for WorkgroupGEMV {
         let spec = &self.spec;
         let mut lhs_shape = spec.lhs_shape().clone();
         lhs_shape.insert(0, spec.lhs_stack());
-        let lhs_strides = Strides::from(&lhs_shape);
+        let lhs_stride = Stride::from(&lhs_shape);
 
         let mut rhs_shape = spec.raw_rhs_shape().clone();
         rhs_shape.insert(0, spec.rhs_stack());
-        let rhs_strides = Strides::from(&rhs_shape);
+        let rhs_stride = Stride::from(&rhs_shape);
 
         let mut dst_shape = spec.dst_shape().clone();
         dst_shape.insert(0, spec.stacks());
-        let dst_strides = Strides::from(&dst_shape);
+        let dst_stride = Stride::from(&dst_shape);
 
         let dim_lhs_outer = spec.dim_lhs_outer() as i32;
         let dim_rhs_outer = spec.dim_rhs_outer() as i32;
@@ -119,11 +119,11 @@ impl Kernel for WorkgroupGEMV {
 
         Ok(WorkgroupGEMVMeta {
             lhs_shape: lhs_shape.into(),
-            lhs_strides: lhs_strides.into(),
+            lhs_stride: lhs_stride.into(),
             rhs_shape: rhs_shape.into(),
-            rhs_strides: rhs_strides.into(),
+            rhs_stride: rhs_stride.into(),
             dst_shape: dst_shape.into(),
-            dst_strides: dst_strides.into(),
+            dst_stride: dst_stride.into(),
             dim_lhs_outer,
             dim_rhs_outer,
             dim_inner,
@@ -262,7 +262,7 @@ impl KernelRenderable for WorkgroupGEMV {
             (true, DType::F32) | (true, DType::F16) => {
                 wgsl! {
                     fn readA(batch: i32, row: i32, col: i32) -> 'scalar {
-                        return A[dot(metadata.lhs_strides, vec3<i32>(batch, row, col))];
+                        return A[dot(metadata.lhs_stride, vec3<i32>(batch, row, col))];
                     }
                 }
             }
@@ -271,7 +271,7 @@ impl KernelRenderable for WorkgroupGEMV {
                     fn readA(batch: i32, row: i32, col: i32) -> 'scalar {
                         var val = 'zero;
                         if (row <= metadata.lhs_shape.y) {
-                            val = A[dot(metadata.lhs_strides, vec3<i32>(batch, row, col))];
+                            val = A[dot(metadata.lhs_stride, vec3<i32>(batch, row, col))];
                         }
                         return val;
                     }
@@ -280,7 +280,7 @@ impl KernelRenderable for WorkgroupGEMV {
             (true, DType::Q8_0F(_)) | (true, DType::Q8_0H(_)) => {
                 wgsl! {
                     fn readA(batch: i32, row: i32, col: i32) -> vec4<'scalar> {
-                        return unpack(A[dot(metadata.lhs_strides, vec3<i32>(batch, row, col))]);
+                        return unpack(A[dot(metadata.lhs_stride, vec3<i32>(batch, row, col))]);
                     }
                 }
             }
@@ -297,20 +297,20 @@ impl KernelRenderable for WorkgroupGEMV {
         });
 
         kernel_builder.write_main(wgsl! {
-            let aOffset = metadata.lhs_strides.x * batchA / 'n;
-            let bOffset = metadata.rhs_strides.x * batchB / 'n;
-            let outOffset = metadata.dst_strides.x * batch / 'n;
+            let aOffset = metadata.lhs_stride.x * batchA / 'n;
+            let bOffset = metadata.rhs_stride.x * batchB / 'n;
+            let outOffset = metadata.dst_stride.x * batch / 'n;
         });
 
         kernel_builder.write_main(wgsl! { var sum = 'fp32_accessor(0.0); });
         kernel_builder
-            .write_main(wgsl! { let aIndex = aOffset + row * metadata.lhs_strides.y / 'n; });
+            .write_main(wgsl! { let aIndex = aOffset + row * metadata.lhs_stride.y / 'n; });
 
         let workgroup_size_y = workgroup_size.y;
         let main_loop = match self.lhs.dtype() {
             DType::Q8_0F(_) | DType::Q8_0H(_) => {
                 wgsl! {
-                    let sIndex = (aOffset / 4) + row * metadata.lhs_strides.y / 32;
+                    let sIndex = (aOffset / 4) + row * metadata.lhs_stride.y / 32;
                     for (var k = i32(global_invocation_id.y); k < metadata.dim_inner / 4; k+='workgroup_size_y / 4) {
                         sum += 'fp32_accessor(unpack(A[aIndex + k]) * scale[sIndex + (k/8)] * X[k]);
                     }

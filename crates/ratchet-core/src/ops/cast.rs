@@ -7,7 +7,7 @@ use ratchet_macros::{IrFields, WgslMetadata};
 use crate::{
     gpu::BindGroupLayoutDescriptor, rvec, Array, BindingMode, BuiltIn, DType, GPUOperation, Kernel,
     KernelElement, KernelRenderable, KernelSource, OpGuards, Operation, OperationError, RVec,
-    Scalar, StorageView, Strides, Tensor, Vec2, Vec4, WgslKernelBuilder, WgslPrimitive,
+    Scalar, StorageView, Stride, Tensor, Vec2, Vec4, WgslKernelBuilder, WgslPrimitive,
     WorkgroupSize, Workload,
 };
 
@@ -117,8 +117,8 @@ impl Operation for Cast {
 
     fn compute_view(&self) -> Result<StorageView, OperationError> {
         let shape = self.input.shape().clone();
-        let strides = Strides::from(&shape);
-        Ok(StorageView::new(shape, self.dst_dtype, strides))
+        let stride = Stride::from(&shape);
+        Ok(StorageView::new(shape, self.dst_dtype, stride))
     }
 
     #[inline]

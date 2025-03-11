@@ -8,7 +8,7 @@ use crate::{
     gpu::{dtype::WgslDType, BindGroupLayoutDescriptor, WorkgroupCount},
     rvec, shape, wgc, wgs, Array, BindingMode, BuiltIn, DType, GPUOperation, Kernel, KernelElement,
     KernelRenderable, KernelSource, OpGuards, Operation, OperationError, RVec, Scalar, StorageView,
-    Strides, Tensor, Vec2, Vec4, WgslKernelBuilder, WgslPrimitive, WorkgroupSize, Workload,
+    Stride, Tensor, Vec2, Vec4, WgslKernelBuilder, WgslPrimitive, WorkgroupSize, Workload,
 };
 use inline_wgsl::wgsl;
 
@@ -173,8 +173,8 @@ impl Operation for Conv {
 
         let L_out = calc_dim(L_in, KS, self.padding, 1, self.stride);
         let out_shape = shape![N, C_out, L_out];
-        let out_strides = Strides::from(&out_shape);
-        Ok(StorageView::new(out_shape, input_t.dtype(), out_strides))
+        let out_stride = Stride::from(&out_shape);
+        Ok(StorageView::new(out_shape, input_t.dtype(), out_stride))
     }
 
     #[inline]

@@ -7,7 +7,7 @@ use ratchet_macros::{IrFields, WgslMetadata};
 use crate::{
     gpu::BindGroupLayoutDescriptor, rvec, Array, BindingMode, BuiltIn, DType, GPUOperation, Kernel,
     KernelElement, KernelRenderable, KernelSource, OpGuards, Operation, OperationError, RVec,
-    Scalar, StorageView, Strides, Tensor, Vec2, Vec4, WgslKernelBuilder, WgslPrimitive,
+    Scalar, StorageView, Stride, Tensor, Vec2, Vec4, WgslKernelBuilder, WgslPrimitive,
     WorkgroupSize, Workload,
 };
 
@@ -31,8 +31,8 @@ impl Operation for Bernoulli {
     fn compute_view(&self) -> Result<StorageView, OperationError> {
         // Output has same shape as the input probabilities tensor
         let shape = self.probs.shape().clone();
-        let strides = Strides::from(&shape);
-        Ok(StorageView::new(shape, DType::F32, strides))
+        let stride = Stride::from(&shape);
+        Ok(StorageView::new(shape, DType::F32, stride))
     }
 
     fn srcs(&self) -> RVec<&Tensor> {

@@ -2,7 +2,7 @@ use derive_new::new;
 use encase::ShaderType;
 use ratchet_macros::WgslMetadata;
 
-use crate::{rvec, OpGuards, Operation, OperationError, RVec, Shape, StorageView, Strides, Tensor};
+use crate::{rvec, OpGuards, Operation, OperationError, RVec, Shape, StorageView, Stride, Tensor};
 use ratchet_macros::IrFields;
 
 #[derive(Debug, WgslMetadata, ShaderType, derive_new::new)]
@@ -73,8 +73,8 @@ impl Operation for Broadcast {
             return Ok(self.src.storage_view().clone());
         }
 
-        let strides = Strides::from(&self.to);
-        Ok(StorageView::new(self.to.clone(), self.src.dtype(), strides))
+        let stride = Stride::from(&self.to);
+        Ok(StorageView::new(self.to.clone(), self.src.dtype(), stride))
     }
 
     fn srcs(&self) -> RVec<&Tensor> {

@@ -1,7 +1,7 @@
 use super::utils::cpu_store_result;
 use crate::{
-    Broadcast, CPUOperation, DType, OperationError, Permute, Reindex, Shape, Slice, Strides,
-    Tensor, TensorDType,
+    Broadcast, CPUOperation, DType, OperationError, Permute, Reindex, Shape, Slice, Stride, Tensor,
+    TensorDType,
 };
 use half::{bf16, f16};
 use maybe_async::maybe_async;
@@ -59,20 +59,20 @@ fn permute<T: TensorDType>(
     let src_shape = &Shape::promote(src_shape.clone(), 4);
     let dst_shape = &Shape::promote(dst_shape.clone(), 4);
 
-    let src_strides = &Strides::from(src_shape);
-    let dst_strides = &Strides::from(dst_shape);
+    let src_stride = &Stride::from(src_shape);
+    let dst_stride = &Stride::from(dst_shape);
 
-    let src_strides: [usize; 4] = src_strides.into();
-    let dst_strides: [usize; 4] = dst_strides.into();
+    let src_stride: [usize; 4] = src_stride.into();
+    let dst_stride: [usize; 4] = dst_stride.into();
 
     (0..result.len()).for_each(|i| {
-        let dst_index = offset_to_ndindex(i, dst_strides);
+        let dst_index = offset_to_ndindex(i, dst_stride);
         let mut src_index = [0; 4];
         src_index[perm[0]] = dst_index[0];
         src_index[perm[1]] = dst_index[1];
         src_index[perm[2]] = dst_index[2];
         src_index[perm[3]] = dst_index[3];
-        let src_offset = nd_index_to_offset(src_index, src_strides);
+        let src_offset = nd_index_to_offset(src_index, src_stride);
         result[i] = src[src_offset]
     });
     result
@@ -97,7 +97,7 @@ impl CPUOperation for Slice {
 #[maybe_async]
 async fn apply_slice<T: TensorDType>(s: &Slice, dst: Tensor) -> Result<Tensor, OperationError> {
     let (start, stop): (Vec<_>, Vec<_>) = s.indices().iter().map(|r| (r.start, r.end)).unzip();
-    let result = slice(&s.src.to_vec::<T>().await?, s.src.strides(), &start, &stop);
+    let result = slice(&s.src.to_vec::<T>().await?, s.src.stride(), &start, &stop);
 
     cpu_store_result(&dst, &result);
     Ok(dst)
@@ -105,12 +105,12 @@ async fn apply_slice<T: TensorDType>(s: &Slice, dst: Tensor) -> Result<Tensor, O
 
 pub(crate) fn slice<T: TensorDType>(
     src: &[T],
-    src_strides: &Strides,
+    src_stride: &Stride,
     start: &[usize],
     stop: &[usize],
 ) -> Vec<T> {
     assert!(start.len() == stop.len());
-    assert!(start.len() == src_strides.rank());
+    assert!(start.len() == src_stride.rank());
     start.iter().zip(stop.iter()).for_each(|(s, t)| {
         assert!(s < t);
     });
@@ -131,7 +131,7 @@ pub(crate) fn slice<T: TensorDType>(
         for d in 0..dst_shape.len() {
             let coord = tmp / dst_dots[d];
             tmp %= dst_dots[d];
-            src_index += (coord + start[d]) * src_strides[d] as usize;
+            src_index += (coord + start[d]) * src_stride[d] as usize;
         }
         dst[i] = src[src_index];
     });
@@ -209,12 +209,12 @@ fn generic_broadcast<T: TensorDType>(
     let src_shape = &Shape::promote(src_shape.clone(), 4);
     let dst_shape = &Shape::promote(dst_shape.clone(), 4);
 
-    let src_strides = &Strides::from(src_shape);
-    let dst_strides = &Strides::from(dst_shape);
+    let src_stride = &Stride::from(src_shape);
+    let dst_stride = &Stride::from(dst_shape);
 
     let src_shape: [usize; 4] = src_shape.try_into().unwrap();
-    let src_strides: [usize; 4] = src_strides.into();
-    let dst_strides: [usize; 4] = dst_strides.into();
+    let src_stride: [usize; 4] = src_stride.into();
+    let dst_stride: [usize; 4] = dst_stride.into();
 
     fn select(a: [usize; 4], b: [usize; 4], t: [bool; 4]) -> [usize; 4] {
         let mut result = [0; 4];
@@ -232,38 +232,38 @@ fn generic_broadcast<T: TensorDType>(
         src_shape[3] != 1,
     ];
     (0..result.len()).for_each(|i| {
-        let dst_index = offset_to_ndindex(i, dst_strides);
+        let dst_index = offset_to_ndindex(i, dst_stride);
         let src_index = select(dst_index, [0; 4], shape_onedim_lookup);
-        let src_offset = nd_index_to_offset(src_index, src_strides);
+        let src_offset = nd_index_to_offset(src_index, src_stride);
         result[i] = src[src_offset]
     });
 }
 
 #[inline]
-fn offset_to_ndindex(offset: usize, strides: [usize; 4]) -> [usize; 4] {
+fn offset_to_ndindex(offset: usize, stride: [usize; 4]) -> [usize; 4] {
     let mut indices = [0; 4];
     let mut remaining = offset;
 
-    let idx = remaining / strides[0];
+    let idx = remaining / stride[0];
     indices[0] = idx;
-    remaining -= idx * strides[0];
+    remaining -= idx * stride[0];
 
-    let idx = remaining / strides[1];
+    let idx = remaining / stride[1];
     indices[1] = idx;
-    remaining -= idx * strides[1];
+    remaining -= idx * stride[1];
 
-    let idx = remaining / strides[2];
+    let idx = remaining / stride[2];
     indices[2] = idx;
-    remaining -= idx * strides[2];
+    remaining -= idx * stride[2];
 
     indices[3] = remaining;
     indices
 }
 
 #[inline]
-fn nd_index_to_offset(ndindex: [usize; 4], strides: [usize; 4]) -> usize {
-    ndindex[0] * strides[0]
-        + ndindex[1] * strides[1]
-        + ndindex[2] * strides[2]
-        + ndindex[3] * strides[3]
+fn nd_index_to_offset(ndindex: [usize; 4], stride: [usize; 4]) -> usize {
+    ndindex[0] * stride[0]
+        + ndindex[1] * stride[1]
+        + ndindex[2] * stride[2]
+        + ndindex[3] * stride[3]
 }

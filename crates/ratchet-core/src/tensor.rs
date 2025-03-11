@@ -2,7 +2,7 @@ use crate::gpu::{BindGroupEntry, CpuUniform, WgpuDevice};
 use crate::{
     cpu, get_current_scope, ops::*, rvec, shape, BufferSegment, CPUBuffer, Compiled, CompiledOp,
     ComputeCompileKey, DType, Device, DeviceStorage, GPUOperation, GpuCompileKey, InvariantError,
-    LazyOp, Operation, OperationError, RVec, RawCPUBuffer, ScopePusher, Shape, Storage, Strides,
+    LazyOp, Operation, OperationError, RVec, RawCPUBuffer, ScopePusher, Shape, Storage, Stride,
     TensorDType, TensorId,
 };
 use bitvec::prelude::*;
@@ -130,7 +130,7 @@ impl Tensor {
         let meta = StorageView {
             shape: shape.clone(),
             dtype: T::dtype(),
-            strides: Strides::from(&shape.clone()),
+            stride: Stride::from(&shape.clone()),
         };
         Self::new_impl(
             LazyOp::FillConstant(FillConstant {
@@ -240,12 +240,12 @@ impl std::ops::Deref for Tensor {
 pub struct StorageView {
     shape: Shape,
     dtype: DType,
-    strides: Strides,
+    stride: Stride,
 }
 
 impl StorageView {
     pub fn is_contiguous(&self) -> bool {
-        self.shape.is_contiguous(&self.strides)
+        self.shape.is_contiguous(&self.stride)
     }
 }
 
@@ -340,8 +340,8 @@ impl Tensor {
         &self.view.shape
     }
 
-    pub fn strides(&self) -> &Strides {
-        &self.view.strides
+    pub fn stride(&self) -> &Stride {
+        &self.view.stride
     }
 
     //WARNING: very wrong for quantized types!
@@ -1152,7 +1152,7 @@ impl Tensor {
             let meta = StorageView {
                 shape: shape![numel],
                 dtype: T::dtype(),
-                strides: Strides::from(&shape![numel]),
+                stride: Stride::from(&shape![numel]),
             };
 
             Ok(Tensor::lazy(op, meta, device.clone(), false))
@@ -1205,14 +1205,14 @@ impl Tensor {
                 })
                 .collect::<Vec<_>>();
             let storage = Storage::from_slice(&data, &shape, &device);
-            let strides = Strides::from(&shape);
-            let meta = StorageView::new(shape, T::dtype(), strides);
+            let stride = Stride::from(&shape);
+            let meta = StorageView::new(shape, T::dtype(), stride);
             Self::new_impl(LazyOp::Const, meta, Some(storage), device, is_variable)
         } else {
             let meta = StorageView {
                 shape: shape.clone(),
                 dtype: DType::F32,
-                strides: Strides::from(&shape.clone()),
+                stride: Stride::from(&shape.clone()),
             };
             Self::new_impl(
                 LazyOp::FillRandn(FillRandn {
@@ -1279,7 +1279,7 @@ impl Tensor {
         let meta = StorageView {
             shape: shape.clone(),
             dtype: DType::F32,
-            strides: Strides::from(shape),
+            stride: Stride::from(shape),
         };
 
         Ok(Self::new_impl(
@@ -1298,8 +1298,8 @@ impl Tensor {
     ) -> Tensor {
         if device.is_cpu() {
             let storage = Storage::zeros::<T>(shape, device);
-            let strides = Strides::from(shape);
-            let meta = StorageView::new(shape.clone(), T::dtype(), strides);
+            let stride = Stride::from(shape);
+            let meta = StorageView::new(shape.clone(), T::dtype(), stride);
             Tensor::new_impl(
                 LazyOp::Const,
                 meta,
@@ -1337,8 +1337,8 @@ impl Tensor {
     ) -> Tensor {
         if device.is_cpu() {
             let storage = Storage::ones::<T>(shape, device);
-            let strides = Strides::from(shape);
-            let meta = StorageView::new(shape.clone(), T::dtype(), strides);
+            let stride = Stride::from(shape);
+            let meta = StorageView::new(shape.clone(), T::dtype(), stride);
             Tensor::new_impl(
                 LazyOp::Const,
                 meta,
@@ -1418,8 +1418,8 @@ impl Tensor {
         is_variable: bool,
     ) -> Tensor {
         let storage = Storage::from_slice(data.as_ref(), &shape, &device);
-        let strides = Strides::from(&shape);
-        let meta = StorageView::new(shape, T::dtype(), strides);
+        let stride = Stride::from(&shape);
+        let meta = StorageView::new(shape, T::dtype(), stride);
         Tensor::new_impl(LazyOp::Const, meta, Some(storage), device, is_variable)
     }
 
@@ -1438,8 +1438,8 @@ impl Tensor {
         device: Device,
     ) -> anyhow::Result<Tensor> {
         let storage = Storage::from_bytes(data, dtype.size_of(), &device);
-        let strides = Strides::from(&shape);
-        let meta = StorageView::new(shape, dtype, strides);
+        let stride = Stride::from(&shape);
+        let meta = StorageView::new(shape, dtype, stride);
         Ok(Tensor::new_impl(
             LazyOp::Const,
             meta,
@@ -1524,8 +1524,8 @@ impl Tensor {
         device: Device,
     ) -> Tensor {
         let storage = unsafe { Storage::from_quantized(data.as_ref(), &device) };
-        let strides = Strides::from(&shape);
-        let meta = StorageView::new(shape, dtype, strides);
+        let stride = Stride::from(&shape);
+        let meta = StorageView::new(shape, dtype, stride);
         Tensor::new_impl(LazyOp::Const, meta, Some(storage), device, false)
     }
 
@@ -1535,8 +1535,8 @@ impl Tensor {
         device: Device,
     ) -> anyhow::Result<Tensor> {
         let storage = Storage::from_disk::<T, R>(reader, &shape, &device)?;
-        let strides = Strides::from(&shape);
-        let meta = StorageView::new(shape, T::dtype(), strides);
+        let stride = Stride::from(&shape);
+        let meta = StorageView::new(shape, T::dtype(), stride);
         Ok(Tensor::new_impl(
             LazyOp::Const,
             meta,
@@ -2095,12 +2095,12 @@ impl<T: TensorDType> From<ArrayD<T>> for Tensor {
             )
             .unwrap();
             let shape = it.shape().to_vec().into();
-            let strides = Strides::from(&shape);
+            let stride = Stride::from(&shape);
             let vec = it.into_raw_vec().into_boxed_slice();
             let ptr = Box::into_raw(vec) as *mut u8;
 
             let raw_buf = RawCPUBuffer::new(ptr, layout);
-            let meta = StorageView::new(shape, T::dtype(), strides);
+            let meta = StorageView::new(shape, T::dtype(), stride);
             Tensor::new_impl(
                 LazyOp::Const,
                 meta,

@@ -8,7 +8,7 @@ use crate::{
     gpu::{dtype::WgslDType, BindGroupLayoutDescriptor},
     rvec, Array, BindingMode, BuiltIn, DType, GPUOperation, InvariantError, Kernel, KernelElement,
     KernelRenderable, KernelSource, OpGuards, Operation, OperationError, RVec, Scalar, Shape,
-    StorageView, Strides, Tensor, Vec2, Vec4, WgslKernelBuilder, WgslPrimitive, WorkgroupSize,
+    StorageView, Stride, Tensor, Vec2, Vec4, WgslKernelBuilder, WgslPrimitive, WorkgroupSize,
     Workload,
 };
 #[cfg(test)]
@@ -168,8 +168,8 @@ impl Operation for Binary {
             return Err(InvariantError::BroadcastingFailed(failed).into());
         }
         let broadcasted = broadcasted.unwrap();
-        let ostrides = Strides::from(&broadcasted);
-        Ok(StorageView::new(broadcasted, lhs.dtype(), ostrides))
+        let ostride = Stride::from(&broadcasted);
+        Ok(StorageView::new(broadcasted, lhs.dtype(), ostride))
     }
 
     #[inline]

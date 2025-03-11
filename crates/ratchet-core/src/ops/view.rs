@@ -1,4 +1,4 @@
-use crate::{rvec, OpGuards, Operation, Shape, StorageView, Strides, Tensor};
+use crate::{rvec, OpGuards, Operation, Shape, StorageView, Stride, Tensor};
 
 use ratchet_macros::IrFields;
 
@@ -30,11 +30,11 @@ impl Operation for View {
     }
 
     fn compute_view(&self) -> Result<StorageView, crate::OperationError> {
-        let strides = Strides::from(&self.shape);
+        let stride = Stride::from(&self.shape);
         Ok(StorageView::new(
             self.shape.clone(),
             self.src.dtype(),
-            strides,
+            stride,
         ))
     }
 
