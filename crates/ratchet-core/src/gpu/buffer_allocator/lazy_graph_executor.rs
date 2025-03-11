@@ -492,7 +492,7 @@ impl LazyGraphExecutor {
                 let inner = allocations.remove(&id).ok_or(TensorError::NoStorage(id))?;
                 t.update_storage(Storage::GPU(GPUBuffer {
                     inner,
-                    alignment: t.dt().size_of(),
+                    alignment: t.dtype().size_of(),
                     cpu_size: Some(t.num_bytes()),
                 }));
             }
@@ -570,12 +570,12 @@ impl LazyGraphExecutor {
             .map(|t| {
                 DebugTensor::new(
                     t.storage().clone(),
-                    t.dt(),
+                    t.dtype(),
                     t.op()
                         .srcs()
                         .iter()
                         .map(|s| {
-                            DebugTensor::new(s.storage().clone(), s.dt(), vec![], s.num_bytes())
+                            DebugTensor::new(s.storage().clone(), s.dtype(), vec![], s.num_bytes())
                         })
                         .collect(),
                     t.num_bytes(),

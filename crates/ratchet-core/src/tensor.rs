@@ -129,7 +129,7 @@ impl Tensor {
     ) -> Self {
         let meta = StorageView {
             shape: shape.clone(),
-            dt: T::dt(),
+            dtype: T::dtype(),
             strides: Strides::from(&shape.clone()),
         };
         Self::new_impl(
@@ -192,27 +192,27 @@ impl Tensor {
 impl std::fmt::Debug for Tensor {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self.device() {
-            Device::CPU => match self.dt() {
+            Device::CPU => match self.dtype() {
                 DType::F32 => self.to_ndarray_view::<f32>().fmt(f),
                 _ => {
-                    let storage_fmt = self.storage().as_ref().map(|s| s.dump(self.dt(), false));
+                    let storage_fmt = self.storage().as_ref().map(|s| s.dump(self.dtype(), false));
                     let (id, op) = (self.id(), self.op());
                     f.debug_struct("Tensor")
                         .field("id", &id)
                         .field("shape", &self.shape())
-                        .field("dt", &self.dt())
+                        .field("dtype", &self.dtype())
                         .field("op", &op)
                         .field("storage", &storage_fmt)
                         .finish()
                 }
             },
             Device::GPU(_) => {
-                let storage_fmt = self.storage().as_ref().map(|s| s.dump(self.dt(), false));
+                let storage_fmt = self.storage().as_ref().map(|s| s.dump(self.dtype(), false));
                 let (id, op) = (self.id(), self.op());
                 f.debug_struct("Tensor")
                     .field("id", &id)
                     .field("shape", &self.shape())
-                    .field("dt", &self.dt())
+                    .field("dtype", &self.dtype())
                     .field("op", &op)
                     .field("storage", &storage_fmt)
                     .finish()
@@ -239,7 +239,7 @@ impl std::ops::Deref for Tensor {
 #[derive(new, Debug, Clone)]
 pub struct StorageView {
     shape: Shape,
-    dt: DType,
+    dtype: DType,
     strides: Strides,
 }
 
@@ -332,8 +332,8 @@ impl Tensor {
         self.view.shape.len()
     }
 
-    pub fn dt(&self) -> DType {
-        self.view.dt
+    pub fn dtype(&self) -> DType {
+        self.view.dtype
     }
 
     pub fn shape(&self) -> &Shape {
@@ -346,7 +346,7 @@ impl Tensor {
 
     //WARNING: very wrong for quantized types!
     pub fn num_bytes(&self) -> usize {
-        self.view.shape.numel() * self.view.dt.size_of()
+        self.view.shape.numel() * self.view.dtype.size_of()
     }
 
     pub fn device(&self) -> &Device {
@@ -380,7 +380,7 @@ impl Tensor {
     #[cfg(feature = "plotting")]
     pub fn plot_fmt(&self) -> String {
         let shape = self.shape();
-        let dt = self.dt();
+        let dtype = self.dtype();
         let storage = self.storage();
         let storage_fmt = storage
             .as_ref()
@@ -390,7 +390,7 @@ impl Tensor {
         format!(
             "#{:?}-{:?}-{:?}{}\n{:#?}\n{}\n{:?} references",
             self.id(),
-            dt,
+            dtype,
             shape,
             if self.is_variable() { " (var)" } else { "" },
             self.op().ir().fields(),
@@ -515,13 +515,13 @@ impl Tensor {
     impl_unary_op!(square, UnaryOp::Square);
     impl_unary_op!(recip, UnaryOp::Reciprocal);
 
-    pub fn cast(self, dst_dt: DType) -> anyhow::Result<Tensor> {
-        if self.dt() == dst_dt {
+    pub fn cast(self, dst_dtype: DType) -> anyhow::Result<Tensor> {
+        if self.dtype() == dst_dtype {
             return Ok(self);
         }
 
         let device = self.device.clone();
-        let cast = Cast::new(self, dst_dt);
+        let cast = Cast::new(self, dst_dtype);
         let new_view = cast.compute_view()?;
         Ok(Tensor::lazy(LazyOp::Cast(cast), new_view, device, false))
     }
@@ -1151,7 +1151,7 @@ impl Tensor {
 
             let meta = StorageView {
                 shape: shape![numel],
-                dt: T::dt(),
+                dtype: T::dtype(),
                 strides: Strides::from(&shape![numel]),
             };
 
@@ -1206,12 +1206,12 @@ impl Tensor {
                 .collect::<Vec<_>>();
             let storage = Storage::from_slice(&data, &shape, &device);
             let strides = Strides::from(&shape);
-            let meta = StorageView::new(shape, T::dt(), strides);
+            let meta = StorageView::new(shape, T::dtype(), strides);
             Self::new_impl(LazyOp::Const, meta, Some(storage), device, is_variable)
         } else {
             let meta = StorageView {
                 shape: shape.clone(),
-                dt: DType::F32,
+                dtype: DType::F32,
                 strides: Strides::from(&shape.clone()),
             };
             Self::new_impl(
@@ -1278,7 +1278,7 @@ impl Tensor {
 
         let meta = StorageView {
             shape: shape.clone(),
-            dt: DType::F32,
+            dtype: DType::F32,
             strides: Strides::from(shape),
         };
 
@@ -1299,7 +1299,7 @@ impl Tensor {
         if device.is_cpu() {
             let storage = Storage::zeros::<T>(shape, device);
             let strides = Strides::from(shape);
-            let meta = StorageView::new(shape.clone(), T::dt(), strides);
+            let meta = StorageView::new(shape.clone(), T::dtype(), strides);
             Tensor::new_impl(
                 LazyOp::Const,
                 meta,
@@ -1338,7 +1338,7 @@ impl Tensor {
         if device.is_cpu() {
             let storage = Storage::ones::<T>(shape, device);
             let strides = Strides::from(shape);
-            let meta = StorageView::new(shape.clone(), T::dt(), strides);
+            let meta = StorageView::new(shape.clone(), T::dtype(), strides);
             Tensor::new_impl(
                 LazyOp::Const,
                 meta,
@@ -1419,7 +1419,7 @@ impl Tensor {
     ) -> Tensor {
         let storage = Storage::from_slice(data.as_ref(), &shape, &device);
         let strides = Strides::from(&shape);
-        let meta = StorageView::new(shape, T::dt(), strides);
+        let meta = StorageView::new(shape, T::dtype(), strides);
         Tensor::new_impl(LazyOp::Const, meta, Some(storage), device, is_variable)
     }
 
@@ -1433,13 +1433,13 @@ impl Tensor {
 
     pub fn from_bytes(
         data: &[u8],
-        dt: DType,
+        dtype: DType,
         shape: Shape,
         device: Device,
     ) -> anyhow::Result<Tensor> {
-        let storage = Storage::from_bytes(data, dt.size_of(), &device);
+        let storage = Storage::from_bytes(data, dtype.size_of(), &device);
         let strides = Strides::from(&shape);
-        let meta = StorageView::new(shape, dt, strides);
+        let meta = StorageView::new(shape, dtype, strides);
         Ok(Tensor::new_impl(
             LazyOp::Const,
             meta,
@@ -1519,13 +1519,13 @@ impl Tensor {
 
     pub fn from_quantized<T: TensorDType, U: AsRef<[T]>>(
         data: U,
-        dt: DType,
+        dtype: DType,
         shape: Shape,
         device: Device,
     ) -> Tensor {
         let storage = unsafe { Storage::from_quantized(data.as_ref(), &device) };
         let strides = Strides::from(&shape);
-        let meta = StorageView::new(shape, dt, strides);
+        let meta = StorageView::new(shape, dtype, strides);
         Tensor::new_impl(LazyOp::Const, meta, Some(storage), device, false)
     }
 
@@ -1536,7 +1536,7 @@ impl Tensor {
     ) -> anyhow::Result<Tensor> {
         let storage = Storage::from_disk::<T, R>(reader, &shape, &device)?;
         let strides = Strides::from(&shape);
-        let meta = StorageView::new(shape, T::dt(), strides);
+        let meta = StorageView::new(shape, T::dtype(), strides);
         Ok(Tensor::new_impl(
             LazyOp::Const,
             meta,
@@ -1588,7 +1588,7 @@ impl Tensor {
     /// This is due to our quantization scheme allowing multiple quantized components to be packed
     /// and stored in a single tensor.
     pub(crate) fn segments(&self) -> RVec<BufferSegment> {
-        self.dt().segments(self.shape().numel())
+        self.dtype().segments(self.shape().numel())
     }
 
     /// Converts the tensor into a 1D vector.
@@ -1982,7 +1982,7 @@ impl Tensor {
             .collect::<Vec<_>>();
         let mut writer = {
             npyz::WriteOptions::new()
-                .dtype(self.dt().into())
+                .dtype(self.dtype().into())
                 .shape(&shape)
                 .writer(&mut out_buf)
                 .begin_nd()?
@@ -2024,7 +2024,7 @@ impl Tensor {
     pub fn to_ndarray_view<T: TensorDType>(&self) -> ArrayViewD<T> {
         ensure_resolved_sync!(self);
         assert!(self.device().is_cpu());
-        assert!(self.dt() == T::dt());
+        assert!(self.dtype() == T::dtype());
         let shape = self.shape().to_vec();
         if self.num_bytes() != 0 {
             let storage_guard = self.storage();
@@ -2044,16 +2044,16 @@ impl Tensor {
             anyhow::bail!("Shape mismatch {:?} != {:?}", self.shape(), other.shape())
         }
         assert!(
-            self.dt() == other.dt(),
+            self.dtype() == other.dtype(),
             "DType mismatch {:?} != {:?}",
-            self.dt(),
-            other.dt()
+            self.dtype(),
+            other.dtype()
         );
         assert!(
-            self.dt() == T::dt(),
+            self.dtype() == T::dtype(),
             "DType mismatch {:?} != {:?}",
-            self.dt(),
-            T::dt()
+            self.dtype(),
+            T::dtype()
         );
 
         let self_nd = self.to_ndarray_view::<T>();
@@ -2100,7 +2100,7 @@ impl<T: TensorDType> From<ArrayD<T>> for Tensor {
             let ptr = Box::into_raw(vec) as *mut u8;
 
             let raw_buf = RawCPUBuffer::new(ptr, layout);
-            let meta = StorageView::new(shape, T::dt(), strides);
+            let meta = StorageView::new(shape, T::dtype(), strides);
             Tensor::new_impl(
                 LazyOp::Const,
                 meta,
@@ -2190,7 +2190,7 @@ impl std::ops::Div<Tensor> for f32 {
 
 impl safetensors::View for &Tensor {
     fn dtype(&self) -> safetensors::Dtype {
-        match self.dt() {
+        match Tensor::dtype(self) {
             DType::F32 => safetensors::Dtype::F32,
             DType::U32 => safetensors::Dtype::U32,
             DType::I32 => safetensors::Dtype::I32,

@@ -120,7 +120,7 @@ impl TensorCopy {
             panic!("copy_from only supported for GPU tensors");
         }
         // Sanity check: shape and dtype should match.
-        if self.src.shape() != self.dst.shape() || self.src.dt() != self.dst.dt() {
+        if self.src.shape() != self.dst.shape() || self.src.dtype() != self.dst.dtype() {
             panic!("Shape or dtype mismatch for copy_from");
         }
         // Retrieve the underlying GPU buffers.

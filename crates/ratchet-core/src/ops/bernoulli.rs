@@ -52,7 +52,7 @@ impl OpGuards for Bernoulli {
     fn check_dtypes(&self) {
         // Ensure probabilities tensor has floating-point dtype
         assert!(
-            self.probs.dt().is_float(),
+            self.probs.dtype().is_float(),
             "Probabilities tensor must have floating-point dtype"
         );
     }
@@ -172,7 +172,7 @@ impl Kernel for BernoulliKernels {
         workgroup_size: &WorkgroupSize,
     ) -> Result<KernelSource, OperationError> {
         let kernel_element = self.kernel_element(dst);
-        match (dst.dt(), &kernel_element) {
+        match (dst.dtype(), &kernel_element) {
             (DType::F32, KernelElement::Scalar) => {
                 self.render::<Scalar<f32>>(inplace, dst, workgroup_size)
             }
@@ -193,7 +193,7 @@ impl Kernel for BernoulliKernels {
             }
             _ => Err(OperationError::CompileError(format!(
                 "Unsupported dtype {:?} or kernel element {:?}",
-                dst.dt(),
+                dst.dtype(),
                 kernel_element
             ))),
         }

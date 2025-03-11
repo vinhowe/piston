@@ -35,9 +35,9 @@ impl OpGuards for ScatterAdd {
     }
 
     fn check_dtypes(&self) {
-        assert!(self.ids.dt() == crate::DType::I32);
-        assert!(self.dst.dt() == crate::DType::F32);
-        assert!(self.src.dt() == crate::DType::F32);
+        assert!(self.ids.dtype() == crate::DType::I32);
+        assert!(self.dst.dtype() == crate::DType::F32);
+        assert!(self.src.dtype() == crate::DType::F32);
     }
 }
 
@@ -183,7 +183,7 @@ impl Kernel for ScatterAddKernels {
     ) -> Result<KernelSource, OperationError> {
         let ScatterAddKernels::Standard(inner) = self;
         let kernel_element = self.kernel_element(dst);
-        match (inner.src.dt(), &kernel_element) {
+        match (inner.src.dtype(), &kernel_element) {
             (DType::F32, KernelElement::Scalar) => {
                 self.render::<Scalar<f32>>(inplace, dst, workgroup_size)
             }
@@ -204,7 +204,7 @@ impl Kernel for ScatterAddKernels {
             }
             _ => Err(OperationError::CompileError(format!(
                 "Unsupported dtype {:?} or kernel element {:?}",
-                inner.src.dt(),
+                inner.src.dtype(),
                 kernel_element
             ))),
         }
@@ -238,7 +238,7 @@ def scatter_add(dst, src, ids):
 "#,
             dim
         );
-        run_py_prg(prg.to_string(), &[dst, src, ids], &[], src.dt())
+        run_py_prg(prg.to_string(), &[dst, src, ids], &[], src.dtype())
     }
 
     fn run_scatter_add_trial(problem: ScatterAddProblem, device: Device) {

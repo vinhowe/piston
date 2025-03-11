@@ -41,10 +41,10 @@ impl OpGuards for NormOp {
             NormOp::GroupNorm(GroupNorm { norm, .. }) => (&norm.input, &norm.scale, &norm.bias),
         };
 
-        input.dt().is_float();
-        scale.dt().is_float();
+        input.dtype().is_float();
+        scale.dtype().is_float();
         if bias.is_some() {
-            bias.as_ref().unwrap().dt().is_float();
+            bias.as_ref().unwrap().dtype().is_float();
         }
     }
 }
@@ -139,13 +139,13 @@ impl KernelRenderable for NormKernels {
             v => panic!("Invalid reduction length: {}", v),
         };
 
-        let dt = P::T::DT;
+        let dtype = P::T::DT;
         let accessor = P::render_type();
         let BLOCK_SIZE = workgroup_size.x.render();
 
         kernel_builder.write_global(wgsl! {
             var<workgroup> smem: array<'accessor, 'BLOCK_SIZE>;
-            var<workgroup> sum: 'dt;
+            var<workgroup> sum: 'dtype;
         });
 
         kernel_builder.write_global(wgsl! {
@@ -191,8 +191,8 @@ impl KernelRenderable for NormKernels {
         }
 
         let sigma = match P::W {
-            1 => wgsl! { let sigma = smem[0] / 'dt(metadata.N); },
-            2 | 4 => wgsl! {let sigma = dot(smem[0], 'accessor(1.)) / 'dt(metadata.N); },
+            1 => wgsl! { let sigma = smem[0] / 'dtype(metadata.N); },
+            2 | 4 => wgsl! {let sigma = dot(smem[0], 'accessor(1.)) / 'dtype(metadata.N); },
             _ => unreachable!(),
         };
         kernel_builder.write_main(sigma);
@@ -222,7 +222,7 @@ impl NormKernels {
         workgroup_size: &WorkgroupSize,
     ) {
         let BLOCK_SIZE = workgroup_size.x.render();
-        let dt = P::T::DT;
+        let dtype = P::T::DT;
         kernel_builder.write_main(wgsl! {
             for (var i: u32 = local_invocation_id.x; i < 'reduction_len; i += 'BLOCK_SIZE) {
                 threadSum += X[anchor + i];
@@ -239,8 +239,8 @@ impl NormKernels {
         }
 
         let mu = match P::W {
-            1 => wgsl! { let mu = smem[0] / 'dt(metadata.N); },
-            2 | 4 => wgsl! {let mu = dot(smem[0], 'accessor(1.)) / 'dt(metadata.N); },
+            1 => wgsl! { let mu = smem[0] / 'dtype(metadata.N); },
+            2 | 4 => wgsl! {let mu = dot(smem[0], 'accessor(1.)) / 'dtype(metadata.N); },
             _ => unreachable!(),
         };
         kernel_builder.write_main(mu);
@@ -345,7 +345,7 @@ impl Kernel for NormKernels {
         workgroup_size: &WorkgroupSize,
     ) -> Result<KernelSource, OperationError> {
         let kernel_element = self.kernel_element(dst);
-        match (dst.dt(), &kernel_element) {
+        match (dst.dtype(), &kernel_element) {
             (DType::F32, KernelElement::Scalar) => {
                 self.render::<Scalar<f32>>(inplace, dst, workgroup_size)
             }
@@ -366,7 +366,7 @@ impl Kernel for NormKernels {
             }
             _ => Err(OperationError::CompileError(format!(
                 "Unsupported dtype {:?} or kernel element {:?}",
-                dst.dt(),
+                dst.dtype(),
                 kernel_element
             ))),
         }
@@ -438,7 +438,7 @@ def manual_rms_norm(input, scale):
             None => rvec![input, scale],
         };
 
-        run_py_prg(prg.to_string(), &inputs, &[], input.dt())
+        run_py_prg(prg.to_string(), &inputs, &[], input.dtype())
     }
 
     fn run_norm_trial(device: &Device, problem: NormProblem) -> anyhow::Result<()> {

@@ -297,13 +297,13 @@ impl KernelKey {
         kernel_element: &KernelElement,
         additional: Option<&str>,
     ) -> Self {
-        let input_dts = inputs.iter().map(|t| t.dt().as_str());
+        let input_dtypes = inputs.iter().map(|t| t.dtype().as_str());
         let inplace_str = if inplace { "ip" } else { "oop" };
 
         let key_parts: Vec<Cow<'_, str>> = vec![
             Cow::Borrowed(stem),
-            Cow::Owned(input_dts.collect::<Vec<_>>().join("_")),
-            Cow::Owned(output.dt().to_string()),
+            Cow::Owned(input_dtypes.collect::<Vec<_>>().join("_")),
+            Cow::Owned(output.dtype().to_string()),
             Cow::Owned(workgroup_size.as_key()),
             Cow::Borrowed(inplace_str),
             Cow::Borrowed(additional.unwrap_or("")),
@@ -554,7 +554,7 @@ impl From<Tensor> for IrValue {
         IrValue::Tensor(IrTensorValue {
             id: value.id(),
             shape: value.shape().clone(),
-            dtype: value.dt(),
+            dtype: value.dtype(),
         })
     }
 }

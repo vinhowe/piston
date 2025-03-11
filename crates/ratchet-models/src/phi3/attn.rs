@@ -115,21 +115,21 @@ impl Module for PhiSelfAttention {
         let value_states = value_states.view(kv_shape)?.permute(&[0, 2, 1, 3])?;
 
         let offset = cache.as_ref().map(|kv| kv.entries).unwrap_or(0);
-        let q_dt = query_states.dt();
+        let q_dtype = query_states.dtype();
         let query_states = self
             .rope
             .schedule(RotaryInput {
                 input: query_states.full()?,
                 offset,
             })?
-            .cast(q_dt)?;
+            .cast(q_dtype)?;
         let key_states = self
             .rope
             .schedule(RotaryInput {
                 input: key_states.full()?,
                 offset,
             })?
-            .cast(q_dt)?;
+            .cast(q_dtype)?;
 
         let (key_states, value_states) = if let Some(kv) = cache {
             let k_cache = kv.k_cache.cache(key_states, 2, offset)?;
@@ -143,14 +143,17 @@ impl Module for PhiSelfAttention {
             .full()?
             .matmul(key_states.full()?, false, true)?
             .mul(self.softmax_scale.clone())?
-            .cast(q_dt)?;
+            .cast(q_dtype)?;
 
         if let Some(m) = mask {
-            let attn_dt = attn_weights.dt();
-            attn_weights = attn_weights.add(m.cast(attn_dt)?)?;
+            let attn_dtype = attn_weights.dtype();
+            attn_weights = attn_weights.add(m.cast(attn_dtype)?)?;
         }
 
-        let w = attn_weights.full()?.softmax(3)?.cast(value_states.dt())?;
+        let w = attn_weights
+            .full()?
+            .softmax(3)?
+            .cast(value_states.dtype())?;
         let wv = w
             .matmul(value_states, false, false)?
             .permute(&[0, 2, 1, 3])?;

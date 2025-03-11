@@ -152,7 +152,7 @@ impl Kernel for WorkgroupGEMV {
         workgroup_size: &WorkgroupSize,
     ) -> Result<KernelSource, OperationError> {
         let kernel_element = KernelElement::Scalar;
-        match (self.lhs.dt(), kernel_element) {
+        match (self.lhs.dtype(), kernel_element) {
             (DType::F32, KernelElement::Scalar) => {
                 self.render::<Scalar<f32>>(inplace, dst, workgroup_size)
             }
@@ -170,7 +170,7 @@ impl Kernel for WorkgroupGEMV {
         _inplace: bool,
     ) -> Result<BindGroupLayoutDescriptor, OperationError> {
         let (LHS, RHS, bias) = (&self.lhs, &self.rhs, &self.bias);
-        let layout = match (LHS.dt(), RHS.dt(), bias.is_some()) {
+        let layout = match (LHS.dtype(), RHS.dtype(), bias.is_some()) {
             (DType::F32, DType::F32, false) => BindGroupLayoutDescriptor::binary(),
             (DType::F32, DType::F32, true) => BindGroupLayoutDescriptor::ternary(),
             (DType::F16, DType::F16, false) => BindGroupLayoutDescriptor::binary(),
@@ -179,7 +179,7 @@ impl Kernel for WorkgroupGEMV {
             (DType::Q8_0H(_), DType::F16, false) => BindGroupLayoutDescriptor::ternary(),
             (DType::Q8_0F(_), DType::F32, true) => BindGroupLayoutDescriptor::nthary(4),
             (DType::Q8_0H(_), DType::F16, true) => BindGroupLayoutDescriptor::nthary(4),
-            _ => return Err(InvariantError::UnsupportedDType(RHS.dt()).into()),
+            _ => return Err(InvariantError::UnsupportedDType(RHS.dtype()).into()),
         };
         Ok(layout)
     }
@@ -193,7 +193,7 @@ impl KernelRenderable for WorkgroupGEMV {
     ) -> Result<(), OperationError> {
         let (A, _, bias) = (&self.lhs, &self.rhs, &self.bias);
 
-        if A.dt().is_float() {
+        if A.dtype().is_float() {
             let float_arr = Array::<P>::default();
             builder.register_storage("A", BindingMode::ReadOnly, float_arr);
             builder.register_storage("X", BindingMode::ReadOnly, float_arr);
@@ -201,7 +201,7 @@ impl KernelRenderable for WorkgroupGEMV {
                 builder.register_storage("bias", BindingMode::ReadOnly, float_arr);
             }
             builder.register_storage("result", BindingMode::ReadWrite, float_arr);
-        } else if A.dt().is_quantized() {
+        } else if A.dtype().is_quantized() {
             let scalar = Array::<Scalar<P::T>>::default();
             builder.register_storage("A", BindingMode::ReadOnly, Array::<Scalar<u32>>::default());
             builder.register_storage("scale", BindingMode::ReadOnly, scalar);
@@ -211,7 +211,7 @@ impl KernelRenderable for WorkgroupGEMV {
             }
             builder.register_storage("result", BindingMode::ReadWrite, scalar);
         } else {
-            return Err(InvariantError::UnsupportedDType(A.dt()).into());
+            return Err(InvariantError::UnsupportedDType(A.dtype()).into());
         }
 
         builder.register_uniform();
@@ -248,7 +248,7 @@ impl KernelRenderable for WorkgroupGEMV {
 
         kernel_builder.render_metadata(&self.metadata(dst, &self.kernel_element(dst))?);
 
-        kernel_builder.write_unpack(self.lhs.dt());
+        kernel_builder.write_unpack(self.lhs.dtype());
 
         let work_size = (workgroup_size.x * workgroup_size.y / (n as u32)).render();
         kernel_builder.write_global(wgsl! {
@@ -258,7 +258,7 @@ impl KernelRenderable for WorkgroupGEMV {
         let (TILE_X, _) = self.spec.heuristic.as_workgroup_size();
         let A_FIT = self.spec.lhs_shape()[1] % TILE_X == 0;
 
-        let readA = match (A_FIT, self.lhs.dt()) {
+        let readA = match (A_FIT, self.lhs.dtype()) {
             (true, DType::F32) | (true, DType::F16) => {
                 wgsl! {
                     fn readA(batch: i32, row: i32, col: i32) -> 'scalar {
@@ -307,7 +307,7 @@ impl KernelRenderable for WorkgroupGEMV {
             .write_main(wgsl! { let aIndex = aOffset + row * metadata.lhs_strides.y / 'n; });
 
         let workgroup_size_y = workgroup_size.y;
-        let main_loop = match self.lhs.dt() {
+        let main_loop = match self.lhs.dtype() {
             DType::Q8_0F(_) | DType::Q8_0H(_) => {
                 wgsl! {
                     let sIndex = (aOffset / 4) + row * metadata.lhs_strides.y / 32;

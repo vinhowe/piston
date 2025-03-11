@@ -34,7 +34,7 @@ impl OpGuards for Softmax {
 
     fn check_dtypes(&self) {
         let input = &self.input;
-        assert!(input.dt().is_float());
+        assert!(input.dtype().is_float());
     }
 }
 
@@ -71,7 +71,7 @@ impl KernelRenderable for SoftmaxKernels {
         self.register_bindings::<P>(&mut kernel_builder, inplace)?;
         kernel_builder.render_metadata(&self.metadata(dst, &self.kernel_element(dst))?);
 
-        let dt = P::T::DT;
+        let dtype = P::T::DT;
         let accessor = P::render_type();
 
         let BLOCK_SIZE = workgroup_size.x.render();
@@ -79,8 +79,8 @@ impl KernelRenderable for SoftmaxKernels {
 
         kernel_builder.write_global(wgsl! {
             var<workgroup> smem: array<'accessor, 'BLOCK_SIZE>;
-            var<workgroup> maximum: 'dt;
-            var<workgroup> sum: 'dt;
+            var<workgroup> maximum: 'dtype;
+            var<workgroup> sum: 'dtype;
         });
 
         kernel_builder.write_global(wgsl! {
@@ -230,7 +230,7 @@ impl Kernel for SoftmaxKernels {
         workgroup_size: &WorkgroupSize,
     ) -> Result<KernelSource, OperationError> {
         let kernel_element = self.kernel_element(dst);
-        match (dst.dt(), &kernel_element) {
+        match (dst.dtype(), &kernel_element) {
             (DType::F32, KernelElement::Scalar) => {
                 self.render::<Scalar<f32>>(inplace, dst, workgroup_size)
             }
@@ -251,7 +251,7 @@ impl Kernel for SoftmaxKernels {
             }
             _ => Err(OperationError::CompileError(format!(
                 "Unsupported dtype {:?} or kernel element {:?}",
-                dst.dt(),
+                dst.dtype(),
                 kernel_element
             ))),
         }
@@ -320,7 +320,7 @@ import torch.nn.functional as F
 def softmax(a):
     return F.softmax(torch.from_numpy(a), dim=-1).numpy()
 "#;
-        run_py_prg(prg.to_string(), &[a], &[], a.dt())
+        run_py_prg(prg.to_string(), &[a], &[], a.dtype())
     }
 
     fn run_softmax_trial(problem: SoftmaxProblem, device: Device) {

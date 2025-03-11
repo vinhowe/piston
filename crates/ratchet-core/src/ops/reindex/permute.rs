@@ -55,7 +55,7 @@ impl Operation for Permute {
             output_shape[i] = input_shape[self.dims[i]];
         }
         let strides = Strides::from(&output_shape);
-        Ok(StorageView::new(output_shape, self.src.dt(), strides))
+        Ok(StorageView::new(output_shape, self.src.dtype(), strides))
     }
 
     fn srcs(&self) -> RVec<&Tensor> {
@@ -111,7 +111,7 @@ def permute(a):
 "#,
             args
         );
-        run_py_prg(prg.to_string(), &[a], &[], a.dt())
+        run_py_prg(prg.to_string(), &[a], &[], a.dtype())
     }
 
     fn run_reindex_trial(prob: PermuteProblem, device: Device) -> anyhow::Result<()> {

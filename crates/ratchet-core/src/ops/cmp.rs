@@ -116,7 +116,7 @@ impl KernelRenderable for CmpKernels {
         let CmpKernels::Standard(inner) = self;
 
         let N = (P::W as u32).render();
-        let dt = match self.kernel_element(dst) {
+        let dtype = match self.kernel_element(dst) {
             KernelElement::Scalar => "i32",
             KernelElement::Vec2 => "vec2<i32>",
             KernelElement::Vec4 => "vec4<i32>",
@@ -130,7 +130,7 @@ impl KernelRenderable for CmpKernels {
                 return;
             }
 
-            Y[index] = 'dt(A[index] 'op B[index]);
+            Y[index] = 'dtype(A[index] 'op B[index]);
         });
 
         Ok(kernel_builder.build()?)
@@ -156,7 +156,7 @@ impl OpGuards for Cmp {
     }
 
     fn check_dtypes(&self) {
-        assert_eq!(self.lhs.dt(), self.rhs.dt());
+        assert_eq!(self.lhs.dtype(), self.rhs.dtype());
     }
 }
 
@@ -249,7 +249,7 @@ impl Kernel for CmpKernels {
     ) -> Result<KernelSource, OperationError> {
         let CmpKernels::Standard(inner) = self;
         let kernel_element = self.kernel_element(dst);
-        match (inner.lhs.dt(), &kernel_element) {
+        match (inner.lhs.dtype(), &kernel_element) {
             (DType::F32, KernelElement::Scalar) => {
                 self.render::<Scalar<f32>>(inplace, dst, workgroup_size)
             }
@@ -279,7 +279,7 @@ impl Kernel for CmpKernels {
             }
             _ => Err(OperationError::CompileError(format!(
                 "Unsupported dtype {:?} or kernel element {:?}",
-                inner.lhs.dt(),
+                inner.lhs.dtype(),
                 kernel_element
             ))),
         }

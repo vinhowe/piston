@@ -35,7 +35,7 @@ def manual_group_norm(input, scale, bias, num_groups):
             Some(bias) => rvec![input, scale, bias],
             None => rvec![input, scale],
         };
-        run_py_prg(prg.to_string(), &inputs, &[&num_groups], input.dt())
+        run_py_prg(prg.to_string(), &inputs, &[&num_groups], input.dtype())
     }
 
     fn run_norm_trial(device: &Device, problem: GroupNormProblem) -> anyhow::Result<()> {

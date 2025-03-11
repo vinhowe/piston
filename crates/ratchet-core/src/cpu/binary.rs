@@ -121,7 +121,7 @@ macro_rules! impl_cpu_binary {
 impl CPUOperation for Binary {
     #[maybe_async]
     async fn apply_cpu(&self, dst: Tensor) -> Result<Tensor, OperationError> {
-        match dst.dt() {
+        match dst.dtype() {
             DType::F32 => BinaryOps::<f32>::apply(self, dst).await,
             DType::F16 => BinaryOps::<f16>::apply(self, dst).await,
             DType::BF16 => BinaryOps::<bf16>::apply(self, dst).await,

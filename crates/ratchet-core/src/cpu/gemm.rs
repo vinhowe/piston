@@ -183,7 +183,7 @@ impl CPUOperation for Matmul {
 
         let Matmul { lhs, rhs, .. } = self;
 
-        match self.lhs.dt() {
+        match self.lhs.dtype() {
             DType::F32 => run_gemm::<f32>(spec, lhs, rhs, &dst).await,
             DType::F16 => run_gemm::<f16>(spec, lhs, rhs, &dst).await,
             DType::BF16 => run_gemm::<bf16>(spec, lhs, rhs, &dst).await,

@@ -122,7 +122,11 @@ impl Operation for Concat {
         let mut output_shape = first.shape().clone();
         output_shape[self.dim] = stacked_dim;
         let output_strides = Strides::from(&output_shape);
-        Ok(StorageView::new(output_shape, first.dt(), output_strides))
+        Ok(StorageView::new(
+            output_shape,
+            first.dtype(),
+            output_strides,
+        ))
     }
 
     #[inline]
@@ -157,7 +161,10 @@ impl OpGuards for Concat {
     }
 
     fn check_dtypes(&self) {
-        assert!(self.inputs.iter().all(|x| x.dt() == self.inputs[0].dt()));
+        assert!(self
+            .inputs
+            .iter()
+            .all(|x| x.dtype() == self.inputs[0].dtype()));
     }
 }
 
@@ -238,7 +245,7 @@ impl Kernel for ConcatKernels {
         workgroup_size: &WorkgroupSize,
     ) -> Result<KernelSource, OperationError> {
         let kernel_element = self.kernel_element(dst);
-        match (dst.dt(), &kernel_element) {
+        match (dst.dtype(), &kernel_element) {
             (DType::F32, KernelElement::Scalar) => {
                 self.render::<Scalar<f32>>(inplace, dst, workgroup_size)
             }
@@ -268,7 +275,7 @@ impl Kernel for ConcatKernels {
             }
             _ => Err(OperationError::CompileError(format!(
                 "Unsupported dtype {:?} or kernel element {:?}",
-                dst.dt(),
+                dst.dtype(),
                 kernel_element
             ))),
         }
@@ -306,7 +313,7 @@ def permute(*tensors):
 "#,
             args
         );
-        run_py_prg(prg.to_string(), to_cat, &[], to_cat[0].dt())
+        run_py_prg(prg.to_string(), to_cat, &[], to_cat[0].dtype())
     }
 
     fn run_concat_trial(prob: ConcatProblem, device: Device) -> anyhow::Result<()> {

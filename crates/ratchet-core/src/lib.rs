@@ -129,7 +129,7 @@ pub mod test_util {
 
         Python::with_gil(|py| {
             let prg = PyModule::from_code(py, &prg, "x.py", "x")?;
-            let py_tensors = tensors.iter().map(|t| match t.dt() {
+            let py_tensors = tensors.iter().map(|t| match t.dtype() {
                 DType::F32 => t.to_py::<f32>(&py).to_object(py),
                 DType::I32 => t.to_py::<i32>(&py).to_object(py),
                 DType::F16 => t.to_py::<f16>(&py).to_object(py),
@@ -163,7 +163,7 @@ pub mod test_util {
         };
         Python::with_gil(|py| {
             let prg = PyModule::from_code(py, &prg, "x.py", "x")?;
-            let py_tensors = tensors.iter().map(|t| match t.dt() {
+            let py_tensors = tensors.iter().map(|t| match t.dtype() {
                 DType::F32 => t.to_py::<f32>(&py).to_object(py),
                 DType::I32 => t.to_py::<i32>(&py).to_object(py),
                 _ => unimplemented!(),

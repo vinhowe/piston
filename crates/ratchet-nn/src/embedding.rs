@@ -121,7 +121,7 @@ def embedding(weight, indices):
 "#,
             arg
         );
-        run_py_prg(prg.to_string(), &[weight, indices], &[], weight.dt())
+        run_py_prg(prg.to_string(), &[weight, indices], &[], weight.dtype())
     }
 
     fn run_embedding_trial(problem: EmbeddingProblem) {

@@ -29,7 +29,7 @@ impl Module for Linear {
 
         match &self.b {
             None => Ok(x),
-            Some(b) => x.clone() + b.clone().cast(x.dt())?,
+            Some(b) => x.clone() + b.clone().cast(x.dtype())?,
         }
     }
 }

@@ -144,7 +144,7 @@ impl Module for PhiSelfAttention {
             attn_weights = attn_weights.add(m)?;
         }
 
-        let w = attn_weights.softmax(3)?.cast(value_states.dt())?;
+        let w = attn_weights.softmax(3)?.cast(value_states.dtype())?;
         let wv = w
             .matmul(value_states, false, false)?
             .permute(&[0, 2, 1, 3])?;

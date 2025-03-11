@@ -24,7 +24,7 @@ impl CPUOperation for Reindex {
 impl CPUOperation for Permute {
     #[maybe_async]
     async fn apply_cpu(&self, dst: Tensor) -> Result<Tensor, OperationError> {
-        match dst.dt() {
+        match dst.dtype() {
             DType::F32 => apply_permute::<f32>(self, dst).await,
             DType::BF16 => apply_permute::<bf16>(self, dst).await,
             DType::F16 => apply_permute::<f16>(self, dst).await,
@@ -83,7 +83,7 @@ fn permute<T: TensorDType>(
 impl CPUOperation for Slice {
     #[maybe_async]
     async fn apply_cpu(&self, dst: Tensor) -> Result<Tensor, OperationError> {
-        match dst.dt() {
+        match dst.dtype() {
             DType::F32 => apply_slice::<f32>(self, dst).await,
             DType::BF16 => apply_slice::<bf16>(self, dst).await,
             DType::F16 => apply_slice::<f16>(self, dst).await,
@@ -144,7 +144,7 @@ pub(crate) fn slice<T: TensorDType>(
 impl CPUOperation for Broadcast {
     #[maybe_async]
     async fn apply_cpu(&self, dst: Tensor) -> Result<Tensor, OperationError> {
-        match dst.dt() {
+        match dst.dtype() {
             DType::F32 => apply_broadcast::<f32>(self, dst).await,
             DType::BF16 => apply_broadcast::<bf16>(self, dst).await,
             DType::F16 => apply_broadcast::<f16>(self, dst).await,

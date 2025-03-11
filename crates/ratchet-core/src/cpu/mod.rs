@@ -71,10 +71,10 @@ async fn index_select<T: TensorDType>(
     let dim = index_select.dim();
 
     // TODO: Add support for other indexing types
-    if !matches!(indices.dt(), DType::I32) {
+    if !matches!(indices.dtype(), DType::I32) {
         return Err(InvariantError::DTypeMismatch {
             expected: DType::I32,
-            actual: indices.dt(),
+            actual: indices.dtype(),
         }
         .into());
     }
@@ -127,7 +127,7 @@ async fn qindex_select(op: IndexSelect, dst: Tensor) -> Result<Tensor, Operation
 
 #[maybe_async]
 pub async fn cpu_index_select(i: IndexSelect, dst: Tensor) -> Result<Tensor, OperationError> {
-    match i.src().dt() {
+    match i.src().dtype() {
         DType::F32 => index_select::<f32>(i, dst).await,
         DType::F16 => index_select::<f16>(i, dst).await,
         DType::BF16 => index_select::<bf16>(i, dst).await,
@@ -150,10 +150,10 @@ async fn direct_cast<T: TensorDType, U: TensorDType>(
 
 #[maybe_async]
 pub async fn cpu_cast(cast: Cast, dst: Tensor) -> Result<Tensor, OperationError> {
-    if cast.input().dt() == cast.dst_dt() {
+    if cast.input().dtype() == cast.dst_dtype() {
         return Ok(cast.input().clone());
     }
-    match (cast.input().dt(), cast.dst_dt()) {
+    match (cast.input().dtype(), cast.dst_dtype()) {
         // F32 ->
         (DType::F32, DType::F16) => {
             unary_apply_fn::<f32, f16>(cast.input(), &dst, f16::from_f32).await?
@@ -180,7 +180,11 @@ pub async fn cpu_cast(cast: Cast, dst: Tensor) -> Result<Tensor, OperationError>
         // U32 ->
         (DType::U32, DType::F32) => direct_cast::<u32, f32>(cast.input(), &dst).await?,
 
-        _ => unimplemented!("Cannot cast {:?} -> {:?}", cast.input().dt(), cast.dst_dt()),
+        _ => unimplemented!(
+            "Cannot cast {:?} -> {:?}",
+            cast.input().dtype(),
+            cast.dst_dtype()
+        ),
     };
 
     Ok(dst)
@@ -244,7 +248,7 @@ pub async fn cpu_concat(
     Concat { inputs, dim }: Concat,
     dst: Tensor,
 ) -> Result<Tensor, OperationError> {
-    match dst.dt() {
+    match dst.dtype() {
         DType::F32 => apply_concat::<f32>(inputs, dim, dst).await,
         DType::F16 => apply_concat::<f16>(inputs, dim, dst).await,
         DType::BF16 => apply_concat::<bf16>(inputs, dim, dst).await,

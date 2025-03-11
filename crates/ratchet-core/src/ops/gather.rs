@@ -32,7 +32,7 @@ impl OpGuards for Gather {
     }
 
     fn check_dtypes(&self) {
-        assert!(self.ids.dt() == crate::DType::I32);
+        assert!(self.ids.dtype() == crate::DType::I32);
     }
 }
 
@@ -44,7 +44,7 @@ impl Operation for Gather {
     fn compute_view(&self) -> Result<StorageView, OperationError> {
         Ok(StorageView::new(
             self.ids.shape().clone(),
-            self.src.dt(),
+            self.src.dtype(),
             self.ids.strides().clone(),
         ))
     }
@@ -185,7 +185,7 @@ impl Kernel for GatherKernels {
     ) -> Result<KernelSource, OperationError> {
         let kernel_element = self.kernel_element(dst);
         let GatherKernels::Standard(inner) = self;
-        match (inner.src.dt(), &kernel_element) {
+        match (inner.src.dtype(), &kernel_element) {
             (DType::F32, KernelElement::Scalar) => {
                 self.render::<Scalar<f32>>(inplace, dst, workgroup_size)
             }
@@ -206,7 +206,7 @@ impl Kernel for GatherKernels {
             }
             _ => Err(OperationError::CompileError(format!(
                 "Unsupported dtype {:?} or kernel element {:?}",
-                inner.src.dt(),
+                inner.src.dtype(),
                 kernel_element
             ))),
         }
@@ -229,7 +229,7 @@ def gather(src, ids, dim):
 "#,
             dim
         );
-        run_py_prg(prg.to_string(), &[src, ids], &[&dim], src.dt())
+        run_py_prg(prg.to_string(), &[src, ids], &[&dim], src.dtype())
     }
 
     fn run_gather_trial(problem: GatherProblem, device: Device) {
@@ -321,10 +321,7 @@ def gather_backward(src, ids):
         let src_gpu = src.to(&device)?;
         let ids_gpu = ids.to(&device)?;
         let src_var = Var::from_tensor(&src_gpu)?;
-        let result_gpu = src_var
-            .as_tensor()
-            .clone()
-            .gather(ids_gpu, dim)?;
+        let result_gpu = src_var.as_tensor().clone().gather(ids_gpu, dim)?;
 
         let grads = result_gpu.backward()?;
         device.try_gpu()?.mark_step()?;

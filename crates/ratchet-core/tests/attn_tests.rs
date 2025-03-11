@@ -42,7 +42,7 @@ def scaled_dot_product_attention(input, qw, kw, vw) -> torch.Tensor:
             prg.to_string(),
             &[&case.input, &case.qw, &case.kw, &case.vw],
             &[],
-            case.input.dt(),
+            case.input.dtype(),
         )
     }
 
@@ -115,7 +115,7 @@ def qkv_attention(input, qw, kw, vw, n_heads):
             prg.to_string(),
             &[&case.input, &case.qw, &case.kw, &case.vw],
             &[&case.n_heads.unwrap()],
-            case.input.dt(),
+            case.input.dtype(),
         )
     }
 

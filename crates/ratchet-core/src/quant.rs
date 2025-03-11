@@ -51,7 +51,7 @@ pub fn quantize_inner<Q: Quantized>(matrix: &[Q::FP], elements: usize) -> Vec<u3
 
 #[maybe_async]
 pub async fn quantize<Q: Quantized>(tensor: &Tensor) -> Tensor {
-    match (tensor.dt(), Q::dt()) {
+    match (tensor.dtype(), Q::dtype()) {
         (DType::F32, DType::Q8_0F(_)) => {
             let matrix = tensor.to_vec::<Q::FP>().await.unwrap();
             unsafe {
@@ -96,7 +96,7 @@ pub async fn quantize<Q: Quantized>(tensor: &Tensor) -> Tensor {
                 )
             }
         }
-        (dt, qdt) => panic!("Unsupported dtype combination {dt}, {qdt}"),
+        (dtype, q_dtype) => panic!("Unsupported dtype combination {dtype}, {q_dtype}"),
     }
 }
 
@@ -132,7 +132,7 @@ pub fn dequantize_inner<Q: Quantized>(quantized: &[u8], elements: usize) -> Vec<
 }
 
 pub fn dequantize(quantized: Tensor) -> Tensor {
-    match quantized.dt() {
+    match quantized.dtype() {
         DType::Q8_0F(_) => {
             let elements = quantized.shape().numel();
             let original_shape = quantized.shape().clone();
@@ -161,7 +161,7 @@ pub fn dequantize(quantized: Tensor) -> Tensor {
             let dequantized = dequantize_inner::<Q4_KH>(&raw_bytes, elements);
             Tensor::from_data(&dequantized, original_shape, Device::CPU)
         }
-        dt => panic!("Unsupported dtype {dt}"),
+        dtype => panic!("Unsupported dtype {dtype}"),
     }
 }
 

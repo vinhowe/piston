@@ -32,9 +32,9 @@ impl OpGuards for WhereCond {
 
     fn check_dtypes(&self) {
         let (a, b, c) = (&self.input, &self.on_true, &self.on_false);
-        assert!(matches!(a.dt(), crate::DType::F32 | crate::DType::I32));
-        assert!(matches!(b.dt(), crate::DType::F32 | crate::DType::I32));
-        assert!(b.dt() == c.dt())
+        assert!(matches!(a.dtype(), crate::DType::F32 | crate::DType::I32));
+        assert!(matches!(b.dtype(), crate::DType::F32 | crate::DType::I32));
+        assert!(b.dtype() == c.dtype())
     }
 }
 
@@ -54,7 +54,7 @@ impl Operation for WhereCond {
 
     fn supports_inplace(&self) -> bool {
         // For inplace, the on_{true,false} tensors must be the same dtype as the input tensor
-        self.on_true.dt() == self.input.dt() && self.on_false.dt() == self.input.dt()
+        self.on_true.dtype() == self.input.dtype() && self.on_false.dtype() == self.input.dtype()
     }
 }
 
@@ -130,7 +130,7 @@ impl Kernel for WhereCondKernels {
     ) -> Result<KernelSource, OperationError> {
         let kernel_element = self.kernel_element(dst);
         let WhereCondKernels::Standard(inner) = self;
-        match (inner.input.dt(), &kernel_element) {
+        match (inner.input.dtype(), &kernel_element) {
             (DType::F32, KernelElement::Scalar) => {
                 self.render::<Scalar<f32>>(inplace, dst, workgroup_size)
             }
@@ -160,7 +160,7 @@ impl Kernel for WhereCondKernels {
             }
             _ => Err(OperationError::CompileError(format!(
                 "Unsupported dtype {:?} or kernel element {:?}",
-                inner.input.dt(),
+                inner.input.dtype(),
                 kernel_element
             ))),
         }
@@ -226,12 +226,12 @@ impl KernelRenderable for WhereCondKernels {
             }
         });
 
-        let dt = P::T::DT;
+        let dtype = P::T::DT;
 
         let kernel_element_str = match kernel_element {
-            KernelElement::Scalar => dt.to_string(),
-            KernelElement::Vec2 => format!("{}<{}>", kernel_element.as_str(), dt),
-            KernelElement::Vec4 => format!("{}<{}>", kernel_element.as_str(), dt),
+            KernelElement::Scalar => dtype.to_string(),
+            KernelElement::Vec2 => format!("{}<{}>", kernel_element.as_str(), dtype),
+            KernelElement::Vec4 => format!("{}<{}>", kernel_element.as_str(), dtype),
         };
 
         let apply = if inplace {
@@ -260,7 +260,7 @@ import torch
 def where_cond(a, b, c):
     return torch.where(torch.from_numpy(a) == 0, torch.from_numpy(b), torch.from_numpy(c)).numpy()
 "#;
-        run_py_prg(prg.to_string(), &[a, b, c], &[], b.dt())
+        run_py_prg(prg.to_string(), &[a, b, c], &[], b.dtype())
     }
 
     fn run_where_cond_trial(problem: WhereCondProblem, device: Device) {

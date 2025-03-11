@@ -47,7 +47,7 @@ impl Optimizer for SGD {
     fn new(vars: Vec<(Option<String>, Var)>, learning_rate: f64) -> anyhow::Result<Self> {
         let vars = vars
             .into_iter()
-            .filter(|(_, v)| v.as_tensor().dt().is_float())
+            .filter(|(_, v)| v.as_tensor().dtype().is_float())
             .collect();
         Ok(Self {
             vars,
@@ -129,10 +129,10 @@ impl Optimizer for AdamW {
     fn new(vars: Vec<(Option<String>, Var)>, params: ParamsAdamW) -> anyhow::Result<Self> {
         let vars = vars
             .into_iter()
-            .filter(|(_, var)| var.as_tensor().dt().is_float())
+            .filter(|(_, var)| var.as_tensor().dtype().is_float())
             .map(|(label, var)| {
                 let var_t = var.as_tensor();
-                let dtype = var_t.dt();
+                let dtype = var_t.dtype();
                 let shape = var_t.shape();
                 let device = var_t.device();
                 let (first_moment, second_moment) = match dtype {

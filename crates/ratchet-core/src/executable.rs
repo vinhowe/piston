@@ -418,10 +418,10 @@ impl Executable {
                 }
             }) {
                 let d = device.clone();
-                let dt = debug_list[si].dtype;
+                let dtype = debug_list[si].dtype;
                 let (id, debug_buffer) = step.debug_buffer.clone().unwrap();
                 let debug_input_buffers = step.debug_input_buffers.clone().unwrap();
-                let alignment = dt.size_of();
+                let alignment = dtype.size_of();
                 let kernel_key = step.kernel_key.clone();
 
                 #[allow(clippy::too_many_arguments)]
@@ -434,7 +434,7 @@ impl Executable {
                     kernel_key: KernelKey,
                     alignment: usize,
                     id: TensorId,
-                    dt: DType,
+                    dtype: DType,
                     output_cpu_bufs: &Arc<RwLock<HashMap<TensorId, CPUBuffer>>>,
                 ) {
                     let cpu_buf =
@@ -449,7 +449,7 @@ impl Executable {
                         si,
                         id,
                         kernel_key,
-                        cpu_buf.dump(dt, (cpu_buf.n_bytes() / 4) <= 8)
+                        cpu_buf.dump(dtype, (cpu_buf.n_bytes() / 4) <= 8)
                     );
 
                     for (i, (id, cpu_buf)) in input_bufs.iter().enumerate() {
@@ -457,7 +457,7 @@ impl Executable {
                             "\x1b[32;1minput {} ({:?})\x1b[0m: {:?}\n\n",
                             i,
                             id,
-                            cpu_buf.dump(dt, (cpu_buf.n_bytes() / 4) <= 8)
+                            cpu_buf.dump(dtype, (cpu_buf.n_bytes() / 4) <= 8)
                         ));
                     }
 
@@ -476,7 +476,7 @@ impl Executable {
                         kernel_key,
                         alignment,
                         id,
-                        dt,
+                        dtype,
                         self.cpu_bufs.as_ref().unwrap(),
                     ));
                 }
@@ -490,7 +490,7 @@ impl Executable {
                         kernel_key,
                         alignment,
                         id,
-                        dt,
+                        dtype,
                         self.cpu_bufs.as_ref().unwrap(),
                     );
                 }

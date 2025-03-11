@@ -33,14 +33,14 @@ impl GPUBuffer {
     //ensure that the buffer is zeroed
     pub fn zeros<T: TensorDType>(shape: &Shape, device: &WgpuDevice) -> Self {
         Self::from_bytes(
-            vec![0; shape.numel() * T::dt().size_of()].as_slice(),
-            T::dt().size_of(),
+            vec![0; shape.numel() * T::dtype().size_of()].as_slice(),
+            T::dtype().size_of(),
             device,
         )
     }
 
     pub fn ones<T: TensorDType>(shape: &Shape, device: &WgpuDevice) -> Self {
-        match T::dt() {
+        match T::dtype() {
             DType::Q8_0H(_) => Self::from_slice(&vec![1u8; shape.numel()], shape, device),
             DType::Q8_0F(_) => Self::from_slice(&vec![1u8; shape.numel()], shape, device),
             DType::F16 => Self::from_slice(&vec![f16::from_f32(1.0); shape.numel()], shape, device),

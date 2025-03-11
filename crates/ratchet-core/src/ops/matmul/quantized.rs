@@ -78,10 +78,10 @@ impl Kernel for QMatMul {
         workgroup_size: &WorkgroupSize,
     ) -> Result<KernelSource, OperationError> {
         let kernel_element = self.spec.select_kernel_element();
-        match (self.lhs.dt(), kernel_element) {
+        match (self.lhs.dtype(), kernel_element) {
             (DType::Q4_KF(_), _) => self.render::<Scalar<f32>>(inplace, dst, workgroup_size),
             (DType::Q4_KH(_), _) => self.render::<Scalar<f16>>(inplace, dst, workgroup_size),
-            _ => Err(InvariantError::UnsupportedDType(self.lhs.dt()).into()),
+            _ => Err(InvariantError::UnsupportedDType(self.lhs.dtype()).into()),
         }
     }
 
@@ -90,14 +90,14 @@ impl Kernel for QMatMul {
         _inplace: bool,
     ) -> Result<BindGroupLayoutDescriptor, OperationError> {
         let (LHS, RHS, bias) = (&self.lhs, &self.rhs, &self.bias);
-        let layout = match (LHS.dt(), RHS.dt(), bias.is_some()) {
+        let layout = match (LHS.dtype(), RHS.dtype(), bias.is_some()) {
             (DType::Q4_KH(_) | DType::Q4_KF(_), DType::F32 | DType::F16, false) => {
                 BindGroupLayoutDescriptor::nthary(5)
             }
             (DType::Q4_KH(_) | DType::Q4_KF(_), DType::F32 | DType::F16, true) => {
                 BindGroupLayoutDescriptor::nthary(6)
             }
-            _ => return Err(InvariantError::UnsupportedDType(RHS.dt()).into()),
+            _ => return Err(InvariantError::UnsupportedDType(RHS.dtype()).into()),
         };
         Ok(layout)
     }
@@ -116,7 +116,7 @@ impl KernelRenderable for QMatMul {
         let scalar_u32 = Array::<Scalar<u32>>::default();
 
         let ro = BindingMode::ReadOnly;
-        match A.dt() {
+        match A.dtype() {
             DType::Q4_KF(_) | DType::Q4_KH(_) => {
                 builder.register_storage("A", ro, scalar_u32);
                 builder.register_storage("scales", ro, scalar_u32);
@@ -128,7 +128,7 @@ impl KernelRenderable for QMatMul {
                 }
                 builder.register_storage("result", BindingMode::ReadWrite, farr);
             }
-            _ => return Err(InvariantError::UnsupportedDType(A.dt()).into()),
+            _ => return Err(InvariantError::UnsupportedDType(A.dtype()).into()),
         }
 
         builder.register_uniform();

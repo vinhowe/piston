@@ -66,7 +66,7 @@ impl Tensor {
                 // Do not call recursively on the "leaf" nodes.
                 track_grad = true;
                 nodes
-            } else if matches!(node.dt(), DType::I32 | DType::U32) {
+            } else if matches!(node.dtype(), DType::I32 | DType::U32) {
                 nodes
             } else {
                 match node.op() {
@@ -175,7 +175,7 @@ impl Tensor {
                         nodes
                     }
                     LazyOp::Cast(Cast { input, .. }) => {
-                        if input.dt().is_float() {
+                        if input.dtype().is_float() {
                             let (tg, nodes) = walk(input, nodes, already_seen);
                             track_grad |= tg;
                             nodes
@@ -396,7 +396,7 @@ impl Tensor {
                 }) => {
                     let node = broadcast_back(arg, node, reduced_shape.inner())?;
                     let grad = broadcast_back(arg, &grad, reduced_shape.inner())?;
-                    let grad = node.eq(arg.clone())?.cast(grad.dt())?.mul(grad)?;
+                    let grad = node.eq(arg.clone())?.cast(grad.dtype())?.mul(grad)?;
                     grads.accumulate_add(arg, grad.broadcast_to(arg.shape().clone())?)?;
                 }
                 LazyOp::Reduce(Reduce {
@@ -407,7 +407,7 @@ impl Tensor {
                 }) => {
                     let node = broadcast_back(arg, node, reduced_shape.inner())?;
                     let grad = broadcast_back(arg, &grad, reduced_shape.inner())?;
-                    let grad = node.eq(arg.clone())?.cast(grad.dt())?.mul(grad)?;
+                    let grad = node.eq(arg.clone())?.cast(grad.dtype())?.mul(grad)?;
                     grads.accumulate_add(arg, grad.broadcast_to(arg.shape().clone())?)?;
                 }
                 LazyOp::Unary(Unary {
@@ -495,7 +495,7 @@ impl Tensor {
                     let relu_grad = arg.clone().affine(2.0, 0.0)?.mul(
                         arg.clone()
                             .ge(arg.clone().zeros_like::<f32>())?
-                            .cast(arg.dt())?,
+                            .cast(arg.dtype())?,
                     )?;
                     let arg_grad = grad.mul(relu_grad)?;
                     grads.accumulate_add(arg, arg_grad)?;
@@ -507,7 +507,7 @@ impl Tensor {
                     let relu_grad = arg
                         .clone()
                         .ge(arg.clone().zeros_like::<f32>())?
-                        .cast(arg.dt())?;
+                        .cast(arg.dtype())?;
                     let arg_grad = grad.mul(relu_grad)?;
                     grads.accumulate_add(arg, arg_grad)?;
                 }
@@ -699,8 +699,11 @@ impl Tensor {
                 LazyOp::Alibi(Alibi { input, .. }) => {
                     grads.accumulate_add(input, grad)?;
                 }
-                LazyOp::Cast(Cast { input, dst_dt }) => {
-                    grads.accumulate_add(input, grad.cast(input.dt())?)?;
+                LazyOp::Cast(Cast {
+                    input,
+                    dst_dtype: _,
+                }) => {
+                    grads.accumulate_add(input, grad.cast(input.dtype())?)?;
                 }
                 LazyOp::Norm(_) => todo!(),
                 LazyOp::Const => panic!("ratchet internal error - const node in backprop"),

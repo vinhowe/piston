@@ -54,7 +54,7 @@ impl Operation for IndexSelect {
         let strides = Strides::from(&output_shape);
         Ok(StorageView::new(
             output_shape,
-            self.src.dt().activation_dt(),
+            self.src.dtype().activation_dtype(),
             strides,
         ))
     }
@@ -75,7 +75,7 @@ impl OpGuards for IndexSelect {
     fn check_dtypes(&self) {
         let indices = &self.indices;
         //TODO: support others
-        assert_eq!(indices.dt(), DType::I32);
+        assert_eq!(indices.dtype(), DType::I32);
     }
 }
 
@@ -99,7 +99,7 @@ impl KernelRenderable for IndexSelectKernels {
     ) -> Result<(), OperationError> {
         let index_arr = Array::<Scalar<i32>>::default();
         let IndexSelectKernels::Standard(inner) = self;
-        match inner.src.dt() {
+        match inner.src.dtype() {
             DType::F16 | DType::F32 => {
                 builder.register_storage("E", BindingMode::ReadOnly, Array::<P>::default());
                 builder.register_storage("I", BindingMode::ReadOnly, index_arr);
@@ -141,9 +141,9 @@ impl KernelRenderable for IndexSelectKernels {
 
         let IndexSelectKernels::Standard(inner) = self;
         //TODO: REFACTOR
-        match inner.src.dt() {
+        match inner.src.dtype() {
             DType::Q8_0H(_) | DType::Q8_0F(_) => {
-                kernel_builder.write_unpack(inner.src.dt());
+                kernel_builder.write_unpack(inner.src.dtype());
 
                 kernel_builder.write_main(wgsl! {
                     let tid = workgroup_id.x * 64u + local_invocation_index;
@@ -199,7 +199,7 @@ impl Kernel for IndexSelectKernels {
         _: bool,
     ) -> Result<BindGroupLayoutDescriptor, OperationError> {
         let IndexSelectKernels::Standard(inner) = self;
-        match inner.src.dt() {
+        match inner.src.dtype() {
             DType::F32 | DType::F16 => Ok(BindGroupLayoutDescriptor::binary()),
             DType::Q8_0H(_) | DType::Q8_0F(_) => Ok(BindGroupLayoutDescriptor::ternary()),
             _ => unimplemented!(),
@@ -227,7 +227,7 @@ impl Kernel for IndexSelectKernels {
     fn calculate_dispatch(&self, dst: &Tensor) -> Result<Workload, OperationError> {
         let workgroup_size = wgs![8, 8, 1];
         let IndexSelectKernels::Standard(inner) = self;
-        let numel = match inner.src.dt() {
+        let numel = match inner.src.dtype() {
             DType::F32 | DType::F16 => dst.shape().numel(),
             DType::Q8_0H(_) | DType::Q8_0F(_) => dst.shape().numel() / 4,
             _ => unimplemented!(),
@@ -251,7 +251,7 @@ impl Kernel for IndexSelectKernels {
     ) -> Result<KernelSource, OperationError> {
         let kernel_element = self.kernel_element(dst);
         let IndexSelectKernels::Standard(inner) = self;
-        match (inner.src.dt(), &kernel_element) {
+        match (inner.src.dtype(), &kernel_element) {
             (DType::F32, KernelElement::Scalar) => {
                 self.render::<Scalar<f32>>(inplace, dst, workgroup_size)
             }
@@ -278,7 +278,7 @@ impl Kernel for IndexSelectKernels {
             }
             _ => Err(OperationError::CompileError(format!(
                 "Unsupported dtype {:?} or kernel element {:?}",
-                inner.src.dt(),
+                inner.src.dtype(),
                 kernel_element
             ))),
         }
@@ -322,7 +322,7 @@ def index_select(input, indices):
 "#,
             dim
         );
-        run_py_prg(prg.to_string(), &[input, indices], &[], input.dt())
+        run_py_prg(prg.to_string(), &[input, indices], &[], input.dtype())
     }
 
     fn run_index_select_trial(problem: IndexSelectProblem, device: Device, quant: bool) {

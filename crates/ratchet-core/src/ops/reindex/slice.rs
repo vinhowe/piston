@@ -60,7 +60,7 @@ impl Operation for Slice {
             .collect::<RVec<usize>>()
             .into();
         let strides = Strides::from(&output_shape);
-        Ok(StorageView::new(output_shape, self.src.dt(), strides))
+        Ok(StorageView::new(output_shape, self.src.dtype(), strides))
     }
 
     fn srcs(&self) -> RVec<&Tensor> {
@@ -155,7 +155,7 @@ def slice(a):
 "#,
             args
         );
-        run_py_prg(prg.to_string(), &[a], &[], a.dt())
+        run_py_prg(prg.to_string(), &[a], &[], a.dtype())
     }
 
     fn run_reindex_trial(prob: SliceProblem, device: Device) -> anyhow::Result<()> {

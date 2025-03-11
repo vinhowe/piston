@@ -215,7 +215,7 @@ impl StepLog {
                         .and_then(|bufs| bufs.remove(&t.id()).map(|buf| Arc::new(buf))),
                     t.op().name().to_string(),
                     t.scope().as_ref().map(|s| s.to_string()),
-                    t.dt(),
+                    t.dtype(),
                     t.shape().clone(),
                     profiling_entries
                         .as_ref()
