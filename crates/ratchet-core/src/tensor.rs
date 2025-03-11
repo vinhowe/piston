@@ -180,7 +180,7 @@ impl Tensor {
         value
     }
 
-    pub fn strong_count(&self) -> usize {
+    pub(crate) fn strong_count(&self) -> usize {
         Arc::strong_count(&self.inner)
     }
 
