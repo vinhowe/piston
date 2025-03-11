@@ -233,6 +233,7 @@ def check_normal(output):
         let FillRandnProblem { B, M, N } = problem;
 
         let a = Tensor::randn::<f32>(0f32, 1f32, shape![B, M, N], device.clone())
+            .unwrap()
             .to(&Device::CPU)
             .unwrap();
 

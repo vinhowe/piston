@@ -249,7 +249,7 @@ def affine(a, mul, add):
 
     fn run_affine_trial(problem: AffineProblem, device: Device) {
         let AffineProblem { B, M, N, add, mul } = problem;
-        let a = Tensor::randn::<f32>(0., 1., shape![B, M, N], Device::CPU);
+        let a = Tensor::randn::<f32>(0., 1., shape![B, M, N], Device::CPU).unwrap();
         let ground = ground_truth(&a, mul, add).unwrap();
 
         let a_gpu = a.to(&device).unwrap();

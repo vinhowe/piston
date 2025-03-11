@@ -299,7 +299,7 @@ impl GPT2 {
                 use_kv_cache,
                 cache_shape,
                 vb.device(),
-            ))),
+            )?)),
             device: vb.device().clone(),
         })
     }
@@ -383,8 +383,8 @@ mod tests {
         const BATCH_SIZE: usize = 1;
 
         for step in 0..100 {
-            let input = Tensor::zeros::<i32>(&shape![BATCH_SIZE, config.block_size], &device);
-            let tgt = Tensor::zeros::<i32>(&shape![BATCH_SIZE, config.block_size], &device);
+            let input = Tensor::zeros::<i32>(&shape![BATCH_SIZE, config.block_size], &device)?;
+            let tgt = Tensor::zeros::<i32>(&shape![BATCH_SIZE, config.block_size], &device)?;
 
             let (logits, _) = model.schedule(GPT2Input {
                 x: input,
@@ -439,8 +439,8 @@ mod tests {
         const BATCH_SIZE: usize = 10;
 
         for batch_index in 0..10 {
-            let input = Tensor::zeros::<i32>(&shape![BATCH_SIZE, config.block_size], &device);
-            let tgt = Tensor::zeros::<i32>(&shape![BATCH_SIZE, config.block_size], &device);
+            let input = Tensor::zeros::<i32>(&shape![BATCH_SIZE, config.block_size], &device)?;
+            let tgt = Tensor::zeros::<i32>(&shape![BATCH_SIZE, config.block_size], &device)?;
 
             let (logits, _) = model.schedule(GPT2Input {
                 x: input,

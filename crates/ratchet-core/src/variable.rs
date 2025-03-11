@@ -24,23 +24,26 @@ impl std::ops::Deref for Var {
 }
 
 impl Var {
-    pub fn zeros<T: TensorDType + AsPrimitive<f32>>(shape: &Shape, device: &Device) -> Self {
-        let inner = Tensor::zeros_impl::<T>(shape, device, true);
-        Self(inner)
+    pub fn zeros<T: TensorDType + AsPrimitive<f32>>(
+        shape: &Shape,
+        device: &Device,
+    ) -> Result<Self> {
+        let inner = Tensor::zeros_impl::<T>(shape, device, true)?;
+        Ok(Self(inner))
     }
 
-    pub fn ones<T: TensorDType + AsPrimitive<f32>>(shape: &Shape, device: &Device) -> Self {
-        let inner = Tensor::ones_impl::<T>(shape, device, true);
-        Self(inner)
+    pub fn ones<T: TensorDType + AsPrimitive<f32>>(shape: &Shape, device: &Device) -> Result<Self> {
+        let inner = Tensor::ones_impl::<T>(shape, device, true)?;
+        Ok(Self(inner))
     }
 
     pub fn full<T: TensorDType + AsPrimitive<f32>>(
         shape: &Shape,
         value: T,
         device: &Device,
-    ) -> Self {
-        let inner = Tensor::full_impl::<T>(shape, value, device, true);
-        Self(inner)
+    ) -> Result<Self> {
+        let inner = Tensor::full_impl::<T>(shape, value, device, true)?;
+        Ok(Self(inner))
     }
 
     // Convert a tensor to a variable, if the tensor is already a variable then it is returned as is.
@@ -59,9 +62,9 @@ impl Var {
         high: T,
         shape: Shape,
         device: Device,
-    ) -> Self {
-        let inner = Tensor::randint_impl(low, high, shape, device, true);
-        Self(inner)
+    ) -> Result<Self> {
+        let inner = Tensor::randint_impl(low, high, shape, device, true)?;
+        Ok(Self(inner))
     }
 
     #[cfg(feature = "rand")]
@@ -70,9 +73,9 @@ impl Var {
         up: f32,
         shape: Shape,
         device: Device,
-    ) -> Self {
-        let inner = Tensor::rand_impl::<T>(lo, up, shape, device, true);
-        Self(inner)
+    ) -> Result<Self> {
+        let inner = Tensor::rand_impl::<T>(lo, up, shape, device, true)?;
+        Ok(Self(inner))
     }
 
     #[cfg(feature = "rand")]
@@ -81,9 +84,9 @@ impl Var {
         std: f32,
         shape: Shape,
         device: Device,
-    ) -> Self {
-        let inner = Tensor::randn_impl::<T>(mean, std, shape, device, true);
-        Self(inner)
+    ) -> Result<Self> {
+        let inner = Tensor::randn_impl::<T>(mean, std, shape, device, true)?;
+        Ok(Self(inner))
     }
 
     /// Creates a new tensor on the specified device using the content and shape of the input.

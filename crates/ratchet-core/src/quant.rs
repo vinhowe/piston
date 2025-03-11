@@ -177,7 +177,7 @@ mod tests {
     where
         Q::FP: std::fmt::Display + num_traits::Float + Default,
     {
-        let ground = Tensor::randn::<Q::FP>(0., 1., shape![64, 64], Device::CPU);
+        let ground = Tensor::randn::<Q::FP>(0., 1., shape![64, 64], Device::CPU).unwrap();
         let q = quantize::<Q>(&ground);
         let dq = dequantize(q);
         ground.all_close(&dq, atol, rtol).unwrap();

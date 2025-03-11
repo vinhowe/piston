@@ -315,8 +315,8 @@ def {}(a, b):
     fn run_cmp_trial(prob: BinaryProblem, device: Device) -> anyhow::Result<()> {
         let cpu_device = Device::request_device(DeviceRequest::CPU)?;
         let BinaryProblem { op, shape } = prob;
-        let a = Tensor::randn::<f32>(0., 1., shape.clone(), cpu_device.clone());
-        let b = Tensor::randn::<f32>(0., 1., shape, cpu_device.clone());
+        let a = Tensor::randn::<f32>(0., 1., shape.clone(), cpu_device.clone())?;
+        let b = Tensor::randn::<f32>(0., 1., shape, cpu_device.clone())?;
         let ground = ground_truth(&a, &b, &op)?.cast(DType::F32)?;
 
         let a_gpu = a.to(&device)?;

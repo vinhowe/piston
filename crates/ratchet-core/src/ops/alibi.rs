@@ -344,8 +344,8 @@ def alibi(input, max_bias):
 
         // shape = [B, n_head, seq]
         let shape = shape![b, n_head, seq];
-        // let a_cpu = Tensor::randn::<f32>(0.0, 1.0, shape, Device::CPU);
-        let a_cpu = Tensor::zeros::<f32>(&shape, &Device::CPU);
+        // let a_cpu = Tensor::randn::<f32>(0.0, 1.0, shape, Device::CPU).unwrap();
+        let a_cpu = Tensor::zeros::<f32>(&shape, &Device::CPU).unwrap();
 
         let ground = ground_truth_alibi(&a_cpu, max_bias).unwrap();
         let a_gpu = a_cpu.to(&device).unwrap();

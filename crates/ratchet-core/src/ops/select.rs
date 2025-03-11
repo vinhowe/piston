@@ -303,7 +303,8 @@ mod tests {
                 .prop_flat_map(|input_shape| (Just(input_shape), 1..64usize))
                 .prop_map(|(input_shape, num_indices)| {
                     let indices =
-                        Tensor::randint(0, input_shape[0] as i32, shape![num_indices], Device::CPU);
+                        Tensor::randint(0, input_shape[0] as i32, shape![num_indices], Device::CPU)
+                            .unwrap();
                     IndexSelectProblem {
                         input_shape,
                         indices,
@@ -330,7 +331,7 @@ def index_select(input, indices):
             input_shape,
             indices,
         } = problem;
-        let mut input = Tensor::randn::<f32>(0., 1., input_shape, Device::CPU);
+        let mut input = Tensor::randn::<f32>(0., 1., input_shape, Device::CPU).unwrap();
 
         let ground_truth = ground_truth(&input, &indices, 0).unwrap();
         if quant {

@@ -267,10 +267,11 @@ def where_cond(a, b, c):
         let WhereCondProblem { B, M, N } = problem;
         // Put through a ReLU so some of its entries are 0
         let a = Tensor::randn::<f32>(0., 1., shape![B, M, N], Device::CPU)
+            .unwrap()
             .relu()
             .unwrap();
-        let b = Tensor::randn::<f32>(0., 1., shape![B, M, N], Device::CPU);
-        let c = Tensor::randn::<f32>(0., 1., shape![B, M, N], Device::CPU);
+        let b = Tensor::randn::<f32>(0., 1., shape![B, M, N], Device::CPU).unwrap();
+        let c = Tensor::randn::<f32>(0., 1., shape![B, M, N], Device::CPU).unwrap();
         let ground = ground_truth(&a, &b, &c).unwrap();
 
         let a_gpu = a.to(&device).unwrap();

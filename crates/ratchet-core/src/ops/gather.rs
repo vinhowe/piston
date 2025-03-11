@@ -235,12 +235,13 @@ def gather(src, ids, dim):
     fn run_gather_trial(problem: GatherProblem, device: Device) {
         let GatherProblem { B, M, N, dim } = problem;
 
-        let src = Tensor::randn::<f32>(0., 1., shape![B, M, N], Device::CPU);
+        let src = Tensor::randn::<f32>(0., 1., shape![B, M, N], Device::CPU).unwrap();
 
         // Create the shape for ids tensor
         let mut ids_shape = vec![B, M, N];
         ids_shape[dim] = 1;
-        let ids = Tensor::randint::<i32>(0, src.shape()[dim] as i32, ids_shape.into(), Device::CPU);
+        let ids = Tensor::randint::<i32>(0, src.shape()[dim] as i32, ids_shape.into(), Device::CPU)
+            .unwrap();
 
         let ground = ground_truth(&src, &ids, dim).unwrap();
 
@@ -309,12 +310,13 @@ def gather_backward(src, ids):
     fn run_gather_backward_trial(problem: GatherBackwardProblem) -> anyhow::Result<()> {
         let device = Device::request_device(DeviceRequest::GPU).unwrap();
         let GatherBackwardProblem { B, M, N, dim } = problem;
-        let src = Tensor::randn::<f32>(0., 1., shape![B, M, N], Device::CPU);
+        let src = Tensor::randn::<f32>(0., 1., shape![B, M, N], Device::CPU)?;
 
         // Create the shape for ids tensor
         let mut ids_shape = vec![B, M, N];
         ids_shape[dim] = 1;
-        let ids = Tensor::randint::<i32>(0, src.shape()[dim] as i32, ids_shape.into(), Device::CPU);
+        let ids =
+            Tensor::randint::<i32>(0, src.shape()[dim] as i32, ids_shape.into(), Device::CPU)?;
 
         let ground = ground_truth_backward(&src, &ids, dim)?;
 

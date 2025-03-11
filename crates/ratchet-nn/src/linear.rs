@@ -130,7 +130,7 @@ def linear(x, w):
         with_bias: bool,
     ) -> anyhow::Result<()> {
         let device = GPU_DEVICE.with(|d| d.clone());
-        let x = Tensor::randn::<f32>(0., 1., shape![batch_size, in_features], Device::CPU);
+        let x = Tensor::randn::<f32>(0., 1., shape![batch_size, in_features], Device::CPU)?;
         let varmap = VarMap::new();
         let vb = VarBuilder::from_varmap(&varmap, ratchet::DType::F32, &device.clone());
 
@@ -237,7 +237,7 @@ def linear_backward(x, w):
             with_bias,
         } = problem;
 
-        let x = Tensor::randn::<f32>(0., 1., shape![batch_size, in_features], Device::CPU);
+        let x = Tensor::randn::<f32>(0., 1., shape![batch_size, in_features], Device::CPU)?;
         let x_gpu = x.to(&device)?;
         let x_var = Var::from_tensor(&x_gpu)?;
         let varmap = VarMap::new();
