@@ -1165,15 +1165,15 @@ impl Tensor {
 
     #[cfg(feature = "rand")]
     pub(crate) fn randn_impl<T: TensorDType + num_traits::Float>(
-        mean: f32,
-        std: f32,
+        mean: T,
+        std: T,
         shape: Shape,
         device: Device,
         is_variable: bool,
     ) -> Result<Self> {
         let rng = device.get_rng();
         if device.is_cpu() {
-            let distr = Normal::new(mean as f64, std as f64).unwrap();
+            let distr = Normal::new(mean.to_f64().unwrap(), std.to_f64().unwrap()).unwrap();
             let data = (0..shape.numel())
                 .map(|_| {
                     let sample: f64 = distr.sample(&mut *rng.write());
@@ -1193,14 +1193,14 @@ impl Tensor {
         } else {
             let meta = StorageView {
                 shape: shape.clone(),
-                dtype: DType::F32,
+                dtype: T::dtype(),
                 stride: Stride::from(&shape.clone()),
             };
             Ok(Self::new_impl(
                 LazyOp::FillRandn(FillRandn {
                     shape,
-                    mean,
-                    std,
+                    mean: mean.to_f32().unwrap(),
+                    std: std.to_f32().unwrap(),
                     seed: Some(rng.write().next_u32()),
                 }),
                 meta,
@@ -1213,8 +1213,8 @@ impl Tensor {
 
     #[cfg(feature = "rand")]
     pub fn randn<T: TensorDType + num_traits::Float>(
-        mean: f32,
-        std: f32,
+        mean: T,
+        std: T,
         shape: Shape,
         device: Device,
     ) -> Result<Self> {
@@ -1223,18 +1223,18 @@ impl Tensor {
 
     #[cfg(feature = "rand")]
     pub(crate) fn rand_impl<T: TensorDType + num_traits::Float>(
-        lo: f32,
-        up: f32,
+        lo: T,
+        up: T,
         shape: Shape,
         device: Device,
         is_variable: bool,
     ) -> Result<Self> {
         let rng = device.get_rng();
-        let distr = Uniform::new(lo, up);
+        let distr = Uniform::new(lo.to_f32().unwrap(), up.to_f32().unwrap());
         let data = (0..shape.numel())
             .map(|_| {
                 let sample: f32 = distr.sample(&mut *rng.write());
-                T::from(sample).expect("Failed to convert sample")
+                T::from(sample as f32).expect("Failed to convert sample")
             })
             .collect::<Vec<_>>();
 
@@ -1243,8 +1243,8 @@ impl Tensor {
 
     #[cfg(feature = "rand")]
     pub fn rand<T: TensorDType + num_traits::Float>(
-        lo: f32,
-        up: f32,
+        lo: T,
+        up: T,
         shape: Shape,
         device: Device,
     ) -> Result<Self> {
