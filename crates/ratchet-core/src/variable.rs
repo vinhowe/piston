@@ -69,8 +69,8 @@ impl Var {
 
     #[cfg(feature = "rand")]
     pub fn rand<T: TensorDType + num_traits::Float>(
-        lo: f32,
-        up: f32,
+        lo: T,
+        up: T,
         shape: Shape,
         device: Device,
     ) -> Result<Self> {
@@ -80,8 +80,8 @@ impl Var {
 
     #[cfg(feature = "rand")]
     pub fn randn<T: TensorDType + num_traits::Float>(
-        mean: f32,
-        std: f32,
+        mean: T,
+        std: T,
         shape: Shape,
         device: Device,
     ) -> Result<Self> {
