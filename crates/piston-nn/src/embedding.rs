@@ -78,7 +78,6 @@ mod tests {
     use hf_hub::api::sync::Api;
     use proptest::arbitrary::Arbitrary;
     use proptest::strategy::{BoxedStrategy, Just, Strategy};
-    use piston_loader::gguf::gguf::Header;
     use test_strategy::proptest;
     use tokenizers::Tokenizer;
 
