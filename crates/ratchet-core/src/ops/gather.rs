@@ -218,7 +218,7 @@ mod tests {
     use test_strategy::{proptest, Arbitrary};
 
     use crate::test_util::run_py_prg;
-    use crate::{shape, DType, Device, DeviceRequest, Tensor, Parameter};
+    use crate::{shape, DType, Device, DeviceRequest, Parameter, Tensor};
 
     fn ground_truth(src: &Tensor, ids: &Tensor, dim: usize) -> anyhow::Result<Tensor> {
         let prg = format!(

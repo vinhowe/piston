@@ -1,7 +1,7 @@
 use ratchet::HashMap;
 use std::sync::{Arc, Mutex};
 
-use ratchet::{Device, GradStore, Shape, Tensor, Parameter};
+use ratchet::{Device, GradStore, Parameter, Shape, Tensor};
 
 #[cfg(target_arch = "wasm32")]
 use {
