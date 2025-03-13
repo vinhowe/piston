@@ -52,11 +52,7 @@ tokenizers = { version = "0.19.1", default-features = false, features = [
 futures = "0.3.30"
 async-trait = { workspace = true }
 [dependencies.web-sys]
-features = [
-  'console',
-  'Window',
-  'Navigator',
-]
+features = ['console', 'Window', 'Navigator']
 workspace = true
 
 
