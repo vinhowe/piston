@@ -216,7 +216,7 @@ impl LazyOp {
         }
     }
 
-    pub(crate) fn ir(&self) -> Ir {
+    pub fn ir(&self) -> Ir {
         match self {
             LazyOp::Binary(b) => b.ir(),
             LazyOp::Cast(c) => c.ir(),
