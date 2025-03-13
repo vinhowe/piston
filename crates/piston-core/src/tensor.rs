@@ -1311,8 +1311,11 @@ impl Tensor {
         Self::zeros_impl::<T>(shape, device, false)
     }
 
-    pub fn zeros_like<T: TensorDType + num_traits::AsPrimitive<f32>>(self) -> Result<Self> {
-        Self::zeros::<T>(self.shape(), self.device())
+    pub fn zeros_like<T: TensorDType + num_traits::AsPrimitive<f32>>(
+        &self,
+        device: Option<&Device>,
+    ) -> Result<Self> {
+        Self::zeros::<T>(self.shape(), device.unwrap_or(self.device()))
     }
 
     pub(crate) fn ones_impl<T: TensorDType + num_traits::AsPrimitive<f32>>(
@@ -1343,8 +1346,11 @@ impl Tensor {
         Self::ones_impl::<T>(shape, device, false)
     }
 
-    pub fn ones_like<T: TensorDType + num_traits::AsPrimitive<f32>>(&self) -> Result<Self> {
-        Self::ones::<T>(self.shape(), self.device())
+    pub fn ones_like<T: TensorDType + num_traits::AsPrimitive<f32>>(
+        &self,
+        device: Option<&Device>,
+    ) -> Result<Self> {
+        Self::ones::<T>(self.shape(), device.unwrap_or(self.device()))
     }
 
     fn trilu(self, upper: bool, k: Option<i32>) -> Result<Self> {
