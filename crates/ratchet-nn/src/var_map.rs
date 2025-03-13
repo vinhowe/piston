@@ -5,12 +5,11 @@ use ratchet::{Device, GradStore, Parameter, Shape, Tensor};
 
 #[cfg(target_arch = "wasm32")]
 use {
-    wasm_bindgen::JsCast,
     wasm_bindgen::JsValue,
     wasm_bindgen_futures::future_to_promise,
     wasm_bindgen_futures::js_sys,
     wasm_bindgen_futures::JsFuture,
-    web_sys::{Blob, HtmlAnchorElement, Url},
+    web_sys::{Blob, Url},
 };
 
 /// A `VarMap` is a store that holds named variables. Variables can be retrieved from the stores
