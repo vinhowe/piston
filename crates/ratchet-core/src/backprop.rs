@@ -62,7 +62,7 @@ impl Tensor {
                 return (tg, nodes);
             }
             let mut track_grad = false;
-            let mut nodes = if node.is_variable() {
+            let mut nodes = if node.requires_grad() {
                 // Do not call recursively on the "leaf" nodes.
                 track_grad = true;
                 nodes
@@ -218,7 +218,7 @@ impl Tensor {
         grads.insert(self, self.ones_like::<f32>()?.contiguous()?);
         for node in sorted_nodes.iter() {
             let _op_scope_guard = ScopePusher::new(&format!("for:{}", node.op().name()));
-            if node.is_variable() {
+            if node.requires_grad() {
                 continue;
             }
             log::debug!("Backwarding: {:?}", node.op().name());

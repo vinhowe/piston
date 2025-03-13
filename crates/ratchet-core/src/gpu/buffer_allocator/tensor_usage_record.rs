@@ -11,7 +11,7 @@ pub struct TensorUsageRecord {
     pub last_consumer: usize,
     pub last_consumer_id: TensorId,
     pub size: usize,
-    pub is_variable: Option<bool>,
+    pub requires_grad: Option<bool>,
 }
 
 impl std::ops::Index<usize> for TensorUsageRecords {

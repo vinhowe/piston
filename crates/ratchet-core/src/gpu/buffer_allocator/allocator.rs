@@ -173,7 +173,7 @@ impl BufferAllocator {
         loop {
             if candidate.op().srcs().is_empty()
                 || !true_source.op().supports_inplace()
-                || candidate.is_variable()
+                || candidate.requires_grad()
             {
                 //If no sources, we are at the root
                 //Or if the operation doesn't support inplace
@@ -238,7 +238,7 @@ impl BufferAllocator {
                     .or_insert_with(|| TensorUsageRecord {
                         id: None,
                         producer: None,
-                        is_variable: None,
+                        requires_grad: None,
                         last_consumer: topo_len - iter,
                         last_consumer_id: t.id(),
                         size: true_source.num_bytes(),
@@ -248,7 +248,7 @@ impl BufferAllocator {
             if let Some(record) = records.get_mut(&t.id()) {
                 record.id = Some(t.id());
                 record.producer = Some(topo_len - iter);
-                record.is_variable = Some(t.is_variable());
+                record.requires_grad = Some(t.requires_grad());
             }
         }
 
@@ -275,7 +275,7 @@ impl BufferAllocator {
 
         for record in records.0.iter() {
             let should_be_shared = use_shared_buffers
-                && !(record.is_variable.unwrap_or(false)
+                && !(record.requires_grad.unwrap_or(false)
                     || output_tensors.get(&record.last_consumer_id).is_some());
 
             let mut best_obj = None;

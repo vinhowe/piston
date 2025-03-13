@@ -101,7 +101,7 @@ impl Tensor {
         meta: StorageView,
         storage: Option<Storage>,
         device: Device,
-        is_variable: bool,
+        requires_grad: bool,
     ) -> Self {
         let _scope_guard = ScopePusher::new(op.name());
         let value = Self {
@@ -111,7 +111,7 @@ impl Tensor {
                 meta,
                 storage,
                 device.clone(),
-                is_variable,
+                requires_grad,
             )),
         };
         value.register_with_device();
@@ -126,7 +126,7 @@ impl Tensor {
         shape: &Shape,
         value: T,
         device: &Device,
-        is_variable: bool,
+        requires_grad: bool,
     ) -> Result<Self> {
         let meta = StorageView {
             shape: shape.clone(),
@@ -141,7 +141,7 @@ impl Tensor {
             meta,
             None,
             device.clone(),
-            is_variable,
+            requires_grad,
         ))
     }
 
@@ -154,9 +154,9 @@ impl Tensor {
     }
 
     #[track_caller]
-    fn lazy(op: LazyOp, meta: StorageView, device: Device, is_variable: bool) -> Self {
+    fn lazy(op: LazyOp, meta: StorageView, device: Device, requires_grad: bool) -> Self {
         op.check_invariants();
-        Self::new_impl(op, meta, None, device, is_variable)
+        Self::new_impl(op, meta, None, device, requires_grad)
     }
 
     pub fn shallow(
@@ -164,7 +164,7 @@ impl Tensor {
         meta: StorageView,
         storage: Arc<RwLock<Option<Storage>>>,
         device: Device,
-        is_variable: bool,
+        requires_grad: bool,
     ) -> Self {
         let _scope_guard = ScopePusher::new(op.name());
         let value = Self {
@@ -174,7 +174,7 @@ impl Tensor {
                 meta,
                 storage,
                 device,
-                is_variable,
+                requires_grad,
             )),
         };
         value.register_with_device();
@@ -270,7 +270,7 @@ pub struct Inner {
     op: LazyOp,
     device: Device,
     view: StorageView,
-    is_variable: bool,
+    requires_grad: bool,
     storage: ManuallyDrop<Arc<RwLock<Option<Storage>>>>,
 }
 
@@ -287,7 +287,7 @@ impl Inner {
         meta: StorageView,
         storage: Option<Storage>,
         device: Device,
-        is_variable: bool,
+        requires_grad: bool,
     ) -> Self {
         Self {
             id: TensorId::new(),
@@ -296,7 +296,7 @@ impl Inner {
             op,
             device,
             storage: ManuallyDrop::new(Arc::new(RwLock::new(storage))),
-            is_variable,
+            requires_grad,
         }
     }
 
@@ -306,7 +306,7 @@ impl Inner {
         meta: StorageView,
         storage: Arc<RwLock<Option<Storage>>>,
         device: Device,
-        is_variable: bool,
+        requires_grad: bool,
     ) -> Self {
         Self {
             id: TensorId::new(),
@@ -315,7 +315,7 @@ impl Inner {
             op,
             device,
             storage: ManuallyDrop::new(storage),
-            is_variable,
+            requires_grad,
         }
     }
 }
@@ -374,8 +374,8 @@ impl Tensor {
         self.shape().is_scalar()
     }
 
-    pub fn is_variable(&self) -> bool {
-        self.inner.is_variable
+    pub fn requires_grad(&self) -> bool {
+        self.inner.requires_grad
     }
 
     #[cfg(feature = "plotting")]
@@ -393,7 +393,7 @@ impl Tensor {
             self.id(),
             dtype,
             shape,
-            if self.is_variable() { " (var)" } else { "" },
+            if self.requires_grad() { " (var)" } else { "" },
             self.op().ir().fields(),
             storage_fmt,
             references
@@ -1141,7 +1141,7 @@ impl Tensor {
         high: T,
         shape: Shape,
         device: Device,
-        is_variable: bool,
+        requires_grad: bool,
     ) -> Result<Self> {
         let rng = device.get_rng();
         let data = (0..shape.numel())
@@ -1150,7 +1150,7 @@ impl Tensor {
                 sample
             })
             .collect::<Vec<_>>();
-        Ok(Tensor::from_data_impl(data, shape, device, is_variable))
+        Ok(Tensor::from_data_impl(data, shape, device, requires_grad))
     }
 
     #[cfg(feature = "rand")]
@@ -1169,7 +1169,7 @@ impl Tensor {
         std: T,
         shape: Shape,
         device: Device,
-        is_variable: bool,
+        requires_grad: bool,
     ) -> Result<Self> {
         let rng = device.get_rng();
         if device.is_cpu() {
@@ -1188,7 +1188,7 @@ impl Tensor {
                 meta,
                 Some(storage),
                 device,
-                is_variable,
+                requires_grad,
             ))
         } else {
             let meta = StorageView {
@@ -1206,7 +1206,7 @@ impl Tensor {
                 meta,
                 None,
                 device,
-                is_variable,
+                requires_grad,
             ))
         }
     }
@@ -1227,7 +1227,7 @@ impl Tensor {
         up: T,
         shape: Shape,
         device: Device,
-        is_variable: bool,
+        requires_grad: bool,
     ) -> Result<Self> {
         let rng = device.get_rng();
         let distr = Uniform::new(lo.to_f32().unwrap(), up.to_f32().unwrap());
@@ -1238,7 +1238,7 @@ impl Tensor {
             })
             .collect::<Vec<_>>();
 
-        Ok(Self::from_data_impl(data, shape, device, is_variable))
+        Ok(Self::from_data_impl(data, shape, device, requires_grad))
     }
 
     #[cfg(feature = "rand")]
@@ -1276,7 +1276,7 @@ impl Tensor {
     pub(crate) fn zeros_impl<T: TensorDType + num_traits::AsPrimitive<f32>>(
         shape: &Shape,
         device: &Device,
-        is_variable: bool,
+        requires_grad: bool,
     ) -> Result<Self> {
         if device.is_cpu() {
             let storage = Storage::zeros::<T>(shape, device);
@@ -1287,10 +1287,10 @@ impl Tensor {
                 meta,
                 Some(storage),
                 device.clone(),
-                is_variable,
+                requires_grad,
             ))
         } else {
-            Self::full_impl(shape, T::zero(), device, is_variable)
+            Self::full_impl(shape, T::zero(), device, requires_grad)
         }
     }
 
@@ -1318,7 +1318,7 @@ impl Tensor {
     pub(crate) fn ones_impl<T: TensorDType + num_traits::AsPrimitive<f32>>(
         shape: &Shape,
         device: &Device,
-        is_variable: bool,
+        requires_grad: bool,
     ) -> Result<Self> {
         if device.is_cpu() {
             let storage = Storage::ones::<T>(shape, device);
@@ -1329,10 +1329,10 @@ impl Tensor {
                 meta,
                 Some(storage),
                 device.clone(),
-                is_variable,
+                requires_grad,
             ))
         } else {
-            Self::full_impl(shape, T::one(), device, is_variable)
+            Self::full_impl(shape, T::one(), device, requires_grad)
         }
     }
 
@@ -1400,12 +1400,12 @@ impl Tensor {
         data: U,
         shape: Shape,
         device: Device,
-        is_variable: bool,
+        requires_grad: bool,
     ) -> Self {
         let storage = Storage::from_slice(data.as_ref(), &shape, &device);
         let stride = Stride::from(&shape);
         let meta = StorageView::new(shape, T::dtype(), stride);
-        Tensor::new_impl(LazyOp::Const, meta, Some(storage), device, is_variable)
+        Tensor::new_impl(LazyOp::Const, meta, Some(storage), device, requires_grad)
     }
 
     pub fn from_data<T: TensorDType, U: AsRef<[T]>>(data: U, shape: Shape, device: Device) -> Self {
@@ -1446,7 +1446,7 @@ impl Tensor {
     /// If the tensor is already detached from the computation graph, the same tensor is returned.
     pub fn detach(&self) -> Self {
         match self.op {
-            LazyOp::Const if !self.is_variable => self.clone(),
+            LazyOp::Const if !self.requires_grad => self.clone(),
             _ => {
                 let storage_guard = self.storage();
                 let storage = storage_guard.as_ref().map(|s| s.clone());
@@ -1936,12 +1936,12 @@ impl<T: TensorDType + Default + num_traits::Float> CloseStats<T> {
 
 #[cfg(feature = "testing")]
 impl Tensor {
-    pub fn read_npy<T, P>(path: P, device: &Device, is_variable: bool) -> Result<Self>
+    pub fn read_npy<T, P>(path: P, device: &Device, requires_grad: bool) -> Result<Self>
     where
         T: TensorDType + npyz::Deserialize,
         P: AsRef<Path>,
     {
-        Self::from_npy_bytes::<T>(&std::fs::read(path)?, device, is_variable)
+        Self::from_npy_bytes::<T>(&std::fs::read(path)?, device, requires_grad)
     }
 
     pub fn write_npy<T, P>(&self, path: P) -> anyhow::Result<()>
@@ -1975,7 +1975,7 @@ impl Tensor {
     pub fn from_npy_bytes<T: TensorDType + npyz::Deserialize>(
         bytes: &[u8],
         device: &Device,
-        is_variable: bool,
+        requires_grad: bool,
     ) -> Result<Self> {
         let reader = npyz::NpyFile::new(bytes)?;
         let shape = reader
@@ -1989,7 +1989,7 @@ impl Tensor {
             data,
             shape,
             device.clone(),
-            is_variable,
+            requires_grad,
         ))
     }
 

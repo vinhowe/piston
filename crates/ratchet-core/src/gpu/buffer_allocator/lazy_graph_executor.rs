@@ -275,7 +275,7 @@ impl LazyGraphExecutor {
                             "{:?}: Supports inplace: {:?}, is variable: {:?}",
                             tensor.id(),
                             tensor.op().supports_inplace(),
-                            to_modify_src.is_variable()
+                            to_modify_src.requires_grad()
                         );
 
                         if !self.inplace_support {
@@ -296,7 +296,7 @@ impl LazyGraphExecutor {
                         } else if !tensor.op().supports_inplace()
                     // vinhowe: we need to check if the src is a variable, because we can't
                     // inplace variables unless we've disabled gradient tracking.
-                    || to_modify_src.is_variable()
+                    || to_modify_src.requires_grad()
                         {
                             false
                         } else {
