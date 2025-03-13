@@ -42,5 +42,5 @@ tokenizers = { version = "0.19.1", default-features = false, features = [
 ] }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies.web-sys]
-features = ["Blob", "HtmlAnchorElement", "CssStyleDeclaration"]
+features = ["Blob", "HtmlAnchorElement", "CssStyleDeclaration", "Url"]
 workspace = true
