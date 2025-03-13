@@ -5,7 +5,7 @@ use core::panic;
 // Variables are wrappers around tensors that can be modified, they are typically used for holding
 // weights and being modified by gradient descent.
 // We do not expose a public way to create variables as this would break the invariant that the
-// tensor within a variable is actually with `is_variable` set to `true`.
+// tensor within a variable is actually with `requires_grad` set to `true`.
 use crate::{Device, GPUBuffer, Inner, LazyOp, Shape, Storage, StorageView, Tensor, TensorDType};
 use anyhow::Result;
 use num_traits::AsPrimitive;
@@ -48,7 +48,7 @@ impl Var {
 
     // Convert a tensor to a variable, if the tensor is already a variable then it is returned as is.
     pub fn from_tensor(t: &Tensor) -> Result<Self> {
-        if t.is_variable() {
+        if t.requires_grad() {
             Ok(Self(t.clone()))
         } else {
             let inner = t.make_var()?;
