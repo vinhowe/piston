@@ -393,7 +393,7 @@ impl Tensor {
             self.id(),
             dtype,
             shape,
-            if self.requires_grad() { " (var)" } else { "" },
+            if self.requires_grad() { " (param)" } else { "" },
             self.op().ir().fields(),
             storage_fmt,
             references
@@ -1425,7 +1425,7 @@ impl Tensor {
         ))
     }
 
-    /// Create a variable based on the values currently stored in a tensor. The storage is always
+    /// Create a parameter based on the values currently stored in a tensor. The storage is always
     /// copied.
     pub(crate) fn make_parameter(&self) -> Result<Self> {
         let storage_guard = self.storage();
