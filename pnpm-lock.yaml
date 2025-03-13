@@ -18,11 +18,11 @@ importers:
         specifier: 0.12.1
         version: 0.12.1
 
-  examples/ratchet-train-toy:
+  examples/piston-train-toy:
     dependencies:
-      '@ratchet-ml/ratchet-web-train':
-        specifier: link:../../target/pkg/ratchet-web-train
-        version: link:../../target/pkg/ratchet-web-train
+      '@piston-ml/piston-web':
+        specifier: link:../../target/pkg/piston-web
+        version: link:../../target/pkg/piston-web
       chart.js:
         specifier: ^4.4.7
         version: 4.4.8
