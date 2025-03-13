@@ -87,7 +87,7 @@ mod tests {
 
     use super::{linear, linear_no_bias, Linear};
     use ratchet::{
-        prelude::shape, test_util::run_py_prg_multiple, Device, DeviceRequest, Tensor, Var,
+        prelude::shape, test_util::run_py_prg_multiple, Device, DeviceRequest, Parameter, Tensor,
     };
     use test_strategy::{proptest, Arbitrary};
 
@@ -239,7 +239,7 @@ def linear_backward(x, w):
 
         let x = Tensor::randn::<f32>(0., 1., shape![batch_size, in_features], Device::CPU)?;
         let x_gpu = x.to(&device)?;
-        let x_var = Var::from_tensor(&x_gpu)?;
+        let x_var = Parameter::from_tensor(&x_gpu)?;
         let varmap = VarMap::new();
         let vb = VarBuilder::from_varmap(&varmap, ratchet::DType::F32, &device.clone());
 

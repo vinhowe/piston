@@ -1,21 +1,21 @@
-// Taken from candle
+// Adapted from candle
 
 use core::panic;
 
-// Variables are wrappers around tensors that can be modified, they are typically used for holding
+// Parameters are wrappers around tensors that can be modified, they are typically used for holding
 // weights and being modified by gradient descent.
-// We do not expose a public way to create variables as this would break the invariant that the
-// tensor within a variable is actually with `requires_grad` set to `true`.
+// We do not expose a public way to create parameters as this would break the invariant that the
+// tensor within a parameter is actually with `requires_grad` set to `true`.
 use crate::{Device, GPUBuffer, Inner, LazyOp, Shape, Storage, StorageView, Tensor, TensorDType};
 use anyhow::Result;
 use num_traits::AsPrimitive;
 
-/// A variable is a wrapper around a tensor, however variables can have their content modified
+/// A parameter is a wrapper around a tensor, however parameters can have their content modified
 /// whereas tensors are immutable.
 #[derive(Clone, Debug)]
-pub struct Var(Tensor);
+pub struct Parameter(Tensor);
 
-impl std::ops::Deref for Var {
+impl std::ops::Deref for Parameter {
     type Target = Inner;
 
     fn deref(&self) -> &Self::Target {
@@ -23,7 +23,7 @@ impl std::ops::Deref for Var {
     }
 }
 
-impl Var {
+impl Parameter {
     pub fn zeros<T: TensorDType + AsPrimitive<f32>>(
         shape: &Shape,
         device: &Device,
@@ -46,12 +46,12 @@ impl Var {
         Ok(Self(inner))
     }
 
-    // Convert a tensor to a variable, if the tensor is already a variable then it is returned as is.
+    // Convert a tensor to a parameter, if the tensor is already a parameter then it is returned as is.
     pub fn from_tensor(t: &Tensor) -> Result<Self> {
         if t.requires_grad() {
             Ok(Self(t.clone()))
         } else {
-            let inner = t.make_var()?;
+            let inner = t.make_parameter()?;
             Ok(Self(inner))
         }
     }
@@ -109,7 +109,7 @@ impl Var {
         &self.0
     }
 
-    /// Consumes this `Var` and return the underlying tensor.
+    /// Consumes this `Parameter` and return the underlying tensor.
     pub fn into_inner(self) -> Tensor {
         self.0
     }
@@ -118,7 +118,7 @@ impl Var {
     /// mutability is used.
     pub fn set_sync(&self, src: Tensor) -> Result<()> {
         if self.as_tensor().same_storage(&src) {
-            panic!("cannot set a variable to a tensor that is derived from its value");
+            panic!("cannot set a parameter to a tensor that is derived from its value");
         }
         if self.as_tensor().shape() != src.shape() {
             panic!(

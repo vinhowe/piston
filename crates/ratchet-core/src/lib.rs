@@ -10,6 +10,7 @@ mod gpu;
 mod ndarray_ext;
 mod op;
 mod ops;
+mod parameter;
 mod plot;
 mod quant;
 mod scope;
@@ -19,7 +20,6 @@ mod stride;
 mod tensor;
 mod tensor_id;
 pub mod test_utils;
-mod variable;
 
 pub use backprop::*;
 pub use compiled_op::*;
@@ -32,6 +32,7 @@ pub use gpu::*;
 pub use ndarray_ext::*;
 pub use op::*;
 pub use ops::*;
+pub use parameter::*;
 pub use quant::*;
 use rustc_hash::{FxHashMap, FxHashSet, FxHasher};
 pub use scope::*;
@@ -40,7 +41,6 @@ pub use storage::*;
 pub use stride::*;
 pub use tensor::*;
 pub use tensor_id::*;
-pub use variable::*;
 
 #[cfg(feature = "plotting")]
 pub use plot::render_to_file;

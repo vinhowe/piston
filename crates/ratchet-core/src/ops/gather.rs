@@ -218,7 +218,7 @@ mod tests {
     use test_strategy::{proptest, Arbitrary};
 
     use crate::test_util::run_py_prg;
-    use crate::{shape, DType, Device, DeviceRequest, Tensor, Var};
+    use crate::{shape, DType, Device, DeviceRequest, Tensor, Parameter};
 
     fn ground_truth(src: &Tensor, ids: &Tensor, dim: usize) -> anyhow::Result<Tensor> {
         let prg = format!(
@@ -322,7 +322,7 @@ def gather_backward(src, ids):
 
         let src_gpu = src.to(&device)?;
         let ids_gpu = ids.to(&device)?;
-        let src_var = Var::from_tensor(&src_gpu)?;
+        let src_var = Parameter::from_tensor(&src_gpu)?;
         let result_gpu = src_var.as_tensor().clone().gather(ids_gpu, dim)?;
 
         let grads = result_gpu.backward()?;

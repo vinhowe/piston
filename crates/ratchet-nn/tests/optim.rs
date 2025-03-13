@@ -1,11 +1,11 @@
 use ratchet::{
     shape,
     test_utils::{to_vec0_round, to_vec1_round},
-    Device, DeviceRequest, Tensor, Var,
+    Device, DeviceRequest, Parameter, Tensor,
 };
 use ratchet_nn::{AdamW, Linear, Module, Optimizer, ParamsAdamW, SGD};
 
-type OptimizerFactory<O> = fn(Vec<(Option<String>, Var)>) -> anyhow::Result<O>;
+type OptimizerFactory<O> = fn(Vec<(Option<String>, Parameter)>) -> anyhow::Result<O>;
 
 fn run_linear_regression<O: Optimizer>(optimizer: OptimizerFactory<O>) -> anyhow::Result<()> {
     let _ = env_logger::builder().is_test(true).try_init();
@@ -22,8 +22,8 @@ fn run_linear_regression<O: Optimizer>(optimizer: OptimizerFactory<O>) -> anyhow
     let sample_ys = gen.schedule(sample_xs.clone())?;
 
     // Now use backprop to run a linear regression between samples and get the coefficients back.
-    let w = Var::zeros::<f32>(&shape![1, 2], &device)?;
-    let b = Var::zeros::<f32>(&shape![1, 1], &device)?;
+    let w = Parameter::zeros::<f32>(&shape![1, 2], &device)?;
+    let b = Parameter::zeros::<f32>(&shape![1, 1], &device)?;
     let mut opt = optimizer(vec![
         (Some(String::from("b")), b.clone()),
         (Some(String::from("w")), w.clone()),
@@ -54,7 +54,7 @@ fn run_linear_regression<O: Optimizer>(optimizer: OptimizerFactory<O>) -> anyhow
 
 #[test]
 fn sgd_linear_regression() -> anyhow::Result<()> {
-    fn optimizer(vars: Vec<(Option<String>, Var)>) -> anyhow::Result<SGD> {
+    fn optimizer(vars: Vec<(Option<String>, Parameter)>) -> anyhow::Result<SGD> {
         SGD::new(vars, 0.001)
     }
     run_linear_regression(optimizer)
@@ -62,7 +62,7 @@ fn sgd_linear_regression() -> anyhow::Result<()> {
 
 #[test]
 fn adamw_linear_regression() -> anyhow::Result<()> {
-    fn optimizer(vars: Vec<(Option<String>, Var)>) -> anyhow::Result<AdamW> {
+    fn optimizer(vars: Vec<(Option<String>, Parameter)>) -> anyhow::Result<AdamW> {
         let params = ParamsAdamW {
             lr: 0.5,
             ..Default::default()
@@ -79,7 +79,8 @@ fn gradient_descent(optimizer: OptimizerFactory<impl Optimizer>) -> anyhow::Resu
     let target = Tensor::from_data(vec![5.0], shape![1], Device::CPU).to(&device)?;
 
     // Initialize variable at 0.0 (shape is scalar)
-    let w = Var::from_tensor(&Tensor::from_data(vec![0.0], shape![1], Device::CPU).to(&device)?)?;
+    let w =
+        Parameter::from_tensor(&Tensor::from_data(vec![0.0], shape![1], Device::CPU).to(&device)?)?;
 
     let mut opt = optimizer(vec![(Some("w".into()), w.clone())])?;
 
@@ -117,7 +118,7 @@ fn gradient_descent(optimizer: OptimizerFactory<impl Optimizer>) -> anyhow::Resu
 
 #[test]
 fn sgd_gradient_descent() -> anyhow::Result<()> {
-    fn optimizer(vars: Vec<(Option<String>, Var)>) -> anyhow::Result<SGD> {
+    fn optimizer(vars: Vec<(Option<String>, Parameter)>) -> anyhow::Result<SGD> {
         SGD::new(vars, 0.1)
     }
     gradient_descent(optimizer)
@@ -125,7 +126,7 @@ fn sgd_gradient_descent() -> anyhow::Result<()> {
 
 #[test]
 fn adamw_gradient_descent() -> anyhow::Result<()> {
-    fn optimizer(vars: Vec<(Option<String>, Var)>) -> anyhow::Result<AdamW> {
+    fn optimizer(vars: Vec<(Option<String>, Parameter)>) -> anyhow::Result<AdamW> {
         let params = ParamsAdamW {
             lr: 0.2,
             ..Default::default()
@@ -150,12 +151,13 @@ fn test_intermediate() -> anyhow::Result<()> {
     let sample_ys = gen.schedule(sample_xs.clone())?;
 
     // Now use backprop to run a linear regression between samples and get the coefficients back.
-    let w = Var::from_tensor(
+    let w = Parameter::from_tensor(
         &Tensor::from_data(vec![0f32, 0.], shape![1, 2], Device::CPU).to(&device)?,
     )?;
-    // let b = Var::from_data(vec![0f32], shape![1], Device::CPU);
-    let b =
-        Var::from_tensor(&Tensor::from_data(vec![0f32], shape![1, 1], Device::CPU).to(&device)?)?;
+    // let b = Parameter::from_data(vec![0f32], shape![1], Device::CPU);
+    let b = Parameter::from_tensor(
+        &Tensor::from_data(vec![0f32], shape![1, 1], Device::CPU).to(&device)?,
+    )?;
     let lin = Linear::new(w.as_tensor().clone(), Some(b.as_tensor().clone()));
 
     let ys = lin.schedule(sample_xs.clone())?;

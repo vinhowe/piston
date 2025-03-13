@@ -1,13 +1,13 @@
 use half::{bf16, f16};
 use maybe_async::maybe_async;
-use ratchet::{DType, Device, GradStore, ScopePusher, Var};
+use ratchet::{DType, Device, GradStore, Parameter, ScopePusher};
 
 #[maybe_async(AFIT)]
 #[cfg_attr(target_arch = "wasm32", async_trait::async_trait)]
 pub trait Optimizer: Sized {
     type Config: Sized;
 
-    fn new(vars: Vec<(Option<String>, Var)>, config: Self::Config) -> anyhow::Result<Self>;
+    fn new(vars: Vec<(Option<String>, Parameter)>, config: Self::Config) -> anyhow::Result<Self>;
 
     async fn step(&mut self, grads: &ratchet::GradStore, device: &Device) -> anyhow::Result<()>;
 
@@ -27,7 +27,7 @@ pub trait Optimizer: Sized {
         self.step(grads, device).await
     }
 
-    fn from_slice(vars: &[&Var], config: Self::Config) -> anyhow::Result<Self> {
+    fn from_slice(vars: &[&Parameter], config: Self::Config) -> anyhow::Result<Self> {
         let vars: Vec<_> = vars.iter().map(|&v| (None, v.clone())).collect();
         Self::new(vars, config)
     }
@@ -35,7 +35,7 @@ pub trait Optimizer: Sized {
 
 #[derive(Debug)]
 pub struct SGD {
-    vars: Vec<(Option<String>, Var)>,
+    vars: Vec<(Option<String>, Parameter)>,
     learning_rate: f64,
 }
 
@@ -44,7 +44,7 @@ pub struct SGD {
 impl Optimizer for SGD {
     type Config = f64;
 
-    fn new(vars: Vec<(Option<String>, Var)>, learning_rate: f64) -> anyhow::Result<Self> {
+    fn new(vars: Vec<(Option<String>, Parameter)>, learning_rate: f64) -> anyhow::Result<Self> {
         let vars = vars
             .into_iter()
             .filter(|(_, v)| v.as_tensor().dtype().is_float())
@@ -108,9 +108,9 @@ impl Default for ParamsAdamW {
 
 #[derive(Debug)]
 struct VarAdamW {
-    var: Var,
-    first_moment: Var,
-    second_moment: Var,
+    var: Parameter,
+    first_moment: Parameter,
+    second_moment: Parameter,
     label: Option<String>,
 }
 
@@ -126,7 +126,7 @@ pub struct AdamW {
 impl Optimizer for AdamW {
     type Config = ParamsAdamW;
 
-    fn new(vars: Vec<(Option<String>, Var)>, params: ParamsAdamW) -> anyhow::Result<Self> {
+    fn new(vars: Vec<(Option<String>, Parameter)>, params: ParamsAdamW) -> anyhow::Result<Self> {
         let vars = vars
             .into_iter()
             .filter(|(_, var)| var.as_tensor().dtype().is_float())
@@ -137,16 +137,16 @@ impl Optimizer for AdamW {
                 let device = var_t.device();
                 let (first_moment, second_moment) = match dtype {
                     DType::F32 => (
-                        Var::zeros::<f32>(shape, device)?,
-                        Var::zeros::<f32>(shape, device)?,
+                        Parameter::zeros::<f32>(shape, device)?,
+                        Parameter::zeros::<f32>(shape, device)?,
                     ),
                     DType::F16 => (
-                        Var::zeros::<f16>(shape, device)?,
-                        Var::zeros::<f16>(shape, device)?,
+                        Parameter::zeros::<f16>(shape, device)?,
+                        Parameter::zeros::<f16>(shape, device)?,
                     ),
                     DType::BF16 => (
-                        Var::zeros::<bf16>(shape, device)?,
-                        Var::zeros::<bf16>(shape, device)?,
+                        Parameter::zeros::<bf16>(shape, device)?,
+                        Parameter::zeros::<bf16>(shape, device)?,
                     ),
                     _ => return Err(anyhow::anyhow!("Unsupported dtype for AdamW: {:?}", dtype)),
                 };
@@ -223,7 +223,10 @@ impl Optimizer for AdamW {
 }
 
 impl AdamW {
-    pub fn new_lr(vars: Vec<(Option<String>, Var)>, learning_rate: f64) -> anyhow::Result<Self> {
+    pub fn new_lr(
+        vars: Vec<(Option<String>, Parameter)>,
+        learning_rate: f64,
+    ) -> anyhow::Result<Self> {
         let params = ParamsAdamW {
             lr: learning_rate,
             ..ParamsAdamW::default()
@@ -240,7 +243,7 @@ impl AdamW {
     }
 }
 
-fn optim_var_scope_guard(var: &Var) -> ScopePusher {
+fn optim_var_scope_guard(var: &Parameter) -> ScopePusher {
     ScopePusher::new(
         format!(
             "for:({})",
