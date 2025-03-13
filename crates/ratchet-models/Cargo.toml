@@ -27,26 +27,14 @@ ratchet = { path = "../ratchet-core" }
 ratchet-nn = { path = "../ratchet-nn" }
 ratchet-datasets = { path = "../ratchet-datasets" }
 ratchet-macros = { path = "../ratchet-macros" }
-byteorder.workspace = true
 anyhow.workspace = true
 thiserror.workspace = true
 derive-new = { workspace = true }
 log.workspace = true
 ndarray-stats = { workspace = true }
-num = { workspace = true }
-realfft = { workspace = true }
 ndarray = { workspace = true }
-cfg-if = { workspace = true }
-serde = { workspace = true }
 tokenizers = { version = "0.19.1", default-features = false, features=["unstable_wasm"] }
-lazy_static = { workspace = true }
-web-time = { workspace = true }
 clap = { workspace = true, features = ["derive"]}
-serde_json.workspace = true
-half.workspace = true
-image = { workspace = true }
-pollster.workspace = true
-wasm-bindgen-futures = "0.4.42"
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wasm-bindgen = { workspace = true }  

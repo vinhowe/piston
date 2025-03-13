@@ -32,9 +32,6 @@ parking_lot = { workspace = true }
 smallvec = { workspace = true }
 encase = { workspace = true, features = ["smallvec", "glam"] }
 pollster = { workspace = true }
-getrandom = { workspace = true, features = [
-    "js",
-] } # Needed for wasm support in `num` trait
 num = { workspace = true }
 rand_distr = { workspace = true, optional = true }
 rand = { workspace = true, optional = true }
