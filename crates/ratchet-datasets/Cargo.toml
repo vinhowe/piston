@@ -26,7 +26,6 @@ wasm-opt = ['-O3', '--enable-simd']
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 [dependencies]
 ratchet = { path = "../ratchet-core" }
-ratchet-loader = { path = "../ratchet-loader" }
 log.workspace = true
 tokenizers = { version = "0.19.1", default-features = false, features = [
     "unstable_wasm",
