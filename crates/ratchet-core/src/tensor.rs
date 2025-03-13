@@ -1427,7 +1427,7 @@ impl Tensor {
 
     /// Create a variable based on the values currently stored in a tensor. The storage is always
     /// copied.
-    pub(crate) fn make_var(&self) -> Result<Self> {
+    pub(crate) fn make_parameter(&self) -> Result<Self> {
         let storage_guard = self.storage();
         let storage = storage_guard.as_ref().unwrap();
         let cloned_storage = storage.deep_clone(self.device()).unwrap();

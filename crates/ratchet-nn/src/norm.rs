@@ -153,7 +153,7 @@ mod tests {
     use ratchet::{
         prelude::shape,
         test_util::{run_py_prg, run_py_prg_multiple},
-        Device, DeviceRequest, Tensor, Var,
+        Device, DeviceRequest, Parameter, Tensor,
     };
     use test_strategy::{proptest, Arbitrary};
 
@@ -314,7 +314,7 @@ def layer_norm_backward(x, weight, bias = None):
             Device::CPU,
         )?;
         let x_gpu = x.to(&device)?;
-        let x_var = Var::from_tensor(&x_gpu)?;
+        let x_var = Parameter::from_tensor(&x_gpu)?;
         let varmap = VarMap::new();
         let vb = VarBuilder::from_varmap(&varmap, ratchet::DType::F32, &device);
 

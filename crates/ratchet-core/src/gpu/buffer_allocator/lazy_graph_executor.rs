@@ -272,7 +272,7 @@ impl LazyGraphExecutor {
                 let can_inplace = match to_modify {
                     Some(to_modify_src) => {
                         log::trace!(
-                            "{:?}: Supports inplace: {:?}, is variable: {:?}",
+                            "{:?}: Supports inplace: {:?}, is parameter: {:?}",
                             tensor.id(),
                             tensor.op().supports_inplace(),
                             to_modify_src.requires_grad()
@@ -294,8 +294,8 @@ impl LazyGraphExecutor {
                                 _ => false,
                             }
                         } else if !tensor.op().supports_inplace()
-                    // vinhowe: we need to check if the src is a variable, because we can't
-                    // inplace variables unless we've disabled gradient tracking.
+                    // vinhowe: we need to check if the src is a parameter, because we can't
+                    // inplace parameters unless we've disabled gradient tracking.
                     || to_modify_src.requires_grad()
                         {
                             false
@@ -308,9 +308,9 @@ impl LazyGraphExecutor {
                             //    This is why we have the optional `owned_tensors`.
                             // If these two are the only references, then we can inplace. Usually,
                             // additional references include, not in any particular order:
-                            // 3. The optimizer, if it is a variable. We'll also check if the src is a
-                            //    variable.
-                            // 4+ Any other Tensor consumers in the post-order. If it's not a variable,
+                            // 3. The optimizer, if it is a parameter. We'll also check if the src is a
+                            //    parameter.
+                            // 4+ Any other Tensor consumers in the post-order. If it's not a parameter,
                             //    these are the references we're concerned about messing with.
                             //
                             // If we own a copy, 2, otherwise 1.

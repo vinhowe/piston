@@ -315,7 +315,7 @@ impl GPT2 {
 
 #[cfg(all(test, not(target_arch = "wasm32"), feature = "pyo3"))]
 mod tests {
-    use ratchet::{prelude::shape, DType, Device, DeviceRequest, StepLogConfig, Tensor, Var};
+    use ratchet::{prelude::shape, DType, Device, DeviceRequest, Parameter, StepLogConfig, Tensor};
     use ratchet_datasets::{
         nlp::{
             tinystories::{Dataset, DatasetRandomIter},
@@ -376,7 +376,7 @@ mod tests {
                 .all_labeled_vars()
                 .iter()
                 .map(|(label, var)| (Some(label.to_owned()), var.to_owned()))
-                .collect::<Vec<(Option<String>, Var)>>(),
+                .collect::<Vec<(Option<String>, Parameter)>>(),
             params,
         )?;
 
@@ -512,7 +512,7 @@ mod tests {
                 .all_labeled_vars()
                 .iter()
                 .map(|(label, var)| (Some(label.to_owned()), var.to_owned()))
-                .collect::<Vec<(Option<String>, Var)>>(),
+                .collect::<Vec<(Option<String>, Parameter)>>(),
             params,
         )?;
 

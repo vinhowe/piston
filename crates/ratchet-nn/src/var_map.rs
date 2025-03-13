@@ -1,7 +1,7 @@
 use ratchet::HashMap;
 use std::sync::{Arc, Mutex};
 
-use ratchet::{Device, GradStore, Shape, Tensor, Var};
+use ratchet::{Device, GradStore, Shape, Tensor, Parameter};
 
 #[cfg(target_arch = "wasm32")]
 use {
@@ -19,7 +19,7 @@ use {
 /// `VarMap` structures can be serialized in the safetensors format.
 #[derive(Clone)]
 pub struct VarMap {
-    data: Arc<Mutex<HashMap<String, Var>>>,
+    data: Arc<Mutex<HashMap<String, Parameter>>>,
 }
 
 impl VarMap {
@@ -31,13 +31,13 @@ impl VarMap {
     }
 
     /// Retrieve all the variables currently stored in the map.
-    pub fn all_vars(&self) -> Vec<Var> {
+    pub fn all_vars(&self) -> Vec<Parameter> {
         let tensor_data = self.data.lock().unwrap();
         #[allow(clippy::map_clone)]
         tensor_data.values().map(|c| c.clone()).collect::<Vec<_>>()
     }
 
-    pub fn all_labeled_vars(&self) -> Vec<(String, Var)> {
+    pub fn all_labeled_vars(&self) -> Vec<(String, Parameter)> {
         let tensor_data = self.data.lock().unwrap();
         tensor_data
             .iter()
@@ -224,7 +224,7 @@ impl VarMap {
         Ok(tensor)
     }
 
-    pub fn data(&self) -> &Mutex<HashMap<String, Var>> {
+    pub fn data(&self) -> &Mutex<HashMap<String, Parameter>> {
         &self.data
     }
 }

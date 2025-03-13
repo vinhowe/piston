@@ -147,7 +147,7 @@ pub fn cross_entropy(inp: Tensor, target: Tensor) -> anyhow::Result<Tensor> {
 mod tests {
     use super::*;
     use anyhow::Result;
-    use ratchet::{prelude::shape, DType, Device, DeviceRequest, Var};
+    use ratchet::{prelude::shape, DType, Device, DeviceRequest, Parameter};
     use test_strategy::{proptest, Arbitrary};
 
     thread_local! {
@@ -217,13 +217,13 @@ def cross_entropy(input, target):
         // Compute our implementation
         let input_gpu = input.to(&device)?;
         let target_gpu = target.to(&device)?;
-        let input_var = Var::from_tensor(&input_gpu)?;
-        let our_loss = cross_entropy(input_var.as_tensor().clone(), target_gpu)?;
+        let input_param = Parameter::from_tensor(&input_gpu)?;
+        let our_loss = cross_entropy(input_param.as_tensor().clone(), target_gpu)?;
 
         // Compute gradients
         let grads = our_loss.backward()?;
         device.try_gpu()?.mark_step()?;
-        let our_grad = grads.get(input_var.as_tensor()).unwrap().clone();
+        let our_grad = grads.get(input_param.as_tensor()).unwrap().clone();
 
         // Compare results
         let our_loss_cpu = our_loss.to(&Device::CPU)?;

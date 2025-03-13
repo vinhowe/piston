@@ -2,7 +2,7 @@ use anyhow::Result;
 use async_trait::async_trait;
 use js_sys::Function;
 use ratchet::{
-    reset_scope_context, shape, DType, Device, DeviceRequest, GradStore, StepLog, Tensor, Var,
+    reset_scope_context, shape, DType, Device, DeviceRequest, GradStore, StepLog, Tensor, Parameter,
 };
 use ratchet_models::gpt2::generate;
 use ratchet_models::gpt2::{Config, GPT2Input, PositionalEncoding};
@@ -237,7 +237,7 @@ pub enum OptimizerEnum {
 impl Optimizer for OptimizerEnum {
     type Config = OptimizerConfigEnum;
 
-    fn new(vars: Vec<(Option<String>, Var)>, config: Self::Config) -> anyhow::Result<Self> {
+    fn new(vars: Vec<(Option<String>, Parameter)>, config: Self::Config) -> anyhow::Result<Self> {
         match config {
             OptimizerConfigEnum::AdamW(params) => Ok(Self::AdamW(AdamW::new(vars, params)?)),
             OptimizerConfigEnum::SGD(params) => Ok(Self::SGD(SGD::new(vars, params)?)),

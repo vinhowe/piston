@@ -529,7 +529,7 @@ mod tests {
     use test_strategy::{proptest, Arbitrary};
 
     use crate::test_util::run_py_prg;
-    use crate::{shape, DType, Device, DeviceRequest, Tensor, Var};
+    use crate::{shape, DType, Device, DeviceRequest, Parameter, Tensor};
 
     use super::ReduceOp;
 
@@ -699,7 +699,7 @@ def reduce_backward(a):
         let ground = ground_truth_backward(&a)?;
 
         let a_gpu = a.to(&device)?;
-        let a_var = Var::from_tensor(&a_gpu)?;
+        let a_var = Parameter::from_tensor(&a_gpu)?;
         let b_gpu = a_var.as_tensor().clone().sum_all()?;
 
         let grads = b_gpu.backward()?;
