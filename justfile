@@ -1,13 +1,13 @@
 line-count:
-    cd ./crates/ratchet-core && scc -irs
+    cd ./crates/piston-core && scc -irs
 install-pyo3:
     env PYTHON_CONFIGURE_OPTS="--enable-shared" pyenv install --verbose 3.10.6
     pyenv local 3.10.6
     echo $(python --version)
 wasm CRATE:
-    node_modules/.bin/wasm-pack build -s ratchet --target bundler -d `pwd`/target/pkg/{{CRATE}} --out-name {{CRATE}} ./crates/{{CRATE}} --release
+    node_modules/.bin/wasm-pack build -s piston --target bundler -d `pwd`/target/pkg/{{CRATE}} --out-name {{CRATE}} ./crates/{{CRATE}} --release
 wasm-dbg CRATE:
-    node_modules/.bin/wasm-pack build -s ratchet --target bundler -d `pwd`/target/pkg/{{CRATE}} --out-name {{CRATE}} ./crates/{{CRATE}} --dev
+    node_modules/.bin/wasm-pack build -s piston --target bundler -d `pwd`/target/pkg/{{CRATE}} --out-name {{CRATE}} ./crates/{{CRATE}} --dev
 wasm-test CRATE BROWSER:
     cp ./config/webdriver-macos.json ./crates/{{CRATE}}/webdriver.json
     node_modules/.bin/wasm-pack test --{{BROWSER}} --headless `pwd`/crates/{{CRATE}}

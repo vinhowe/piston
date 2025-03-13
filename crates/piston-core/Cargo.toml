@@ -1,0 +1,80 @@
+[package]
+name = "piston"
+version = "0.1.0"
+edition = "2021"
+
+[features]
+default = ["rand", "testing"]
+gpu-profiling = ["dep:tabled", "dep:itertools"]
+rand = ["dep:rand", "dep:rand_distr"]
+plotting = ["dep:dot3", "dep:tempfile"]
+testing = ["dep:npyz", "dep:ndarray"]
+pyo3 = ["dep:pyo3", "dep:numpy", "dep:regex"]
+debug = []                                      #dump every node
+
+[dependencies]
+piston-macros = { path = "../piston-macros" }
+inline-wgsl = { git = "https://github.com/FL33TW00D/inline-wgsl.git", branch = "master" }
+wgpu = { workspace = true }
+bytemuck = { workspace = true }
+half = { workspace = true }
+derive-new = { workspace = true }
+num-traits = { workspace = true }
+log = { workspace = true }
+thiserror = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+safetensors = { workspace = true }
+anyhow.workspace = true
+
+rustc-hash = { workspace = true }
+slotmap = { workspace = true }
+parking_lot = { workspace = true }
+smallvec = { workspace = true }
+encase = { workspace = true, features = ["smallvec", "glam"] }
+pollster = { workspace = true }
+num = { workspace = true }
+rand_distr = { workspace = true, optional = true }
+rand = { workspace = true, optional = true }
+glam = { workspace = true }
+npyz = { workspace = true, optional = true }
+ndarray = { workspace = true, optional = true }
+
+strum = { workspace = true }
+strum_macros = { workspace = true }
+
+#Plotting
+dot3 = { workspace = true, optional = true }
+tempfile = { workspace = true, optional = true }
+
+# Profiling
+tabled = { workspace = true, optional = true }
+itertools = { workspace = true, optional = true }
+
+pyo3 = { workspace = true, features = ["auto-initialize"], optional = true }
+regex = { workspace = true, optional = true }
+numpy = { workspace = true, optional = true, features = ["half"] }
+gemm = { version = "0.18.0", features = ["nightly", "wasm-simd128-enable"] }
+bitvec = { workspace = true }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+maybe-async = { workspace = true, features = ["is_sync"] }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen.workspace = true
+futures-intrusive.workspace = true
+wasm-bindgen-futures.workspace = true
+maybe-async = { workspace = true }
+
+async-trait = "0.1.77"
+smallvec = { workspace = true, features = ["serde"] }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies.web-sys]
+features = ["GpuBuffer", "GpuDevice"]
+workspace = true
+
+[dev-dependencies]
+env_logger = { workspace = true }
+rand = { workspace = true }
+test-strategy = { workspace = true }
+ndarray = { workspace = true }
+proptest = { workspace = true }

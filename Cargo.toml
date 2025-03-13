@@ -1,11 +1,11 @@
 [workspace]
 members = [
-    "crates/ratchet-core",
-    "crates/ratchet-web-train",
-    "crates/ratchet-models",
-    "crates/ratchet-nn",
-    "crates/ratchet-macros",
-    "crates/ratchet-datasets",
+    "crates/piston-core",
+    "crates/piston-web",
+    "crates/piston-models",
+    "crates/piston-nn",
+    "crates/piston-macros",
+    "crates/piston-datasets",
 ]
 resolver = "2"
 edition = "2021"
