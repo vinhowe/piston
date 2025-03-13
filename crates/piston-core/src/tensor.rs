@@ -1294,16 +1294,6 @@ impl Tensor {
         }
     }
 
-    pub fn range<T: TensorDType + num_traits::Float>(
-        shape: &Shape,
-        device: Device,
-    ) -> Result<Self> {
-        let data: Vec<T> = (0..shape.numel())
-            .map(|i| T::from(i).expect("Failed to convert index to T"))
-            .collect();
-        Ok(Tensor::from_data(data, shape.clone(), device))
-    }
-
     pub fn zeros<T: TensorDType + num_traits::AsPrimitive<f32>>(
         shape: &Shape,
         device: &Device,
