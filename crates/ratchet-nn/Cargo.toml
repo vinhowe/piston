@@ -37,7 +37,6 @@ maybe-async = { workspace = true }
 proptest = { workspace = true }
 test-strategy = { workspace = true }
 # hf-hub = { workspace = true }
-ratchet-loader = { path = "../ratchet-loader" }
 tokenizers = { version = "0.19.1", default-features = false, features = [
     "unstable_wasm",
 ] }

@@ -2,7 +2,6 @@
 members = [
     "crates/ratchet-core",
     "crates/ratchet-web-train",
-    "crates/ratchet-loader",
     "crates/ratchet-models",
     "crates/ratchet-nn",
     "crates/ratchet-macros",
