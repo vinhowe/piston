@@ -1505,7 +1505,7 @@ impl Tensor {
         Ok(Tensor::new_impl(
             LazyOp::Const,
             self.view.clone(),
-            storage.map(|s| s.clone()),
+            storage.cloned(),
             self.device.clone(),
             true,
         ))
@@ -1520,7 +1520,7 @@ impl Tensor {
             LazyOp::Const if !self.requires_grad => self.clone(),
             _ => {
                 let storage_guard = self.storage();
-                let storage = storage_guard.as_ref().map(|s| s.clone());
+                let storage = storage_guard.as_ref().cloned();
                 Self::new(
                     LazyOp::Detach(Box::new(self.op().clone())),
                     self.view.clone(),
