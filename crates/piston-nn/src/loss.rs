@@ -110,7 +110,7 @@ pub fn label_smoothed_nll(log_probs: Tensor, target: Tensor, alpha: f32) -> anyh
     // we want the “average” log-prob over all classes, not just the correct one.
     // i.e. uniform_loss = - average over (vocab_size) of log_probs, restricted to masked positions.
     let all_probs_masked = log_probs.mul(mask.unsqueeze(1)?)?;
-    let sum_log_probs = all_probs_masked.sum(&[1])?;
+    let sum_log_probs = all_probs_masked.sum(1)?;
     // Now shape [batch_size], each entry is sum_{v in vocab} log_probs[i, v].
     // Negative average per token:
     let neg_avg_log_prob = sum_log_probs.affine(-1.0 / vocab_size as f32, 0.0)?;
@@ -129,7 +129,7 @@ pub fn log_softmax(xs: Tensor, d: usize) -> anyhow::Result<Tensor> {
     let _scope_guard = ScopePusher::new("loss:log_softmax");
     let max = xs.clone().max_keepdim(d)?;
     let diff = xs.clone().sub(max)?;
-    let sum_exp = diff.clone().exp()?.sum_keepdim(&[d])?;
+    let sum_exp = diff.clone().exp()?.sum_keepdim(d)?;
     let log_sm = diff.sub(sum_exp.log()?)?;
     Ok(log_sm)
 }
@@ -166,12 +166,8 @@ def cross_entropy_with_grad(input, target):
     loss.backward()
     return input_tensor.grad.numpy()
 "#;
-        let grad = piston::test_util::run_py_prg(
-            grad_prg.to_string(),
-            &[input, target],
-            &[],
-            DType::F32,
-        )?;
+        let grad =
+            piston::test_util::run_py_prg(grad_prg.to_string(), &[input, target], &[], DType::F32)?;
 
         let loss_prg = r#"
 import torch
@@ -182,12 +178,8 @@ def cross_entropy(input, target):
     target_tensor = torch.tensor(torch.from_numpy(target), dtype=torch.long)
     return F.cross_entropy(input_tensor, target_tensor, reduction='mean').numpy()
 "#;
-        let loss = piston::test_util::run_py_prg(
-            loss_prg.to_string(),
-            &[input, target],
-            &[],
-            DType::F32,
-        )?;
+        let loss =
+            piston::test_util::run_py_prg(loss_prg.to_string(), &[input, target], &[], DType::F32)?;
 
         Ok((loss, grad))
     }

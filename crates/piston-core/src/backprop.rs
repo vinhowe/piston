@@ -301,7 +301,7 @@ impl Tensor {
 
                     // Calculate the gradient with respect to the bias term
                     if let Some(bias) = bias {
-                        let bias_grad = grad.sum_keepdim(&[0])?; // Assuming bias is summed over the appropriate axis
+                        let bias_grad = grad.sum_keepdim(1)?; // Assuming bias is summed over the appropriate axis
                         grads.accumulate_add(bias, bias_grad)?;
                     }
                 }
@@ -323,7 +323,7 @@ impl Tensor {
 
                     let mut arg_grad = grad.sum_keepdim(sum_dims.as_slice())?;
                     for _i in 0..left_dims {
-                        arg_grad = arg_grad.squeeze()?;
+                        arg_grad = arg_grad.squeeze_all()?;
                     }
                     grads.accumulate_add(src, arg_grad.broadcast_to(src.shape().clone())?)?;
                 }
@@ -372,11 +372,11 @@ impl Tensor {
                     grads.accumulate_add(arg, arg_grad)?;
                 }
                 LazyOp::Reindex(Reindex::Permute(Permute { src: arg, dims })) => {
-                    let mut inv_dims = vec![0; dims.len()];
+                    let mut inv_dims = rvec![0; dims.len()];
                     for (i, &dim) in dims.iter().enumerate() {
                         inv_dims[dim] = i;
                     }
-                    let arg_grad = grad.permute(&inv_dims)?;
+                    let arg_grad = grad.permute(inv_dims)?;
                     grads.accumulate_add(arg, arg_grad)?;
                 }
                 LazyOp::Reduce(Reduce {
@@ -606,7 +606,7 @@ impl Tensor {
                     let softmax_output = (*node).clone();
 
                     // Compute the sum of the gradients
-                    let sum_grad = grad.clone().sum_keepdim(&[*dim])?;
+                    let sum_grad = grad.clone().sum_keepdim(*dim)?;
 
                     // Compute the gradient with respect to the softmax input
                     let input_grad = softmax_output
@@ -625,15 +625,10 @@ impl Tensor {
                     let d = arg.shape()[1] as f32;
 
                     // Retrieve the necessary intermediate values from the forward pass
-                    let mean = (arg.clone().sum(&[0])? / d)?; // Compute mean of the input
+                    let mean = (arg.clone().sum(0)? / d)?; // Compute mean of the input
                     let mean_broadcast = mean.clone().broadcast_to(arg.shape().clone())?;
 
-                    let var = (arg
-                        .clone()
-                        .sub(mean_broadcast.clone())?
-                        .square()?
-                        .sum(&[0])?
-                        / d)?;
+                    let var = (arg.clone().sub(mean_broadcast.clone())?.square()?.sum(0)? / d)?;
 
                     let x_normed = arg
                         .clone()
@@ -641,8 +636,8 @@ impl Tensor {
                         .div((var.clone() + *eps)?.sqrt()?)?;
 
                     // Compute the gradients with respect to beta and gamma
-                    let grad_beta = grad.clone().sum_keepdim(&[0])?;
-                    let grad_gamma = (x_normed.clone().mul(grad.clone()))?.sum_keepdim(&[0])?;
+                    let grad_beta = grad.clone().sum_keepdim(0)?;
+                    let grad_gamma = (x_normed.clone().mul(grad.clone()))?.sum_keepdim(0)?;
 
                     // Compute the gradient with respect to the normalized input
                     let grad_x_normed = grad.clone().mul(scale.clone())?;
@@ -650,9 +645,9 @@ impl Tensor {
                     // Compute the gradients with respect to mean and variance
                     let std = (var.clone() + *eps)?.sqrt()?;
                     let grad_mean =
-                        (grad_x_normed.clone().sum_keepdim(&[1])?.neg())?.div(std.clone())?;
+                        (grad_x_normed.clone().sum_keepdim(1)?.neg())?.div(std.clone())?;
                     let grad_var = ((grad_x_normed.clone().mul(x_normed.clone()))?
-                        .sum_keepdim(&[1])?
+                        .sum_keepdim(1)?
                         .neg()?
                         .div((var.clone() + *eps)?)?
                         / 2.0)?;

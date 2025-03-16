@@ -1,9 +1,9 @@
 use crate::gpu::{BindGroupEntry, CpuUniform, WgpuDevice};
 use crate::{
     cpu, get_current_scope, ops::*, rvec, shape, BufferSegment, CPUBuffer, Compiled, CompiledOp,
-    ComputeCompileKey, DType, Device, DeviceStorage, GPUOperation, GpuCompileKey, InvariantError,
-    LazyOp, Operation, OperationError, RVec, RawCPUBuffer, ScopePusher, Shape, Storage, Stride,
-    TensorDType, TensorId,
+    ComputeCompileKey, DType, Device, DeviceStorage, Dim, Dims, GPUOperation, GpuCompileKey,
+    InvariantError, LazyOp, Operation, OperationError, RVec, RawCPUBuffer, ScopePusher, Shape,
+    Storage, Stride, TensorDType, TensorId,
 };
 use anyhow::Result;
 use bitvec::prelude::*;
@@ -580,8 +580,8 @@ impl Tensor {
         Ok(Tensor::lazy(LazyOp::Conv(conv), new_view, device, false))
     }
 
-    //TODO: switch dim to isize and allow negative indexing
-    pub fn softmax(self, dim: usize) -> Result<Self> {
+    pub fn softmax<D: Dim>(self, dim: D) -> Result<Self> {
+        let dim = dim.to_index(&self.shape(), "softmax")?;
         let device = self.device.clone();
         let softmax = Softmax::new(self, dim);
         let new_view = softmax.compute_view()?;
@@ -600,11 +600,13 @@ impl Tensor {
         Ok(Tensor::lazy(LazyOp::RoPE(rope), new_view, device, false))
     }
 
-    pub fn rope(self, dim: usize, base: f32, offset: usize) -> Result<Self> {
+    pub fn rope<D: Dim>(self, dim: D, base: f32, offset: usize) -> Result<Self> {
+        let dim = dim.to_index(&self.shape(), "rope")?;
         self.rope_impl(dim, base, offset, false)
     }
 
-    pub(crate) fn rope_backward(self, dim: usize, base: f32, offset: usize) -> Result<Self> {
+    pub(crate) fn rope_backward<D: Dim>(self, dim: D, base: f32, offset: usize) -> Result<Self> {
+        let dim = dim.to_index(&self.shape(), "rope_backward")?;
         self.rope_impl(dim, base, offset, true)
     }
 
@@ -680,49 +682,59 @@ impl Tensor {
         Ok(Tensor::lazy(LazyOp::Reduce(sum), new_view, device, false))
     }
 
-    pub fn sum_keepdim(self, sum_dims: &[usize]) -> Result<Self> {
-        self.sum_impl(sum_dims, true)
+    pub fn sum_keepdim<D: Dims>(self, sum_dims: D) -> Result<Self> {
+        let sum_dims = sum_dims.to_indexes(&self.shape(), "sum_keepdim")?;
+        self.sum_impl(&sum_dims, true)
     }
 
-    pub fn sum(self, sum_dims: &[usize]) -> Result<Self> {
-        self.sum_impl(sum_dims, false)
+    pub fn sum<D: Dims>(self, sum_dims: D) -> Result<Self> {
+        let sum_dims = sum_dims.to_indexes(&self.shape(), "sum")?;
+        self.sum_impl(&sum_dims, false)
     }
 
     pub fn sum_all(self) -> Result<Self> {
-        let dims: Vec<_> = (0..self.rank()).collect();
-        self.sum(&dims)
+        let dims: RVec<_> = (0..self.rank()).collect();
+        self.sum(dims)
     }
 
-    pub fn max_keepdim(self, dim: usize) -> Result<Self> {
+    pub fn max_keepdim<D: Dim>(self, dim: D) -> Result<Self> {
+        let dim = dim.to_index(&self.shape(), "max_keepdim")?;
         self.reduce_impl(dim, true, ReduceOp::Max)
     }
 
-    pub fn max(self, dim: usize) -> Result<Self> {
+    pub fn max<D: Dim>(self, dim: D) -> Result<Self> {
+        let dim = dim.to_index(&self.shape(), "max")?;
         self.reduce_impl(dim, false, ReduceOp::Max)
     }
 
-    pub fn min_keepdim(self, dim: usize) -> Result<Self> {
+    pub fn min_keepdim<D: Dim>(self, dim: D) -> Result<Self> {
+        let dim = dim.to_index(&self.shape(), "min_keepdim")?;
         self.reduce_impl(dim, true, ReduceOp::Min)
     }
 
-    pub fn min(self, dim: usize) -> Result<Self> {
+    pub fn min<D: Dim>(self, dim: D) -> Result<Self> {
+        let dim = dim.to_index(&self.shape(), "min")?;
         self.reduce_impl(dim, false, ReduceOp::Min)
     }
 
-    pub fn argmax_keepdim(self, dim: usize) -> Result<Self> {
+    pub fn argmax_keepdim<D: Dim>(self, dim: D) -> Result<Self> {
+        let dim = dim.to_index(&self.shape(), "argmax_keepdim")?;
         self.reduce_impl(dim, true, ReduceOp::ArgMax)
     }
 
-    pub fn argmax(self, dim: usize) -> Result<Self> {
+    pub fn argmax<D: Dim>(self, dim: D) -> Result<Self> {
+        let dim = dim.to_index(&self.shape(), "argmax")?;
         self.reduce_impl(dim, false, ReduceOp::ArgMax)
     }
 
-    pub fn argmin_keepdim(self, dim: usize) -> Result<Self> {
+    pub fn argmin_keepdim<D: Dim>(self, dim: D) -> Result<Self> {
+        let dim = dim.to_index(&self.shape(), "argmin_keepdim")?;
         self.reduce_impl(dim, true, ReduceOp::ArgMin)
     }
 
     /// Similar to `argmin_keepdim` but the target dimension is squeezed.
-    pub fn argmin(self, dim: usize) -> Result<Self> {
+    pub fn argmin<D: Dim>(self, dim: D) -> Result<Self> {
+        let dim = dim.to_index(&self.shape(), "argmin")?;
         self.reduce_impl(dim, false, ReduceOp::ArgMin)
     }
 
@@ -754,15 +766,19 @@ impl Tensor {
         }
     }
 
-    pub fn flatten(self, start_dim: usize, end_dim: usize) -> Result<Self> {
+    pub fn flatten<D: Dim>(self, start_dim: D, end_dim: D) -> Result<Self> {
+        let start_dim = start_dim.to_index(&self.shape(), "flatten")?;
+        let end_dim = end_dim.to_index(&self.shape(), "flatten")?;
         self.flatten_impl(Some(start_dim), Some(end_dim))
     }
 
-    pub fn flatten_to(self, end_dim: usize) -> Result<Self> {
+    pub fn flatten_to<D: Dim>(self, end_dim: D) -> Result<Self> {
+        let end_dim = end_dim.to_index(&self.shape(), "flatten")?;
         self.flatten_impl(None::<usize>, Some(end_dim))
     }
 
-    pub fn flatten_from(self, start_dim: usize) -> Result<Self> {
+    pub fn flatten_from<D: Dim>(self, start_dim: D) -> Result<Self> {
+        let start_dim = start_dim.to_index(&self.shape(), "flatten")?;
         self.flatten_impl(Some(start_dim), None::<usize>)
     }
 
@@ -827,19 +843,28 @@ impl Tensor {
     }
 
     // Use view to add a singleton dimension
-    pub fn unsqueeze(self, dim: usize) -> Result<Self> {
+    pub fn unsqueeze<D: Dim>(self, dim: D) -> Result<Self> {
+        let dim = dim.to_index(self.shape(), "unsqueeze")?;
         let mut new_shape = self.shape().clone();
         new_shape.unsqueeze(dim);
         self.view(new_shape)
     }
 
-    pub fn squeeze(self) -> Result<Self> {
+    pub fn squeeze_all(self) -> Result<Self> {
         let mut new_shape = self.shape().clone();
-        new_shape.squeeze();
+        new_shape.squeeze(None);
         self.view(new_shape)
     }
 
-    pub fn cat(tensors: RVec<Tensor>, dim: usize) -> Result<Self> {
+    pub fn squeeze<D: Dims>(self, dims: D) -> Result<Self> {
+        let mut new_shape = self.shape().clone();
+        let dims = dims.to_indexes(&self.shape(), "squeeze")?;
+        new_shape.squeeze(Some(dims.into()));
+        self.view(new_shape)
+    }
+
+    pub fn cat<D: Dim>(tensors: RVec<Tensor>, dim: D) -> Result<Self> {
+        let dim = dim.to_index(tensors[0].shape(), "cat")?;
         let device = tensors[0].device.clone();
         assert!(tensors.iter().all(|t| t.device == device), "Mixed devices");
 
@@ -895,11 +920,13 @@ impl Tensor {
         }
     }
 
-    pub fn stack(tensors: RVec<Tensor>, dim: usize) -> Result<Self> {
+    pub fn stack<D: Dim>(tensors: RVec<Tensor>, dim: D) -> Result<Self> {
+        let dim = dim.to_index(&tensors[0].shape(), "stack")?;
         Self::stack_impl(tensors, dim, true)
     }
 
-    pub fn permute(self, dims: &[usize]) -> Result<Self> {
+    pub fn permute<D: Dims>(self, dims: D) -> Result<Self> {
+        let dims = dims.to_indexes(&self.shape(), "permute")?;
         let device = self.device.clone();
         let permute = Permute::new(self, dims.into());
         let out_view = permute.compute_view()?;
@@ -908,7 +935,8 @@ impl Tensor {
         Ok(Tensor::lazy(op, out_view, device, false))
     }
 
-    pub fn cache(self, source: Tensor, dim: usize, offset: usize) -> Result<Self> {
+    pub fn cache<D: Dim>(self, source: Tensor, dim: D, offset: usize) -> Result<Self> {
+        let dim = dim.to_index(&self.shape(), "cache")?;
         let device = self.device.clone();
         let cache = Cache::new(self, source, dim, offset);
         let new_view = cache.compute_view()?;
@@ -932,7 +960,8 @@ impl Tensor {
         Ok(Tensor::lazy(op, new_view, device, false))
     }
 
-    pub fn index_select(self, indices: Tensor, dim: usize) -> Result<Self> {
+    pub fn index_select<D: Dim>(self, indices: Tensor, dim: D) -> Result<Self> {
+        let dim = dim.to_index(&self.shape(), "index_select")?;
         let device = self.device.clone();
         let index_select = IndexSelect::new(self, indices, dim);
         let new_view = index_select.compute_view()?;
@@ -944,9 +973,10 @@ impl Tensor {
         ))
     }
 
-    pub fn index_write(self, src: Tensor, write_start: RVec<usize>) -> Result<Self> {
+    pub fn index_write<D: Dims>(self, src: Tensor, write_start: D) -> Result<Self> {
+        let write_start = write_start.to_indexes(&self.shape(), "index_write")?;
         let device = self.device.clone();
-        let index_write = IndexWrite::new(self, src, write_start);
+        let index_write = IndexWrite::new(self, src, write_start.into());
         let new_view = index_write.compute_view()?;
         let op = LazyOp::IndexWrite(index_write);
         Ok(Tensor::lazy(op, new_view, device, false))
@@ -964,7 +994,8 @@ impl Tensor {
         ))
     }
 
-    pub fn scatter_add(self, indices: Tensor, source: Tensor, dim: usize) -> Result<Self> {
+    pub fn scatter_add<D: Dim>(self, indices: Tensor, source: Tensor, dim: D) -> Result<Self> {
+        let dim = dim.to_index(&self.shape(), "scatter_add")?;
         let source_dims = source.shape().to_vec();
         let self_dims = self.shape().to_vec();
         let mismatch = if source_dims.len() != self_dims.len() {
@@ -1004,7 +1035,8 @@ impl Tensor {
         ))
     }
 
-    pub fn index_add(self, indices: Tensor, source: Tensor, dim: usize) -> Result<Self> {
+    pub fn index_add<D: Dim>(self, indices: Tensor, source: Tensor, dim: D) -> Result<Self> {
+        let dim = dim.to_index(&self.shape(), "index_add")?;
         let source_dims = source.shape().to_vec();
         let self_dims = self.shape().to_vec();
         let mismatch = if source_dims.len() != self_dims.len() {
@@ -1051,7 +1083,8 @@ impl Tensor {
         ))
     }
 
-    pub fn gather(self, indices: Tensor, dim: usize) -> Result<Self> {
+    pub fn gather<D: Dim>(self, indices: Tensor, dim: D) -> Result<Self> {
+        let dim = dim.to_index(&self.shape(), "gather")?;
         let self_dims = self.shape().to_vec();
         let indices_dims = indices.shape().to_vec();
         let mismatch = if indices_dims.len() != self_dims.len() {

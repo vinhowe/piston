@@ -1,4 +1,5 @@
-use crate::{shape, RVec, Stride};
+use crate::{rvec, shape, RVec, Stride};
+use anyhow::Result;
 use encase::impl_wrapper;
 use std::{
     ops::{RangeFrom, RangeTo},
@@ -73,7 +74,7 @@ impl Shape {
 
     pub fn is_vector(&self) -> bool {
         let mut shape = self.clone();
-        shape.squeeze();
+        shape.squeeze(None);
         shape.rank() <= 1
     }
 
@@ -99,13 +100,27 @@ impl Shape {
     }
 
     #[inline]
-    pub fn squeeze(&mut self) {
-        self.0.retain(|x| *x != 1);
+    pub fn squeeze(&mut self, dims: Option<RVec<usize>>) {
+        if let Some(dims) = dims {
+            // Create a sorted copy of the dims in descending order
+            // This way, removing elements won't affect the indices of elements we haven't processed
+            // yet
+            let mut sorted_dims = dims.to_vec();
+            sorted_dims.sort_by(|a, b| b.cmp(a));
+
+            for dim in sorted_dims {
+                if dim < self.0.len() {
+                    self.0.remove(dim);
+                }
+            }
+        } else {
+            self.0.retain(|x| *x != 1);
+        }
     }
 
     #[inline]
-    pub fn unsqueeze(&mut self, dim: usize) {
-        self.0.insert(dim, 1);
+    pub fn unsqueeze(&mut self, usize: usize) {
+        self.0.insert(usize, 1);
     }
 
     pub fn drain<R>(&mut self, range: R) -> smallvec::Drain<'_, [usize; 4]>
@@ -342,5 +357,176 @@ mod tests {
             shape.push(')');
             shape
         }
+    }
+}
+
+pub trait Dim {
+    fn to_index(&self, shape: &Shape, op: &'static str) -> Result<usize>;
+    fn to_index_plus_one(&self, shape: &Shape, op: &'static str) -> Result<usize>;
+}
+
+impl Dim for usize {
+    fn to_index(&self, shape: &Shape, op: &'static str) -> Result<usize> {
+        let rank = shape.rank();
+        if *self >= rank {
+            Err(anyhow::anyhow!("Dimension out of range for op: {}", op))
+        } else {
+            Ok(*self)
+        }
+    }
+
+    fn to_index_plus_one(&self, shape: &Shape, op: &'static str) -> Result<usize> {
+        let rank = shape.rank();
+        if *self >= rank {
+            Err(anyhow::anyhow!("Dimension out of range for op: {}", op))
+        } else {
+            Ok(*self + 1)
+        }
+    }
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+pub enum D {
+    Minus1,
+    Minus2,
+    Minus(usize),
+}
+
+impl D {
+    fn out_of_range(&self, _: &Shape, op: &'static str) -> anyhow::Error {
+        let dim = match self {
+            Self::Minus1 => -1,
+            Self::Minus2 => -2,
+            Self::Minus(u) => -(*u as i32),
+        };
+        // TODO(vinhowe): include shape
+        anyhow::anyhow!("Dimension {} out of range for op: {}", dim, op)
+    }
+}
+
+impl Dim for D {
+    fn to_index(&self, shape: &Shape, op: &'static str) -> Result<usize> {
+        let rank = shape.rank();
+        match self {
+            Self::Minus1 if rank >= 1 => Ok(rank - 1),
+            Self::Minus2 if rank >= 2 => Ok(rank - 2),
+            Self::Minus(u) if *u > 0 && rank >= *u => Ok(rank - *u),
+            _ => Err(self.out_of_range(shape, op)),
+        }
+    }
+
+    fn to_index_plus_one(&self, shape: &Shape, op: &'static str) -> Result<usize> {
+        let rank = shape.rank();
+        match self {
+            Self::Minus1 => Ok(rank),
+            Self::Minus2 if rank >= 1 => Ok(rank - 1),
+            Self::Minus(u) if *u > 0 && rank + 1 >= *u => Ok(rank + 1 - *u),
+            _ => Err(self.out_of_range(shape, op)),
+        }
+    }
+}
+
+pub trait Dims: Sized {
+    fn to_indexes_internal(self, shape: &Shape, op: &'static str) -> Result<RVec<usize>>;
+
+    fn to_indexes(self, shape: &Shape, op: &'static str) -> Result<RVec<usize>> {
+        let dims = self.to_indexes_internal(shape, op)?;
+        for (i, &dim) in dims.iter().enumerate() {
+            if dims[..i].contains(&dim) {
+                anyhow::bail!("Duplicate dimension index: {}", dim)
+            }
+            if dim >= shape.rank() {
+                anyhow::bail!("Dimension out of range: {}", dim)
+            }
+        }
+        Ok(dims)
+    }
+}
+
+impl Dims for RVec<usize> {
+    fn to_indexes_internal(self, _: &Shape, _: &'static str) -> Result<RVec<usize>> {
+        Ok(self.into())
+    }
+}
+
+impl<const N: usize> Dims for [usize; N] {
+    fn to_indexes_internal(self, _: &Shape, _: &'static str) -> Result<RVec<usize>> {
+        Ok(self.to_vec().into())
+    }
+}
+
+impl Dims for &[usize] {
+    fn to_indexes_internal(self, _: &Shape, _: &'static str) -> Result<RVec<usize>> {
+        Ok(self.to_vec().into())
+    }
+}
+
+impl Dims for () {
+    fn to_indexes_internal(self, _: &Shape, _: &'static str) -> Result<RVec<usize>> {
+        Ok(rvec![])
+    }
+}
+
+impl<D: Dim + Sized> Dims for D {
+    fn to_indexes_internal(self, shape: &Shape, op: &'static str) -> Result<RVec<usize>> {
+        let dim = self.to_index(shape, op)?;
+        Ok(rvec![dim])
+    }
+}
+
+impl<D: Dim> Dims for (D,) {
+    fn to_indexes_internal(self, shape: &Shape, op: &'static str) -> Result<RVec<usize>> {
+        let dim = self.0.to_index(shape, op)?;
+        Ok(rvec![dim])
+    }
+}
+
+impl<D1: Dim, D2: Dim> Dims for (D1, D2) {
+    fn to_indexes_internal(self, shape: &Shape, op: &'static str) -> Result<RVec<usize>> {
+        let d0 = self.0.to_index(shape, op)?;
+        let d1 = self.1.to_index(shape, op)?;
+        Ok(rvec![d0, d1])
+    }
+}
+
+impl<D1: Dim, D2: Dim, D3: Dim> Dims for (D1, D2, D3) {
+    fn to_indexes_internal(self, shape: &Shape, op: &'static str) -> Result<RVec<usize>> {
+        let d0 = self.0.to_index(shape, op)?;
+        let d1 = self.1.to_index(shape, op)?;
+        let d2 = self.2.to_index(shape, op)?;
+        Ok(rvec![d0, d1, d2])
+    }
+}
+
+impl<D1: Dim, D2: Dim, D3: Dim, D4: Dim> Dims for (D1, D2, D3, D4) {
+    fn to_indexes_internal(self, shape: &Shape, op: &'static str) -> Result<RVec<usize>> {
+        let d0 = self.0.to_index(shape, op)?;
+        let d1 = self.1.to_index(shape, op)?;
+        let d2 = self.2.to_index(shape, op)?;
+        let d3 = self.3.to_index(shape, op)?;
+        Ok(rvec![d0, d1, d2, d3])
+    }
+}
+
+impl<D1: Dim, D2: Dim, D3: Dim, D4: Dim, D5: Dim> Dims for (D1, D2, D3, D4, D5) {
+    fn to_indexes_internal(self, shape: &Shape, op: &'static str) -> Result<RVec<usize>> {
+        let d0 = self.0.to_index(shape, op)?;
+        let d1 = self.1.to_index(shape, op)?;
+        let d2 = self.2.to_index(shape, op)?;
+        let d3 = self.3.to_index(shape, op)?;
+        let d4 = self.4.to_index(shape, op)?;
+        Ok(rvec![d0, d1, d2, d3, d4])
+    }
+}
+
+impl<D1: Dim, D2: Dim, D3: Dim, D4: Dim, D5: Dim, D6: Dim> Dims for (D1, D2, D3, D4, D5, D6) {
+    fn to_indexes_internal(self, shape: &Shape, op: &'static str) -> Result<RVec<usize>> {
+        let d0 = self.0.to_index(shape, op)?;
+        let d1 = self.1.to_index(shape, op)?;
+        let d2 = self.2.to_index(shape, op)?;
+        let d3 = self.3.to_index(shape, op)?;
+        let d4 = self.4.to_index(shape, op)?;
+        let d5 = self.5.to_index(shape, op)?;
+        Ok(rvec![d0, d1, d2, d3, d4, d5])
     }
 }
