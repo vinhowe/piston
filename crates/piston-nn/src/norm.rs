@@ -74,12 +74,12 @@ impl crate::Module for LayerNorm {
         let last_dim = x.rank() - 1;
         let x = x.cast(internal_dtype)?;
         let x = if self.remove_mean {
-            let mean_x = (x.clone().sum_keepdim(&[last_dim])? / hidden_size as f32)?;
+            let mean_x = (x.clone().sum_keepdim(last_dim)? / hidden_size as f32)?;
             x.clone().sub(mean_x.clone())?
         } else {
             x
         };
-        let norm_x = (x.clone().square()?.sum_keepdim(&[last_dim])? / hidden_size as f32)?;
+        let norm_x = (x.clone().square()?.sum_keepdim(last_dim)? / hidden_size as f32)?;
         let x_normed = x.clone().div((norm_x + self.eps)?.sqrt()?)?;
         let x = x_normed.cast(x_dtype)?.mul(self.weight.clone())?;
         match &self.bias {
