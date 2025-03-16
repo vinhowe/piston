@@ -68,8 +68,18 @@ impl Operation for IndexSelect {
 impl OpGuards for IndexSelect {
     fn check_shapes(&self) {
         let (input, indices) = (&self.src, &self.indices);
-        assert_eq!(input.rank(), 2);
-        assert_eq!(indices.rank(), 1);
+        assert_eq!(
+            input.rank(),
+            2,
+            "Input must be a 2D tensor, got {:?}",
+            input.shape()
+        );
+        assert_eq!(
+            indices.rank(),
+            1,
+            "Indices must be a 1D tensor, got {:?}",
+            indices.shape()
+        );
     }
 
     fn check_dtypes(&self) {
