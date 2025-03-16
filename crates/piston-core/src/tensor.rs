@@ -815,6 +815,49 @@ impl Tensor {
         Ok(Tensor::lazy(op, out_view, device, false))
     }
 
+    /// Returns a new tensor that is a narrowed version of the input, the dimension `dim`
+    /// ranges from `start` to `start + len`.
+    /// This calls `slice` internally.
+    pub fn narrow<D: Dim>(self, dim: D, start: usize, len: usize) -> Result<Self> {
+        let dims = self.shape().as_slice();
+        let device = self.device.clone();
+        let dim = dim.to_index(self.shape(), "narrow")?;
+        let err = |msg| {
+            anyhow::bail!(
+                "invalid narrow args: shape {:?}, dim {}, start {}, len {}, {}",
+                self.shape(),
+                dim,
+                start,
+                len,
+                msg
+            )
+        };
+        if start > dims[dim] {
+            err("start > dim_len")?
+        }
+        if start.saturating_add(len) > dims[dim] {
+            err("start + len > dim_len")?
+        }
+        if start == 0 && dims[dim] == len {
+            Ok(self.clone())
+        } else {
+            // Create ranges for all dimensions, using full range for non-target dimensions
+            let mut ranges = rvec![];
+            for i in 0..dims.len() {
+                if i == dim {
+                    ranges.push(start..start + len);
+                } else {
+                    ranges.push(0..dims[i]);
+                }
+            }
+
+            let slice = Slice::new(self, ranges);
+            let out_view = slice.compute_view()?;
+            let op = LazyOp::Reindex(Reindex::Slice(slice));
+            Ok(Tensor::lazy(op, out_view, device, false))
+        }
+    }
+
     /// # View
     ///
     /// Creates a new tensor with the same data, but a different shape.
