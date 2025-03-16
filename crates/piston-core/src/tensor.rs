@@ -1501,12 +1501,11 @@ impl Tensor {
     /// copied.
     pub(crate) fn make_parameter(&self) -> Result<Self> {
         let storage_guard = self.storage();
-        let storage = storage_guard.as_ref().unwrap();
-        let cloned_storage = storage.deep_clone(self.device()).unwrap();
+        let storage = storage_guard.as_ref();
         Ok(Tensor::new_impl(
             LazyOp::Const,
             self.view.clone(),
-            Some(cloned_storage),
+            storage.map(|s| s.clone()),
             self.device.clone(),
             true,
         ))
