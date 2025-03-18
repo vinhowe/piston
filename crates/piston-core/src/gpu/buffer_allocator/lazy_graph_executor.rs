@@ -507,7 +507,7 @@ impl LazyGraphExecutor {
                             DebugSelection::All => true,
                             DebugSelection::Some(scopes) => {
                                 if let Some(scope) = t.scope() {
-                                    scopes.contains(&scope)
+                                    scopes.contains(scope)
                                 } else {
                                     false
                                 }
