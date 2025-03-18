@@ -63,8 +63,6 @@ impl StepLogConfig {
         self.debug_selection = if let Some(s) = value.as_string() {
             if s == "all" {
                 Some(DebugSelection::All)
-            } else if s == "none" {
-                None
             } else {
                 None
             }
