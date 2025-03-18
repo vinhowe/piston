@@ -204,13 +204,13 @@ impl StepLog {
             .map(|t| {
                 let gpu_buf = gpu_bufs
                     .as_mut()
-                    .and_then(|bufs| bufs.remove(&t.id()).map(|buf| Arc::new(buf)));
+                    .and_then(|bufs| bufs.remove(&t.id()).map(Arc::new));
                 TensorLogStep::new(
                     t.id(),
                     t.op().srcs().iter().map(|tensor| tensor.id()).collect(),
                     gpu_bufs
                         .as_mut()
-                        .and_then(|bufs| bufs.remove(&t.id()).map(|buf| Arc::new(buf))),
+                        .and_then(|bufs| bufs.remove(&t.id()).map(Arc::new)),
                     t.op().name().to_string(),
                     t.scope().as_ref().map(|s| s.to_string()),
                     t.dtype(),
