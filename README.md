@@ -1,6 +1,6 @@
-# toy transformer
+# toy transformer + piston library
 
-Watch a toy model train, in your browser, with WebGPU.
+Watch a small transformer language model train, in your browser, with WebGPU.
 
 ## Attribution
 
