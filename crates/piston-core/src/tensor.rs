@@ -1500,13 +1500,13 @@ impl Tensor {
     /// Create a parameter based on the values currently stored in a tensor. The storage is always
     /// copied.
     pub(crate) fn make_parameter(&self) -> Result<Self> {
-        let storage_guard = self.storage();
-        let storage = storage_guard.as_ref();
-        Ok(Tensor::new_impl(
-            LazyOp::Const,
+        let device = self.device.clone();
+        let storage = Arc::clone(&self.storage);
+        Ok(Tensor::shallow(
+            self.op().clone(),
             self.view.clone(),
-            storage.cloned(),
-            self.device.clone(),
+            storage,
+            device,
             true,
         ))
     }
