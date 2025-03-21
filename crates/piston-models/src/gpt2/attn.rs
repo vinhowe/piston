@@ -18,7 +18,6 @@ use super::{
 pub struct GPT2SelfAttention {
     c_attn: Linear,
     c_proj: Linear,
-    softmax_scale: Tensor,
     n_embd: usize,
     n_head: usize,
     h_dim: usize,
@@ -35,8 +34,6 @@ impl GPT2SelfAttention {
         let c_proj =
             linear_gpt2_residual(cfg.n_embd, cfg.n_embd, cfg.n_layer, vb.pp("c_proj")).await?;
         let h_dim = cfg.head_dim();
-
-        let softmax_scale = Tensor::full(&shape![1], 1.0 / (h_dim as f32).sqrt(), vb.device())?;
 
         let (rope, alibi) = match cfg.positional_encoding {
             PositionalEncoding::RoPE => {
@@ -69,7 +66,6 @@ impl GPT2SelfAttention {
         Ok(Self {
             c_attn,
             c_proj,
-            softmax_scale,
             n_head: cfg.n_head,
             n_embd: cfg.n_embd,
             h_dim,
@@ -149,7 +145,7 @@ impl Module for GPT2SelfAttention {
         let mut att = q
             .clone()
             .matmul(k.clone(), false, true)?
-            .mul(self.softmax_scale.clone())?;
+            .affine(1f32 / (self.h_dim as f32).sqrt(), 0f32)?;
 
         // Apply ALiBi if enabled
         if let Some(alibi) = &self.alibi {
