@@ -116,9 +116,9 @@ impl Module for GPT2SelfAttention {
 
         let qkv_shape = shape![batch_size as _, q_len, self.n_head, self.h_dim];
 
-        let mut k = k.view(qkv_shape.clone())?.permute(&[0, 2, 1, 3])?;
-        let mut q = q.view(qkv_shape.clone())?.permute(&[0, 2, 1, 3])?;
-        let v = v.view(qkv_shape.clone())?.permute(&[0, 2, 1, 3])?;
+        let mut k = k.view(qkv_shape.clone())?.permute((0, 2, 1, 3))?;
+        let mut q = q.view(qkv_shape.clone())?.permute((0, 2, 1, 3))?;
+        let v = v.view(qkv_shape.clone())?.permute((0, 2, 1, 3))?;
 
         let cache_entry = if cache.borrow_mut().use_kv_cache() {
             let cache_ref = cache.borrow_mut();
@@ -167,10 +167,11 @@ impl Module for GPT2SelfAttention {
             Some(dropout) => dropout.schedule(att)?,
             None => att,
         };
+
         let y = att
             .clone()
             .matmul(v.clone(), false, false)?
-            .permute(&[0, 2, 1, 3])?
+            .permute((0, 2, 1, 3))?
             .view(shape![batch_size as _, q_len, self.n_embd])?;
 
         let y = self.c_proj.schedule(y)?;
