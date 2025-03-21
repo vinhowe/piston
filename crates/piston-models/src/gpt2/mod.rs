@@ -1,4 +1,5 @@
 mod attn;
+mod embedding;
 mod generate;
 mod linear;
 mod mlp;

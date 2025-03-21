@@ -24,6 +24,7 @@ use std::{cell::RefCell, rc::Rc};
 
 use super::{
     attn::{GPT2AttnInput, GPT2SelfAttention},
+    embedding::embedding_gpt2,
     linear::linear_no_bias_gpt2,
     mlp::MLP,
 };
@@ -251,12 +252,12 @@ impl GPT2 {
 
     pub async fn new(cfg: &Config, vb: VarBuilder<'_>, use_kv_cache: bool) -> anyhow::Result<Self> {
         let vb_m = vb.pp("transformer");
-        let wte = embedding(cfg.vocab_size, cfg.n_embd, vb_m.pp("wte")).await?;
+        let wte = embedding_gpt2(cfg.vocab_size, cfg.n_embd, vb_m.pp("wte")).await?;
 
         // Initialize positional encoding based on the type
         let (wpe, sinusoidal) = match cfg.positional_encoding {
             PositionalEncoding::Learned => (
-                Some(embedding(cfg.block_size, cfg.n_embd, vb_m.pp("wpe")).await?),
+                Some(embedding_gpt2(cfg.block_size, cfg.n_embd, vb_m.pp("wpe")).await?),
                 None,
             ),
             PositionalEncoding::Sinusoidal => (
