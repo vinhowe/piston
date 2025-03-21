@@ -1,4 +1,5 @@
 use crate::Module;
+use maybe_async::maybe_async;
 use piston::{shape, Shape, Tensor};
 use piston_macros::scoped_module;
 
@@ -37,7 +38,7 @@ impl Module for Embedding {
     }
 }
 
-#[cfg(target_arch = "wasm32")]
+#[maybe_async]
 pub async fn embedding(
     in_size: usize,
     out_size: usize,
@@ -53,23 +54,6 @@ pub async fn embedding(
             },
         )
         .await?;
-    Ok(Embedding::new(embeddings, out_size))
-}
-
-#[cfg(not(target_arch = "wasm32"))]
-pub fn embedding(
-    in_size: usize,
-    out_size: usize,
-    vb: crate::VarBuilder,
-) -> anyhow::Result<Embedding> {
-    let embeddings = vb.get_with_hints(
-        shape![in_size, out_size],
-        "weight",
-        crate::Init::Randn {
-            mean: 0.,
-            stdev: 1.,
-        },
-    )?;
     Ok(Embedding::new(embeddings, out_size))
 }
 
