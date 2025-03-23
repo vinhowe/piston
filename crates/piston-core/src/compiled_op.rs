@@ -47,7 +47,7 @@ pub struct CompiledOp {
     // likely insert casts between tensor operations.
     pub tensor_id: Option<TensorId>,
     #[cfg(not(feature = "debug"))]
-    pub debug_buffer: Option<Arc<wgpu::Buffer>>,
+    pub debug_buffer: Option<PooledGPUBuffer>,
     #[cfg(feature = "debug")]
     pub debug_buffer: Option<(TensorId, Arc<wgpu::Buffer>)>,
     #[cfg(feature = "debug")]

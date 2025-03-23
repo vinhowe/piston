@@ -766,6 +766,7 @@ pub trait GPUOperation: Operation {
         &self,
         gpu_compile_key: &ComputeCompileKey<'a>,
         device: &'a WgpuDevice,
+        // TODO(vinhowe): We should remove this
         debug: bool,
     ) -> Result<CompiledOp, OperationError> {
         let ComputeCompileKey {

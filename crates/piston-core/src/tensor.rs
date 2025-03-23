@@ -5,6 +5,8 @@ use crate::{
     InvariantError, LazyOp, Operation, OperationError, RVec, RawCPUBuffer, ScopePusher, Shape,
     Storage, Stride, TensorDType, TensorId,
 };
+#[cfg(not(feature = "debug"))]
+use crate::{BufferDescriptor, BufferUsagesExt, GPUBuffer};
 use anyhow::Result;
 use bitvec::prelude::*;
 use derive_new::new;
@@ -280,6 +282,8 @@ pub struct Inner {
     view: StorageView,
     requires_grad: bool,
     storage: ManuallyDrop<Arc<RwLock<Option<Storage>>>>,
+    #[cfg(not(feature = "debug"))]
+    debug_tensor: Arc<RwLock<Option<Tensor>>>,
 }
 
 impl AsRef<Inner> for Inner {
@@ -305,6 +309,8 @@ impl Inner {
             device,
             storage: ManuallyDrop::new(Arc::new(RwLock::new(storage))),
             requires_grad,
+            #[cfg(not(feature = "debug"))]
+            debug_tensor: Arc::new(RwLock::new(None)),
         }
     }
 
@@ -324,6 +330,8 @@ impl Inner {
             device,
             storage: ManuallyDrop::new(storage),
             requires_grad,
+            #[cfg(not(feature = "debug"))]
+            debug_tensor: Arc::new(RwLock::new(None)),
         }
     }
 }
@@ -1940,6 +1948,42 @@ impl Tensor {
             "Cannot convert non-CPU tensor to numpy array"
         );
         PyArray::from_owned_array(*py, self.deep_clone().into_ndarray::<T>())
+    }
+
+    pub(crate) fn debug_tensor(&self) -> Option<Tensor> {
+        self.debug_tensor.read().as_ref().cloned()
+    }
+
+    #[cfg(not(feature = "debug"))]
+    pub fn get_or_create_debug_tensor(&self) -> Result<Tensor, TensorError> {
+        if self.debug_tensor.read().is_some() {
+            return Ok(self.debug_tensor.read().as_ref().unwrap().clone());
+        }
+
+        let gpu_device = self.device().try_gpu()?;
+        let buffer = gpu_device.get_or_create_buffer(
+            &BufferDescriptor {
+                size: self.num_bytes() as _,
+                // If we want the values in CPU land, we'll eventually have to
+                // copy again to a buffer with a usage of COPY_DST | MAP_READ.
+                usage: wgpu::BufferUsages::standard(),
+                mapped_at_creation: false,
+            },
+            false,
+        )?;
+        let tensor = Tensor::new_impl(
+            LazyOp::Const,
+            self.view.clone(),
+            Some(Storage::GPU(GPUBuffer {
+                inner: buffer,
+                alignment: self.dtype().size_of(),
+                cpu_size: Some(self.num_bytes()),
+            })),
+            Device::GPU(gpu_device.clone()),
+            false,
+        );
+        *self.debug_tensor.write() = Some(tensor.clone());
+        Ok(tensor)
     }
 }
 

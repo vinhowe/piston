@@ -1,9 +1,4 @@
-use std::sync::Arc;
-
-use crate::{
-    wgpu_buffer_to_cpu_buffer, DType, ExportedTensorProfilingEntry, HashMap, Shape, Tensor,
-    TensorId,
-};
+use crate::{DType, ExportedTensorProfilingEntry, HashMap, Shape, Tensor, TensorId};
 use derive_new::new;
 #[cfg(target_arch = "wasm32")]
 use half::f16;
@@ -12,7 +7,7 @@ use wasm_bindgen::prelude::*;
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen_futures::js_sys;
 
-use super::WgpuDevice;
+use super::{PooledGPUBuffer, WgpuDevice};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DebugSelection {
@@ -95,7 +90,7 @@ pub struct TensorLogStep {
     #[cfg_attr(target_arch = "wasm32", wasm_bindgen(skip))]
     pub srcs: Vec<TensorId>,
     #[cfg_attr(target_arch = "wasm32", wasm_bindgen(skip))]
-    pub gpu_buf: Option<Arc<wgpu::Buffer>>,
+    pub gpu_buf: Option<PooledGPUBuffer>,
     pub kernel_name: String,
     pub scope: Option<String>,
     #[cfg_attr(target_arch = "wasm32", wasm_bindgen(skip))]
@@ -193,7 +188,7 @@ impl StepLog {
     pub fn from_post_order(
         post_order: Vec<&Tensor>,
         profiling_entries: Option<HashMap<TensorId, ExportedTensorProfilingEntry>>,
-        mut gpu_bufs: Option<HashMap<TensorId, wgpu::Buffer>>,
+        mut gpu_bufs: Option<HashMap<TensorId, PooledGPUBuffer>>,
         hash: u64,
         cached: bool,
         using_shared_buffers: bool,
@@ -202,15 +197,11 @@ impl StepLog {
         let tensors = post_order
             .iter()
             .map(|t| {
-                let gpu_buf = gpu_bufs
-                    .as_mut()
-                    .and_then(|bufs| bufs.remove(&t.id()).map(Arc::new));
+                let gpu_buf = gpu_bufs.as_mut().and_then(|bufs| bufs.remove(&t.id()));
                 TensorLogStep::new(
                     t.id(),
                     t.op().srcs().iter().map(|tensor| tensor.id()).collect(),
-                    gpu_bufs
-                        .as_mut()
-                        .and_then(|bufs| bufs.remove(&t.id()).map(Arc::new)),
+                    gpu_buf.as_ref().cloned(),
                     t.op().name().to_string(),
                     t.scope().as_ref().map(|s| s.to_string()),
                     t.dtype(),
