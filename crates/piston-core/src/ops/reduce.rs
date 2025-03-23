@@ -701,9 +701,9 @@ def reduce_backward(a):
         let a_var = Parameter::from_tensor(&a_gpu)?;
         let b_gpu = a_var.as_tensor().clone().sum_all()?;
 
-        let grads = b_gpu.backward()?;
+        b_gpu.backward()?;
         gpu_device.mark_step()?;
-        let a_grad = grads.get(a_var.as_tensor()).unwrap().clone();
+        let a_grad = a_var.as_tensor().grad().unwrap().clone();
 
         let ours = a_grad.to(&Device::CPU)?;
         println!("ours = {:?}", ours);

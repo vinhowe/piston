@@ -282,6 +282,7 @@ pub struct Inner {
     view: StorageView,
     requires_grad: bool,
     storage: ManuallyDrop<Arc<RwLock<Option<Storage>>>>,
+    grad: Arc<RwLock<Option<Tensor>>>,
     #[cfg(not(feature = "debug"))]
     debug_tensor: Arc<RwLock<Option<Tensor>>>,
 }
@@ -308,6 +309,7 @@ impl Inner {
             op,
             device,
             storage: ManuallyDrop::new(Arc::new(RwLock::new(storage))),
+            grad: Arc::new(RwLock::new(None)),
             requires_grad,
             #[cfg(not(feature = "debug"))]
             debug_tensor: Arc::new(RwLock::new(None)),
@@ -329,6 +331,7 @@ impl Inner {
             op,
             device,
             storage: ManuallyDrop::new(storage),
+            grad: Arc::new(RwLock::new(None)),
             requires_grad,
             #[cfg(not(feature = "debug"))]
             debug_tensor: Arc::new(RwLock::new(None)),
@@ -2027,6 +2030,18 @@ impl Tensor {
         );
         *self.debug_tensor.write() = Some(tensor.clone());
         Ok(tensor)
+    }
+
+    pub fn grad(&self) -> Option<Tensor> {
+        self.grad.read().as_ref().cloned()
+    }
+
+    pub fn set_grad(&self, grad: Tensor) {
+        *self.grad.write() = Some(grad);
+    }
+
+    pub fn take_grad(&self) -> Option<Tensor> {
+        self.grad.write().take()
     }
 }
 

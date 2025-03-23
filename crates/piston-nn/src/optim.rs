@@ -1,6 +1,6 @@
 use half::{bf16, f16};
 use maybe_async::maybe_async;
-use piston::{DType, Device, GradStore, Parameter, ScopePusher};
+use piston::{DType, Device, Parameter, ScopePusher};
 
 #[maybe_async(AFIT)]
 #[cfg_attr(target_arch = "wasm32", async_trait::async_trait)]
@@ -9,7 +9,7 @@ pub trait Optimizer: Sized {
 
     fn new(vars: Vec<(Option<String>, Parameter)>, config: Self::Config) -> anyhow::Result<Self>;
 
-    async fn step(&mut self, grads: &piston::GradStore, device: &Device) -> anyhow::Result<()>;
+    async fn step(&mut self, device: &Device) -> anyhow::Result<()>;
 
     fn learning_rate(&self) -> f64;
 
@@ -19,12 +19,8 @@ pub trait Optimizer: Sized {
         Self::new(vec![], config)
     }
 
-    async fn backward_step(
-        &mut self,
-        grads: &mut GradStore,
-        device: &Device,
-    ) -> anyhow::Result<()> {
-        self.step(grads, device).await
+    async fn backward_step(&mut self, device: &Device) -> anyhow::Result<()> {
+        self.step(device).await
     }
 
     fn from_slice(vars: &[&Parameter], config: Self::Config) -> anyhow::Result<Self> {
@@ -63,13 +59,13 @@ impl Optimizer for SGD {
         self.learning_rate = lr;
     }
 
-    async fn step(&mut self, grads: &piston::GradStore, device: &Device) -> anyhow::Result<()> {
+    async fn step(&mut self, device: &Device) -> anyhow::Result<()> {
         let mut updates = Vec::new();
         {
             let _scope_guard = ScopePusher::new("optim:SGD");
             for (_, var) in &self.vars {
                 let _scope_guard = optim_var_scope_guard(var);
-                if let Some(grad) = grads.get(var.as_tensor()) {
+                if let Some(grad) = var.as_tensor().grad() {
                     let update =
                         (var.as_tensor().clone() - (grad.clone() * self.learning_rate as f32)?)?;
                     updates.push(var.set(update));
@@ -172,7 +168,7 @@ impl Optimizer for AdamW {
         self.params.lr = lr
     }
 
-    async fn step(&mut self, grads: &piston::GradStore, device: &Device) -> anyhow::Result<()> {
+    async fn step(&mut self, device: &Device) -> anyhow::Result<()> {
         // This makes sure we keep references to the copy tensors.
         let mut updates = Vec::new();
         {
@@ -196,7 +192,7 @@ impl Optimizer for AdamW {
                 // println!("Theta op: {:?}", theta.as_tensor().op());
                 // println!("Theta id: {:?}", theta.as_tensor().id());
 
-                if let Some(g) = grads.get(theta.as_tensor()) {
+                if let Some(g) = theta.as_tensor().grad() {
                     let next_m = ((m.as_tensor().clone() * beta1 as f32)?
                         + (g.clone() * (1.0 - beta1 as f32))?)?;
                     let next_v = ((v.as_tensor().clone() * beta2 as f32)?

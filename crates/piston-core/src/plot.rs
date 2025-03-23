@@ -1,7 +1,5 @@
 #![cfg(feature = "plotting")]
-use crate::{
-    CPUBuffer, DeviceStorage, GpuCompileKey, GradStore, HashSet, LazyOp, Tensor, TensorId,
-};
+use crate::{CPUBuffer, DeviceStorage, GpuCompileKey, HashSet, LazyOp, Tensor, TensorId};
 use derive_new::new;
 use std::{
     borrow::Cow,
@@ -202,47 +200,6 @@ impl RenderableGraph {
         Ok(g)
     }
 
-    fn build_backward_graph(store: &GradStore) -> anyhow::Result<RenderableGraph> {
-        log::warn!("Rendering plot");
-        let mut g = RenderableGraph::new();
-
-        let mut graph_index_map = HashMap::new();
-        for (id, grad) in store.iter() {
-            let execution_order = grad.execution_order();
-            for t in execution_order.iter() {
-                if graph_index_map.contains_key(&t.id()) {
-                    continue;
-                }
-                let renderable_node = g.create_node(t.id(), Cow::Owned(t.op().name().to_string()));
-                let can_inplace = t.op().supports_inplace() && t.strong_count() == 2;
-                match t.op() {
-                    crate::LazyOp::Const => renderable_node.style_as_const(),
-                    _ => renderable_node.style_as_op(),
-                }
-                if can_inplace {
-                    renderable_node.style_as_inplace()
-                }
-
-                let node_graph_id = renderable_node.plot_id;
-                graph_index_map.insert(t.id(), renderable_node.plot_id);
-                t.op().srcs().iter().for_each(|src_t| {
-                    if let Some(src_id) = graph_index_map.get(&src_t.id()) {
-                        let e = g.create_edge(Cow::Owned(src_t.plot_fmt()), *src_id, node_graph_id);
-                    } else {
-                        panic!("Source tensor not found in graph index map");
-                    }
-                });
-            }
-            g.create_node(
-                grad.id(),
-                Cow::Owned(format!("{}\nGrad for #{:?}", grad.op().name(), *id)),
-            )
-            .style_as_grad();
-        }
-
-        Ok(g)
-    }
-
     fn plot_to_file(self, fname: impl AsRef<Path>) -> anyhow::Result<()> {
         let mut d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         d.push(fname.as_ref());
@@ -350,8 +307,4 @@ pub fn render_to_file(
         RenderableGraph::build_graph(post_order, outputs, strong_counts_inplace, cpu_bufs)?,
         fname,
     )
-}
-
-pub fn render_backward_to_file(g: &GradStore, fname: impl AsRef<Path>) -> anyhow::Result<()> {
-    RenderableGraph::plot_to_file(RenderableGraph::build_backward_graph(&g)?, fname)
 }

@@ -32,8 +32,8 @@ fn run_linear_regression<O: Optimizer>(optimizer: OptimizerFactory<O>) -> anyhow
     for _step in 0..100 {
         let ys = lin.schedule(sample_xs.clone())?;
         let loss = ys.sub(sample_ys.clone())?.square()?.sum(0)?;
-        let mut grads = loss.backward()?;
-        opt.backward_step(&mut grads, &device)?;
+        loss.backward()?;
+        opt.backward_step(&device)?;
         // device.try_gpu().unwrap().mark_step().unwrap();
         let b = b.as_tensor().to(&Device::CPU)?;
         let w = w.as_tensor().to(&Device::CPU)?;
@@ -87,8 +87,8 @@ fn gradient_descent(optimizer: OptimizerFactory<impl Optimizer>) -> anyhow::Resu
         let loss = w.as_tensor().clone().sub(target.clone())?.square()?;
 
         // Backpropagate
-        let mut grads = loss.backward()?;
-        opt.backward_step(&mut grads, &device)?;
+        loss.backward()?;
+        opt.backward_step(&device)?;
 
         // Print debug info
         let current_w = w.as_tensor().to(&Device::CPU)?.to_vec::<f32>()?;
@@ -163,15 +163,17 @@ fn test_intermediate() -> anyhow::Result<()> {
     // Print loss
     println!("loss: {:?}", loss.to(&Device::CPU)?.to_vec::<f32>()?);
 
-    let gen_grads = loss.backward()?;
-    for (i, (_id, g)) in gen_grads.iter().enumerate() {
-        let g_clone = g.clone();
-        println!(
-            "gen_grads[{}]: (op {:?}) {:?}",
-            i,
-            g_clone.clone().op().name(),
-            g_clone.to(&Device::CPU)?.to_vec::<f32>()?
-        );
-    }
+    loss.backward()?;
+    // TODO(vinhowe): we'd need to make this a concern of the optimizer or otherwise extract the
+    // list of variables. Should be a simple pytorchish interface for this.
+    // for (i, (_id, g)) in gen_grads.iter().enumerate() {
+    //     let g_clone = g.clone();
+    //     println!(
+    //         "gen_grads[{}]: (op {:?}) {:?}",
+    //         i,
+    //         g_clone.clone().op().name(),
+    //         g_clone.to(&Device::CPU)?.to_vec::<f32>()?
+    //     );
+    // }
     Ok(())
 }
