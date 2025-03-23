@@ -366,14 +366,7 @@ mod tests {
             ..Default::default()
         };
 
-        let mut opt = AdamW::new(
-            varmap
-                .all_labeled_vars()
-                .iter()
-                .map(|(label, var)| (Some(label.to_owned()), var.to_owned()))
-                .collect::<Vec<(Option<String>, Parameter)>>(),
-            params,
-        )?;
+        let mut opt = AdamW::new(varmap.all_vars(), params)?;
 
         const BATCH_SIZE: usize = 1;
 
@@ -505,14 +498,7 @@ mod tests {
             ..Default::default()
         };
 
-        let mut opt = AdamW::new(
-            varmap
-                .all_labeled_vars()
-                .iter()
-                .map(|(label, var)| (Some(label.to_owned()), var.to_owned()))
-                .collect::<Vec<(Option<String>, Parameter)>>(),
-            params,
-        )?;
+        let mut opt = AdamW::new(varmap.all_vars(), params)?;
 
         for (batch_index, batch) in batch_iter.enumerate() {
             let (input, tgt) = batch?;

@@ -4,7 +4,7 @@ use piston::{
 };
 use piston_nn::{AdamW, Linear, Module, Optimizer, ParamsAdamW, SGD};
 
-type OptimizerFactory<O> = fn(Vec<(Option<String>, Parameter)>) -> anyhow::Result<O>;
+type OptimizerFactory<O> = fn(Vec<Parameter>) -> anyhow::Result<O>;
 
 fn run_linear_regression<O: Optimizer>(optimizer: OptimizerFactory<O>) -> anyhow::Result<()> {
     let _ = env_logger::builder().is_test(true).try_init();
@@ -53,7 +53,7 @@ fn run_linear_regression<O: Optimizer>(optimizer: OptimizerFactory<O>) -> anyhow
 
 #[test]
 fn sgd_linear_regression() -> anyhow::Result<()> {
-    fn optimizer(vars: Vec<(Option<String>, Parameter)>) -> anyhow::Result<SGD> {
+    fn optimizer(vars: Vec<Parameter>) -> anyhow::Result<SGD> {
         SGD::new(vars, 0.001)
     }
     run_linear_regression(optimizer)
@@ -61,7 +61,7 @@ fn sgd_linear_regression() -> anyhow::Result<()> {
 
 #[test]
 fn adamw_linear_regression() -> anyhow::Result<()> {
-    fn optimizer(vars: Vec<(Option<String>, Parameter)>) -> anyhow::Result<AdamW> {
+    fn optimizer(vars: Vec<Parameter>) -> anyhow::Result<AdamW> {
         let params = ParamsAdamW {
             lr: 0.5,
             ..Default::default()
@@ -80,7 +80,7 @@ fn gradient_descent(optimizer: OptimizerFactory<impl Optimizer>) -> anyhow::Resu
     // Initialize variable at 0.0 (shape is scalar)
     let w = Parameter::from_tensor(&Tensor::from_data(vec![0.0], 1, Device::CPU).to(&device)?)?;
 
-    let mut opt = optimizer(vec![(Some("w".into()), w.clone())])?;
+    let mut opt = optimizer(vec![w.clone()])?;
 
     for step in 0..100 {
         // Compute loss = (w - target)^2
@@ -116,7 +116,7 @@ fn gradient_descent(optimizer: OptimizerFactory<impl Optimizer>) -> anyhow::Resu
 
 #[test]
 fn sgd_gradient_descent() -> anyhow::Result<()> {
-    fn optimizer(vars: Vec<(Option<String>, Parameter)>) -> anyhow::Result<SGD> {
+    fn optimizer(vars: Vec<Parameter>) -> anyhow::Result<SGD> {
         SGD::new(vars, 0.1)
     }
     gradient_descent(optimizer)
@@ -124,7 +124,7 @@ fn sgd_gradient_descent() -> anyhow::Result<()> {
 
 #[test]
 fn adamw_gradient_descent() -> anyhow::Result<()> {
-    fn optimizer(vars: Vec<(Option<String>, Parameter)>) -> anyhow::Result<AdamW> {
+    fn optimizer(vars: Vec<Parameter>) -> anyhow::Result<AdamW> {
         let params = ParamsAdamW {
             lr: 0.2,
             ..Default::default()
