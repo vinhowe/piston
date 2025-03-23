@@ -7,7 +7,7 @@ pub enum ModuleMode {
 }
 
 thread_local! {
-    static CURRENT_MODE: RefCell<ModuleMode> = RefCell::new(ModuleMode::Train);
+    static CURRENT_MODE: RefCell<ModuleMode> = const { RefCell::new(ModuleMode::Train) };
 }
 
 // Functions to get/set the mode

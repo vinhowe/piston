@@ -20,7 +20,8 @@ pub async fn generate(
 
     // Preserve original cache setting and enable kv-cache for generation.
     let use_kv_cache = model.cache_mut().use_kv_cache();
-    model.cache_mut().set_use_kv_cache(true);
+    // TODO: We'll replace this with training mode in the JS api.
+    model.cache_mut().set_use_kv_cache(true)?;
 
     // This vector will accumulate the logits (as ndarray on CPU) from each model call.
     let mut all_logits_ndarray: Vec<Array3<f32>> = Vec::new();
@@ -80,7 +81,6 @@ pub async fn generate(
             .await
             .map_err(|e| e.to_string())
             .unwrap();
-        let attn_probs_shape = attn_probs_cpu.shape().to_vec();
         let attn_probs_data = attn_probs_cpu
             .to_vec::<f32>()
             .await
@@ -113,6 +113,6 @@ pub async fn generate(
 
     // Clean up: reset model state and restore the original kv-cache setting.
     model.reset();
-    model.cache_mut().set_use_kv_cache(use_kv_cache);
+    model.cache_mut().set_use_kv_cache(use_kv_cache)?;
     Ok(all_logits_ndarray)
 }

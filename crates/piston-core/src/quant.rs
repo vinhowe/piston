@@ -44,7 +44,7 @@ pub fn quantize_inner<Q: Quantized>(matrix: &[Q::FP], elements: usize) -> Vec<u3
         quantized_matrix[i / Q::PACK_SIZE] = packed_value as u32;
     }
 
-    quantized_matrix.append(&mut unsafe { std::mem::transmute(d_matrix) });
+    quantized_matrix.append(&mut unsafe { std::mem::transmute::<Vec<Q::FP>, Vec<u32>>(d_matrix) });
 
     quantized_matrix
 }
@@ -54,47 +54,39 @@ pub async fn quantize<Q: Quantized>(tensor: &Tensor) -> Tensor {
     match (tensor.dtype(), Q::dtype()) {
         (DType::F32, DType::Q8_0F(_)) => {
             let matrix = tensor.to_vec::<Q::FP>().await.unwrap();
-            unsafe {
-                Tensor::from_quantized(
-                    quantize_inner::<Q>(&matrix, tensor.shape().numel()),
-                    DType::Q8_0F(Q8_0F::default()),
-                    tensor.shape().clone(),
-                    Device::CPU,
-                )
-            }
+            Tensor::from_quantized(
+                quantize_inner::<Q>(&matrix, tensor.shape().numel()),
+                DType::Q8_0F(Q8_0F::default()),
+                tensor.shape().clone(),
+                Device::CPU,
+            )
         }
         (DType::F32, DType::Q4_KF(_)) => {
             let matrix = tensor.to_vec::<Q::FP>().await.unwrap();
-            unsafe {
-                Tensor::from_quantized(
-                    quantize_inner::<Q>(&matrix, tensor.shape().numel()),
-                    DType::Q4_KF(Q4_KF::default()),
-                    tensor.shape().clone(),
-                    Device::CPU,
-                )
-            }
+            Tensor::from_quantized(
+                quantize_inner::<Q>(&matrix, tensor.shape().numel()),
+                DType::Q4_KF(Q4_KF::default()),
+                tensor.shape().clone(),
+                Device::CPU,
+            )
         }
         (DType::F16, DType::Q8_0H(_)) => {
             let matrix = tensor.to_vec::<Q::FP>().await.unwrap();
-            unsafe {
-                Tensor::from_quantized(
-                    quantize_inner::<Q>(&matrix, tensor.shape().numel()),
-                    DType::Q8_0H(Q8_0H::default()),
-                    tensor.shape().clone(),
-                    Device::CPU,
-                )
-            }
+            Tensor::from_quantized(
+                quantize_inner::<Q>(&matrix, tensor.shape().numel()),
+                DType::Q8_0H(Q8_0H::default()),
+                tensor.shape().clone(),
+                Device::CPU,
+            )
         }
         (DType::F16, DType::Q4_KH(_)) => {
             let matrix = tensor.to_vec::<Q::FP>().await.unwrap();
-            unsafe {
-                Tensor::from_quantized(
-                    quantize_inner::<Q>(&matrix, tensor.shape().numel()),
-                    DType::Q4_KH(Q4_KH::default()),
-                    tensor.shape().clone(),
-                    Device::CPU,
-                )
-            }
+            Tensor::from_quantized(
+                quantize_inner::<Q>(&matrix, tensor.shape().numel()),
+                DType::Q4_KH(Q4_KH::default()),
+                tensor.shape().clone(),
+                Device::CPU,
+            )
         }
         (dtype, q_dtype) => panic!("Unsupported dtype combination {dtype}, {q_dtype}"),
     }
@@ -136,28 +128,28 @@ pub fn dequantize(quantized: Tensor) -> Tensor {
         DType::Q8_0F(_) => {
             let elements = quantized.shape().numel();
             let original_shape = quantized.shape().clone();
-            let raw_bytes = unsafe { quantized.into_bytes().unwrap() };
+            let raw_bytes = quantized.into_bytes().unwrap();
             let dequantized = dequantize_inner::<Q8_0F>(&raw_bytes, elements);
             Tensor::from_data(&dequantized, original_shape, Device::CPU)
         }
         DType::Q4_KF(_) => {
             let elements = quantized.shape().numel();
             let original_shape = quantized.shape().clone();
-            let raw_bytes = unsafe { quantized.into_bytes().unwrap() };
+            let raw_bytes = quantized.into_bytes().unwrap();
             let dequantized = dequantize_inner::<Q4_KF>(&raw_bytes, elements);
             Tensor::from_data(&dequantized, original_shape, Device::CPU)
         }
         DType::Q8_0H(_) => {
             let elements = quantized.shape().numel();
             let original_shape = quantized.shape().clone();
-            let raw_bytes = unsafe { quantized.into_bytes().unwrap() };
+            let raw_bytes = quantized.into_bytes().unwrap();
             let dequantized = dequantize_inner::<Q8_0H>(&raw_bytes, elements);
             Tensor::from_data(&dequantized, original_shape, Device::CPU)
         }
         DType::Q4_KH(_) => {
             let elements = quantized.shape().numel();
             let original_shape = quantized.shape().clone();
-            let raw_bytes = unsafe { quantized.into_bytes().unwrap() };
+            let raw_bytes = quantized.into_bytes().unwrap();
             let dequantized = dequantize_inner::<Q4_KH>(&raw_bytes, elements);
             Tensor::from_data(&dequantized, original_shape, Device::CPU)
         }

@@ -78,7 +78,7 @@ impl Optimizer for SGD {
         }
 
         if let Ok(gpu_device) = device.try_gpu() {
-            gpu_device.mark_step().await;
+            gpu_device.mark_step().await?;
         }
 
         Ok(())

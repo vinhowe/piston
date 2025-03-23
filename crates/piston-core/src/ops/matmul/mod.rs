@@ -716,7 +716,7 @@ impl GPUOperation for Matmul {
     type KernelEnum = MatmulKernels;
 
     fn select_kernel(&self) -> Self::KernelEnum {
-        if !self.bias.as_ref().map_or(true, |b| b.shape().is_vector()) {
+        if !self.bias.as_ref().is_none_or(|b| b.shape().is_vector()) {
             panic!("Bias must be a vector: {:?}", self.bias);
         }
 

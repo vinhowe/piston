@@ -140,8 +140,8 @@ impl Executable {
                 GroupedOp::Compute(mut ops) => {
                     let mut cpass = None;
 
-                    let mut ops_iter = ops.iter_mut().peekable();
-                    while let Some(op) = ops_iter.next() {
+                    let ops_iter = ops.iter_mut().peekable();
+                    for op in ops_iter {
                         let timestamp_writes = create_timestamp_writes(&mut profiler, op);
 
                         // Existing compute pass; shared
@@ -213,10 +213,9 @@ impl Executable {
                                 result_t.num_bytes() as _,
                             );
 
-                            gpu_bufs.get_or_insert_default().insert(
-                                op.tensor_id.expect("Tensor id is not set"),
-                                Arc::try_unwrap(debug_buffer).unwrap(),
-                            );
+                            gpu_bufs
+                                .get_or_insert_default()
+                                .insert(op.tensor_id.expect("Tensor id is not set"), debug_buffer);
                         }
                     }
                 }
@@ -248,11 +247,7 @@ impl Executable {
             .queue()
             .submit(Some(encoder.take().unwrap().finish()));
 
-        let profiling_entries = if let Some(profiler) = profiler {
-            Some(profiler.read_timestamps().await)
-        } else {
-            None
-        };
+        let profiling_entries = profiler.map(|profiler| profiler.read_timestamps());
 
         Ok((
             index,
@@ -645,15 +640,9 @@ where
         match first {
             Compiled::Compute(op) => {
                 let mut ops = vec![op];
-                loop {
-                    match self.iter.peek() {
-                        // Group Compute operations
-                        Some(Compiled::Compute(_)) => {
-                            if let Some(Compiled::Compute(next_op)) = self.iter.next() {
-                                ops.push(next_op);
-                            }
-                        }
-                        _ => break,
+                while let Some(Compiled::Compute(_)) = self.iter.peek() {
+                    if let Some(Compiled::Compute(next_op)) = self.iter.next() {
+                        ops.push(next_op);
                     }
                 }
                 Some(GroupedOp::Compute(ops))

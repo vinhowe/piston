@@ -181,7 +181,6 @@ impl OpGuards for Reduce {
     }
 
     fn check_dtypes(&self) {
-        let input = &self.input;
         assert!(self.reduce_dims.len() <= 4);
     }
 }
