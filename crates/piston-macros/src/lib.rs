@@ -28,5 +28,5 @@ pub fn derive_ir_fields(input: TokenStream) -> TokenStream {
 /// Automatically adds scoping to Module implementations
 #[proc_macro_attribute]
 pub fn scoped_module(_attr: TokenStream, item: TokenStream) -> TokenStream {
-    scoped_module::scoped_module(item).into()
+    scoped_module::scoped_module(item)
 }
