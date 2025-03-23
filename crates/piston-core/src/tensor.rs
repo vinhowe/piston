@@ -713,6 +713,49 @@ impl Tensor {
         self.sum(dims)
     }
 
+    fn mean_impl(self, mean_dims: &[usize], keepdim: bool) -> Result<Self> {
+        let reduced_dim: usize = mean_dims.iter().map(|i| self.shape()[*i]).product();
+        let scale = 1f32 / (reduced_dim as f32);
+        self.sum_impl(mean_dims, keepdim)? * scale
+    }
+
+    pub fn mean_keepdim<D: Dims>(self, dim: D) -> Result<Self> {
+        let dim = dim.to_indexes(self.shape(), "mean_keepdim")?;
+        self.mean_impl(&dim, true)
+    }
+
+    pub fn mean<D: Dims>(self, dim: D) -> Result<Self> {
+        let dim = dim.to_indexes(self.shape(), "mean")?;
+        self.mean_impl(&dim, false)
+    }
+
+    pub fn mean_all(self) -> Result<Self> {
+        let dims: RVec<_> = (0..self.rank()).collect();
+        self.mean_impl(&dims, false)
+    }
+
+    fn var_impl(self, var_dims: &[usize], keepdim: bool) -> Result<Self> {
+        let n: usize = var_dims.iter().map(|&i| self.shape()[i]).product();
+        let mean = self.clone().mean_keepdim(var_dims)?;
+        let squares = self.sub(mean)?.square()?;
+        squares.sum_impl(var_dims, keepdim)? / (n as f32 - 1.0)
+    }
+
+    pub fn var_keepdim<D: Dims>(self, dim: D) -> Result<Self> {
+        let dim = dim.to_indexes(self.shape(), "var_keepdim")?;
+        self.var_impl(&dim, true)
+    }
+
+    pub fn var<D: Dims>(self, dim: D) -> Result<Self> {
+        let dim = dim.to_indexes(self.shape(), "var")?;
+        self.var_impl(&dim, false)
+    }
+
+    pub fn var_all(self) -> Result<Self> {
+        let dims: RVec<_> = (0..self.rank()).collect();
+        self.var(dims)
+    }
+
     pub fn max_keepdim<D: Dim>(self, dim: D) -> Result<Self> {
         let dim = dim.to_index(self.shape(), "max_keepdim")?;
         self.reduce_impl(dim, true, ReduceOp::Max)
