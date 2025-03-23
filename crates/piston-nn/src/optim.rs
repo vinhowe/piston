@@ -7,7 +7,7 @@ use piston::{DType, Device, Parameter, ScopePusher};
 pub trait Optimizer: Sized {
     type Config: Sized;
 
-    fn new(vars: Vec<(Option<String>, Parameter)>, config: Self::Config) -> anyhow::Result<Self>;
+    fn new(vars: Vec<Parameter>, config: Self::Config) -> anyhow::Result<Self>;
 
     async fn step(&mut self, device: &Device) -> anyhow::Result<()>;
 
@@ -24,14 +24,13 @@ pub trait Optimizer: Sized {
     }
 
     fn from_slice(vars: &[&Parameter], config: Self::Config) -> anyhow::Result<Self> {
-        let vars: Vec<_> = vars.iter().map(|&v| (None, v.clone())).collect();
-        Self::new(vars, config)
+        Self::new(vars.iter().cloned().cloned().collect(), config)
     }
 }
 
 #[derive(Debug)]
 pub struct SGD {
-    vars: Vec<(Option<String>, Parameter)>,
+    vars: Vec<Parameter>,
     learning_rate: f64,
 }
 
@@ -40,10 +39,10 @@ pub struct SGD {
 impl Optimizer for SGD {
     type Config = f64;
 
-    fn new(vars: Vec<(Option<String>, Parameter)>, learning_rate: f64) -> anyhow::Result<Self> {
+    fn new(vars: Vec<Parameter>, learning_rate: f64) -> anyhow::Result<Self> {
         let vars = vars
             .into_iter()
-            .filter(|(_, v)| v.as_tensor().dtype().is_float())
+            .filter(|v| v.as_tensor().dtype().is_float())
             .collect();
         Ok(Self {
             vars,
@@ -63,7 +62,7 @@ impl Optimizer for SGD {
         let mut updates = Vec::new();
         {
             let _scope_guard = ScopePusher::new("optim:SGD");
-            for (_, var) in &self.vars {
+            for var in &self.vars {
                 let _scope_guard = optim_var_scope_guard(var);
                 if let Some(grad) = var.as_tensor().grad() {
                     let update =
@@ -107,7 +106,6 @@ struct VarAdamW {
     var: Parameter,
     first_moment: Parameter,
     second_moment: Parameter,
-    label: Option<String>,
 }
 
 #[derive(Debug)]
@@ -122,11 +120,11 @@ pub struct AdamW {
 impl Optimizer for AdamW {
     type Config = ParamsAdamW;
 
-    fn new(vars: Vec<(Option<String>, Parameter)>, params: ParamsAdamW) -> anyhow::Result<Self> {
+    fn new(vars: Vec<Parameter>, params: ParamsAdamW) -> anyhow::Result<Self> {
         let vars = vars
             .into_iter()
-            .filter(|(_, var)| var.as_tensor().dtype().is_float())
-            .map(|(label, var)| {
+            .filter(|var| var.as_tensor().dtype().is_float())
+            .map(|var| {
                 let var_t = var.as_tensor();
                 let dtype = var_t.dtype();
                 let shape = var_t.shape();
@@ -150,7 +148,6 @@ impl Optimizer for AdamW {
                     var,
                     first_moment,
                     second_moment,
-                    label,
                 })
             })
             .collect::<anyhow::Result<Vec<_>>>()?;
@@ -219,10 +216,7 @@ impl Optimizer for AdamW {
 }
 
 impl AdamW {
-    pub fn new_lr(
-        vars: Vec<(Option<String>, Parameter)>,
-        learning_rate: f64,
-    ) -> anyhow::Result<Self> {
+    pub fn new_lr(vars: Vec<Parameter>, learning_rate: f64) -> anyhow::Result<Self> {
         let params = ParamsAdamW {
             lr: learning_rate,
             ..ParamsAdamW::default()

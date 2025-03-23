@@ -36,14 +36,6 @@ impl VarMap {
         tensor_data.values().map(|c| c.clone()).collect::<Vec<_>>()
     }
 
-    pub fn all_labeled_vars(&self) -> Vec<(String, Parameter)> {
-        let tensor_data = self.data.lock().unwrap();
-        tensor_data
-            .iter()
-            .map(|(k, v)| (k.clone(), v.clone()))
-            .collect()
-    }
-
     /// Save the map in the safetensors format.
     #[cfg(not(target_arch = "wasm32"))]
     pub fn save<P: AsRef<std::path::Path>>(&self, path: P) -> anyhow::Result<()> {

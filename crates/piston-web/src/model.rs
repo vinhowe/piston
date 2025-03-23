@@ -212,7 +212,7 @@ pub enum OptimizerEnum {
 impl Optimizer for OptimizerEnum {
     type Config = OptimizerConfigEnum;
 
-    fn new(vars: Vec<(Option<String>, Parameter)>, config: Self::Config) -> anyhow::Result<Self> {
+    fn new(vars: Vec<Parameter>, config: Self::Config) -> anyhow::Result<Self> {
         match config {
             OptimizerConfigEnum::AdamW(params) => Ok(Self::AdamW(AdamW::new(vars, params)?)),
             OptimizerConfigEnum::SGD(params) => Ok(Self::SGD(SGD::new(vars, params)?)),
@@ -309,9 +309,9 @@ impl Trainer {
             .map_err(|e| e.to_string())?;
 
         let vars = varmap
-            .all_labeled_vars()
+            .all_vars()
             .iter()
-            .map(|(label, var)| (Some(label.to_owned()), var.to_owned()))
+            .map(|var| var.to_owned())
             .collect::<Vec<_>>();
 
         let optimizer_config = match cfg.optimizer.optimizer_type.to_lowercase().as_str() {
