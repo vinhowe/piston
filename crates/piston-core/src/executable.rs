@@ -247,7 +247,11 @@ impl Executable {
             .queue()
             .submit(Some(encoder.take().unwrap().finish()));
 
-        let profiling_entries = profiler.map(|profiler| profiler.read_timestamps());
+        let profiling_entries = if let Some(profiler) = profiler {
+            Some(profiler.read_timestamps().await)
+        } else {
+            None
+        };
 
         Ok((
             index,
