@@ -29,7 +29,7 @@ use super::{
     mlp::MLP,
 };
 use maybe_async::maybe_async;
-use piston::{shape, Device, Tensor};
+use piston::{Device, Tensor};
 use piston_macros::scoped_module;
 use piston_nn::{
     embedding, layer_norm, Dropout, Embedding, KVCache, LayerNorm, Linear, Module,
@@ -208,7 +208,7 @@ impl Module for GPT2 {
         if let Some(wpe) = &self.wpe {
             // Learned embeddings
             let pos = Tensor::arange(0, seq_len as i32, x.device())?;
-            let pos = pos.unsqueeze(0)?.broadcast_to(shape![b_size, seq_len])?;
+            let pos = pos.unsqueeze(0)?.broadcast_to((b_size, seq_len))?;
             let position_embeds = wpe.schedule(pos)?;
             x = x.add(position_embeds)?;
         } else if let Some(sinusoidal) = &self.sinusoidal {
@@ -285,7 +285,7 @@ impl GPT2 {
             None
         };
 
-        let cache_shape = shape![1, cfg.n_head as _, Self::MAX_CACHE, cfg.head_dim() as _];
+        let cache_shape = (1, cfg.n_head as _, Self::MAX_CACHE, cfg.head_dim() as _);
 
         Ok(Self {
             wte,
@@ -295,7 +295,7 @@ impl GPT2 {
             ln_f,
             lm_head,
             embd_dropout,
-            kv_cache: Rc::new(RefCell::new(KVCache::new::<f32>(
+            kv_cache: Rc::new(RefCell::new(KVCache::new::<f32, _>(
                 n_layers as _,
                 use_kv_cache,
                 cache_shape,
@@ -316,7 +316,7 @@ impl GPT2 {
 
 #[cfg(all(test, not(target_arch = "wasm32"), feature = "pyo3"))]
 mod tests {
-    use piston::{prelude::shape, DType, Device, DeviceRequest, Parameter, StepLogConfig, Tensor};
+    use piston::{DType, Device, DeviceRequest, Parameter, StepLogConfig, Tensor};
     use piston_datasets::{
         nlp::{
             tinystories::{Dataset, DatasetRandomIter},
@@ -384,8 +384,8 @@ mod tests {
         const BATCH_SIZE: usize = 1;
 
         for step in 0..100 {
-            let input = Tensor::zeros::<i32>(&shape![BATCH_SIZE, config.block_size], &device)?;
-            let tgt = Tensor::zeros::<i32>(&shape![BATCH_SIZE, config.block_size], &device)?;
+            let input = Tensor::zeros::<i32, _>((BATCH_SIZE, config.block_size), &device)?;
+            let tgt = Tensor::zeros::<i32, _>((BATCH_SIZE, config.block_size), &device)?;
 
             let (logits, _) = model.schedule(GPT2Input {
                 x: input,
@@ -440,8 +440,8 @@ mod tests {
         const BATCH_SIZE: usize = 10;
 
         for batch_index in 0..10 {
-            let input = Tensor::zeros::<i32>(&shape![BATCH_SIZE, config.block_size], &device)?;
-            let tgt = Tensor::zeros::<i32>(&shape![BATCH_SIZE, config.block_size], &device)?;
+            let input = Tensor::zeros::<i32, _>((BATCH_SIZE, config.block_size), &device)?;
+            let tgt = Tensor::zeros::<i32, _>((BATCH_SIZE, config.block_size), &device)?;
 
             let (logits, _) = model.schedule(GPT2Input {
                 x: input,

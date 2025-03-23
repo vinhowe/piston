@@ -1,4 +1,4 @@
-use piston::{rvec, shape, DType, Tensor};
+use piston::{rvec, Tensor};
 use piston_macros::scoped_module;
 
 use crate::Module;
@@ -24,7 +24,7 @@ impl SinusoidalEmbedding {
         }
 
         // Create inverse frequency tensor
-        let inv_freq = Tensor::from_data(&freqs, shape![dim / 2], device.clone());
+        let inv_freq = Tensor::from_data(&freqs, dim / 2, device.clone());
 
         Ok(Self { dim, inv_freq })
     }

@@ -1,7 +1,7 @@
 //! Helper functions for the tinystories dataset. This uses the pre-tokenized version as generated
 //! by the tools from https://github.com/karpathy/llama2.c
 use anyhow::Result;
-use piston::{shape, Device, Tensor};
+use piston::{Device, Tensor};
 
 pub struct Dataset {
     valid_tokens: Vec<memmap2::Mmap>,
@@ -119,8 +119,8 @@ impl<'a> Iterator for DatasetRandomIter<'a> {
             return Some(Err(err.into()));
         }
         let tokens = tokens.into_iter().map(|v| v as i32).collect::<Vec<_>>();
-        let inputs = Tensor::from_data(&tokens[..seq_len], shape![seq_len], self.device.clone());
-        let targets = Tensor::from_data(&tokens[1..], shape![seq_len], self.device.clone());
+        let inputs = Tensor::from_data(&tokens[..seq_len], seq_len, self.device.clone());
+        let targets = Tensor::from_data(&tokens[1..], seq_len, self.device.clone());
         Some(Ok((inputs, targets)))
     }
 }

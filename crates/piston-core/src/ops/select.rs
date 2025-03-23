@@ -313,7 +313,7 @@ mod tests {
                 .prop_flat_map(|input_shape| (Just(input_shape), 1..64usize))
                 .prop_map(|(input_shape, num_indices)| {
                     let indices =
-                        Tensor::randint(0, input_shape[0] as i32, shape![num_indices], Device::CPU)
+                        Tensor::randint(0, input_shape[0] as i32, num_indices, Device::CPU)
                             .unwrap();
                     IndexSelectProblem {
                         input_shape,
@@ -341,7 +341,7 @@ def index_select(input, indices):
             input_shape,
             indices,
         } = problem;
-        let mut input = Tensor::randn::<f32>(0., 1., input_shape, Device::CPU).unwrap();
+        let mut input = Tensor::randn::<f32, _>(0., 1., input_shape, Device::CPU).unwrap();
 
         let ground_truth = ground_truth(&input, &indices, 0).unwrap();
         if quant {
@@ -362,7 +362,7 @@ def index_select(input, indices):
     fn test_qindex_select() {
         let prob = IndexSelectProblem {
             input_shape: shape![256, 32],
-            indices: Tensor::from_data(vec![64, 192, 255], shape![3], Device::CPU),
+            indices: Tensor::from_data(vec![64, 192, 255], 3, Device::CPU),
         };
         let device = Device::request_device(DeviceRequest::GPU).unwrap();
         run_index_select_trial(prob.clone(), device, true);

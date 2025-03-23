@@ -47,17 +47,17 @@ async fn apply_permute<T: TensorDType>(p: &Permute, dst: Tensor) -> Result<Tenso
 // TODO: Optimize.
 // This generic implementation is almost a direct copy from the gpu impl,
 // and can definitely be way more performant.
-fn permute<T: TensorDType>(
+fn permute<T: TensorDType, SrcShape: Into<Shape>, DstShape: Into<Shape>>(
     src: &[T],
-    src_shape: &Shape,
-    dst_shape: &Shape,
+    src_shape: SrcShape,
+    dst_shape: DstShape,
     perm: [usize; 4],
 ) -> Vec<T> {
-    let mut result = vec![T::zero(); src_shape.numel()];
-
     // We now know that these will always be len 4, same as gpu impl.
-    let src_shape = &Shape::promote(src_shape.clone(), 4);
-    let dst_shape = &Shape::promote(dst_shape.clone(), 4);
+    let src_shape = &Shape::promote(src_shape.into(), 4);
+    let dst_shape = &Shape::promote(dst_shape.into(), 4);
+
+    let mut result = vec![T::zero(); src_shape.numel()];
 
     let src_stride = &Stride::from(src_shape);
     let dst_stride = &Stride::from(dst_shape);
@@ -176,7 +176,13 @@ pub(crate) fn broadcast_vector<T: TensorDType>(src: &[T], dst: &mut [T]) {
         });
 }
 
-pub(crate) fn broadcast<T: TensorDType>(src: &[T], src_shape: &Shape, dst_shape: &Shape) -> Vec<T> {
+pub(crate) fn broadcast<T: TensorDType, SrcShape: Into<Shape>, DstShape: Into<Shape>>(
+    src: &[T],
+    src_shape: SrcShape,
+    dst_shape: DstShape,
+) -> Vec<T> {
+    let src_shape = src_shape.into();
+    let dst_shape = dst_shape.into();
     let mut result = vec![T::zero(); dst_shape.numel()];
 
     if src_shape.is_scalar() {
@@ -199,15 +205,15 @@ pub(crate) fn broadcast<T: TensorDType>(src: &[T], src_shape: &Shape, dst_shape:
 // TODO: Optimize.
 // This generic implementation is almost a direct copy from the gpu impl,
 // and can definitely be way more performant.
-fn generic_broadcast<T: TensorDType>(
+fn generic_broadcast<T: TensorDType, SrcShape: Into<Shape>, DstShape: Into<Shape>>(
     src: &[T],
     result: &mut [T],
-    src_shape: &Shape,
-    dst_shape: &Shape,
+    src_shape: SrcShape,
+    dst_shape: DstShape,
 ) {
     // We now know that these will always be len 4, same as gpu impl.
-    let src_shape = &Shape::promote(src_shape.clone(), 4);
-    let dst_shape = &Shape::promote(dst_shape.clone(), 4);
+    let src_shape = &Shape::promote(src_shape.into(), 4);
+    let dst_shape = &Shape::promote(dst_shape.into(), 4);
 
     let src_stride = &Stride::from(src_shape);
     let dst_stride = &Stride::from(dst_shape);

@@ -147,7 +147,7 @@ pub fn cross_entropy(inp: Tensor, target: Tensor) -> anyhow::Result<Tensor> {
 mod tests {
     use super::*;
     use anyhow::Result;
-    use piston::{prelude::shape, DType, Device, DeviceRequest, Parameter};
+    use piston::{DType, Device, DeviceRequest, Parameter};
     use test_strategy::{proptest, Arbitrary};
 
     thread_local! {
@@ -200,8 +200,8 @@ def cross_entropy(input, target):
         } = problem;
 
         // Generate random input and target tensors
-        let input = Tensor::randn::<f32>(0., 1., shape![batch_size, num_classes], Device::CPU)?;
-        let target = Tensor::randint(0, num_classes as i32, shape![batch_size], Device::CPU)?;
+        let input = Tensor::randn::<f32, _>(0., 1., (batch_size, num_classes), Device::CPU)?;
+        let target = Tensor::randint(0, num_classes as i32, batch_size, Device::CPU)?;
 
         // Compute ground truth
         let (ground_loss, ground_grad) = ground_truth_cross_entropy(&input, &target)?;

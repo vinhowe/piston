@@ -195,9 +195,9 @@ impl<'a, B: Backend> VarBuilderArgs<'a, B> {
     }
 
     /// Retrieve the tensor associated with the given name at the current path.
-    pub async fn get_with_hints(
+    pub async fn get_with_hints<S: Into<Shape>>(
         &self,
-        s: Shape,
+        s: S,
         name: &str,
         hints: B::Hints,
     ) -> anyhow::Result<Tensor, VarBuilderError> {
@@ -216,7 +216,11 @@ impl<'a, B: Backend> VarBuilderArgs<'a, B> {
     // }
 
     /// Retrieve the tensor associated with the given name at the current path.
-    pub async fn get(&self, s: Shape, name: &str) -> anyhow::Result<Tensor, VarBuilderError> {
+    pub async fn get<S: Into<Shape>>(
+        &self,
+        s: S,
+        name: &str,
+    ) -> anyhow::Result<Tensor, VarBuilderError> {
         self.get_with_hints(s, name, Default::default()).await
     }
 
@@ -261,7 +265,7 @@ impl SimpleBackend for Zeros {
         _: crate::Init,
         dev: Device,
     ) -> anyhow::Result<Tensor, VarBuilderError> {
-        Ok(Tensor::zeros::<f32>(&s, &dev)?)
+        Ok(Tensor::zeros::<f32, _>(s, &dev)?)
     }
 
     fn contains_tensor(&self, _name: &str) -> bool {

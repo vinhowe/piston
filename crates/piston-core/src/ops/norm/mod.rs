@@ -404,7 +404,7 @@ mod tests {
     use test_strategy::{proptest, Arbitrary};
 
     use crate::test_util::run_py_prg;
-    use crate::{rvec, shape, Device, DeviceRequest, Tensor};
+    use crate::{rvec, Device, DeviceRequest, Tensor};
 
     fn ground_truth(
         var: NormVariant,
@@ -443,11 +443,11 @@ def manual_rms_norm(input, scale):
 
     fn run_norm_trial(device: &Device, problem: NormProblem) -> anyhow::Result<()> {
         let NormProblem { var, B, M, N } = problem;
-        let input = Tensor::randn::<f32>(0., 1., shape![B, M, N], Device::CPU)?;
-        let scale = Tensor::randn::<f32>(0., 1., shape![N], Device::CPU)?;
+        let input = Tensor::randn::<f32, _>(0., 1., (B, M, N), Device::CPU)?;
+        let scale = Tensor::randn::<f32, _>(0., 1., N, Device::CPU)?;
 
         let bias = match var {
-            NormVariant::LayerNorm => Some(Tensor::randn::<f32>(0., 1., shape![N], Device::CPU)?),
+            NormVariant::LayerNorm => Some(Tensor::randn::<f32, _>(0., 1., N, Device::CPU)?),
             NormVariant::RMSNorm => None,
         };
 

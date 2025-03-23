@@ -252,7 +252,7 @@ mod tests {
     use test_strategy::{proptest, Arbitrary};
 
     use crate::test_util::run_py_prg;
-    use crate::{shape, Device, DeviceRequest, Tensor};
+    use crate::{Device, DeviceRequest, Tensor};
 
     fn ground_truth(a: &Tensor, b: &Tensor, c: &Tensor) -> anyhow::Result<Tensor> {
         let prg = r#"
@@ -266,12 +266,12 @@ def where_cond(a, b, c):
     fn run_where_cond_trial(problem: WhereCondProblem, device: Device) {
         let WhereCondProblem { B, M, N } = problem;
         // Put through a ReLU so some of its entries are 0
-        let a = Tensor::randn::<f32>(0., 1., shape![B, M, N], Device::CPU)
+        let a = Tensor::randn::<f32, _>(0., 1., (B, M, N), Device::CPU)
             .unwrap()
             .relu()
             .unwrap();
-        let b = Tensor::randn::<f32>(0., 1., shape![B, M, N], Device::CPU).unwrap();
-        let c = Tensor::randn::<f32>(0., 1., shape![B, M, N], Device::CPU).unwrap();
+        let b = Tensor::randn::<f32, _>(0., 1., (B, M, N), Device::CPU).unwrap();
+        let c = Tensor::randn::<f32, _>(0., 1., (B, M, N), Device::CPU).unwrap();
         let ground = ground_truth(&a, &b, &c).unwrap();
 
         let a_gpu = a.to(&device).unwrap();

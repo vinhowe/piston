@@ -291,7 +291,7 @@ mod tests {
     use test_strategy::{proptest, Arbitrary};
 
     use crate::test_util::run_py_prg;
-    use crate::{shape, Device, DeviceRequest, Tensor};
+    use crate::{Device, DeviceRequest, Tensor};
 
     fn ground_truth(
         input: &Tensor,
@@ -324,9 +324,9 @@ def conv(input, filters, bias, stride, padding):
             Cout,
             stride,
         } = problem;
-        let input = Tensor::randn::<f32>(0., 1., shape![1, Cin, Lin], Device::CPU).unwrap();
-        let weight = Tensor::randn::<f32>(0., 1., shape![Cout, Cin, 3], Device::CPU).unwrap();
-        let bias = Tensor::randn::<f32>(0., 1., shape![Cout], Device::CPU).unwrap();
+        let input = Tensor::randn::<f32, _>(0., 1., (1, Cin, Lin), Device::CPU).unwrap();
+        let weight = Tensor::randn::<f32, _>(0., 1., (Cout, Cin, 3), Device::CPU).unwrap();
+        let bias = Tensor::randn::<f32, _>(0., 1., (Cout), Device::CPU).unwrap();
         let ground = ground_truth(&input, &weight, &bias, stride, 1).unwrap();
 
         let input = input.to(device).unwrap();

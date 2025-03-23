@@ -204,21 +204,20 @@ impl Kernel for IndexWriteKernels {
 
 #[cfg(test)]
 mod tests {
-    use crate::{rvec, shape, Device, DeviceRequest, Tensor};
+    use crate::{rvec, Device, DeviceRequest, Tensor};
 
     #[test]
     fn test_index_write() {
         let device = Device::request_device(DeviceRequest::GPU).unwrap();
 
-        let dst = Tensor::from_data(vec![1., 2., 3., 4., 5., 6.], shape![3, 2], device.clone());
-        let src = Tensor::from_data(vec![7., 8.], shape![1, 2], device.clone());
+        let dst = Tensor::from_data(vec![1., 2., 3., 4., 5., 6.], (3, 2), device.clone());
+        let src = Tensor::from_data(vec![7., 8.], (1, 2), device.clone());
         let write_start = rvec![2, 0];
         let b = dst.index_write(src, write_start).unwrap();
 
         let result = b.to(&Device::CPU).unwrap();
 
-        let ground_truth =
-            Tensor::from_data(vec![1., 2., 3., 4., 7., 8.], shape![3, 2], Device::CPU);
+        let ground_truth = Tensor::from_data(vec![1., 2., 3., 4., 7., 8.], (3, 2), Device::CPU);
         println!("result: {:?}", result);
         println!("ground_truth: {:?}", ground_truth);
         ground_truth.all_close(&result, 1e-8, 1e-8).unwrap();

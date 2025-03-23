@@ -1,6 +1,6 @@
 use crate::gpu::{BindGroupEntry, CpuUniform, WgpuDevice};
 use crate::{
-    cpu, get_current_scope, ops::*, rvec, shape, BufferSegment, CPUBuffer, Compiled, CompiledOp,
+    cpu, get_current_scope, ops::*, rvec, BufferSegment, CPUBuffer, Compiled, CompiledOp,
     ComputeCompileKey, DType, Device, DeviceStorage, Dim, Dims, GPUOperation, GpuCompileKey,
     InvariantError, LazyOp, Operation, OperationError, RVec, RawCPUBuffer, ScopePusher, Shape,
     Storage, Stride, TensorDType, TensorId,
@@ -122,12 +122,13 @@ impl Tensor {
         Self::new_impl(op, meta, storage, device, false)
     }
 
-    pub(crate) fn full_impl<T: TensorDType + num_traits::AsPrimitive<f32>>(
-        shape: &Shape,
+    pub(crate) fn full_impl<T: TensorDType + num_traits::AsPrimitive<f32>, S: Into<Shape>>(
+        shape: S,
         value: T,
         device: &Device,
         requires_grad: bool,
     ) -> Result<Self> {
+        let shape = shape.into();
         let meta = StorageView {
             shape: shape.clone(),
             dtype: T::dtype(),
@@ -145,12 +146,19 @@ impl Tensor {
         ))
     }
 
-    pub fn full<T: TensorDType + num_traits::AsPrimitive<f32>>(
-        shape: &Shape,
+    pub fn full<T: TensorDType + num_traits::AsPrimitive<f32>, S: Into<Shape>>(
+        shape: S,
         value: T,
         device: &Device,
     ) -> Result<Self> {
-        Self::full_impl::<T>(shape, value, device, false)
+        let shape = shape.into();
+        if device.is_cpu() {
+            let mut data = Vec::with_capacity(shape.numel());
+            data.resize(shape.numel(), value);
+            Ok(Self::from_data(data, shape, device.clone()))
+        } else {
+            Self::full_impl::<T, _>(shape, value, device, false)
+        }
     }
 
     #[track_caller]
@@ -744,7 +752,7 @@ impl Tensor {
 
     fn flatten_impl(self, start_dim: Option<usize>, end_dim: Option<usize>) -> Result<Self> {
         if self.rank() == 0 {
-            self.view(shape![1])
+            self.view(1)
         } else {
             let start_dim = start_dim.unwrap_or(0);
             let end_dim = end_dim.unwrap_or(self.rank() - 1);
@@ -759,7 +767,7 @@ impl Tensor {
                 if end_dim + 1 < dims.len() {
                     dst_dims.extend(&dims[end_dim + 1..]);
                 }
-                self.view(Shape::from(dst_dims))
+                self.view(dst_dims)
             } else {
                 Ok(self.clone())
             }
@@ -862,7 +870,8 @@ impl Tensor {
     ///
     /// Creates a new tensor with the same data, but a different shape.
     /// The new shape must have the same number of elements as the original shape.
-    pub fn view(self, shape: Shape) -> Result<Self> {
+    pub fn view<S: crate::shape::ShapeWithOneHole>(self, shape: S) -> Result<Self> {
+        let shape = shape.into_shape(self.shape().numel())?;
         if self.shape().numel() != shape.numel() {
             anyhow::bail!(
                 "Cannot reshape tensor with {} elements to shape {:?} ({} elements)",
@@ -887,7 +896,7 @@ impl Tensor {
 
     // Use view to add a singleton dimension
     pub fn unsqueeze<D: Dim>(self, dim: D) -> Result<Self> {
-        let dim = dim.to_index(self.shape(), "unsqueeze")?;
+        let dim = dim.to_index_plus_one(self.shape(), "unsqueeze")?;
         let mut new_shape = self.shape().clone();
         new_shape.unsqueeze(dim);
         self.view(new_shape)
@@ -964,7 +973,7 @@ impl Tensor {
     }
 
     pub fn stack<D: Dim>(tensors: RVec<Tensor>, dim: D) -> Result<Self> {
-        let dim = dim.to_index(tensors[0].shape(), "stack")?;
+        let dim = dim.to_index_plus_one(tensors[0].shape(), "stack")?;
         Self::stack_impl(tensors, dim, true)
     }
 
@@ -988,15 +997,15 @@ impl Tensor {
 
     /// Returns a new tensor duplicating data from the original tensor. New dimensions are inserted
     /// on the left.
-    pub fn broadcast_left(self, left_shape: Shape) -> Result<Self> {
-        let mut dims = left_shape.to_vec();
+    pub fn broadcast_left<S: Into<Shape>>(self, left_shape: S) -> Result<Self> {
+        let mut dims = left_shape.into().to_vec();
         dims.extend(self.shape().to_vec());
         self.broadcast_to(Shape::from(dims))
     }
 
-    pub fn broadcast_to(self, shape: Shape) -> Result<Self> {
+    pub fn broadcast_to<S: Into<Shape>>(self, shape: S) -> Result<Self> {
         let device = self.device.clone();
-        let broadcast = Broadcast::new(self, shape);
+        let broadcast = Broadcast::new(self, shape.into());
         let new_view = broadcast.compute_view()?;
 
         let op = LazyOp::Reindex(Reindex::Broadcast(broadcast));
@@ -1195,16 +1204,16 @@ impl Tensor {
                 }
             }
             let len = data.len();
-            Ok(Tensor::from_data(data, shape![len], device.clone()))
+            Ok(Tensor::from_data(data, len, device.clone()))
         } else {
             let arange = Arange::new(start.as_(), end.as_(), step.as_());
             let numel = arange.numel();
             let op = LazyOp::Arange(arange);
 
             let meta = StorageView {
-                shape: shape![numel],
+                shape: numel.into(),
                 dtype: T::dtype(),
-                stride: Stride::from(&shape![numel]),
+                stride: Stride::from(&Shape::from(numel)),
             };
 
             Ok(Tensor::lazy(op, meta, device.clone(), false))
@@ -1212,13 +1221,17 @@ impl Tensor {
     }
 
     #[cfg(feature = "rand")]
-    pub(crate) fn randint_impl<T: TensorDType + rand_distr::uniform::SampleUniform + PartialOrd>(
+    pub(crate) fn randint_impl<
+        T: TensorDType + rand_distr::uniform::SampleUniform + PartialOrd,
+        S: Into<Shape>,
+    >(
         low: T,
         high: T,
-        shape: Shape,
+        shape: S,
         device: Device,
         requires_grad: bool,
     ) -> Result<Self> {
+        let shape = shape.into();
         let rng = device.get_rng();
         let data = (0..shape.numel())
             .map(|_| {
@@ -1230,23 +1243,27 @@ impl Tensor {
     }
 
     #[cfg(feature = "rand")]
-    pub fn randint<T: TensorDType + rand_distr::uniform::SampleUniform + PartialOrd>(
+    pub fn randint<
+        T: TensorDType + rand_distr::uniform::SampleUniform + PartialOrd,
+        S: Into<Shape>,
+    >(
         low: T,
         high: T,
-        shape: Shape,
+        shape: S,
         device: Device,
     ) -> Result<Self> {
         Self::randint_impl(low, high, shape, device, false)
     }
 
     #[cfg(feature = "rand")]
-    pub(crate) fn randn_impl<T: TensorDType + num_traits::Float>(
+    pub(crate) fn randn_impl<T: TensorDType + num_traits::Float, S: Into<Shape>>(
         mean: T,
         std: T,
-        shape: Shape,
+        shape: S,
         device: Device,
         requires_grad: bool,
     ) -> Result<Self> {
+        let shape = shape.into();
         let rng = device.get_rng();
         if device.is_cpu() {
             let distr = Normal::new(mean.to_f64().unwrap(), std.to_f64().unwrap()).unwrap();
@@ -1288,23 +1305,24 @@ impl Tensor {
     }
 
     #[cfg(feature = "rand")]
-    pub fn randn<T: TensorDType + num_traits::Float>(
+    pub fn randn<T: TensorDType + num_traits::Float, S: Into<Shape>>(
         mean: T,
         std: T,
-        shape: Shape,
+        shape: S,
         device: Device,
     ) -> Result<Self> {
-        Self::randn_impl::<T>(mean, std, shape, device, false)
+        Self::randn_impl::<T, _>(mean, std, shape, device, false)
     }
 
     #[cfg(feature = "rand")]
-    pub(crate) fn rand_impl<T: TensorDType + num_traits::Float>(
+    pub(crate) fn rand_impl<T: TensorDType + num_traits::Float, S: Into<Shape>>(
         lo: T,
         up: T,
-        shape: Shape,
+        shape: S,
         device: Device,
         requires_grad: bool,
     ) -> Result<Self> {
+        let shape = shape.into();
         let rng = device.get_rng();
         let distr = Uniform::new(lo.to_f32().unwrap(), up.to_f32().unwrap());
         let data = (0..shape.numel())
@@ -1318,13 +1336,13 @@ impl Tensor {
     }
 
     #[cfg(feature = "rand")]
-    pub fn rand<T: TensorDType + num_traits::Float>(
+    pub fn rand<T: TensorDType + num_traits::Float, S: Into<Shape>>(
         lo: T,
         up: T,
-        shape: Shape,
+        shape: S,
         device: Device,
     ) -> Result<Self> {
-        Self::rand_impl::<T>(lo, up, shape, device, false)
+        Self::rand_impl::<T, _>(lo, up, shape, device, false)
     }
 
     #[cfg(feature = "rand")]
@@ -1349,14 +1367,15 @@ impl Tensor {
         ))
     }
 
-    pub(crate) fn zeros_impl<T: TensorDType + num_traits::AsPrimitive<f32>>(
-        shape: &Shape,
+    pub(crate) fn zeros_impl<T: TensorDType + num_traits::AsPrimitive<f32>, S: Into<Shape>>(
+        shape: S,
         device: &Device,
         requires_grad: bool,
     ) -> Result<Self> {
+        let shape = shape.into();
         if device.is_cpu() {
-            let storage = Storage::zeros::<T>(shape, device);
-            let stride = Stride::from(shape);
+            let storage = Storage::zeros::<T>(&shape, device);
+            let stride = Stride::from(&shape);
             let meta = StorageView::new(shape.clone(), T::dtype(), stride);
             Ok(Tensor::new_impl(
                 LazyOp::Const,
@@ -1366,32 +1385,33 @@ impl Tensor {
                 requires_grad,
             ))
         } else {
-            Self::full_impl(shape, T::zero(), device, requires_grad)
+            Self::full_impl::<T, _>(shape, T::zero(), device, requires_grad)
         }
     }
 
-    pub fn zeros<T: TensorDType + num_traits::AsPrimitive<f32>>(
-        shape: &Shape,
+    pub fn zeros<T: TensorDType + num_traits::AsPrimitive<f32>, S: Into<Shape>>(
+        shape: S,
         device: &Device,
     ) -> Result<Self> {
-        Self::zeros_impl::<T>(shape, device, false)
+        Self::zeros_impl::<T, _>(shape, device, false)
     }
 
     pub fn zeros_like<T: TensorDType + num_traits::AsPrimitive<f32>>(
         &self,
         device: Option<&Device>,
     ) -> Result<Self> {
-        Self::zeros::<T>(self.shape(), device.unwrap_or(self.device()))
+        Self::zeros::<T, _>(self.shape(), device.unwrap_or(self.device()))
     }
 
-    pub(crate) fn ones_impl<T: TensorDType + num_traits::AsPrimitive<f32>>(
-        shape: &Shape,
+    pub(crate) fn ones_impl<T: TensorDType + num_traits::AsPrimitive<f32>, S: Into<Shape>>(
+        shape: S,
         device: &Device,
         requires_grad: bool,
     ) -> Result<Self> {
+        let shape = shape.into();
         if device.is_cpu() {
-            let storage = Storage::ones::<T>(shape, device);
-            let stride = Stride::from(shape);
+            let storage = Storage::ones::<T>(&shape, device);
+            let stride = Stride::from(&shape);
             let meta = StorageView::new(shape.clone(), T::dtype(), stride);
             Ok(Tensor::new_impl(
                 LazyOp::Const,
@@ -1401,22 +1421,22 @@ impl Tensor {
                 requires_grad,
             ))
         } else {
-            Self::full_impl(shape, T::one(), device, requires_grad)
+            Self::full_impl(&shape, T::one(), device, requires_grad)
         }
     }
 
-    pub fn ones<T: TensorDType + num_traits::AsPrimitive<f32>>(
-        shape: &Shape,
+    pub fn ones<T: TensorDType + num_traits::AsPrimitive<f32>, S: Into<Shape>>(
+        shape: S,
         device: &Device,
     ) -> Result<Self> {
-        Self::ones_impl::<T>(shape, device, false)
+        Self::ones_impl::<T, _>(shape, device, false)
     }
 
     pub fn ones_like<T: TensorDType + num_traits::AsPrimitive<f32>>(
         &self,
         device: Option<&Device>,
     ) -> Result<Self> {
-        Self::ones::<T>(self.shape(), device.unwrap_or(self.device()))
+        Self::ones::<T, _>(self.shape(), device.unwrap_or(self.device()))
     }
 
     fn trilu(self, upper: bool, k: Option<i32>) -> Result<Self> {
@@ -1468,23 +1488,34 @@ impl Tensor {
     ///
     /// The Tensor is instantly resolved.
     /// If a non-CPU device is specified, the data will be copied to the device.
-    pub(crate) fn from_data_impl<T: TensorDType, U: AsRef<[T]>>(
+    pub(crate) fn from_data_impl<T: TensorDType, U: AsRef<[T]>, S: Into<Shape>>(
         data: U,
-        shape: Shape,
+        shape: S,
         device: Device,
         requires_grad: bool,
     ) -> Self {
+        let shape = shape.into();
         let storage = Storage::from_slice(data.as_ref(), &shape, &device);
         let stride = Stride::from(&shape);
         let meta = StorageView::new(shape, T::dtype(), stride);
         Tensor::new_impl(LazyOp::Const, meta, Some(storage), device, requires_grad)
     }
 
-    pub fn from_data<T: TensorDType, U: AsRef<[T]>>(data: U, shape: Shape, device: Device) -> Self {
+    pub fn from_data<T: TensorDType, U: AsRef<[T]>, S: Into<Shape>>(
+        data: U,
+        shape: S,
+        device: Device,
+    ) -> Self {
         Self::from_data_impl(data, shape, device, false)
     }
 
-    pub fn from_bytes(data: &[u8], dtype: DType, shape: Shape, device: Device) -> Result<Self> {
+    pub fn from_bytes<S: Into<Shape>>(
+        data: &[u8],
+        dtype: DType,
+        shape: S,
+        device: Device,
+    ) -> Result<Self> {
+        let shape = shape.into();
         let storage = Storage::from_bytes(data, dtype.size_of(), &device);
         let stride = Stride::from(&shape);
         let meta = StorageView::new(shape, dtype, stride);
@@ -1564,23 +1595,25 @@ impl Tensor {
         Ok(storage.into_bytes())
     }
 
-    pub fn from_quantized<T: TensorDType, U: AsRef<[T]>>(
+    pub fn from_quantized<T: TensorDType, U: AsRef<[T]>, S: Into<Shape>>(
         data: U,
         dtype: DType,
-        shape: Shape,
+        shape: S,
         device: Device,
     ) -> Self {
+        let shape = shape.into();
         let storage = unsafe { Storage::from_quantized(data.as_ref(), &device) };
         let stride = Stride::from(&shape);
         let meta = StorageView::new(shape, dtype, stride);
         Tensor::new_impl(LazyOp::Const, meta, Some(storage), device, false)
     }
 
-    pub fn from_disk<T: TensorDType, R: BufRead + Seek>(
+    pub fn from_disk<T: TensorDType, R: BufRead + Seek, S: Into<Shape>>(
         reader: &mut R,
-        shape: Shape,
+        shape: S,
         device: Device,
     ) -> Result<Self> {
+        let shape = shape.into();
         let storage = Storage::from_disk::<T, R>(reader, &shape, &device)?;
         let stride = Stride::from(&shape);
         let meta = StorageView::new(shape, T::dtype(), stride);
@@ -2053,8 +2086,7 @@ impl Tensor {
             .shape()
             .iter()
             .map(|&x| x as usize)
-            .collect::<Vec<_>>()
-            .into();
+            .collect::<RVec<_>>();
         let data = reader.into_vec::<T>()?;
         Ok(Tensor::from_data_impl(
             data,
@@ -2270,13 +2302,13 @@ impl safetensors::View for &Tensor {
 
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod tests {
-    use crate::{rvec, shape, Device, Tensor};
+    use crate::{rvec, Device, Tensor};
 
     #[test]
     fn has_nan_works() {
         let device = Device::request_device(crate::DeviceRequest::GPU).unwrap();
-        let rand = Tensor::randn::<f32>(0., 1., shape![1, 1500, 384], device.clone()).unwrap();
-        let nans = Tensor::from_data(vec![f32::NAN; 1500 * 384], shape![1, 1500, 384], device);
+        let rand = Tensor::randn::<f32, _>(0., 1., (1, 1500, 384), device.clone()).unwrap();
+        let nans = Tensor::from_data(vec![f32::NAN; 1500 * 384], (1, 1500, 384), device);
 
         let bingo = Tensor::cat(rvec![rand, nans], 2).unwrap();
 

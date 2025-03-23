@@ -213,7 +213,7 @@ impl Kernel for FillRandnKernels {
 mod tests {
     use test_strategy::{proptest, Arbitrary};
 
-    use crate::{shape, test_util::run_py_prg, DType, Device, DeviceRequest, Tensor};
+    use crate::{test_util::run_py_prg, DType, Device, DeviceRequest, Tensor};
 
     fn normal_parameters(output: &Tensor) -> anyhow::Result<Tensor> {
         let prg = r#"
@@ -232,7 +232,7 @@ def check_normal(output):
     fn run_fill_randn_trial(problem: FillRandnProblem, device: Device) {
         let FillRandnProblem { B, M, N } = problem;
 
-        let a = Tensor::randn::<f32>(0f32, 1f32, shape![B, M, N], device.clone())
+        let a = Tensor::randn::<f32, _>(0f32, 1f32, (B, M, N), device.clone())
             .unwrap()
             .to(&Device::CPU)
             .unwrap();

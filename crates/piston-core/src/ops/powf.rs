@@ -225,7 +225,7 @@ mod tests {
     use test_strategy::{proptest, Arbitrary};
 
     use crate::test_util::run_py_prg;
-    use crate::{shape, Device, DeviceRequest, Tensor};
+    use crate::{Device, DeviceRequest, Tensor};
 
     fn ground_truth(a: &Tensor, e: f32) -> anyhow::Result<Tensor> {
         let func_prg = r#"
@@ -244,7 +244,7 @@ def powf(a, e):
 
     fn run_powf_trial(problem: PowfProblem, device: Device) {
         let PowfProblem { B, M, N, e } = problem;
-        let a = Tensor::randn::<f32>(0., 1., shape![B, M, N], Device::CPU).unwrap();
+        let a = Tensor::randn::<f32, _>(0., 1., (B, M, N), Device::CPU).unwrap();
         let ground = ground_truth(&a, e).unwrap();
 
         let a_gpu = a.to(&device).unwrap();

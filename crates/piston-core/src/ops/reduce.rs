@@ -529,7 +529,7 @@ mod tests {
     use test_strategy::{proptest, Arbitrary};
 
     use crate::test_util::run_py_prg;
-    use crate::{shape, DType, Device, DeviceRequest, Parameter, Tensor};
+    use crate::{DType, Device, DeviceRequest, Parameter, Tensor};
 
     use super::ReduceOp;
 
@@ -577,17 +577,17 @@ def reduce(a):
         dim: Option<usize>,
         device: Device,
     ) -> anyhow::Result<()> {
-        let a = Tensor::randn::<f32>(0., 1., shape![B, M, N], Device::CPU)?;
+        let a = Tensor::randn::<f32, _>(0., 1., (B, M, N), Device::CPU)?;
         let mut ground = ground_truth_forward(&a, op, dim)?;
 
         if dim.is_none() {
-            ground = ground.view(shape![1])?;
+            ground = ground.view(1)?;
         }
 
         let a_gpu = a.to(&device)?;
         let b_gpu = match dim {
             Some(dim) => match op {
-                ReduceOp::Sum => a_gpu.sum(&[dim]),
+                ReduceOp::Sum => a_gpu.sum(dim),
                 ReduceOp::Min => a_gpu.min(dim),
                 ReduceOp::Max => a_gpu.max(dim),
                 ReduceOp::ArgMin => a_gpu.argmin(dim)?.cast(DType::I32),
@@ -695,7 +695,7 @@ def reduce_backward(a):
     ) -> anyhow::Result<()> {
         let ReduceBackwardProblem { B, M, N } = problem;
         let gpu_device = device.try_gpu()?;
-        let a = Tensor::randn::<f32>(0., 1., shape![B, M, N], Device::CPU)?;
+        let a = Tensor::randn::<f32, _>(0., 1., (B, M, N), Device::CPU)?;
         let ground = ground_truth_backward(&a)?;
 
         let a_gpu = a.to(&device)?;

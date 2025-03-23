@@ -2,7 +2,7 @@ use anyhow::Result;
 use async_trait::async_trait;
 use js_sys::Function;
 use piston::{
-    reset_scope_context, shape, DType, Device, DeviceRequest, GradStore, Parameter, StepLog, Tensor,
+    reset_scope_context, DType, Device, DeviceRequest, GradStore, Parameter, StepLog, Tensor,
 };
 use piston_models::gpt2::generate;
 use piston_models::gpt2::{Config, GPT2Input, PositionalEncoding};
@@ -367,7 +367,7 @@ impl Trainer {
 
         let input_flat: Vec<i32> = input.into_iter().flatten().collect();
         let input_tensor =
-            Tensor::from_data(input_flat, shape![batch_size, seq_len], self.device.clone());
+            Tensor::from_data(input_flat, (batch_size, seq_len), self.device.clone());
 
         let (logits, attn_masks) = self.model.schedule(GPT2Input {
             x: input_tensor,
@@ -427,11 +427,8 @@ impl Trainer {
         let (logits, attn_masks) = self.forward(input).await.map_err(|e| e.to_string())?;
 
         let target_flat: Vec<i32> = target.into_iter().flatten().collect();
-        let target_tensor = Tensor::from_data(
-            target_flat,
-            shape![batch_size, seq_len],
-            self.device.clone(),
-        );
+        let target_tensor =
+            Tensor::from_data(target_flat, (batch_size, seq_len), self.device.clone());
 
         // Flatten the logits and targets, compute the cross-entropy loss with label smoothing
         let logits_flat = logits.clone().flatten_to(1).map_err(|e| e.to_string())?;

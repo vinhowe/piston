@@ -1,5 +1,5 @@
 use maybe_async::maybe_async;
-use piston::{shape, Tensor};
+use piston::Tensor;
 use piston_macros::scoped_module;
 
 use crate::Module;
@@ -21,8 +21,8 @@ impl Module for Linear {
 
     fn schedule(&self, input: Self::Input) -> anyhow::Result<Self::Output> {
         let w = match *input.shape().to_vec() {
-            [b1, b2, _, _] => self.w.clone().broadcast_left(shape![b1, b2])?,
-            [bsize, _, _] => self.w.clone().broadcast_left(shape![bsize])?,
+            [b1, b2, _, _] => self.w.clone().broadcast_left((b1, b2))?,
+            [bsize, _, _] => self.w.clone().broadcast_left(bsize)?,
             _ => self.w.clone(),
         };
         let x = input.matmul(w, false, true)?;
@@ -42,14 +42,14 @@ pub async fn linear(
 ) -> anyhow::Result<Linear> {
     let init_ws = crate::init::DEFAULT_KAIMING_NORMAL;
     let ws = vb
-        .get_with_hints(shape![out_dim, in_dim], "weight", init_ws)
+        .get_with_hints((out_dim, in_dim), "weight", init_ws)
         .await?;
     let bound = 1. / (in_dim as f32).sqrt();
     let init_bs = crate::Init::Uniform {
         lo: -bound,
         up: bound,
     };
-    let bs = vb.get_with_hints(shape![out_dim], "bias", init_bs).await?;
+    let bs = vb.get_with_hints(out_dim, "bias", init_bs).await?;
     Ok(Linear::new(ws, Some(bs)))
 }
 
@@ -62,7 +62,7 @@ pub async fn linear_no_bias(
 ) -> anyhow::Result<Linear> {
     let init_ws = crate::init::DEFAULT_KAIMING_NORMAL;
     let ws = vb
-        .get_with_hints(shape![out_dim, in_dim], "weight", init_ws)
+        .get_with_hints((out_dim, in_dim), "weight", init_ws)
         .await?;
     Ok(Linear::new(ws, None))
 }
@@ -130,7 +130,7 @@ def linear(x, w):
         with_bias: bool,
     ) -> anyhow::Result<()> {
         let device = GPU_DEVICE.with(|d| d.clone());
-        let x = Tensor::randn::<f32>(0., 1., shape![batch_size, in_features], Device::CPU)?;
+        let x = Tensor::randn::<f32, _>(0., 1., (batch_size, in_features), Device::CPU)?;
         let varmap = VarMap::new();
         let vb = VarBuilder::from_varmap(&varmap, piston::DType::F32, &device.clone());
 
@@ -237,7 +237,7 @@ def linear_backward(x, w):
             with_bias,
         } = problem;
 
-        let x = Tensor::randn::<f32>(0., 1., shape![batch_size, in_features], Device::CPU)?;
+        let x = Tensor::randn::<f32, _>(0., 1., (batch_size, in_features), Device::CPU)?;
         let x_gpu = x.to(&device)?;
         let x_var = Parameter::from_tensor(&x_gpu)?;
         let varmap = VarMap::new();

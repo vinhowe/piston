@@ -275,7 +275,7 @@ impl Kernel for AlibiKernels {
 
 #[cfg(all(test, feature = "pyo3"))]
 mod tests {
-    use crate::{shape, test_util::run_py_prg, DType, Device, DeviceRequest, Tensor};
+    use crate::{test_util::run_py_prg, DType, Device, DeviceRequest, Tensor};
     use test_strategy::{proptest, Arbitrary};
 
     /// Ground truth reference, computed by a Python snippet:
@@ -343,9 +343,9 @@ def alibi(input, max_bias):
         } = problem;
 
         // shape = [B, n_head, seq]
-        let shape = shape![b, n_head, seq];
-        // let a_cpu = Tensor::randn::<f32>(0.0, 1.0, shape, Device::CPU).unwrap();
-        let a_cpu = Tensor::zeros::<f32>(&shape, &Device::CPU).unwrap();
+        let shape = (b, n_head, seq);
+        // let a_cpu = Tensor::randn::<f32, _>(0.0, 1.0, shape, Device::CPU).unwrap();
+        let a_cpu = Tensor::zeros::<f32, _>(shape, &Device::CPU).unwrap();
 
         let ground = ground_truth_alibi(&a_cpu, max_bias).unwrap();
         let a_gpu = a_cpu.to(&device).unwrap();

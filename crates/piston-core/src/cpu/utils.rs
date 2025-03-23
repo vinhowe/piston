@@ -27,7 +27,7 @@ impl<'a> TensorIterator<'a> {
         if index_dims == 0 {
             Self::Contiguous(offset..block_size)
         } else {
-            Self::Strided(StridedIterator::new(&shape, &stride, offset, block_size))
+            Self::Strided(StridedIterator::new(shape, stride, offset, block_size))
         }
     }
 }
