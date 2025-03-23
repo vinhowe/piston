@@ -1,3 +1,7 @@
+#[cfg(target_arch = "wasm32")]
+use super::{PooledGPUBuffer, WgpuDevice};
+#[cfg(target_arch = "wasm32")]
+use crate::wgpu_buffer_to_cpu_buffer;
 use crate::{DType, ExportedTensorProfilingEntry, HashMap, Shape, Tensor, TensorId};
 use derive_new::new;
 #[cfg(target_arch = "wasm32")]
@@ -6,8 +10,6 @@ use half::f16;
 use wasm_bindgen::prelude::*;
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen_futures::js_sys;
-
-use super::{PooledGPUBuffer, WgpuDevice};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DebugSelection {
