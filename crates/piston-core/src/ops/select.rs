@@ -85,7 +85,12 @@ impl OpGuards for IndexSelect {
     fn check_dtypes(&self) {
         let indices = &self.indices;
         //TODO: support others
-        assert_eq!(indices.dtype(), DType::I32);
+        assert_eq!(
+            indices.dtype(),
+            DType::I32,
+            "Indices must be of type I32, got {:?}",
+            indices.dtype()
+        );
     }
 }
 
