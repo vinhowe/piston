@@ -154,7 +154,7 @@ impl KernelRenderable for RoPEKernels {
         );
         self.register_bindings::<P>(&mut kernel_builder, inplace)?;
 
-        let (is_backward, inner) = match self {
+        let (is_backward, _inner) = match self {
             RoPEKernels::Forward(x) => (false, x),
             RoPEKernels::Backward(x) => (true, x),
         };

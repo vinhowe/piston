@@ -6,6 +6,7 @@ use crate::Module;
 /// Implements sinusoidal positional encodings as described in "Attention Is All You Need".
 #[derive(Clone, Debug)]
 pub struct SinusoidalEmbedding {
+    #[allow(dead_code)]
     dim: usize,
     inv_freq: Tensor,
 }

@@ -36,7 +36,7 @@ pub struct VarBuilderArgs<'a, B: Backend> {
     _phantom: std::marker::PhantomData<&'a B>,
 }
 
-impl<'a, B: Backend> Clone for VarBuilderArgs<'a, B> {
+impl<B: Backend> Clone for VarBuilderArgs<'_, B> {
     fn clone(&self) -> Self {
         Self {
             data: self.data.clone(),
@@ -94,7 +94,7 @@ pub trait SimpleBackend: Send + Sync {
 }
 
 #[maybe_async]
-impl<'a> Backend for Box<dyn SimpleBackend + 'a> {
+impl Backend for Box<dyn SimpleBackend + '_> {
     // impl<'a> Backend for Box<dyn SimpleBackend + 'a> {
     type Hints = crate::Init;
 
@@ -114,7 +114,7 @@ impl<'a> Backend for Box<dyn SimpleBackend + 'a> {
 }
 
 #[maybe_async]
-impl<'a, B: Backend> VarBuilderArgs<'a, B> {
+impl<B: Backend> VarBuilderArgs<'_, B> {
     pub fn new_with_args(backend: B, dtype: DType, dev: Device) -> Self {
         let data = TensorData {
             backend,
@@ -400,7 +400,7 @@ pub struct Rename<'a, R: Renamer> {
 }
 
 #[maybe_async]
-impl<'a, R: Renamer + Send + Sync> SimpleBackend for Rename<'a, R> {
+impl<R: Renamer + Send + Sync> SimpleBackend for Rename<'_, R> {
     async fn get(
         &self,
         s: Shape,

@@ -92,9 +92,9 @@ impl Module for GPT2SelfAttention {
     fn schedule(&self, input: Self::Input) -> anyhow::Result<Self::Output> {
         let GPT2AttnInput {
             input,
-            index_pos,
+            index_pos: _,
             block_idx,
-            mut cache,
+            cache,
         } = input;
         let [batch_size, q_len, _]: [usize; 3] = input.shape().try_into()?;
 

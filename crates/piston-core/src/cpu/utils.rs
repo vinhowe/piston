@@ -20,7 +20,7 @@ impl<'a> TensorIterator<'a> {
             if stride as usize != block_size {
                 break;
             }
-            block_size *= dim as usize;
+            block_size *= dim;
             contiguous_dims += 1;
         }
         let index_dims = shape.rank() - contiguous_dims;
@@ -32,7 +32,7 @@ impl<'a> TensorIterator<'a> {
     }
 }
 
-impl<'a> Iterator for TensorIterator<'a> {
+impl Iterator for TensorIterator<'_> {
     type Item = usize;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -75,14 +75,11 @@ impl<'a> StridedIterator<'a> {
     }
 }
 
-impl<'a> Iterator for StridedIterator<'a> {
+impl Iterator for StridedIterator<'_> {
     type Item = usize;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let storage_index = match self.next_index {
-            None => return None,
-            Some(storage_index) => storage_index,
-        };
+        let storage_index = self.next_index?;
 
         if self.block_size > 1 {
             if self.block_step < self.block_size {

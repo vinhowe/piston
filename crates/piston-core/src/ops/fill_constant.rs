@@ -1,8 +1,7 @@
 use derive_new::new;
-use encase::ShaderType;
 use half::f16;
 use inline_wgsl::wgsl;
-use piston_macros::{IrFields, WgslMetadata};
+use piston_macros::IrFields;
 
 use crate::{
     gpu::{dtype::WgslDType, BindGroupLayoutDescriptor},

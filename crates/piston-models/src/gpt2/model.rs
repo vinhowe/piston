@@ -32,8 +32,8 @@ use maybe_async::maybe_async;
 use piston::{Device, Tensor};
 use piston_macros::scoped_module;
 use piston_nn::{
-    embedding, layer_norm, Dropout, Embedding, KVCache, LayerNorm, Linear, Module,
-    SinusoidalEmbedding, SinusoidalInput, VarBuilder,
+    layer_norm, Dropout, Embedding, KVCache, LayerNorm, Linear, Module, SinusoidalEmbedding,
+    SinusoidalInput, VarBuilder,
 };
 
 #[derive(Debug, Clone, PartialEq)]

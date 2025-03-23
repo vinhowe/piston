@@ -26,7 +26,7 @@ pub async fn apply_operation(op: LazyOp, dst: Tensor) -> Result<Tensor, Operatio
         LazyOp::Matmul(m) => m.apply_cpu(dst).await,
         LazyOp::Softmax(s) => s.apply_cpu(dst).await,
         LazyOp::RoPE(r) => cpu_rope(r, dst).await,
-        LazyOp::Alibi(a) => todo!(),
+        LazyOp::Alibi(_a) => todo!(),
         LazyOp::Unary(u) => u.apply_cpu(dst).await,
         LazyOp::Reindex(r) => r.apply_cpu(dst).await,
         LazyOp::Concat(c) => cpu_concat(c, dst).await,
@@ -227,14 +227,11 @@ pub(crate) async fn apply_concat<T: TensorDType>(
 
     let mut inputs_result = Vec::with_capacity(inputs.len());
     for t in inputs.iter() {
-        let result = match t.to_vec::<T>().await {
+        let result: Result<_, OperationError> = match t.to_vec::<T>().await {
             Ok(v) => Ok((t.shape().clone(), v)),
             Err(e) => Err(e.into()),
         };
-        if let Err(e) = result {
-            return Err(e);
-        }
-        inputs_result.push(result.unwrap());
+        inputs_result.push(result?);
     }
     let inputs = inputs_result;
 

@@ -32,12 +32,12 @@ where
     let N = src_shape[dim];
     input.chunks_mut(N).for_each(|chunk| {
         let mut sum = T::zero();
-        for j in 0..N {
-            chunk[j] = chunk[j].exp();
-            sum += chunk[j];
+        for item in chunk.iter_mut().take(N) {
+            *item = item.exp();
+            sum += *item;
         }
-        for j in 0..N {
-            chunk[j] /= sum;
+        for item in chunk.iter_mut().take(N) {
+            *item /= sum;
         }
     });
 
