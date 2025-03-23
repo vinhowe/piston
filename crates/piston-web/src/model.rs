@@ -6,9 +6,9 @@ use piston_models::gpt2::generate;
 use piston_models::gpt2::{Config, GPT2Input, PositionalEncoding};
 use piston_models::gpt2::{LayerNormPosition, GPT2};
 use piston_nn::{
-    clip_grad_norm, cross_entropy, label_smoothed_nll, log_softmax, nll, nll_masked, Activation,
-    AdamW, ConstantLR, CosineAnnealingLR, LRScheduler, LRSchedulerCore, LinearLR, Module,
-    Optimizer, ParamsAdamW, VarBuilder, VarMap, SGD,
+    label_smoothed_nll, log_softmax, nll_masked, Activation, AdamW, ConstantLR, CosineAnnealingLR,
+    LRScheduler, LRSchedulerCore, LinearLR, Module, Optimizer, ParamsAdamW, VarBuilder, VarMap,
+    SGD,
 };
 use piston_nn::{ModuleMode, ModuleModeGuard};
 use serde::{Deserialize, Serialize};
