@@ -1,6 +1,6 @@
 use anyhow::Result;
 use maybe_async::maybe_async;
-use piston::{Device, GradStore};
+use piston::Device;
 
 use crate::Optimizer;
 
@@ -23,10 +23,10 @@ pub trait LRScheduler<O: Optimizer + Send + Sync>: Send + Sync {
     fn compute_lr(&self) -> f64;
 
     /// Advances the scheduler by one step.
-    async fn step(&mut self, grads: &GradStore, device: &Device) -> Result<()> {
+    async fn step(&mut self, device: &Device) -> Result<()> {
         let lr = self.compute_lr();
         self.optimizer_mut().set_learning_rate(lr);
-        self.optimizer_mut().step(grads, device).await?;
+        self.optimizer_mut().step(device).await?;
         self.set_step_count(self.step_count() + 1);
         Ok(())
     }

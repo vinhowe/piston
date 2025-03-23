@@ -213,9 +213,9 @@ def cross_entropy(input, target):
         let our_loss = cross_entropy(input_param.as_tensor().clone(), target_gpu)?;
 
         // Compute gradients
-        let grads = our_loss.backward()?;
+        our_loss.backward()?;
         device.try_gpu()?.mark_step()?;
-        let our_grad = grads.get(input_param.as_tensor()).unwrap().clone();
+        let our_grad = input_param.as_tensor().grad().unwrap().clone();
 
         // Compare results
         let our_loss_cpu = our_loss.to(&Device::CPU)?;

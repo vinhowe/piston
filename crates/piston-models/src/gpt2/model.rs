@@ -388,11 +388,11 @@ mod tests {
 
             let loss = cross_entropy(logits.flatten_to(1)?, tgt.flatten_to(1)?)?;
 
-            let grads = loss.backward()?;
+            loss.backward()?;
 
             // clip_grad_norm(&mut grads, 1.0f32, &device)?;
 
-            opt.step(&grads, &device)?;
+            opt.step(&device)?;
 
             let loss_vec = loss.clone().to(&Device::CPU)?.to_vec::<f32>()?;
 
@@ -524,9 +524,9 @@ mod tests {
             let loss = cross_entropy(logits.flatten_to(1)?, tgt.flatten_to(1)?)?;
 
             // This is something of a hack; we add references to all tensors that need to be backpropped
-            let grads = loss.backward()?;
+            loss.backward()?;
 
-            opt.step(&grads, &device)?;
+            opt.step(&device)?;
 
             let loss_vec = loss.to(&Device::CPU)?.to_vec::<f32>()?;
 

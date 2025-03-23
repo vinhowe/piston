@@ -259,13 +259,13 @@ def linear_backward(x, w):
 
         let result_gpu = linear.schedule(x_var.as_tensor().clone())?;
 
-        let grads = result_gpu.backward()?;
+        result_gpu.backward()?;
         device.try_gpu()?.mark_step()?;
 
-        let x_grad = grads.get(x_var.as_tensor()).unwrap().to(&Device::CPU)?;
-        let w_grad = grads.get(&linear.w).unwrap().to(&Device::CPU)?;
+        let x_grad = x_var.as_tensor().grad().unwrap().to(&Device::CPU)?;
+        let w_grad = linear.w.grad().unwrap().to(&Device::CPU)?;
         let b_grad = match &linear.b {
-            Some(b) => Some(grads.get(b).unwrap().to(&Device::CPU)?),
+            Some(b) => Some(b.grad().unwrap().to(&Device::CPU)?),
             None => None,
         };
 

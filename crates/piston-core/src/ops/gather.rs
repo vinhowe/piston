@@ -324,10 +324,10 @@ def gather_backward(src, ids):
         let src_var = Parameter::from_tensor(&src_gpu)?;
         let result_gpu = src_var.as_tensor().clone().gather(ids_gpu, dim)?;
 
-        let grads = result_gpu.backward()?;
+        result_gpu.backward()?;
         device.try_gpu()?.mark_step()?;
 
-        let src_grad = grads.get(src_var.as_tensor()).unwrap().clone();
+        let src_grad = src_var.as_tensor().grad().unwrap().clone();
 
         let ours = src_grad.to(&Device::CPU)?;
         let src_cpu = src.to(&Device::CPU)?;

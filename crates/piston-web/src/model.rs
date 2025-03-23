@@ -1,9 +1,7 @@
 use anyhow::Result;
 use async_trait::async_trait;
 use js_sys::Function;
-use piston::{
-    reset_scope_context, DType, Device, DeviceRequest, GradStore, Parameter, StepLog, Tensor,
-};
+use piston::{reset_scope_context, DType, Device, DeviceRequest, Parameter, StepLog, Tensor};
 use piston_models::gpt2::generate;
 use piston_models::gpt2::{Config, GPT2Input, PositionalEncoding};
 use piston_models::gpt2::{LayerNormPosition, GPT2};
@@ -221,10 +219,10 @@ impl Optimizer for OptimizerEnum {
         }
     }
 
-    async fn step(&mut self, grads: &GradStore, device: &Device) -> anyhow::Result<()> {
+    async fn step(&mut self, device: &Device) -> anyhow::Result<()> {
         match self {
-            OptimizerEnum::AdamW(opt) => opt.step(grads, device).await,
-            OptimizerEnum::SGD(opt) => opt.step(grads, device).await,
+            OptimizerEnum::AdamW(opt) => opt.step(device).await,
+            OptimizerEnum::SGD(opt) => opt.step(device).await,
         }
     }
 
@@ -445,11 +443,11 @@ impl Trainer {
         // We sum the loss outside of x entropy because we want to see per-token loss
         let loss_summed = loss.clone().sum_all().map_err(|e| e.to_string())?;
 
-        let grads = loss_summed.backward().map_err(|e| e.to_string())?;
+        loss_summed.backward().map_err(|e| e.to_string())?;
 
         // Run an optimizer step (updating model parameters).
         self.optimizer
-            .step(&grads, &self.device)
+            .step(&self.device)
             .await
             .map_err(|e| e.to_string())?;
 

@@ -1,7 +1,7 @@
 use piston::HashMap;
 use std::sync::{Arc, Mutex};
 
-use piston::{Device, GradStore, Parameter, Shape, Tensor};
+use piston::{Device, Parameter, Shape, Tensor};
 
 #[cfg(target_arch = "wasm32")]
 use {
@@ -53,20 +53,6 @@ impl VarMap {
         Ok(())
     }
 
-    #[cfg(not(target_arch = "wasm32"))]
-    pub fn save_grads<P: AsRef<std::path::Path>>(
-        &self,
-        path: P,
-        grads: &GradStore,
-    ) -> anyhow::Result<()> {
-        let tensor_data = self.data.lock().unwrap();
-        let data = tensor_data
-            .iter()
-            .map(|(k, v)| (k, grads.get(v.as_tensor()).unwrap()));
-        safetensors::tensor::serialize_to_file(data, &None, path.as_ref())?;
-        Ok(())
-    }
-
     #[cfg(target_arch = "wasm32")]
     async fn create_safetensors_download_url(
         &self,
@@ -87,36 +73,6 @@ impl VarMap {
         let url = Url::create_object_url_with_blob(&blob)?;
 
         Ok(url)
-    }
-
-    /// Download the gradients as a safetensors file using web APIs.
-    #[cfg(target_arch = "wasm32")]
-    pub async fn grads_download_url(&self, grads: &GradStore) -> anyhow::Result<String, JsValue> {
-        let tensor_data = self.data.lock().unwrap();
-        let data = Arc::new(Mutex::new(Vec::new()));
-        let mut futures = Vec::new();
-
-        // For each variable, move the corresponding grad to CPU asynchronously.
-        for (k, v) in tensor_data.iter() {
-            let k = k.clone();
-            let grad = grads.get(&v.as_tensor()).unwrap().clone();
-            let data_ref = Arc::clone(&data);
-            futures.push(future_to_promise(async move {
-                let grad_cpu = grad.to(&Device::CPU).await.unwrap();
-                data_ref.lock().unwrap().push((k, grad_cpu));
-                Ok(JsValue::undefined())
-            }));
-        }
-
-        // Wait for all futures to complete using Promise.all
-        let promise_array = js_sys::Array::from_iter(futures.iter());
-        JsFuture::from(js_sys::Promise::all(&promise_array)).await?;
-
-        // Collect the results
-        let data = Arc::try_unwrap(data).unwrap().into_inner().unwrap();
-
-        // Use the shared helper to download the safetensors data
-        self.create_safetensors_download_url(data).await
     }
 
     /// Download the variables (instead of grads) as a safetensors file using web APIs.
