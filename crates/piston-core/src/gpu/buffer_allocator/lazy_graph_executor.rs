@@ -1,7 +1,7 @@
 use crate::{
-    reset_scope_context, BufferUsagesExt, Compiled, CpuUniform, DebugSelection, Executable,
-    ExecutionError, ExecutionResult, GPUBuffer, HashMap, HashSet, Hasher as HasherType, Inner,
-    LazyOp, StepLog, StepLogConfig, Storage, TensorError, WgpuDevice,
+    reset_scope_context, Compiled, CpuUniform, DebugSelection, Executable, ExecutionError,
+    ExecutionResult, GPUBuffer, HashMap, HashSet, Hasher as HasherType, Inner, LazyOp, StepLog,
+    StepLogConfig, Storage, TensorError, WgpuDevice,
 };
 #[cfg(feature = "debug")]
 use crate::{DebugTensor, Device, DeviceStorage};
@@ -498,7 +498,7 @@ impl LazyGraphExecutor {
             }
 
             if let Some(compile_key) = compile_keys.get(&t.id()) {
-                let selected_for_debug = self
+                let selected_for_step_log = self
                     .step_log_config
                     .as_ref()
                     .map(|c| c.debug_selection.as_ref())
@@ -521,34 +521,38 @@ impl LazyGraphExecutor {
 
                 // TODO(vinhowe): Rethink this whole thing and don't use a function here.
                 #[cfg(not(feature = "debug"))]
-                let mut set_debug_buffer = move |compiled_op: &mut Compiled| {
-                    if selected_for_debug {
-                        // We ignore any requests to debug copy items
-                        if let Compiled::Compute(op) = compiled_op {
-                            op.debug_buffer = Some(Arc::new(gpu_device.create_buffer(
-                                &wgpu::BufferDescriptor {
-                                    label: Some("debug buffer"),
-                                    size: t.num_bytes() as _,
-                                    // If we want the values in CPU land, we'll eventually have to
-                                    // copy again to a buffer with a usage of COPY_DST | MAP_READ.
-                                    usage: wgpu::BufferUsages::standard(),
-                                    mapped_at_creation: false,
-                                },
-                            )));
-                            debug_list_ref.insert(t.id(), (*t).clone());
+                let mut set_debug_buffer =
+                    move |compiled_op: &mut Compiled| -> Result<(), TensorError> {
+                        let tensor_debug_buffer = t.debug_tensor();
+                        if selected_for_step_log || tensor_debug_buffer.is_some() {
+                            // We ignore any requests to debug copy items
+                            if let Compiled::Compute(op) = compiled_op {
+                                let debug_tensor = if let Some(tensor) = tensor_debug_buffer {
+                                    tensor
+                                } else {
+                                    t.get_or_create_debug_tensor()?
+                                };
+                                let storage_guard = debug_tensor.storage();
+                                let debug_buffer = storage_guard
+                                    .as_ref()
+                                    .expect("Debug tensor should have a storage")
+                                    .try_gpu()?;
+                                op.debug_buffer = Some(debug_buffer.inner.clone());
+                                debug_list_ref.insert(t.id(), (*t).clone());
+                            };
                         };
+                        Ok(())
                     };
-                };
 
                 if let Some(exec) = cached_exec.as_mut() {
                     let compiled_op = &mut exec.steps[i];
                     #[cfg(not(feature = "debug"))]
-                    set_debug_buffer(compiled_op);
+                    set_debug_buffer(compiled_op)?;
                 } else if let Some(mut compiled_op) =
-                    t.compile_gpu(compile_key, gpu_device, selected_for_debug)
+                    t.compile_gpu(compile_key, gpu_device, selected_for_step_log)
                 {
                     #[cfg(not(feature = "debug"))]
-                    set_debug_buffer(&mut compiled_op);
+                    set_debug_buffer(&mut compiled_op)?;
                     compiled_ops.push(Some(compiled_op));
                 } else {
                     log::warn!("Compilation failed for operation: {:?}", t.op().name());

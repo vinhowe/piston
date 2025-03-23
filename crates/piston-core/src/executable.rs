@@ -1,7 +1,7 @@
 use crate::gpu::{GpuUniform, PoolError, StaticResourcePoolAccessor, WgpuDevice};
 use crate::{
-    Compiled, CompiledCopy, CompiledOp, ExportedTensorProfilingEntry, HashMap, StepLogConfig,
-    Storage, TensorId,
+    Compiled, CompiledCopy, CompiledOp, ExportedTensorProfilingEntry, HashMap, PooledGPUBuffer,
+    StepLogConfig, Storage, TensorId,
 };
 
 // #[cfg(feature = "debug")] (for tensor?)
@@ -60,14 +60,14 @@ pub enum ExecutionError {
 
 pub struct ExecutionResult {
     pub profiling_entries: Option<HashMap<TensorId, ExportedTensorProfilingEntry>>,
-    pub gpu_bufs: Option<HashMap<TensorId, wgpu::Buffer>>,
+    pub gpu_bufs: Option<HashMap<TensorId, PooledGPUBuffer>>,
 }
 
 impl Executable {
     // Helper function to set up pipeline and dispatch workgroups
     #[inline]
-    fn compute_pass_inner<'a>(
-        compute_pass: &mut wgpu::ComputePass<'a>,
+    fn compute_pass_inner(
+        compute_pass: &mut wgpu::ComputePass<'_>,
         op: &CompiledOp,
         pipeline_resources: &crate::StaticResourcePoolReadLockAccessor<
             '_,
@@ -110,12 +110,9 @@ impl Executable {
             op: &CompiledOp,
         ) -> Option<wgpu::ComputePassTimestampWrites<'a>> {
             if let Some(profiler) = profiler {
-                let label = format!("{}_{}", op.kernel_key, op.workgroup_count().to_string());
-                if let Some(id) = op.tensor_id {
-                    Some(profiler.create_timestamp_queries(id, label.as_str()))
-                } else {
-                    None
-                }
+                let label = format!("{}_{}", op.kernel_key, op.workgroup_count());
+                op.tensor_id
+                    .map(|id| profiler.create_timestamp_queries(id, label.as_str()))
             } else {
                 None
             }
@@ -136,7 +133,7 @@ impl Executable {
         });
 
         // let mut debug_steps = vec![];
-        let mut gpu_bufs: Option<HashMap<TensorId, wgpu::Buffer>> = None;
+        let mut gpu_bufs: Option<HashMap<TensorId, PooledGPUBuffer>> = None;
 
         for group in grouped_iter {
             match group {
