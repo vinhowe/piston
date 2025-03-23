@@ -316,22 +316,16 @@ impl GPT2 {
 
 #[cfg(all(test, not(target_arch = "wasm32"), feature = "pyo3"))]
 mod tests {
-    use piston::{DType, Device, DeviceRequest, Parameter, StepLogConfig, Tensor};
+    use piston::{Device, DeviceRequest, Parameter, Tensor};
     use piston_datasets::{
-        nlp::{
-            tinystories::{Dataset, DatasetRandomIter},
-            toy::{ToyTaskIter, TwoSumTask},
-        },
+        nlp::tinystories::{Dataset, DatasetRandomIter},
         Batcher,
     };
-    use piston_nn::{
-        clip_grad_norm, cross_entropy, AdamW, ConstantLR, LRScheduler, Module, Optimizer,
-        ParamsAdamW, VarBuilder, VarMap,
-    };
+    use piston_nn::{cross_entropy, AdamW, Module, Optimizer, ParamsAdamW, VarBuilder, VarMap};
 
     use super::GPT2;
     use crate::gpt2::{
-        generate,
+        // generate,
         model::{Config, GPT2Input, PositionalEncoding},
         LayerNormPosition,
     };
@@ -462,109 +456,6 @@ mod tests {
 
     #[test]
     #[cfg_attr(feature = "ci", ignore)]
-    fn train_2_sum() -> anyhow::Result<()> {
-        let _ = env_logger::builder().is_test(true).try_init();
-
-        const VOCAB_SIZE: usize = 256;
-
-        const BATCH_SIZE: usize = 8;
-        const SEQUENCE_LENGTH: usize = 24;
-
-        let config = Config {
-            vocab_size: VOCAB_SIZE,
-            hidden_act: piston_nn::Activation::Relu2,
-            n_embd: 768,
-            n_layer: 4,
-            n_head: 4,
-            block_size: SEQUENCE_LENGTH,
-            attention_only: false,
-            positional_encoding: PositionalEncoding::Learned,
-            layernorm_position: LayerNormPosition::Pre,
-            embd_pdrop: 0.1,
-            attn_pdrop: 0.1,
-            resid_pdrop: 0.1,
-        };
-
-        let device = Device::request_device(piston::DeviceRequest::GPU).unwrap();
-
-        // If you want to enable profiling:
-        // device
-        //     .try_gpu()
-        //     .unwrap()
-        //     .set_step_log_config(StepLogConfig {
-        //         profiling: true,
-        //         ..Default::default()
-        //     });
-
-        let varmap = VarMap::new();
-        let vb = VarBuilder::from_varmap(&varmap, DType::F32, &device.clone());
-
-        let mut model = GPT2::new(&config, vb, false).unwrap();
-
-        let params = ParamsAdamW {
-            lr: 1e-4,
-            // lr: 0.0,
-            // weight_decay: 0.1,
-            ..Default::default()
-        };
-
-        let opt = AdamW::new(
-            varmap
-                .all_labeled_vars()
-                .iter()
-                .map(|(label, var)| (Some(label.to_owned()), var.to_owned()))
-                .collect::<Vec<(Option<String>, Parameter)>>(),
-            params,
-        )?;
-
-        let mut lr_scheduler = ConstantLR::new(opt, 1.0, 100);
-
-        let task = TwoSumTask::new(5, 5, Some(10));
-        let dataset_iter = ToyTaskIter::new(task, device.clone());
-        let batch_iter = Batcher::new_r2(dataset_iter).batch_size(BATCH_SIZE);
-
-        for (batch_index, batch) in batch_iter.enumerate() {
-            if batch_index > 100 {
-                break;
-            }
-
-            let (input, tgt) = batch?;
-
-            let (logits, _) = model.schedule(GPT2Input {
-                x: input,
-                index_pos: 0,
-            })?;
-
-            let loss = cross_entropy(logits.flatten_to(1)?, tgt.flatten_to(1)?)?;
-
-            let grads = loss.backward()?;
-
-            lr_scheduler.step(&grads, &device)?;
-
-            let loss_vec = loss.clone().to(&Device::CPU)?.to_vec::<f32>()?;
-
-            println!("{:?} loss: {:?}, norm: {:?}", batch_index, loss_vec[0], "?");
-        }
-
-        model.reset();
-
-        // Uncomment this to generate a sequence from the model:
-        // generate(
-        //     &mut model,
-        //     "12,35,07,99,03:134=".chars().map(|c| c as i32).collect(),
-        //     |s, _logits| {
-        //         println!("{}", s.iter().map(|&c| c as u8 as char).collect::<String>());
-        //         // println!("{:?}", logits);
-        //     },
-        //     24,
-        // )
-        // .unwrap();
-
-        Ok(())
-    }
-
-    #[test]
-    #[cfg_attr(feature = "ci", ignore)]
     fn train_tinystories() -> anyhow::Result<()> {
         let _ = env_logger::builder().is_test(true).try_init();
 
@@ -619,7 +510,7 @@ mod tests {
                 .all_labeled_vars()
                 .iter()
                 .map(|(label, var)| (Some(label.to_owned()), var.to_owned()))
-                .collect::<Vec<(Option<String>, Var)>>(),
+                .collect::<Vec<(Option<String>, Parameter)>>(),
             params,
         )?;
 
