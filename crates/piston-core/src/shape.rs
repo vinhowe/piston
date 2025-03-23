@@ -449,10 +449,10 @@ impl Dim for usize {
 
     fn to_index_plus_one(&self, shape: &Shape, op: &'static str) -> Result<usize> {
         let rank = shape.rank();
-        if *self >= rank {
+        if *self > rank {
             Err(anyhow::anyhow!("Dimension out of range for op: {}", op))
         } else {
-            Ok(*self + 1)
+            Ok(*self)
         }
     }
 }
