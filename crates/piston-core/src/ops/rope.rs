@@ -315,7 +315,7 @@ mod tests {
     use test_strategy::{proptest, Arbitrary};
 
     use crate::test_util::run_py_prg;
-    use crate::{shape, Device, DeviceRequest, Tensor};
+    use crate::{Device, DeviceRequest, Tensor};
 
     fn ground_truth(a: &Tensor, dim: usize, offset: usize) -> anyhow::Result<Tensor> {
         let prg = r#"
@@ -342,8 +342,8 @@ def mlx_rope(input, dim, offset):
             dim,
             offset,
         } = problem;
-        let shape = shape![BS, NH, SL, HD];
-        let a = Tensor::randn::<f32>(0., 1., shape, Device::CPU).unwrap();
+        let shape = (BS, NH, SL, HD);
+        let a = Tensor::randn::<f32, _>(0., 1., shape, Device::CPU).unwrap();
         let ground = ground_truth(&a, dim, offset).unwrap();
 
         let a = a.to(&device).unwrap();

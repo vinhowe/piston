@@ -1,6 +1,6 @@
 use crate::Module;
 use maybe_async::maybe_async;
-use piston::{shape, Shape, Tensor};
+use piston::{Shape, Tensor};
 use piston_macros::scoped_module;
 
 /// # Embedding
@@ -46,7 +46,7 @@ pub async fn embedding(
 ) -> anyhow::Result<Embedding> {
     let embeddings = vb
         .get_with_hints(
-            shape![in_size, out_size],
+            (in_size, out_size),
             "weight",
             crate::Init::Randn {
                 mean: 0.,
@@ -82,8 +82,7 @@ mod tests {
             .prop_flat_map(|vocab_shape| (Just(vocab_shape), 1..64usize))
             .prop_map(|(vocab_shape, num_indices)| {
                 let indices =
-                    Tensor::randint(0, vocab_shape[0] as i32, shape![num_indices], Device::CPU)
-                        .unwrap();
+                    Tensor::randint(0, vocab_shape[0] as i32, num_indices, Device::CPU).unwrap();
                 EmbeddingProblem {
                     vocab_shape,
                     indices,
@@ -115,7 +114,7 @@ def embedding(weight, indices):
             vocab_shape,
             indices,
         } = problem;
-        let weight = Tensor::randn::<f32>(vocab_shape, Device::CPU).unwrap();
+        let weight = Tensor::randn::<f32, _>(vocab_shape, Device::CPU).unwrap();
 
         let ground_truth = ground_truth(&weight, &indices).unwrap();
 
@@ -138,7 +137,7 @@ def embedding(weight, indices):
     fn debug_embedding() {
         let prob = EmbeddingProblem {
             vocab_shape: shape![10000, 384],
-            indices: Tensor::from_data([400i32, 9001i32, 5555i32], shape![1, 3], Device::CPU),
+            indices: Tensor::from_data([400i32, 9001i32, 5555i32], (1, 3), Device::CPU),
         };
         run_embedding_trial(prob);
     }

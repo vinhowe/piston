@@ -1,6 +1,6 @@
 use anyhow::Result;
 use num_traits::AsPrimitive;
-use piston::{shape, Device, HashMap, Shape, Tensor, TensorDType};
+use piston::{Device, HashMap, Shape, Tensor, TensorDType};
 
 #[derive(Clone, Debug)]
 pub struct KVEntry {
@@ -15,8 +15,8 @@ impl KVEntry {
         device: &Device,
     ) -> Result<Self> {
         Ok(KVEntry {
-            k_cache: Tensor::zeros::<T>(shape, device)?,
-            v_cache: Tensor::zeros::<T>(shape, device)?,
+            k_cache: Tensor::zeros::<T, _>(shape, device)?,
+            v_cache: Tensor::zeros::<T, _>(shape, device)?,
             entries: 0,
         })
     }
@@ -42,12 +42,13 @@ impl std::ops::Index<usize> for KVCache {
 }
 
 impl KVCache {
-    pub fn new<T: TensorDType + AsPrimitive<f32>>(
+    pub fn new<T: TensorDType + AsPrimitive<f32>, S: Into<Shape>>(
         n_layers: i32,
         use_kv_cache: bool,
-        shape: Shape,
+        shape: S,
         device: &Device,
     ) -> Result<Self> {
+        let shape: Shape = shape.into();
         let mut entries = Vec::with_capacity(n_layers as _);
         // TODO: This is really bad; look at actual patterns for how people do KV caches
         let mut allocated = false;
@@ -109,7 +110,7 @@ impl KVCache {
             Ok(mask.clone())
         } else {
             log::debug!("Creating mask for {:?}", t);
-            let ones = Tensor::ones::<f32>(&shape![t, t], &self.device)?;
+            let ones = Tensor::ones::<f32, _>((t, t), &self.device)?;
             let mask = ones.tril(None)?;
             self.masks.insert(t, mask.clone());
             Ok(mask)

@@ -1,6 +1,7 @@
 use crate::{rvec, shape, RVec, Stride};
 use anyhow::Result;
 use encase::impl_wrapper;
+use smallvec::ToSmallVec;
 use std::{
     ops::{RangeFrom, RangeTo},
     slice::Iter,
@@ -236,27 +237,27 @@ impl std::ops::Index<RangeTo<usize>> for Shape {
     }
 }
 
-impl From<Vec<usize>> for Shape {
-    fn from(shape: Vec<usize>) -> Self {
-        Self(shape.into())
-    }
-}
-
-impl From<Vec<u32>> for Shape {
-    fn from(shape: Vec<u32>) -> Self {
-        Self(shape.into_iter().map(|x| x as usize).collect())
+impl<const C: usize> From<&[usize; C]> for Shape {
+    fn from(dims: &[usize; C]) -> Self {
+        Self(dims.to_smallvec())
     }
 }
 
 impl From<&[usize]> for Shape {
-    fn from(slice: &[usize]) -> Self {
-        Shape(slice.into())
+    fn from(dims: &[usize]) -> Self {
+        Self(dims.into())
     }
 }
 
-impl From<RVec<usize>> for Shape {
-    fn from(shape: RVec<usize>) -> Self {
-        Self(shape)
+impl From<&Shape> for Shape {
+    fn from(shape: &Shape) -> Self {
+        Self(shape.0.to_smallvec())
+    }
+}
+
+impl From<()> for Shape {
+    fn from(_: ()) -> Self {
+        Self(rvec![])
     }
 }
 
@@ -309,6 +310,12 @@ impl From<Shape> for RVec<usize> {
     }
 }
 
+impl From<usize> for Shape {
+    fn from(d1: usize) -> Self {
+        Self(rvec![d1])
+    }
+}
+
 macro_rules! impl_try_into_arr_for_shape {
     ($($N:expr),*) => {
         $(
@@ -332,6 +339,71 @@ macro_rules! impl_try_into_arr_for_shape {
 }
 
 impl_try_into_arr_for_shape!(1, 2, 3, 4);
+
+macro_rules! impl_from_tuple {
+    ($tuple:ty, $($index:tt),+) => {
+        impl From<$tuple> for Shape {
+            fn from(d: $tuple) -> Self {
+                Self(rvec![$(d.$index,)+])
+            }
+        }
+    }
+}
+
+impl_from_tuple!((usize,), 0);
+impl_from_tuple!((usize, usize), 0, 1);
+impl_from_tuple!((usize, usize, usize), 0, 1, 2);
+impl_from_tuple!((usize, usize, usize, usize), 0, 1, 2, 3);
+impl_from_tuple!((usize, usize, usize, usize, usize), 0, 1, 2, 3, 4);
+impl_from_tuple!((usize, usize, usize, usize, usize, usize), 0, 1, 2, 3, 4, 5);
+
+impl From<RVec<usize>> for Shape {
+    fn from(dims: RVec<usize>) -> Self {
+        Self(dims)
+    }
+}
+
+impl From<Vec<usize>> for Shape {
+    fn from(dims: Vec<usize>) -> Self {
+        Self(dims.into())
+    }
+}
+
+macro_rules! extract_dims {
+    ($fn_name:ident, $cnt:tt, $dims:expr, $out_type:ty) => {
+        pub fn $fn_name(dims: &[usize]) -> Result<$out_type> {
+            if dims.len() != $cnt {
+                Err(anyhow::anyhow!(
+                    "Unexpected number of dimensions: expected {}, got {}, shape: {:?}",
+                    $cnt,
+                    dims.len(),
+                    Shape::from(dims)
+                ))
+            } else {
+                Ok($dims(dims))
+            }
+        }
+
+        impl Shape {
+            pub fn $fn_name(&self) -> Result<$out_type> {
+                $fn_name(self.0.as_slice())
+            }
+        }
+
+        impl crate::Tensor {
+            pub fn $fn_name(&self) -> Result<$out_type> {
+                self.shape().$fn_name()
+            }
+        }
+
+        impl std::convert::TryInto<$out_type> for Shape {
+            type Error = anyhow::Error;
+            fn try_into(self) -> anyhow::Result<$out_type> {
+                self.$fn_name()
+            }
+        }
+    };
+}
 
 #[cfg(test)]
 mod tests {
@@ -443,9 +515,16 @@ pub trait Dims: Sized {
     }
 }
 
+impl<T: Dim + Sized> Dims for T {
+    fn to_indexes_internal(self, shape: &Shape, op: &'static str) -> Result<RVec<usize>> {
+        let dim = self.to_index(shape, op)?;
+        Ok(rvec![dim])
+    }
+}
+
 impl Dims for RVec<usize> {
     fn to_indexes_internal(self, _: &Shape, _: &'static str) -> Result<RVec<usize>> {
-        Ok(self.into())
+        Ok(self)
     }
 }
 
@@ -464,13 +543,6 @@ impl Dims for &[usize] {
 impl Dims for () {
     fn to_indexes_internal(self, _: &Shape, _: &'static str) -> Result<RVec<usize>> {
         Ok(rvec![])
-    }
-}
-
-impl<D: Dim + Sized> Dims for D {
-    fn to_indexes_internal(self, shape: &Shape, op: &'static str) -> Result<RVec<usize>> {
-        let dim = self.to_index(shape, op)?;
-        Ok(rvec![dim])
     }
 }
 
@@ -528,5 +600,160 @@ impl<D1: Dim, D2: Dim, D3: Dim, D4: Dim, D5: Dim, D6: Dim> Dims for (D1, D2, D3,
         let d4 = self.4.to_index(shape, op)?;
         let d5 = self.5.to_index(shape, op)?;
         Ok(rvec![d0, d1, d2, d3, d4, d5])
+    }
+}
+
+extract_dims!(dims0, 0, |_: &[usize]| (), ());
+extract_dims!(dims1, 1, |d: &[usize]| d[0], usize);
+extract_dims!(dims2, 2, |d: &[usize]| (d[0], d[1]), (usize, usize));
+extract_dims!(
+    dims3,
+    3,
+    |d: &[usize]| (d[0], d[1], d[2]),
+    (usize, usize, usize)
+);
+extract_dims!(
+    dims4,
+    4,
+    |d: &[usize]| (d[0], d[1], d[2], d[3]),
+    (usize, usize, usize, usize)
+);
+extract_dims!(
+    dims5,
+    5,
+    |d: &[usize]| (d[0], d[1], d[2], d[3], d[4]),
+    (usize, usize, usize, usize, usize)
+);
+
+pub trait ShapeWithOneHole {
+    fn into_shape(self, el_count: usize) -> Result<Shape>;
+}
+
+impl<S: Into<Shape>> ShapeWithOneHole for S {
+    fn into_shape(self, _el_count: usize) -> Result<Shape> {
+        Ok(self.into())
+    }
+}
+
+impl ShapeWithOneHole for ((),) {
+    fn into_shape(self, el_count: usize) -> Result<Shape> {
+        Ok(el_count.into())
+    }
+}
+
+pub fn hole_size(el_count: usize, prod_d: usize, s: &dyn std::fmt::Debug) -> Result<usize> {
+    if prod_d == 0 {
+        anyhow::bail!("cannot reshape tensor of {el_count} elements to {s:?}")
+    }
+    if el_count % prod_d != 0 {
+        anyhow::bail!("cannot reshape tensor with {el_count} elements to {s:?}")
+    }
+    Ok(el_count / prod_d)
+}
+
+impl ShapeWithOneHole for ((), usize) {
+    fn into_shape(self, el_count: usize) -> Result<Shape> {
+        let ((), d1) = self;
+        Ok((hole_size(el_count, d1, &self)?, d1).into())
+    }
+}
+
+impl ShapeWithOneHole for (usize, ()) {
+    fn into_shape(self, el_count: usize) -> Result<Shape> {
+        let (d1, ()) = self;
+        Ok((d1, hole_size(el_count, d1, &self)?).into())
+    }
+}
+
+impl ShapeWithOneHole for ((), usize, usize) {
+    fn into_shape(self, el_count: usize) -> Result<Shape> {
+        let ((), d1, d2) = self;
+        Ok((hole_size(el_count, d1 * d2, &self)?, d1, d2).into())
+    }
+}
+
+impl ShapeWithOneHole for (usize, (), usize) {
+    fn into_shape(self, el_count: usize) -> Result<Shape> {
+        let (d1, (), d2) = self;
+        Ok((d1, hole_size(el_count, d1 * d2, &self)?, d2).into())
+    }
+}
+
+impl ShapeWithOneHole for (usize, usize, ()) {
+    fn into_shape(self, el_count: usize) -> Result<Shape> {
+        let (d1, d2, ()) = self;
+        Ok((d1, d2, hole_size(el_count, d1 * d2, &self)?).into())
+    }
+}
+
+impl ShapeWithOneHole for ((), usize, usize, usize) {
+    fn into_shape(self, el_count: usize) -> Result<Shape> {
+        let ((), d1, d2, d3) = self;
+        let d = hole_size(el_count, d1 * d2 * d3, &self)?;
+        Ok((d, d1, d2, d3).into())
+    }
+}
+
+impl ShapeWithOneHole for (usize, (), usize, usize) {
+    fn into_shape(self, el_count: usize) -> Result<Shape> {
+        let (d1, (), d2, d3) = self;
+        let d = hole_size(el_count, d1 * d2 * d3, &self)?;
+        Ok((d1, d, d2, d3).into())
+    }
+}
+
+impl ShapeWithOneHole for (usize, usize, (), usize) {
+    fn into_shape(self, el_count: usize) -> Result<Shape> {
+        let (d1, d2, (), d3) = self;
+        let d = hole_size(el_count, d1 * d2 * d3, &self)?;
+        Ok((d1, d2, d, d3).into())
+    }
+}
+
+impl ShapeWithOneHole for (usize, usize, usize, ()) {
+    fn into_shape(self, el_count: usize) -> Result<Shape> {
+        let (d1, d2, d3, ()) = self;
+        let d = hole_size(el_count, d1 * d2 * d3, &self)?;
+        Ok((d1, d2, d3, d).into())
+    }
+}
+
+impl ShapeWithOneHole for ((), usize, usize, usize, usize) {
+    fn into_shape(self, el_count: usize) -> Result<Shape> {
+        let ((), d1, d2, d3, d4) = self;
+        let d = hole_size(el_count, d1 * d2 * d3 * d4, &self)?;
+        Ok((d, d1, d2, d3, d4).into())
+    }
+}
+
+impl ShapeWithOneHole for (usize, (), usize, usize, usize) {
+    fn into_shape(self, el_count: usize) -> Result<Shape> {
+        let (d1, (), d2, d3, d4) = self;
+        let d = hole_size(el_count, d1 * d2 * d3 * d4, &self)?;
+        Ok((d1, d, d2, d3, d4).into())
+    }
+}
+
+impl ShapeWithOneHole for (usize, usize, (), usize, usize) {
+    fn into_shape(self, el_count: usize) -> Result<Shape> {
+        let (d1, d2, (), d3, d4) = self;
+        let d = hole_size(el_count, d1 * d2 * d3 * d4, &self)?;
+        Ok((d1, d2, d, d3, d4).into())
+    }
+}
+
+impl ShapeWithOneHole for (usize, usize, usize, (), usize) {
+    fn into_shape(self, el_count: usize) -> Result<Shape> {
+        let (d1, d2, d3, (), d4) = self;
+        let d = hole_size(el_count, d1 * d2 * d3 * d4, &self)?;
+        Ok((d1, d2, d3, d, d4).into())
+    }
+}
+
+impl ShapeWithOneHole for (usize, usize, usize, usize, ()) {
+    fn into_shape(self, el_count: usize) -> Result<Shape> {
+        let (d1, d2, d3, d4, ()) = self;
+        let d = hole_size(el_count, d1 * d2 * d3 * d4, &self)?;
+        Ok((d1, d2, d3, d4, d).into())
     }
 }

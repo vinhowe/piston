@@ -14,7 +14,7 @@ mod tests {
     use test_strategy::{proptest, Arbitrary};
 
     use crate::test_util::run_py_prg;
-    use crate::{rvec, shape, Device, DeviceRequest, Tensor};
+    use crate::{rvec, Device, DeviceRequest, Tensor};
 
     fn ground_truth(
         input: &Tensor,
@@ -46,9 +46,9 @@ def manual_group_norm(input, scale, bias, num_groups):
             N,
         } = problem;
 
-        let input = Tensor::randn::<f32>(0., 1., shape![B, C, N], Device::CPU)?;
-        let scale = Tensor::randn::<f32>(0., 1., shape![C], Device::CPU)?;
-        let bias = Some(Tensor::randn::<f32>(0., 1., shape![C], Device::CPU)?);
+        let input = Tensor::randn::<f32, _>(0., 1., (B, C, N), Device::CPU)?;
+        let scale = Tensor::randn::<f32, _>(0., 1., C, Device::CPU)?;
+        let bias = Some(Tensor::randn::<f32, _>(0., 1., C, Device::CPU)?);
 
         let ground = ground_truth(&input, &scale, bias.as_ref(), num_groups)?;
 

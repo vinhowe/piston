@@ -4,8 +4,8 @@ use crate::cpu::unary::unary_map_inplace;
 use crate::cpu::utils::cpu_store_result;
 use crate::reindex::broadcast_vector;
 use crate::{
-    shape, CPUOperation, DType, GroupNorm, InvariantError, Norm, NormOp, OperationError, Shape,
-    Tensor, TensorDType,
+    CPUOperation, DType, GroupNorm, InvariantError, Norm, NormOp, OperationError, Shape, Tensor,
+    TensorDType,
 };
 use core::iter::Sum;
 use half::{bf16, f16};
@@ -107,7 +107,7 @@ where
     let src_shape = input.shape();
     let rank = input.rank();
     let N = src_shape[rank - 1];
-    let norm_shape = shape!(N);
+    let norm_shape = N;
 
     let input = input.to_vec::<T>().await?;
     let scale = scale.to_vec::<T>().await?;
@@ -139,11 +139,11 @@ where
     broadcast_vector(&x2, &mut v);
     mul(&mut x, &v);
 
-    let scale_b = broadcast(&scale, &norm_shape, src_shape);
+    let scale_b = broadcast(&scale, norm_shape, src_shape);
     mul(&mut x, &scale_b);
 
     if let Some(bias) = bias {
-        let bias_b = broadcast(&bias, &norm_shape, src_shape);
+        let bias_b = broadcast(&bias, norm_shape, src_shape);
         add(&mut x, &bias_b);
     }
 
@@ -217,7 +217,7 @@ where
     broadcast_vector(&x2, &mut v);
     mul(&mut x, &v);
 
-    let scale_b = broadcast(&scale, &shape!(N), src_shape);
+    let scale_b = broadcast(&scale, (N,), src_shape);
     mul(&mut x, &scale_b);
 
     cpu_store_result(dst, &x);
@@ -234,8 +234,10 @@ async fn apply_group_norm(_n: &GroupNorm, dst: Tensor) -> Result<Tensor, Operati
 
 #[cfg(test)]
 mod tests {
-    use crate::cpu::norm::{mean, square};
-    use crate::shape;
+    use crate::{
+        cpu::norm::{mean, square},
+        shape,
+    };
 
     #[test]
     fn debug_square() {

@@ -2,7 +2,7 @@ use crate::gpt2::{GPT2Input, GPT2};
 use maybe_async::maybe_async;
 use ndarray::{Array3, Axis, Ix3};
 use ndarray_stats::QuantileExt;
-use piston::{shape, Device, Tensor};
+use piston::{Device, Tensor};
 use piston_nn::{Module, ModuleMode, ModuleModeGuard};
 
 #[maybe_async]
@@ -42,7 +42,7 @@ pub async fn generate(
         // Build the input tensor from tokens_to_feed.
         let input = Tensor::from_data(
             tokens_to_feed,
-            shape![1, tokens_to_feed.len()],
+            (1, tokens_to_feed.len()),
             model.device.clone(),
         );
 

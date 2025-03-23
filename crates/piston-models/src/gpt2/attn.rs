@@ -1,7 +1,7 @@
 use std::{cell::RefCell, rc::Rc};
 
 use maybe_async::maybe_async;
-use piston::{prelude::shape, rvec, Tensor};
+use piston::Tensor;
 use piston_macros::scoped_module;
 use piston_nn::{
     AlibiEmbedding, AlibiInput, Dropout, KVCache, Linear, Module, RotaryEmbedding, RotaryInput,
@@ -114,11 +114,11 @@ impl Module for GPT2SelfAttention {
             qkv.clone()
                 .slice(&[0..batch_size, 0..q_len, value_pos..value_pos + self.n_embd])?;
 
-        let qkv_shape = shape![batch_size as _, q_len, self.n_head, self.h_dim];
+        let qkv_shape = (batch_size, q_len, self.n_head, self.h_dim);
 
-        let mut k = k.view(qkv_shape.clone())?.permute((0, 2, 1, 3))?;
-        let mut q = q.view(qkv_shape.clone())?.permute((0, 2, 1, 3))?;
-        let v = v.view(qkv_shape.clone())?.permute((0, 2, 1, 3))?;
+        let mut k = k.view(qkv_shape)?.permute((0, 2, 1, 3))?;
+        let mut q = q.view(qkv_shape)?.permute((0, 2, 1, 3))?;
+        let v = v.view(qkv_shape)?.permute((0, 2, 1, 3))?;
 
         let cache_entry = if cache.borrow_mut().use_kv_cache() {
             let cache_ref = cache.borrow_mut();
@@ -172,7 +172,7 @@ impl Module for GPT2SelfAttention {
             .clone()
             .matmul(v.clone(), false, false)?
             .permute((0, 2, 1, 3))?
-            .view(shape![batch_size as _, q_len, self.n_embd])?;
+            .view((batch_size, q_len, self.n_embd))?;
 
         let y = self.c_proj.schedule(y)?;
         let y = match &self.resid_dropout {

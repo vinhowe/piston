@@ -24,25 +24,28 @@ impl std::ops::Deref for Parameter {
 }
 
 impl Parameter {
-    pub fn zeros<T: TensorDType + AsPrimitive<f32>>(
-        shape: &Shape,
+    pub fn zeros<T: TensorDType + AsPrimitive<f32>, S: Into<Shape>>(
+        shape: S,
         device: &Device,
     ) -> Result<Self> {
-        let inner = Tensor::zeros_impl::<T>(shape, device, true)?;
+        let inner = Tensor::zeros_impl::<T, _>(shape, device, true)?;
         Ok(Self(inner))
     }
 
-    pub fn ones<T: TensorDType + AsPrimitive<f32>>(shape: &Shape, device: &Device) -> Result<Self> {
-        let inner = Tensor::ones_impl::<T>(shape, device, true)?;
+    pub fn ones<T: TensorDType + AsPrimitive<f32>, S: Into<Shape>>(
+        shape: S,
+        device: &Device,
+    ) -> Result<Self> {
+        let inner = Tensor::ones_impl::<T, _>(shape, device, true)?;
         Ok(Self(inner))
     }
 
-    pub fn full<T: TensorDType + AsPrimitive<f32>>(
-        shape: &Shape,
+    pub fn full<T: TensorDType + AsPrimitive<f32>, S: Into<Shape>>(
+        shape: S,
         value: T,
         device: &Device,
     ) -> Result<Self> {
-        let inner = Tensor::full_impl::<T>(shape, value, device, true)?;
+        let inner = Tensor::full_impl(shape, value, device, true)?;
         Ok(Self(inner))
     }
 
@@ -57,10 +60,13 @@ impl Parameter {
     }
 
     #[cfg(feature = "rand")]
-    pub fn randint<T: TensorDType + rand_distr::uniform::SampleUniform + PartialOrd>(
+    pub fn randint<
+        T: TensorDType + rand_distr::uniform::SampleUniform + PartialOrd,
+        S: Into<Shape>,
+    >(
         low: T,
         high: T,
-        shape: Shape,
+        shape: S,
         device: Device,
     ) -> Result<Self> {
         let inner = Tensor::randint_impl(low, high, shape, device, true)?;
@@ -68,24 +74,24 @@ impl Parameter {
     }
 
     #[cfg(feature = "rand")]
-    pub fn rand<T: TensorDType + num_traits::Float>(
+    pub fn rand<T: TensorDType + num_traits::Float, S: Into<Shape>>(
         lo: T,
         up: T,
-        shape: Shape,
+        shape: S,
         device: Device,
     ) -> Result<Self> {
-        let inner = Tensor::rand_impl::<T>(lo, up, shape, device, true)?;
+        let inner = Tensor::rand_impl(lo, up, shape, device, true)?;
         Ok(Self(inner))
     }
 
     #[cfg(feature = "rand")]
-    pub fn randn<T: TensorDType + num_traits::Float>(
+    pub fn randn<T: TensorDType + num_traits::Float, S: Into<Shape>>(
         mean: T,
         std: T,
-        shape: Shape,
+        shape: S,
         device: Device,
     ) -> Result<Self> {
-        let inner = Tensor::randn_impl::<T>(mean, std, shape, device, true)?;
+        let inner = Tensor::randn_impl(mean, std, shape, device, true)?;
         Ok(Self(inner))
     }
 
@@ -96,8 +102,12 @@ impl Parameter {
         Self(inner)
     }
 
-    pub fn from_data<T: TensorDType, U: AsRef<[T]>>(data: U, shape: Shape, device: Device) -> Self {
-        let inner = Tensor::from_data_impl::<T, U>(data, shape, device, true);
+    pub fn from_data<T: TensorDType, U: AsRef<[T]>, S: Into<Shape>>(
+        data: U,
+        shape: S,
+        device: Device,
+    ) -> Self {
+        let inner = Tensor::from_data_impl(data, shape, device, true);
         Self(inner)
     }
 

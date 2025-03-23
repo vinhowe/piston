@@ -1,5 +1,5 @@
 use maybe_async::maybe_async;
-use piston::{shape, DType, Tensor};
+use piston::{DType, Tensor};
 use piston_macros::scoped_module;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -96,10 +96,10 @@ pub async fn layer_norm(
     vb: crate::VarBuilder<'_>,
 ) -> anyhow::Result<LayerNorm> {
     let weight = vb
-        .get_with_hints(shape![size], "weight", crate::Init::Const(1.))
+        .get_with_hints(size, "weight", crate::Init::Const(1.))
         .await?;
     let bias = vb
-        .get_with_hints(shape![size], "bias", crate::Init::Const(0.))
+        .get_with_hints(size, "bias", crate::Init::Const(0.))
         .await?;
     Ok(LayerNorm {
         weight,
@@ -141,7 +141,7 @@ impl crate::Module for RMSNorm {
 #[maybe_async]
 pub async fn rms_norm(size: usize, eps: f32, vb: crate::VarBuilder<'_>) -> anyhow::Result<RMSNorm> {
     let weight = vb
-        .get_with_hints(shape![size], "weight", crate::Init::Const(1.))
+        .get_with_hints(size, "weight", crate::Init::Const(1.))
         .await?;
     Ok(RMSNorm::new(weight, eps))
 }
@@ -262,12 +262,7 @@ def layer_norm_backward(x, weight, bias = None):
             eps,
         } = problem;
 
-        let x = Tensor::randn::<f32>(
-            0.,
-            1.,
-            shape![batch_size, seq_len, hidden_size],
-            Device::CPU,
-        )?;
+        let x = Tensor::randn::<f32, _>(0., 1., (batch_size, seq_len, hidden_size), Device::CPU)?;
         let varmap = VarMap::new();
         let vb = VarBuilder::from_varmap(&varmap, piston::DType::F32, &device);
 
@@ -307,12 +302,7 @@ def layer_norm_backward(x, weight, bias = None):
             eps,
         } = problem;
 
-        let x = Tensor::randn::<f32>(
-            0.,
-            1.,
-            shape![batch_size, seq_len, hidden_size],
-            Device::CPU,
-        )?;
+        let x = Tensor::randn::<f32, _>(0., 1., (batch_size, seq_len, hidden_size), Device::CPU)?;
         let x_gpu = x.to(&device)?;
         let x_var = Parameter::from_tensor(&x_gpu)?;
         let varmap = VarMap::new();

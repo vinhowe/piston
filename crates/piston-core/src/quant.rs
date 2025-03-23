@@ -167,17 +167,17 @@ pub fn dequantize(quantized: Tensor) -> Tensor {
 
 #[cfg(test)]
 mod tests {
-    use crate::{
-        dequantize, quantize, shape, Device, Quantized, Tensor, Q4_KF, Q4_KH, Q8_0F, Q8_0H,
-    };
+    use crate::{dequantize, quantize, Device, Quantized, Tensor, Q4_KF, Q4_KH, Q8_0F, Q8_0H};
     use half::f16;
+    use num_traits::{One, Zero};
 
     // Verify that quantize -> dequantize is a (lossy) identity operation
     fn check_qd_reflexive<Q: Quantized>(atol: Q::FP, rtol: Q::FP)
     where
         Q::FP: std::fmt::Display + num_traits::Float + Default,
     {
-        let ground = Tensor::randn::<Q::FP>(0., 1., shape![64, 64], Device::CPU).unwrap();
+        let ground =
+            Tensor::randn::<Q::FP, _>(Q::FP::zero(), Q::FP::one(), (4, 64), Device::CPU).unwrap();
         let q = quantize::<Q>(&ground);
         let dq = dequantize(q);
         ground.all_close(&dq, atol, rtol).unwrap();

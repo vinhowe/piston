@@ -88,7 +88,7 @@ mod tests {
                 .prop_flat_map(|shape| (Just(shape.clone()), Just(vec![0, 1, 2, 3]).prop_shuffle()))
                 .prop_map(|(shape, perm)| {
                     Permute::new(
-                        Tensor::randn::<f32>(0., 1., shape, Device::CPU).unwrap(),
+                        Tensor::randn::<f32, _>(0., 1., shape, Device::CPU).unwrap(),
                         perm.into(),
                     )
                 })
@@ -120,7 +120,7 @@ def permute(a):
 
         let a_gpu = a.to(&device)?;
         let ground = ground_truth(&a, format!("{:?}", op.dims).as_str())?;
-        let ours = a_gpu.permute(&op.dims)?;
+        let ours = a_gpu.permute(op.dims)?;
         let d_gpu = ours.to(&Device::CPU)?;
         ground.all_close(&d_gpu, 1e-5, 1e-5)?;
         Ok(())

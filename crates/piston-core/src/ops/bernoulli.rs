@@ -204,7 +204,7 @@ impl Kernel for BernoulliKernels {
 mod tests {
     use test_strategy::{proptest, Arbitrary};
 
-    use crate::{shape, Device, DeviceRequest, Tensor};
+    use crate::{Device, DeviceRequest, Tensor};
 
     fn run_bernoulli_trial(problem: BernoulliProblem, device: Device) {
         let BernoulliProblem { B, M, N, seed } = problem;
@@ -212,7 +212,7 @@ mod tests {
         device.set_seed(seed as u64);
 
         // Create a tensor with random probabilities between 0 and 1
-        let probs = Tensor::rand::<f32>(0f32, 1f32, shape![B, M, N], Device::CPU);
+        let probs = Tensor::rand::<f32, _>(0f32, 1f32, (B, M, N), Device::CPU).unwrap();
         let probs_gpu = probs.to(&device).unwrap();
 
         // Apply Bernoulli sampling to the probabilities tensor

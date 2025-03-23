@@ -218,7 +218,7 @@ mod tests {
     use test_strategy::{proptest, Arbitrary};
 
     use crate::test_util::run_py_prg;
-    use crate::{shape, DType, Device, DeviceRequest, Parameter, Tensor};
+    use crate::{rvec, DType, Device, DeviceRequest, Parameter, Tensor};
 
     fn ground_truth(src: &Tensor, ids: &Tensor, dim: usize) -> anyhow::Result<Tensor> {
         let prg = format!(
@@ -235,13 +235,13 @@ def gather(src, ids, dim):
     fn run_gather_trial(problem: GatherProblem, device: Device) {
         let GatherProblem { B, M, N, dim } = problem;
 
-        let src = Tensor::randn::<f32>(0., 1., shape![B, M, N], Device::CPU).unwrap();
+        let src = Tensor::randn::<f32, _>(0., 1., (B, M, N), Device::CPU).unwrap();
 
         // Create the shape for ids tensor
-        let mut ids_shape = vec![B, M, N];
+        let mut ids_shape = rvec![B, M, N];
         ids_shape[dim] = 1;
-        let ids = Tensor::randint::<i32>(0, src.shape()[dim] as i32, ids_shape.into(), Device::CPU)
-            .unwrap();
+        let ids =
+            Tensor::randint::<i32, _>(0, src.shape()[dim] as i32, ids_shape, Device::CPU).unwrap();
 
         let ground = ground_truth(&src, &ids, dim).unwrap();
 
@@ -310,13 +310,12 @@ def gather_backward(src, ids):
     fn run_gather_backward_trial(problem: GatherBackwardProblem) -> anyhow::Result<()> {
         let device = Device::request_device(DeviceRequest::GPU).unwrap();
         let GatherBackwardProblem { B, M, N, dim } = problem;
-        let src = Tensor::randn::<f32>(0., 1., shape![B, M, N], Device::CPU)?;
+        let src = Tensor::randn::<f32, _>(0., 1., (B, M, N), Device::CPU)?;
 
         // Create the shape for ids tensor
-        let mut ids_shape = vec![B, M, N];
+        let mut ids_shape = rvec![B, M, N];
         ids_shape[dim] = 1;
-        let ids =
-            Tensor::randint::<i32>(0, src.shape()[dim] as i32, ids_shape.into(), Device::CPU)?;
+        let ids = Tensor::randint::<i32, _>(0, src.shape()[dim] as i32, ids_shape, Device::CPU)?;
 
         let ground = ground_truth_backward(&src, &ids, dim)?;
 

@@ -5,7 +5,7 @@ use crate::ops::{BinaryOp, UnaryOp};
 use crate::{
     rvec, Affine, Alibi, Binary, Broadcast, Cast, Cmp, Concat, Conv, DType, Gather, GroupNorm,
     IndexAdd, IndexSelect, LazyOp, Matmul, Norm, NormOp, Permute, Powf, Reduce, ReduceOp, Reindex,
-    RoPE, ScatterAdd, ScopePusher, Shape, Slice, Softmax, Tensor, TensorId, Unary, View, WhereCond,
+    RoPE, ScatterAdd, ScopePusher, Slice, Softmax, Tensor, TensorId, Unary, View, WhereCond,
 };
 use crate::{HashMap, Trilu};
 use anyhow::Result;
@@ -27,7 +27,7 @@ fn broadcast_back(arg: &Tensor, node: &Tensor, reduced_dims: &[usize]) -> Result
     } else {
         // keepdim = false
         node.clone()
-            .view(reduced_dims.into())?
+            .view(reduced_dims)?
             .broadcast_to(arg.shape().clone())
     }
 }
@@ -306,8 +306,8 @@ impl Tensor {
                     }
                 }
                 LazyOp::Reindex(Reindex::Broadcast(Broadcast { src, .. })) => {
-                    let arg_dims = src.shape().to_vec();
-                    let node_dims = node.shape().to_vec();
+                    let arg_dims = src.shape().inner();
+                    let node_dims = node.shape().inner();
 
                     let left_dims = node_dims.len() - arg_dims.len();
                     let mut sum_dims: Vec<usize> = (0..left_dims).collect();
@@ -328,7 +328,7 @@ impl Tensor {
                     grads.accumulate_add(src, arg_grad.broadcast_to(src.shape().clone())?)?;
                 }
                 LazyOp::Reindex(Reindex::Slice(Slice { src: arg, indices })) => {
-                    let arg_dims = arg.shape().to_vec();
+                    let arg_dims = arg.shape().inner();
                     let index_lens = indices.iter().map(|range| range.end - range.start);
 
                     // Get index of first dimension with length that doesn't match as a heuristic to make cat work
@@ -341,19 +341,19 @@ impl Tensor {
                     let left_pad = if indices[first_different_index].start == 0 {
                         None
                     } else {
-                        let mut dims = arg_dims.to_vec();
+                        let mut dims = arg_dims.clone();
                         dims[first_different_index] = indices[first_different_index].start;
-                        Some(Tensor::zeros::<f32>(&Shape::from(dims), arg.device())?)
+                        Some(Tensor::zeros::<f32, _>(dims, arg.device())?)
                     };
 
                     let right_pad =
                         if arg_dims[first_different_index] == indices[first_different_index].end {
                             None
                         } else {
-                            let mut dims = arg_dims.to_vec();
+                            let mut dims = arg_dims.clone();
                             dims[first_different_index] = arg_dims[first_different_index]
                                 - indices[first_different_index].end;
-                            Some(Tensor::zeros::<f32>(&Shape::from(dims), arg.device())?)
+                            Some(Tensor::zeros::<f32, _>(dims, arg.device())?)
                         };
 
                     let arg_grad = match (left_pad, right_pad) {

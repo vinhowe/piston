@@ -234,7 +234,7 @@ mod tests {
     use proptest::arbitrary::any;
     use test_strategy::{proptest, Arbitrary};
 
-    use crate::{shape, test_util::run_py_prg, Device, DeviceRequest, Tensor};
+    use crate::{test_util::run_py_prg, Device, DeviceRequest, Tensor};
 
     fn ground_truth(a: &Tensor, mul: f32, add: f32) -> anyhow::Result<Tensor> {
         let prg = r#"
@@ -249,7 +249,7 @@ def affine(a, mul, add):
 
     fn run_affine_trial(problem: AffineProblem, device: Device) {
         let AffineProblem { B, M, N, add, mul } = problem;
-        let a = Tensor::randn::<f32>(0., 1., shape![B, M, N], Device::CPU).unwrap();
+        let a = Tensor::randn::<f32, _>(0., 1., (B, M, N), Device::CPU).unwrap();
         let ground = ground_truth(&a, mul, add).unwrap();
 
         let a_gpu = a.to(&device).unwrap();
