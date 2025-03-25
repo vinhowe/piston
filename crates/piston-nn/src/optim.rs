@@ -185,10 +185,6 @@ impl Optimizer for AdamW {
                 let m = &var.first_moment;
                 let v = &var.second_moment;
 
-                // println!("Optimizer stepping: {:?}", var.label);
-                // println!("Theta op: {:?}", theta.as_tensor().op());
-                // println!("Theta id: {:?}", theta.as_tensor().id());
-
                 if let Some(g) = theta.as_tensor().grad() {
                     let next_m = ((m.as_tensor().clone() * beta1 as f32)?
                         + (g.clone() * (1.0 - beta1 as f32))?)?;
