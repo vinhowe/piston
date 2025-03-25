@@ -45,6 +45,7 @@ pub async fn generate(
             tokens_to_feed,
             (1, tokens_to_feed.len()),
             model.device.clone(),
+            false,
         );
 
         // The index_pos is the total length of the context so far.

@@ -576,7 +576,7 @@ def reduce(a):
         dim: Option<usize>,
         device: Device,
     ) -> anyhow::Result<()> {
-        let a = Tensor::randn::<f32, _>(0., 1., (B, M, N), Device::CPU)?;
+        let a = Tensor::randn::<f32, _>(0., 1., (B, M, N), Device::CPU, false)?;
         let mut ground = ground_truth_forward(&a, op, dim)?;
 
         if dim.is_none() {
@@ -694,11 +694,10 @@ def reduce_backward(a):
     ) -> anyhow::Result<()> {
         let ReduceBackwardProblem { B, M, N } = problem;
         let gpu_device = device.try_gpu()?;
-        let a = Tensor::randn::<f32, _>(0., 1., (B, M, N), Device::CPU)?;
+        let a = Tensor::randn::<f32, _>(0., 1., (B, M, N), Device::CPU, false)?;
         let ground = ground_truth_backward(&a)?;
 
-        let a_gpu = a.to(&device)?;
-        let a_var = Parameter::from_tensor(&a_gpu)?;
+        let a_gpu = a.to(&device)?.set_requires_grad(true)?;
         let b_gpu = a_var.as_tensor().clone().sum_all()?;
 
         b_gpu.backward()?;

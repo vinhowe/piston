@@ -259,7 +259,7 @@ def arange(start, stop, step):
         // Determine correct sign for step based on start/stop relationship
         let step = if stop >= start { abs(step) } else { -abs(step) };
 
-        let a = Tensor::arange_step(start, stop, step, device)
+        let a = Tensor::arange_step(start, stop, step, device, false)
             .unwrap()
             .cast(DType::F32)
             .unwrap();

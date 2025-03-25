@@ -265,7 +265,7 @@ impl SimpleBackend for Zeros {
         _: crate::Init,
         dev: Device,
     ) -> anyhow::Result<Tensor, VarBuilderError> {
-        Ok(Tensor::zeros::<f32, _>(s, &dev)?)
+        Ok(Tensor::zeros::<f32, _>(s, &dev, false)?)
     }
 
     fn contains_tensor(&self, _name: &str) -> bool {

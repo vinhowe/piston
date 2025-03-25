@@ -244,7 +244,7 @@ def powf(a, e):
 
     fn run_powf_trial(problem: PowfProblem, device: Device) {
         let PowfProblem { B, M, N, e } = problem;
-        let a = Tensor::randn::<f32, _>(0., 1., (B, M, N), Device::CPU).unwrap();
+        let a = Tensor::randn::<f32, _>(0., 1., (B, M, N), Device::CPU, false).unwrap();
         let ground = ground_truth(&a, e).unwrap();
 
         let a_gpu = a.to(&device).unwrap();

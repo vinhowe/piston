@@ -1,7 +1,7 @@
 //! Parameter initialization.
 // This is based on:
 // https://github.com/pytorch/pytorch/blob/07107919297db3f8ab37f11c12666b6d6d5f692e/torch/nn/init.py#
-use piston::{Device, Parameter, Shape};
+use piston::{Device, Shape, Tensor};
 
 /// Number of features as input or output of a layer.
 /// In Kaiming initialization, choosing `FanIn` preserves
@@ -110,17 +110,20 @@ pub const DEFAULT_KAIMING_NORMAL: Init = Init::Kaiming {
 
 impl Init {
     /// Creates a new tensor with the specified shape, device, and initialization.
-    pub fn var(&self, s: &Shape, device: Device) -> anyhow::Result<Parameter> {
+    pub fn var(&self, s: &Shape, device: Device) -> anyhow::Result<Tensor> {
         match self {
-            Self::Const(v) if *v == 0. => Ok(Parameter::zeros::<f32, _>(s, &device)?),
-            Self::Const(v) if *v == 1. => Ok(Parameter::ones::<f32, _>(s, &device)?),
-            Self::Const(cst) => Ok(Parameter::full::<f32, _>(s, *cst, &device)?),
-            Self::Uniform { lo, up } => Ok(Parameter::rand::<f32, _>(*lo, *up, s.clone(), device)?),
-            Self::Randn { mean, stdev } => Ok(Parameter::randn::<f32, _>(
+            Self::Const(v) if *v == 0. => Ok(Tensor::zeros::<f32, _>(s, &device, true)?),
+            Self::Const(v) if *v == 1. => Ok(Tensor::ones::<f32, _>(s, &device, true)?),
+            Self::Const(cst) => Ok(Tensor::full::<f32, _>(s, *cst, &device, true)?),
+            Self::Uniform { lo, up } => {
+                Ok(Tensor::rand::<f32, _>(*lo, *up, s.clone(), device, true)?)
+            }
+            Self::Randn { mean, stdev } => Ok(Tensor::randn::<f32, _>(
                 *mean,
                 *stdev,
                 s.clone(),
                 device,
+                true,
             )?),
             Self::Kaiming {
                 dist,
@@ -133,10 +136,16 @@ impl Init {
                 match dist {
                     NormalOrUniform::Uniform => {
                         let bound = 3f32.sqrt() * std;
-                        Ok(Parameter::rand::<f32, _>(-bound, bound, s.clone(), device)?)
+                        Ok(Tensor::rand::<f32, _>(
+                            -bound,
+                            bound,
+                            s.clone(),
+                            device,
+                            true,
+                        )?)
                     }
                     NormalOrUniform::Normal => {
-                        Ok(Parameter::randn::<f32, _>(0., std, s.clone(), device)?)
+                        Ok(Tensor::randn::<f32, _>(0., std, s.clone(), device, true)?)
                     }
                 }
             }

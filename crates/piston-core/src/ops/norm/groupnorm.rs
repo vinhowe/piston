@@ -46,9 +46,9 @@ def manual_group_norm(input, scale, bias, num_groups):
             N,
         } = problem;
 
-        let input = Tensor::randn::<f32, _>(0., 1., (B, C, N), Device::CPU)?;
-        let scale = Tensor::randn::<f32, _>(0., 1., C, Device::CPU)?;
-        let bias = Some(Tensor::randn::<f32, _>(0., 1., C, Device::CPU)?);
+        let input = Tensor::randn::<f32, _>(0., 1., (B, C, N), Device::CPU, false)?;
+        let scale = Tensor::randn::<f32, _>(0., 1., C, Device::CPU, false)?;
+        let bias = Some(Tensor::randn::<f32, _>(0., 1., C, Device::CPU, false)?);
 
         let ground = ground_truth(&input, &scale, bias.as_ref(), num_groups)?;
 

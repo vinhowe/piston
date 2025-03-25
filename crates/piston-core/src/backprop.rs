@@ -38,7 +38,7 @@ fn or_insert(tensor: &Tensor) -> Result<Tensor> {
     let grad = match tensor.grad() {
         Some(grad) => grad,
         None => {
-            let grad = tensor.clone().zeros_like::<f32>(None)?;
+            let grad = tensor.clone().zeros_like::<f32>(None, false)?;
             tensor.set_grad(grad.clone());
             grad
         }
@@ -260,7 +260,7 @@ impl Tensor {
     pub fn backward(&self) -> Result<()> {
         let _scope_guard = ScopePusher::new("backward");
         let sorted_nodes = self.sorted_nodes();
-        self.set_grad(self.ones_like::<f32>(None)?.contiguous()?);
+        self.set_grad(self.ones_like::<f32>(None, false)?.contiguous()?);
         for node in sorted_nodes.iter() {
             let _op_scope_guard = ScopePusher::new(&format!("for:{}", node.op().name()));
             if node.requires_grad() {
@@ -321,7 +321,7 @@ impl Tensor {
                     on_true,
                     on_false,
                 }) => {
-                    let zeros = grad.clone().zeros_like::<f32>(None)?;
+                    let zeros = grad.clone().zeros_like::<f32>(None, false)?;
                     let t_grad = input.clone().where_cond(grad.clone(), zeros.clone())?;
                     accumulate_add(on_true, t_grad)?;
                     let f_grad = input.clone().where_cond(zeros, grad)?;
@@ -389,7 +389,7 @@ impl Tensor {
                     } else {
                         let mut dims = arg_dims.clone();
                         dims[first_different_index] = indices[first_different_index].start;
-                        Some(Tensor::zeros::<f32, _>(dims, arg.device())?)
+                        Some(Tensor::zeros::<f32, _>(dims, arg.device(), false)?)
                     };
 
                     let right_pad =
@@ -399,7 +399,7 @@ impl Tensor {
                             let mut dims = arg_dims.clone();
                             dims[first_different_index] = arg_dims[first_different_index]
                                 - indices[first_different_index].end;
-                            Some(Tensor::zeros::<f32, _>(dims, arg.device())?)
+                            Some(Tensor::zeros::<f32, _>(dims, arg.device(), false)?)
                         };
 
                     let arg_grad = match (left_pad, right_pad) {
@@ -489,10 +489,10 @@ impl Tensor {
                     input: arg,
                     op: UnaryOp::Abs,
                 }) => {
-                    let ones = arg.ones_like::<f32>(None)?;
+                    let ones = arg.ones_like::<f32>(None, false)?;
                     let abs_grad = arg
                         .clone()
-                        .ge(arg.clone().zeros_like::<f32>(None)?)?
+                        .ge(arg.clone().zeros_like::<f32>(None, false)?)?
                         .where_cond(ones.clone(), ones.neg()?)?;
                     let arg_grad = (grad * abs_grad)?;
                     accumulate_add(arg, arg_grad)?;
@@ -540,7 +540,7 @@ impl Tensor {
                 }) => {
                     let relu_grad = arg.clone().affine(2.0, 0.0)?.mul(
                         arg.clone()
-                            .ge(arg.clone().zeros_like::<f32>(None)?)?
+                            .ge(arg.clone().zeros_like::<f32>(None, false)?)?
                             .cast(arg.dtype())?,
                     )?;
                     let arg_grad = grad.mul(relu_grad)?;
@@ -552,7 +552,7 @@ impl Tensor {
                 }) => {
                     let relu_grad = arg
                         .clone()
-                        .ge(arg.clone().zeros_like::<f32>(None)?)?
+                        .ge(arg.clone().zeros_like::<f32>(None, false)?)?
                         .cast(arg.dtype())?;
                     let arg_grad = grad.mul(relu_grad)?;
                     accumulate_add(arg, arg_grad)?;

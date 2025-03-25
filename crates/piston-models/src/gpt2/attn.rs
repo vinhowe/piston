@@ -186,7 +186,7 @@ impl Module for GPT2SelfAttention {
 
 fn masked_fill(on_false: &Tensor, mask: &Tensor, on_true: f32) -> anyhow::Result<Tensor> {
     let shape = mask.shape();
-    let on_true = Tensor::full(shape, on_true, on_false.device())?;
+    let on_true = Tensor::full(shape, on_true, on_false.device(), false)?;
     let m = mask.clone().where_cond(on_true, on_false.clone())?;
     Ok(m)
 }
