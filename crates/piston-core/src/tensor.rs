@@ -1979,7 +1979,8 @@ impl Tensor {
         PyArray::from_owned_array(*py, self.deep_clone().into_ndarray::<T>())
     }
 
-    pub(crate) fn debug_tensor(&self) -> Option<Tensor> {
+    #[cfg(not(feature = "debug"))]
+    pub fn debug_tensor(&self) -> Option<Tensor> {
         self.debug_tensor.read().as_ref().cloned()
     }
 
