@@ -1,13 +1,13 @@
 use half::{bf16, f16};
 use maybe_async::maybe_async;
-use piston::{DType, Device, Parameter, ScopePusher};
+use piston::{DType, Device, ScopePusher, Tensor};
 
 #[maybe_async(AFIT)]
 #[cfg_attr(target_arch = "wasm32", async_trait::async_trait)]
 pub trait Optimizer: Sized {
     type Config: Sized;
 
-    fn new(vars: Vec<Parameter>, config: Self::Config) -> anyhow::Result<Self>;
+    fn new(vars: Vec<Tensor>, config: Self::Config) -> anyhow::Result<Self>;
 
     async fn step(&mut self, device: &Device) -> anyhow::Result<()>;
 
@@ -23,14 +23,14 @@ pub trait Optimizer: Sized {
         self.step(device).await
     }
 
-    fn from_slice(vars: &[&Parameter], config: Self::Config) -> anyhow::Result<Self> {
+    fn from_slice(vars: &[&Tensor], config: Self::Config) -> anyhow::Result<Self> {
         Self::new(vars.iter().cloned().cloned().collect(), config)
     }
 }
 
 #[derive(Debug)]
 pub struct SGD {
-    vars: Vec<Parameter>,
+    vars: Vec<Tensor>,
     learning_rate: f64,
 }
 
@@ -39,11 +39,8 @@ pub struct SGD {
 impl Optimizer for SGD {
     type Config = f64;
 
-    fn new(vars: Vec<Parameter>, learning_rate: f64) -> anyhow::Result<Self> {
-        let vars = vars
-            .into_iter()
-            .filter(|v| v.as_tensor().dtype().is_float())
-            .collect();
+    fn new(vars: Vec<Tensor>, learning_rate: f64) -> anyhow::Result<Self> {
+        let vars = vars.into_iter().filter(|v| v.dtype().is_float()).collect();
         Ok(Self {
             vars,
             learning_rate,
@@ -64,9 +61,8 @@ impl Optimizer for SGD {
             let _scope_guard = ScopePusher::new("optim:SGD");
             for var in &self.vars {
                 let _scope_guard = optim_var_scope_guard(var);
-                if let Some(grad) = var.as_tensor().grad() {
-                    let update =
-                        (var.as_tensor().clone() - (grad.clone() * self.learning_rate as f32)?)?;
+                if let Some(grad) = var.grad() {
+                    let update = (var.clone() - (grad.clone() * self.learning_rate as f32)?)?;
                     updates.push(var.set(update));
                 }
             }
@@ -103,9 +99,9 @@ impl Default for ParamsAdamW {
 
 #[derive(Debug)]
 struct VarAdamW {
-    var: Parameter,
-    first_moment: Parameter,
-    second_moment: Parameter,
+    var: Tensor,
+    first_moment: Tensor,
+    second_moment: Tensor,
 }
 
 #[derive(Debug)]
@@ -120,27 +116,26 @@ pub struct AdamW {
 impl Optimizer for AdamW {
     type Config = ParamsAdamW;
 
-    fn new(vars: Vec<Parameter>, params: ParamsAdamW) -> anyhow::Result<Self> {
+    fn new(vars: Vec<Tensor>, params: ParamsAdamW) -> anyhow::Result<Self> {
         let vars = vars
             .into_iter()
-            .filter(|var| var.as_tensor().dtype().is_float())
+            .filter(|var| var.dtype().is_float())
             .map(|var| {
-                let var_t = var.as_tensor();
-                let dtype = var_t.dtype();
-                let shape = var_t.shape();
-                let device = var_t.device();
+                let dtype = var.dtype();
+                let shape = var.shape();
+                let device = var.device();
                 let (first_moment, second_moment) = match dtype {
                     DType::F32 => (
-                        Parameter::zeros::<f32, _>(shape, device)?,
-                        Parameter::zeros::<f32, _>(shape, device)?,
+                        Tensor::zeros::<f32, _>(shape, device, false)?,
+                        Tensor::zeros::<f32, _>(shape, device, false)?,
                     ),
                     DType::F16 => (
-                        Parameter::zeros::<f16, _>(shape, device)?,
-                        Parameter::zeros::<f16, _>(shape, device)?,
+                        Tensor::zeros::<f16, _>(shape, device, false)?,
+                        Tensor::zeros::<f16, _>(shape, device, false)?,
                     ),
                     DType::BF16 => (
-                        Parameter::zeros::<bf16, _>(shape, device)?,
-                        Parameter::zeros::<bf16, _>(shape, device)?,
+                        Tensor::zeros::<bf16, _>(shape, device, false)?,
+                        Tensor::zeros::<bf16, _>(shape, device, false)?,
                     ),
                     _ => return Err(anyhow::anyhow!("Unsupported dtype for AdamW: {:?}", dtype)),
                 };
@@ -185,14 +180,14 @@ impl Optimizer for AdamW {
                 let m = &var.first_moment;
                 let v = &var.second_moment;
 
-                if let Some(g) = theta.as_tensor().grad() {
-                    let next_m = ((m.as_tensor().clone() * beta1 as f32)?
-                        + (g.clone() * (1.0 - beta1 as f32))?)?;
-                    let next_v = ((v.as_tensor().clone() * beta2 as f32)?
+                if let Some(g) = theta.grad() {
+                    let next_m =
+                        ((m.clone() * beta1 as f32)? + (g.clone() * (1.0 - beta1 as f32))?)?;
+                    let next_v = ((v.clone() * beta2 as f32)?
                         + (g.clone().square()? * (1.0 - beta2 as f32))?)?;
                     let m_hat = (next_m.clone() * scale_m as f32)?;
                     let v_hat = (next_v.clone() * scale_v as f32)?;
-                    let next_theta = (theta.as_tensor().clone() * (1f32 - lr_lambda as f32))?;
+                    let next_theta = (theta.clone() * (1f32 - lr_lambda as f32))?;
                     let adjusted_grad = (m_hat / (v_hat.sqrt()? + self.params.eps as f32)?)?;
                     let next_theta = (next_theta - (adjusted_grad.clone() * lr as f32)?)?;
 
@@ -212,7 +207,7 @@ impl Optimizer for AdamW {
 }
 
 impl AdamW {
-    pub fn new_lr(vars: Vec<Parameter>, learning_rate: f64) -> anyhow::Result<Self> {
+    pub fn new_lr(vars: Vec<Tensor>, learning_rate: f64) -> anyhow::Result<Self> {
         let params = ParamsAdamW {
             lr: learning_rate,
             ..ParamsAdamW::default()
@@ -229,14 +224,11 @@ impl AdamW {
     }
 }
 
-fn optim_var_scope_guard(var: &Parameter) -> ScopePusher {
+fn optim_var_scope_guard(var: &Tensor) -> ScopePusher {
     ScopePusher::new(
         format!(
             "for:({})",
-            var.as_tensor()
-                .scope()
-                .as_ref()
-                .unwrap_or(&"unknown".to_string())
+            var.scope().as_ref().unwrap_or(&"unknown".to_string())
         )
         .as_str(),
     )

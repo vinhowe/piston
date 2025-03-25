@@ -207,7 +207,7 @@ impl Module for GPT2 {
         // Add positional embeddings based on the type
         if let Some(wpe) = &self.wpe {
             // Learned embeddings
-            let pos = Tensor::arange(0, seq_len as i32, x.device())?;
+            let pos = Tensor::arange(0, seq_len as i32, x.device(), false)?;
             let pos = pos.unsqueeze(0)?.broadcast_to((b_size, seq_len))?;
             let position_embeds = wpe.schedule(pos)?;
             x = x.add(position_embeds)?;

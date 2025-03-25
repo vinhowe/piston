@@ -152,14 +152,15 @@ impl Tensor {
         shape: S,
         value: T,
         device: &Device,
+        requires_grad: bool,
     ) -> Result<Self> {
         let shape = shape.into();
         if device.is_cpu() {
             let mut data = Vec::with_capacity(shape.numel());
             data.resize(shape.numel(), value);
-            Ok(Self::from_data(data, shape, device.clone()))
+            Ok(Self::from_data(data, shape, device.clone(), requires_grad))
         } else {
-            Self::full_impl::<T, _>(shape, value, device, false)
+            Self::full_impl::<T, _>(shape, value, device, requires_grad)
         }
     }
 
@@ -395,6 +396,34 @@ impl Tensor {
 
     pub fn requires_grad(&self) -> bool {
         self.inner.requires_grad
+    }
+
+    // TODO: Get rid of these
+    /// Sets the content of the inner tensor, this does not require a mutable reference as inner
+    /// mutability is used.
+    pub fn set_sync(&self, src: Tensor) -> Result<()> {
+        if self.same_storage(&src) {
+            panic!("cannot set a variable to a tensor that is derived from its value");
+        }
+        if self.shape() != src.shape() {
+            panic!(
+                "shape mismatch: {:?} != {:?} (target id: {:?}, source id: {:?})",
+                self.shape(),
+                src.shape(),
+                self.id(),
+                src.id()
+            );
+        }
+        self.update_storage(Storage::GPU(GPUBuffer {
+            inner: src.storage().as_ref().unwrap().try_gpu()?.inner.clone(),
+            alignment: self.dtype().size_of(),
+            cpu_size: Some(self.num_bytes()),
+        }));
+        Ok(())
+    }
+
+    pub fn set(&self, src: Tensor) -> Tensor {
+        src.copy(self)
     }
 
     #[cfg(feature = "plotting")]
@@ -1227,8 +1256,9 @@ impl Tensor {
         start: T,
         end: T,
         device: &Device,
+        requires_grad: bool,
     ) -> Result<Self> {
-        Self::arange_step::<T>(start, end, T::one(), device)
+        Self::arange_step::<T>(start, end, T::one(), device, requires_grad)
     }
 
     /// Creates a new 1D tensor with values from the interval `[start, end)` taken with a common
@@ -1238,6 +1268,7 @@ impl Tensor {
         end: T,
         step: T,
         device: &Device,
+        requires_grad: bool,
     ) -> Result<Self> {
         if step == T::zero() {
             anyhow::bail!("step cannot be zero")
@@ -1258,7 +1289,7 @@ impl Tensor {
                 }
             }
             let len = data.len();
-            Ok(Tensor::from_data(data, len, device.clone()))
+            Ok(Tensor::from_data(data, len, device.clone(), requires_grad))
         } else {
             let arange = Arange::new(start.as_(), end.as_(), step.as_());
             let numel = arange.numel();
@@ -1270,12 +1301,12 @@ impl Tensor {
                 stride: Stride::from(&Shape::from(numel)),
             };
 
-            Ok(Tensor::lazy(op, meta, device.clone(), false))
+            Ok(Tensor::lazy(op, meta, device.clone(), requires_grad))
         }
     }
 
     #[cfg(feature = "rand")]
-    pub(crate) fn randint_impl<
+    pub fn randint<
         T: TensorDType + rand_distr::uniform::SampleUniform + PartialOrd,
         S: Into<Shape>,
     >(
@@ -1293,24 +1324,11 @@ impl Tensor {
                 sample
             })
             .collect::<Vec<_>>();
-        Ok(Tensor::from_data_impl(data, shape, device, requires_grad))
+        Ok(Tensor::from_data(data, shape, device, requires_grad))
     }
 
     #[cfg(feature = "rand")]
-    pub fn randint<
-        T: TensorDType + rand_distr::uniform::SampleUniform + PartialOrd,
-        S: Into<Shape>,
-    >(
-        low: T,
-        high: T,
-        shape: S,
-        device: Device,
-    ) -> Result<Self> {
-        Self::randint_impl(low, high, shape, device, false)
-    }
-
-    #[cfg(feature = "rand")]
-    pub(crate) fn randn_impl<T: TensorDType + num_traits::Float, S: Into<Shape>>(
+    pub fn randn<T: TensorDType + num_traits::Float, S: Into<Shape>>(
         mean: T,
         std: T,
         shape: S,
@@ -1359,17 +1377,7 @@ impl Tensor {
     }
 
     #[cfg(feature = "rand")]
-    pub fn randn<T: TensorDType + num_traits::Float, S: Into<Shape>>(
-        mean: T,
-        std: T,
-        shape: S,
-        device: Device,
-    ) -> Result<Self> {
-        Self::randn_impl::<T, _>(mean, std, shape, device, false)
-    }
-
-    #[cfg(feature = "rand")]
-    pub(crate) fn rand_impl<T: TensorDType + num_traits::Float, S: Into<Shape>>(
+    pub fn rand<T: TensorDType + num_traits::Float, S: Into<Shape>>(
         lo: T,
         up: T,
         shape: S,
@@ -1386,17 +1394,7 @@ impl Tensor {
             })
             .collect::<Vec<_>>();
 
-        Ok(Self::from_data_impl(data, shape, device, requires_grad))
-    }
-
-    #[cfg(feature = "rand")]
-    pub fn rand<T: TensorDType + num_traits::Float, S: Into<Shape>>(
-        lo: T,
-        up: T,
-        shape: S,
-        device: Device,
-    ) -> Result<Self> {
-        Self::rand_impl::<T, _>(lo, up, shape, device, false)
+        Ok(Self::from_data(data, shape, device, requires_grad))
     }
 
     #[cfg(feature = "rand")]
@@ -1421,7 +1419,7 @@ impl Tensor {
         ))
     }
 
-    pub(crate) fn zeros_impl<T: TensorDType + num_traits::AsPrimitive<f32>, S: Into<Shape>>(
+    pub fn zeros<T: TensorDType + num_traits::AsPrimitive<f32>, S: Into<Shape>>(
         shape: S,
         device: &Device,
         requires_grad: bool,
@@ -1443,21 +1441,15 @@ impl Tensor {
         }
     }
 
-    pub fn zeros<T: TensorDType + num_traits::AsPrimitive<f32>, S: Into<Shape>>(
-        shape: S,
-        device: &Device,
-    ) -> Result<Self> {
-        Self::zeros_impl::<T, _>(shape, device, false)
-    }
-
     pub fn zeros_like<T: TensorDType + num_traits::AsPrimitive<f32>>(
         &self,
         device: Option<&Device>,
+        requires_grad: bool,
     ) -> Result<Self> {
-        Self::zeros::<T, _>(self.shape(), device.unwrap_or(self.device()))
+        Self::zeros::<T, _>(self.shape(), device.unwrap_or(self.device()), requires_grad)
     }
 
-    pub(crate) fn ones_impl<T: TensorDType + num_traits::AsPrimitive<f32>, S: Into<Shape>>(
+    pub fn ones<T: TensorDType + num_traits::AsPrimitive<f32>, S: Into<Shape>>(
         shape: S,
         device: &Device,
         requires_grad: bool,
@@ -1479,18 +1471,12 @@ impl Tensor {
         }
     }
 
-    pub fn ones<T: TensorDType + num_traits::AsPrimitive<f32>, S: Into<Shape>>(
-        shape: S,
-        device: &Device,
-    ) -> Result<Self> {
-        Self::ones_impl::<T, _>(shape, device, false)
-    }
-
     pub fn ones_like<T: TensorDType + num_traits::AsPrimitive<f32>>(
         &self,
         device: Option<&Device>,
+        requires_grad: bool,
     ) -> Result<Self> {
-        Self::ones::<T, _>(self.shape(), device.unwrap_or(self.device()))
+        Self::ones::<T, _>(self.shape(), device.unwrap_or(self.device()), requires_grad)
     }
 
     fn trilu(self, upper: bool, k: Option<i32>) -> Result<Self> {
@@ -1542,7 +1528,7 @@ impl Tensor {
     ///
     /// The Tensor is instantly resolved.
     /// If a non-CPU device is specified, the data will be copied to the device.
-    pub(crate) fn from_data_impl<T: TensorDType, U: AsRef<[T]>, S: Into<Shape>>(
+    pub fn from_data<T: TensorDType, U: AsRef<[T]>, S: Into<Shape>>(
         data: U,
         shape: S,
         device: Device,
@@ -1553,14 +1539,6 @@ impl Tensor {
         let stride = Stride::from(&shape);
         let meta = StorageView::new(shape, T::dtype(), stride);
         Tensor::new_impl(LazyOp::Const, meta, Some(storage), device, requires_grad)
-    }
-
-    pub fn from_data<T: TensorDType, U: AsRef<[T]>, S: Into<Shape>>(
-        data: U,
-        shape: S,
-        device: Device,
-    ) -> Self {
-        Self::from_data_impl(data, shape, device, false)
     }
 
     pub fn from_bytes<S: Into<Shape>>(
@@ -1584,16 +1562,20 @@ impl Tensor {
 
     /// Create a parameter based on the values currently stored in a tensor. The storage is always
     /// copied.
-    pub(crate) fn make_parameter(&self) -> Result<Self> {
-        let device = self.device.clone();
-        let storage = Arc::clone(&self.storage);
-        Ok(Tensor::shallow(
-            self.op().clone(),
-            self.view.clone(),
-            storage,
-            device,
-            true,
-        ))
+    pub fn set_requires_grad(&self, requires_grad: bool) -> Result<Self> {
+        if self.requires_grad == requires_grad {
+            Ok(self.clone())
+        } else {
+            let device = self.device.clone();
+            let storage = Arc::clone(&self.storage);
+            Ok(Tensor::shallow(
+                self.op().clone(),
+                self.view.clone(),
+                storage,
+                device,
+                requires_grad,
+            ))
+        }
     }
 
     /// Returns a new tensor detached from the current graph, gradient are not propagated through
@@ -2190,7 +2172,7 @@ impl Tensor {
             .map(|&x| x as usize)
             .collect::<RVec<_>>();
         let data = reader.into_vec::<T>()?;
-        Ok(Tensor::from_data_impl(
+        Ok(Tensor::from_data(
             data,
             shape,
             device.clone(),

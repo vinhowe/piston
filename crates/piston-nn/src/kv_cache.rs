@@ -15,8 +15,8 @@ impl KVEntry {
         device: &Device,
     ) -> Result<Self> {
         Ok(KVEntry {
-            k_cache: Tensor::zeros::<T, _>(shape, device)?,
-            v_cache: Tensor::zeros::<T, _>(shape, device)?,
+            k_cache: Tensor::zeros::<T, _>(shape, device, false)?,
+            v_cache: Tensor::zeros::<T, _>(shape, device, false)?,
             entries: 0,
         })
     }
@@ -110,7 +110,7 @@ impl KVCache {
             Ok(mask.clone())
         } else {
             log::debug!("Creating mask for {:?}", t);
-            let ones = Tensor::ones::<f32, _>((t, t), &self.device)?;
+            let ones = Tensor::ones::<f32, _>((t, t), &self.device, false)?;
             let mask = ones.tril(None)?;
             self.masks.insert(t, mask.clone());
             Ok(mask)

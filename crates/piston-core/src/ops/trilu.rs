@@ -313,7 +313,7 @@ def trilu(shape, upper, k):
         // Define the shape of the tensor.
         let shape = shape![B, M, N];
 
-        let src = Tensor::ones::<f32, _>(shape.clone(), &device).unwrap();
+        let src = Tensor::ones::<f32, _>(shape.clone(), &device, false).unwrap();
 
         // Generate the ground truth using NumPy.
         let ground = ground_truth(&shape, upper, Some(k))

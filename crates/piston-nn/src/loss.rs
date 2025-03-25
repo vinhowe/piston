@@ -35,9 +35,12 @@ pub fn nll_masked(inp: Tensor, target: Tensor) -> anyhow::Result<Tensor> {
 
     // We do a bunch of work here to allow ignoring tokens in the target.
     let ignore_index = -100;
-    let mask = target
-        .clone()
-        .ne(Tensor::full(target.shape(), ignore_index, target.device())?)?;
+    let mask = target.clone().ne(Tensor::full(
+        target.shape(),
+        ignore_index,
+        target.device(),
+        false,
+    )?)?;
 
     // Note here that we seem to be able to get away with passing negative indices to gather.
     // If we were more careful about this, we'd replace the indices with 0s where the mask is 0,
@@ -85,7 +88,12 @@ pub fn label_smoothed_nll(log_probs: Tensor, target: Tensor, alpha: f32) -> anyh
     let ignore_index = -100;
     let mask = target
         .clone()
-        .ne(Tensor::full(target.shape(), ignore_index, target.device())?)?
+        .ne(Tensor::full(
+            target.shape(),
+            ignore_index,
+            target.device(),
+            false,
+        )?)?
         .cast(piston::DType::F32)?;
 
     // Gather the negative log-prob for the correct class:

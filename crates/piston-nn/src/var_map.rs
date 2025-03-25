@@ -1,7 +1,7 @@
 use piston::HashMap;
 use std::sync::{Arc, Mutex};
 
-use piston::{Device, Parameter, Shape, Tensor};
+use piston::{Device, Shape, Tensor};
 
 #[cfg(target_arch = "wasm32")]
 use {
@@ -18,7 +18,7 @@ use {
 /// `VarMap` structures can be serialized in the safetensors format.
 #[derive(Clone)]
 pub struct VarMap {
-    data: Arc<Mutex<HashMap<String, Parameter>>>,
+    data: Arc<Mutex<HashMap<String, Tensor>>>,
 }
 
 impl VarMap {
@@ -30,7 +30,7 @@ impl VarMap {
     }
 
     /// Retrieve all the variables currently stored in the map.
-    pub fn all_vars(&self) -> Vec<Parameter> {
+    pub fn all_vars(&self) -> Vec<Tensor> {
         let tensor_data = self.data.lock().unwrap();
         #[allow(clippy::map_clone)]
         tensor_data.values().map(|c| c.clone()).collect::<Vec<_>>()
@@ -40,7 +40,7 @@ impl VarMap {
     #[cfg(not(target_arch = "wasm32"))]
     pub fn save<P: AsRef<std::path::Path>>(&self, path: P) -> anyhow::Result<()> {
         let tensor_data = self.data.lock().unwrap();
-        let data = tensor_data.iter().map(|(k, v)| (k, v.as_tensor()));
+        let data = tensor_data.iter().map(|(k, v)| (k, v.clone()));
         safetensors::tensor::serialize_to_file(data, &None, path.as_ref())?;
         Ok(())
     }
@@ -78,7 +78,7 @@ impl VarMap {
         // For each Var, move the Tensor to CPU asynchronously.
         for (k, var) in tensor_data.iter() {
             let k = k.clone();
-            let t = var.as_tensor().clone();
+            let t = var.clone();
             let data_ref = Arc::clone(&data);
             futures.push(future_to_promise(async move {
                 let t_cpu = t.to(&Device::CPU).await.unwrap();
@@ -158,20 +158,20 @@ impl VarMap {
     ) -> anyhow::Result<Tensor> {
         let mut tensor_data = self.data.lock().unwrap();
         if let Some(tensor) = tensor_data.get(path) {
-            let tensor_shape = tensor.as_tensor().shape();
+            let tensor_shape = tensor.shape();
             if &shape != tensor_shape {
                 // candle::bail!("shape mismatch on {path}: {shape:?} <> {tensor_shape:?}")
                 panic!("shape mismatch on {path}: {shape:?} <> {tensor_shape:?}")
             }
-            return Ok(tensor.as_tensor().clone());
+            return Ok(tensor.clone());
         }
         let var = init.var(&shape, device)?;
-        let tensor = var.as_tensor().clone();
+        let tensor = var.clone();
         tensor_data.insert(path.to_string(), var);
         Ok(tensor)
     }
 
-    pub fn data(&self) -> &Mutex<HashMap<String, Parameter>> {
+    pub fn data(&self) -> &Mutex<HashMap<String, Tensor>> {
         &self.data
     }
 }

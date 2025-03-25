@@ -25,7 +25,7 @@ impl SinusoidalEmbedding {
         }
 
         // Create inverse frequency tensor
-        let inv_freq = Tensor::from_data(&freqs, dim / 2, device.clone());
+        let inv_freq = Tensor::from_data(&freqs, dim / 2, device.clone(), false);
 
         Ok(Self { dim, inv_freq })
     }
@@ -43,8 +43,12 @@ impl Module for SinusoidalEmbedding {
         let seq_len = input.shape()[1];
 
         // Create position sequence [0, 1, 2, ..., seq_len-1]
-        let pos_seq =
-            Tensor::arange::<f32>(offset as f32, (offset + seq_len) as f32, input.device())?;
+        let pos_seq = Tensor::arange::<f32>(
+            offset as f32,
+            (offset + seq_len) as f32,
+            input.device(),
+            false,
+        )?;
 
         // Compute outer product between positions and frequencies
         let sinusoid_inp =

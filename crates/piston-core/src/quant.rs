@@ -124,34 +124,55 @@ pub fn dequantize_inner<Q: Quantized>(quantized: &[u8], elements: usize) -> Vec<
 }
 
 pub fn dequantize(quantized: Tensor) -> Tensor {
+    let quantized_requires_grad = quantized.requires_grad();
     match quantized.dtype() {
         DType::Q8_0F(_) => {
             let elements = quantized.shape().numel();
             let original_shape = quantized.shape().clone();
             let raw_bytes = quantized.into_bytes().unwrap();
             let dequantized = dequantize_inner::<Q8_0F>(&raw_bytes, elements);
-            Tensor::from_data(&dequantized, original_shape, Device::CPU)
+            Tensor::from_data(
+                &dequantized,
+                original_shape,
+                Device::CPU,
+                quantized_requires_grad,
+            )
         }
         DType::Q4_KF(_) => {
             let elements = quantized.shape().numel();
             let original_shape = quantized.shape().clone();
             let raw_bytes = quantized.into_bytes().unwrap();
             let dequantized = dequantize_inner::<Q4_KF>(&raw_bytes, elements);
-            Tensor::from_data(&dequantized, original_shape, Device::CPU)
+            Tensor::from_data(
+                &dequantized,
+                original_shape,
+                Device::CPU,
+                quantized_requires_grad,
+            )
         }
         DType::Q8_0H(_) => {
             let elements = quantized.shape().numel();
             let original_shape = quantized.shape().clone();
             let raw_bytes = quantized.into_bytes().unwrap();
             let dequantized = dequantize_inner::<Q8_0H>(&raw_bytes, elements);
-            Tensor::from_data(&dequantized, original_shape, Device::CPU)
+            Tensor::from_data(
+                &dequantized,
+                original_shape,
+                Device::CPU,
+                quantized_requires_grad,
+            )
         }
         DType::Q4_KH(_) => {
             let elements = quantized.shape().numel();
             let original_shape = quantized.shape().clone();
             let raw_bytes = quantized.into_bytes().unwrap();
             let dequantized = dequantize_inner::<Q4_KH>(&raw_bytes, elements);
-            Tensor::from_data(&dequantized, original_shape, Device::CPU)
+            Tensor::from_data(
+                &dequantized,
+                original_shape,
+                Device::CPU,
+                quantized_requires_grad,
+            )
         }
         dtype => panic!("Unsupported dtype {dtype}"),
     }
@@ -169,7 +190,8 @@ mod tests {
         Q::FP: std::fmt::Display + num_traits::Float + Default,
     {
         let ground =
-            Tensor::randn::<Q::FP, _>(Q::FP::zero(), Q::FP::one(), (4, 64), Device::CPU).unwrap();
+            Tensor::randn::<Q::FP, _>(Q::FP::zero(), Q::FP::one(), (4, 64), Device::CPU, false)
+                .unwrap();
         let q = quantize::<Q>(&ground);
         let dq = dequantize(q);
         ground.all_close(&dq, atol, rtol).unwrap();

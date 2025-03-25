@@ -58,7 +58,7 @@ def scaled_dot_product_attention(input, qw, kw, vw) -> torch.Tensor:
         let v_proj = input.matmul(vw, false, false)?;
 
         let scale_factor = 1f64 / (q_proj.shape()[2] as f64).sqrt();
-        let scale_factor = Tensor::from_data([scale_factor as f32], 1, device);
+        let scale_factor = Tensor::from_data([scale_factor as f32], 1, device, false);
         let kt = k_proj.permute((0, 2, 1))?;
 
         let logits = q_proj.matmul(kt, false, false)?.mul(scale_factor)?;
@@ -68,10 +68,10 @@ def scaled_dot_product_attention(input, qw, kw, vw) -> torch.Tensor:
     #[test]
     pub fn test_sdpa() -> anyhow::Result<()> {
         let _ = env_logger::builder().is_test(true).try_init();
-        let input = Tensor::randn::<f32, _>(0., 1., (1, 128, 256), Device::CPU)?;
-        let qw = Tensor::randn::<f32, _>(0., 1., (256, 256), Device::CPU)?;
-        let kw = Tensor::randn::<f32, _>(0., 1., (256, 256), Device::CPU)?;
-        let vw = Tensor::randn::<f32, _>(0., 1., (256, 256), Device::CPU)?;
+        let input = Tensor::randn::<f32, _>(0., 1., (1, 128, 256), Device::CPU, false)?;
+        let qw = Tensor::randn::<f32, _>(0., 1., (256, 256), Device::CPU, false)?;
+        let kw = Tensor::randn::<f32, _>(0., 1., (256, 256), Device::CPU, false)?;
+        let vw = Tensor::randn::<f32, _>(0., 1., (256, 256), Device::CPU, false)?;
         let cpu_test_case = AttentionTest::new(input, qw, kw, vw, None);
         let ground = sdpa_ground(&cpu_test_case)?;
 
@@ -133,7 +133,7 @@ def qkv_attention(input, qw, kw, vw, n_heads):
         let n_heads = case.n_heads.unwrap();
         let qdim = q_proj.shape()[2];
         let scale = ((qdim / n_heads) as f32).powf(-0.25);
-        let scale = Tensor::from_data([scale], 1, device);
+        let scale = Tensor::from_data([scale], 1, device, false);
 
         let hdim = qdim / n_heads;
         let q = q_proj
@@ -158,10 +158,10 @@ def qkv_attention(input, qw, kw, vw, n_heads):
     #[test]
     pub fn test_mha() -> anyhow::Result<()> {
         let _ = env_logger::builder().is_test(true).try_init();
-        let input = Tensor::randn::<f32, _>(0., 1., (1, 64, 384), Device::CPU)?;
-        let qw = Tensor::randn::<f32, _>(0., 1., (1, 384, 384), Device::CPU)?;
-        let kw = Tensor::randn::<f32, _>(0., 1., (1, 384, 384), Device::CPU)?;
-        let vw = Tensor::randn::<f32, _>(0., 1., (1, 384, 384), Device::CPU)?;
+        let input = Tensor::randn::<f32, _>(0., 1., (1, 64, 384), Device::CPU, false)?;
+        let qw = Tensor::randn::<f32, _>(0., 1., (1, 384, 384), Device::CPU, false)?;
+        let kw = Tensor::randn::<f32, _>(0., 1., (1, 384, 384), Device::CPU, false)?;
+        let vw = Tensor::randn::<f32, _>(0., 1., (1, 384, 384), Device::CPU, false)?;
         let cpu_test_case = AttentionTest::new(input, qw, kw, vw, Some(6));
         let ground = mha_ground(&cpu_test_case)?;
 
