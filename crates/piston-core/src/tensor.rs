@@ -1546,6 +1546,7 @@ impl Tensor {
         dtype: DType,
         shape: S,
         device: Device,
+        requires_grad: bool,
     ) -> Result<Self> {
         let shape = shape.into();
         let storage = Storage::from_bytes(data, dtype.size_of(), &device);
@@ -1556,7 +1557,7 @@ impl Tensor {
             meta,
             Some(storage),
             device,
-            false,
+            requires_grad,
         ))
     }
 

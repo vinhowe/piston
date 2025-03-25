@@ -91,6 +91,20 @@ impl DType {
         matches!(self, DType::Q4_KH(_) | DType::Q4_KF(_))
     }
 
+    pub fn is_signed(self) -> bool {
+        matches!(
+            self,
+            DType::F16
+                | DType::BF16
+                | DType::F32
+                | DType::I32
+                | DType::Q8_0H(_)
+                | DType::Q8_0F(_)
+                | DType::Q4_KH(_)
+                | DType::Q4_KF(_)
+        )
+    }
+
     pub fn is_float(self) -> bool {
         matches!(self, DType::F16 | DType::BF16 | DType::F32)
     }
