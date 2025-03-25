@@ -525,11 +525,11 @@ impl Tensor {
                     input: arg,
                     op: UnaryOp::Gelu,
                 }) => {
-                    let cube = arg.clone().powf(3.)?;
+                    let cube = arg.clone().pow(3.)?;
                     let tanh = (0.0356774 * cube.clone() + (0.797885 * arg.clone())?)?.tanh()?;
                     let gelu_grad = (((0.5 * tanh.clone())?
                         + (0.0535161 * cube + (0.398942 * arg.clone())?)?
-                            * (1. - tanh.clone().powf(2.)?))?
+                            * (1. - tanh.clone().pow(2.)?))?
                         + 0.5)?;
                     let arg_grad = (grad * gelu_grad)?;
                     accumulate_add(arg, arg_grad)?;

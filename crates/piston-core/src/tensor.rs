@@ -704,7 +704,7 @@ impl Tensor {
         ))
     }
 
-    pub fn powf(self, e: f32) -> Result<Self> {
+    pub fn pow(self, e: f32) -> Result<Self> {
         let device = self.device.clone();
         let powf = Powf::new(self, e);
         let new_view = powf.compute_view()?;
