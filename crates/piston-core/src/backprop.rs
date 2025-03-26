@@ -9,7 +9,6 @@ use crate::{
 };
 use crate::{HashMap, Trilu};
 use anyhow::Result;
-use std::collections::hash_map::Entry;
 
 // thiserror error for Tensor
 #[derive(thiserror::Error, Debug)]
