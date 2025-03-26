@@ -322,9 +322,9 @@ impl Tensor {
                     on_false,
                 }) => {
                     let zeros = grad.clone().zeros_like::<f32>(None, false)?;
-                    let t_grad = input.clone().where_cond(grad.clone(), zeros.clone())?;
+                    let t_grad = grad.clone().where_cond(input.clone(), zeros.clone())?;
                     accumulate_add(on_true, t_grad)?;
-                    let f_grad = input.clone().where_cond(zeros, grad)?;
+                    let f_grad = zeros.clone().where_cond(input.clone(), grad)?;
                     accumulate_add(on_false, f_grad)?;
                 }
                 LazyOp::Matmul(Matmul {

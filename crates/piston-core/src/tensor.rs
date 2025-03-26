@@ -1117,9 +1117,9 @@ impl Tensor {
         Ok(Tensor::lazy(op, new_view, device, false))
     }
 
-    pub fn where_cond(self, on_true: Tensor, on_false: Tensor) -> Result<Self> {
+    pub fn where_cond(self, condition: Tensor, on_false: Tensor) -> Result<Self> {
         let device = self.device.clone();
-        let where_cond = WhereCond::new(self, on_true, on_false);
+        let where_cond = WhereCond::new(condition, self, on_false);
         let new_view = where_cond.compute_view()?;
         Ok(Tensor::lazy(
             LazyOp::WhereCond(where_cond),
