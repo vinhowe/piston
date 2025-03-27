@@ -279,6 +279,8 @@ impl LazyGraphExecutor {
                         );
 
                         if !self.inplace_support {
+                            // TODO(vinhowe): This really is horrible; we should be able to just
+                            // check if the op supports inplace.
                             match tensor.op() {
                                 LazyOp::Softmax(_)
                                 | LazyOp::ScatterAdd(_)
