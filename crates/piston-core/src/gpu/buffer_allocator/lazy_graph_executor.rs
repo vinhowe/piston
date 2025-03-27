@@ -294,9 +294,9 @@ impl LazyGraphExecutor {
                                 _ => false,
                             }
                         } else if !tensor.op().supports_inplace()
-                    // vinhowe: we need to check if the src is a parameter, because we can't
-                    // inplace parameters unless we've disabled gradient tracking.
-                    || to_modify_src.requires_grad()
+                            // vinhowe: we need to check if the src is a parameter, because we can't
+                            // inplace parameters unless we've disabled gradient tracking.
+                            || to_modify_src.requires_grad()
                         {
                             false
                         } else {
