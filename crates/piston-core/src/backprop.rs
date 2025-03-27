@@ -10,7 +10,6 @@ use crate::{
 use crate::{HashMap, Trilu};
 use anyhow::Result;
 
-// thiserror error for Tensor
 #[derive(thiserror::Error, Debug)]
 pub enum BackpropError {
     #[error("Tensor is not resolved")]
