@@ -9,7 +9,7 @@ use crate::{
     gpu::BindGroupLayoutDescriptor, rvec, Array, BindGroupLayoutEntryDescriptor,
     BindGroupLayoutEntryExt, BindingMode, BuiltIn, DType, GPUOperation, Kernel, KernelElement,
     KernelRenderable, KernelSource, OpGuards, Operation, OperationError, RVec, Scalar, Shape,
-    StorageView, Stride, Tensor, Vec2, Vec4, WgslKernelBuilder, WgslPrimitive, WorkgroupSize,
+    StorageView, Stride, OpTensor, Vec2, Vec4, WgslKernelBuilder, WgslPrimitive, WorkgroupSize,
     Workload,
 };
 
@@ -23,8 +23,8 @@ use crate::{
 /// 3. offset, where to start the write in the cache tensor, e.g [1, 5, 1024], [1, 1, 1024], offset = 5 -> [1, 6, 1024]
 #[derive(new, Debug, Clone, IrFields)]
 pub struct Cache {
-    cache: Tensor,
-    source: Tensor,
+    cache: OpTensor,
+    source: OpTensor,
     dim: usize,
     offset: usize,
 }
@@ -50,7 +50,7 @@ impl KernelRenderable for CacheKernels {
     fn render<P: WgslPrimitive>(
         &self,
         inplace: bool,
-        dst: &Tensor,
+        dst: &OpTensor,
         workgroup_size: &WorkgroupSize,
     ) -> Result<KernelSource, OperationError> {
         let device = dst.device().try_gpu()?;
@@ -132,7 +132,7 @@ impl Operation for Cache {
     }
 
     #[inline]
-    fn srcs(&self) -> RVec<&Tensor> {
+    fn srcs(&self) -> RVec<&OpTensor> {
         rvec![&self.cache, &self.source]
     }
 
@@ -187,7 +187,7 @@ impl Kernel for CacheKernels {
         }
     }
 
-    fn metadata(&self, dst: &Tensor, _: &KernelElement) -> Result<Self::Metadata, OperationError> {
+    fn metadata(&self, dst: &OpTensor, _: &KernelElement) -> Result<Self::Metadata, OperationError> {
         let CacheKernels::Standard(inner) = self;
 
         let original_rank = inner.cache.rank();
@@ -217,18 +217,18 @@ impl Kernel for CacheKernels {
         })
     }
 
-    fn kernel_element(&self, _dst: &Tensor) -> KernelElement {
+    fn kernel_element(&self, _dst: &OpTensor) -> KernelElement {
         KernelElement::Scalar
     }
 
-    fn calculate_dispatch(&self, dst: &Tensor) -> Result<Workload, OperationError> {
+    fn calculate_dispatch(&self, dst: &OpTensor) -> Result<Workload, OperationError> {
         Ok(Workload::std(dst.shape().numel(), self.kernel_element(dst)))
     }
 
     fn build_kernel(
         &self,
         inplace: bool,
-        dst: &Tensor,
+        dst: &OpTensor,
         workgroup_size: &WorkgroupSize,
     ) -> Result<KernelSource, OperationError> {
         let kernel_element = self.kernel_element(dst);
@@ -262,26 +262,26 @@ impl Kernel for CacheKernels {
 
 #[cfg(test)]
 mod tests {
-    use crate::{rvec, Device, DeviceRequest, Tensor};
+    use crate::{rvec, Device, DeviceRequest, OpTensor};
 
     #[test]
     fn test_cache() -> anyhow::Result<()> {
         let device = Device::request_device(DeviceRequest::GPU).unwrap();
         let populated = 2;
         //Create cache with 2 populated entries, and 14 blank entries
-        let mut dst0 = Tensor::randn::<f32, _>(0., 1., (1, 2, populated, 16), Device::CPU, false)?;
+        let mut dst0 = OpTensor::randn::<f32, _>(0., 1., (1, 2, populated, 16), Device::CPU, false)?;
         println!("PREVIOUS CACHE\n {:?}\n", dst0.to_ndarray_view::<f32>());
         dst0 = dst0.to(&device)?;
-        let dst1 = Tensor::zeros::<f32, _>((1, 2, 4, 16), &device, false)?;
-        let cur_cache = Tensor::cat(rvec![dst0.clone(), dst1], 2)?;
+        let dst1 = OpTensor::zeros::<f32, _>((1, 2, 4, 16), &device, false)?;
+        let cur_cache = OpTensor::cat(rvec![dst0.clone(), dst1], 2)?;
 
         //This is the k or v vector we write
-        let mut src = Tensor::randn::<f32, _>(0., 1., (1, 2, 1, 16), Device::CPU, false)?;
+        let mut src = OpTensor::randn::<f32, _>(0., 1., (1, 2, 1, 16), Device::CPU, false)?;
         println!("SRC \n {:?}\n", src.to_ndarray_view::<f32>());
         src = src.to(&device)?;
 
         //The result should be the concatenation of the cache and the source
-        let ground_truth = Tensor::cat(rvec![dst0.clone(), src.clone()], 2)?.to(&Device::CPU)?;
+        let ground_truth = OpTensor::cat(rvec![dst0.clone(), src.clone()], 2)?.to(&Device::CPU)?;
 
         let dim = 2;
         let b = cur_cache.clone().cache(src, dim, populated)?;

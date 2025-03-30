@@ -7,20 +7,20 @@ use piston_macros::IrFields;
 use crate::{
     gpu::BindGroupLayoutDescriptor, rvec, Array, BindingMode, BuiltIn, DType, DynKernelMetadata,
     GPUOperation, Kernel, KernelElement, KernelRenderable, KernelSource, OpGuards, Operation,
-    OperationError, RVec, Scalar, Shape, StorageView, Stride, Tensor, Vec2, Vec4,
+    OperationError, RVec, Scalar, Shape, StorageView, Stride, OpTensor, Vec2, Vec4,
     WgslKernelBuilder, WgslPrimitive, WorkgroupSize, Workload,
 };
 
 #[derive(new, Debug, Clone, IrFields)]
 pub struct Concat {
-    pub inputs: RVec<Tensor>,
+    pub inputs: RVec<OpTensor>,
     pub dim: usize,
 }
 
 const MAX_INPUTS: usize = 8;
 
 impl Concat {
-    pub fn inputs(&self) -> &[Tensor] {
+    pub fn inputs(&self) -> &[OpTensor] {
         &self.inputs
     }
 
@@ -52,7 +52,7 @@ impl KernelRenderable for ConcatKernels {
     fn render<P: WgslPrimitive>(
         &self,
         inplace: bool,
-        dst: &Tensor,
+        dst: &OpTensor,
         workgroup_size: &WorkgroupSize,
     ) -> Result<KernelSource, OperationError> {
         let device = dst.device().try_gpu()?;
@@ -126,7 +126,7 @@ impl Operation for Concat {
     }
 
     #[inline]
-    fn srcs(&self) -> RVec<&Tensor> {
+    fn srcs(&self) -> RVec<&OpTensor> {
         self.inputs.iter().collect()
     }
 }
@@ -185,7 +185,7 @@ impl Kernel for ConcatKernels {
         }
     }
 
-    fn metadata(&self, dst: &Tensor, _: &KernelElement) -> Result<Self::Metadata, OperationError> {
+    fn metadata(&self, dst: &OpTensor, _: &KernelElement) -> Result<Self::Metadata, OperationError> {
         let ConcatKernels::Standard(inner) = self;
 
         let original_rank = inner.inputs[0].rank();
@@ -226,18 +226,18 @@ impl Kernel for ConcatKernels {
         Ok(dyn_meta)
     }
 
-    fn calculate_dispatch(&self, dst: &Tensor) -> Result<Workload, OperationError> {
+    fn calculate_dispatch(&self, dst: &OpTensor) -> Result<Workload, OperationError> {
         Ok(Workload::std(dst.shape().numel(), self.kernel_element(dst)))
     }
 
-    fn kernel_element(&self, _: &Tensor) -> KernelElement {
+    fn kernel_element(&self, _: &OpTensor) -> KernelElement {
         KernelElement::Scalar
     }
 
     fn build_kernel(
         &self,
         inplace: bool,
-        dst: &Tensor,
+        dst: &OpTensor,
         workgroup_size: &WorkgroupSize,
     ) -> Result<KernelSource, OperationError> {
         let kernel_element = self.kernel_element(dst);
@@ -288,15 +288,15 @@ impl GPUOperation for Concat {
 
 #[cfg(all(test, feature = "pyo3"))]
 mod tests {
-    use crate::{rvec, test_util::run_py_prg, Device, DeviceRequest, RVec, Tensor};
+    use crate::{test_util::run_py_prg, Device, DeviceRequest, RVec, OpTensor};
 
     #[derive(Debug)]
     struct ConcatProblem {
-        tensors: Vec<Tensor>,
+        tensors: Vec<OpTensor>,
         dim: usize,
     }
 
-    fn ground_truth(to_cat: &[&Tensor], args: &str) -> anyhow::Result<Tensor> {
+    fn ground_truth(to_cat: &[&OpTensor], args: &str) -> anyhow::Result<OpTensor> {
         let prg = format!(
             r#"
 import torch
@@ -317,7 +317,7 @@ def permute(*tensors):
 
         let arg_str = format!("{}", dim);
         let ground = ground_truth(
-            tensors.iter().collect::<Vec<&Tensor>>().as_slice(),
+            tensors.iter().collect::<Vec<&OpTensor>>().as_slice(),
             arg_str.as_str(),
         )?;
 
@@ -325,7 +325,7 @@ def permute(*tensors):
             t.to(&device)?;
         }
         let t_rvec = RVec::from(tensors);
-        let ours = Tensor::cat(t_rvec, dim)?;
+        let ours = OpTensor::cat(t_rvec, dim)?;
         let result = ours.to(&Device::CPU)?;
         println!("Ground: {:?}\n", ground);
         println!("Ours: {:?}", result);
@@ -335,11 +335,11 @@ def permute(*tensors):
 
     #[test]
     fn test_concat_gpu() {
-        let t0 = Tensor::randn::<f32, _>(0., 1., (4, 2, 50, 128), Device::CPU).unwrap();
-        let t1 = Tensor::randn::<f32, _>(0., 1., (4, 2, 13, 128), Device::CPU).unwrap();
-        let t2 = Tensor::randn::<f32, _>(0., 1., (4, 2, 77, 128), Device::CPU).unwrap();
-        let t3 = Tensor::randn::<f32, _>(0., 1., (4, 2, 55, 128), Device::CPU).unwrap();
-        let t4 = Tensor::randn::<f32, _>(0., 1., (4, 2, 11, 128), Device::CPU).unwrap();
+        let t0 = OpTensor::randn::<f32, _>(0., 1., (4, 2, 50, 128), Device::CPU, false).unwrap();
+        let t1 = OpTensor::randn::<f32, _>(0., 1., (4, 2, 13, 128), Device::CPU, false).unwrap();
+        let t2 = OpTensor::randn::<f32, _>(0., 1., (4, 2, 77, 128), Device::CPU, false).unwrap();
+        let t3 = OpTensor::randn::<f32, _>(0., 1., (4, 2, 55, 128), Device::CPU, false).unwrap();
+        let t4 = OpTensor::randn::<f32, _>(0., 1., (4, 2, 11, 128), Device::CPU, false).unwrap();
 
         let dim = 2;
         let device = Device::request_device(DeviceRequest::GPU).unwrap();
@@ -355,11 +355,11 @@ def permute(*tensors):
 
     #[test]
     fn test_concat_cpu() {
-        let t0 = Tensor::randn::<f32, _>(0., 1., (4, 2, 50, 128), Device::CPU).unwrap();
-        let t1 = Tensor::randn::<f32, _>(0., 1., (4, 2, 13, 128), Device::CPU).unwrap();
-        let t2 = Tensor::randn::<f32, _>(0., 1., (4, 2, 77, 128), Device::CPU).unwrap();
-        let t3 = Tensor::randn::<f32, _>(0., 1., (4, 2, 55, 128), Device::CPU).unwrap();
-        let t4 = Tensor::randn::<f32, _>(0., 1., (4, 2, 11, 128), Device::CPU).unwrap();
+        let t0 = OpTensor::randn::<f32, _>(0., 1., (4, 2, 50, 128), Device::CPU, false).unwrap();
+        let t1 = OpTensor::randn::<f32, _>(0., 1., (4, 2, 13, 128), Device::CPU, false).unwrap();
+        let t2 = OpTensor::randn::<f32, _>(0., 1., (4, 2, 77, 128), Device::CPU, false).unwrap();
+        let t3 = OpTensor::randn::<f32, _>(0., 1., (4, 2, 55, 128), Device::CPU, false).unwrap();
+        let t4 = OpTensor::randn::<f32, _>(0., 1., (4, 2, 11, 128), Device::CPU, false).unwrap();
 
         let dim = 2;
         let device = Device::request_device(DeviceRequest::CPU).unwrap();

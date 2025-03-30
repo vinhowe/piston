@@ -33,16 +33,16 @@ fn run_linear_regression<O: Optimizer>(optimizer: OptimizerFactory<O>) -> anyhow
         loss.backward()?;
         opt.backward_step(&device)?;
         // device.try_gpu().unwrap().mark_step().unwrap();
-        let b = b.as_tensor().to(&Device::CPU)?;
-        let w = w.as_tensor().to(&Device::CPU)?;
+        let b = b.to(&Device::CPU)?;
+        let w = w.to(&Device::CPU)?;
         println!("b: {:?}, w: {:?}", b.to_vec::<f32>(), w.to_vec::<f32>());
         let loss_cpu = loss.clone().to(&Device::CPU)?;
         let loss_vec = loss_cpu.to_vec::<f32>()?;
         println!("loss: {:?}", loss_vec[0]);
     }
 
-    let b = b.as_tensor().to(&Device::CPU)?;
-    let w = w.as_tensor().to(&Device::CPU)?;
+    let b = b.to(&Device::CPU)?;
+    let w = w.to(&Device::CPU)?;
     println!("b: {:?}, w: {:?}", b.to_vec::<f32>(), w.to_vec::<f32>());
     assert_eq!(to_vec0_round(&b, 4)?, 0.7872);
     assert_eq!(to_vec1_round(&w, 4)?, &[2.7257, 0.7097]);
@@ -82,21 +82,21 @@ fn gradient_descent(optimizer: OptimizerFactory<impl Optimizer>) -> anyhow::Resu
 
     for step in 0..100 {
         // Compute loss = (w - target)^2
-        let loss = w.as_tensor().clone().sub(target.clone())?.square()?;
+        let loss = w.clone().sub(target.clone())?.square()?;
 
         // Backpropagate
         loss.backward()?;
         opt.backward_step(&device)?;
 
         // Print debug info
-        let current_w = w.as_tensor().to(&Device::CPU)?.to_vec::<f32>()?;
+        let current_w = w.to(&Device::CPU)?.to_vec::<f32>()?;
         let current_loss = loss.to(&Device::CPU)?.to_vec::<f32>()?;
         #[cfg(feature = "plotting")]
         println!(
             "Step {step}: w = {:.4}, loss = {:.4} (fmt: {})",
             current_w[0],
             current_loss[0],
-            w.as_tensor().to(&Device::CPU)?.plot_fmt()
+            w.to(&Device::CPU)?.plot_fmt()
         );
         println!(
             "Step {step}: w = {:.4}, loss = {:.4}",
@@ -104,7 +104,7 @@ fn gradient_descent(optimizer: OptimizerFactory<impl Optimizer>) -> anyhow::Resu
         );
     }
 
-    let final_w = w.as_tensor().to(&Device::CPU)?.to_vec::<f32>()?;
+    let final_w = w.to(&Device::CPU)?.to_vec::<f32>()?;
     assert!(
         (final_w[0] - target.to(&Device::CPU)?.to_vec::<f32>()?[0]).abs() < 0.1,
         "Final w should be close to 5.0"
@@ -148,14 +148,10 @@ fn test_intermediate() -> anyhow::Result<()> {
     let sample_ys = gen.schedule(sample_xs.clone())?;
 
     // Now use backprop to run a linear regression between samples and get the coefficients back.
-    let w = Parameter::from_tensor(
-        &Tensor::from_data(vec![0f32, 0.], (1, 2), Device::CPU, false).to(&device)?,
-    )?;
+    let w = Tensor::from_data(vec![0f32, 0.], (1, 2), Device::CPU, false).to(&device)?;
     // let b = Parameter::from_data(vec![0f32], 1, Device::CPU);
-    let b = Parameter::from_tensor(
-        &Tensor::from_data(vec![0f32], (1, 1), Device::CPU, false).to(&device)?,
-    )?;
-    let lin = Linear::new(w.as_tensor().clone(), Some(b.as_tensor().clone()));
+    let b = Tensor::from_data(vec![0f32], (1, 1), Device::CPU, false).to(&device)?;
+    let lin = Linear::new(w.clone(), Some(b.clone()));
 
     let ys = lin.schedule(sample_xs.clone())?;
     let loss = ys.sub(sample_ys.clone())?.square()?;

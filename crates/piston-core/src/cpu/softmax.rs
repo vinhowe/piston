@@ -1,5 +1,5 @@
 use crate::cpu::utils::cpu_store_result;
-use crate::{CPUOperation, DType, OperationError, Softmax, Tensor, TensorDType};
+use crate::{CPUOperation, DType, OperationError, Softmax, OpTensor, TensorDType};
 use half::{bf16, f16};
 use maybe_async::maybe_async;
 use num::Float;
@@ -9,7 +9,7 @@ use num_traits::NumAssignOps;
 #[cfg_attr(target_arch = "wasm32", async_trait::async_trait)]
 impl CPUOperation for Softmax {
     #[maybe_async]
-    async fn apply_cpu(&self, dst: Tensor) -> Result<Tensor, OperationError> {
+    async fn apply_cpu(&self, dst: OpTensor) -> Result<OpTensor, OperationError> {
         let Softmax { input, dim } = self;
         match input.dtype() {
             DType::F32 => softmax::<f32>(input, *dim, &dst).await?,
@@ -23,7 +23,7 @@ impl CPUOperation for Softmax {
 }
 
 #[maybe_async]
-async fn softmax<T>(input: &Tensor, dim: usize, dst: &Tensor) -> Result<(), OperationError>
+async fn softmax<T>(input: &OpTensor, dim: usize, dst: &OpTensor) -> Result<(), OperationError>
 where
     T: TensorDType + Float + NumAssignOps,
 {

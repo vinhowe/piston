@@ -70,6 +70,8 @@ pub async fn generate(
         // The logits have shape [1, seq_len, vocab_size] where:
         //   - seq_len == prompt.len() on first pass, or 1 on subsequent passes.
         let logits_nd = logits_cpu
+            .inner()
+            .read()
             .to_ndarray_view::<f32>()
             .into_owned()
             .into_dimensionality::<Ix3>()

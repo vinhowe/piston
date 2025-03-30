@@ -9,7 +9,7 @@ use crate::{
     gpu::{dtype::WgslDType, BindGroupLayoutDescriptor},
     rvec, wgc, wgs, Array, BindingMode, BuiltIn, DType, GPUOperation, Kernel, KernelElement,
     KernelRenderable, KernelSource, OpGuards, Operation, OperationError, RVec, Scalar, StorageView,
-    Tensor, Vec2, Vec4, WgslKernelBuilder, WgslPrimitive, WorkgroupSize, Workload,
+    OpTensor, Vec2, Vec4, WgslKernelBuilder, WgslPrimitive, WorkgroupSize, Workload,
 };
 use derive_new::new;
 use inline_wgsl::wgsl;
@@ -17,9 +17,9 @@ use piston_macros::IrFields;
 
 #[derive(new, Debug, Clone, IrFields)]
 pub struct Norm {
-    pub(crate) input: Tensor,
-    pub(crate) scale: Tensor,
-    pub(crate) bias: Option<Tensor>,
+    pub(crate) input: OpTensor,
+    pub(crate) scale: OpTensor,
+    pub(crate) bias: Option<OpTensor>,
     pub(crate) eps: f32,
 }
 
@@ -63,7 +63,7 @@ impl Operation for NormOp {
     }
 
     #[inline]
-    fn srcs(&self) -> RVec<&Tensor> {
+    fn srcs(&self) -> RVec<&OpTensor> {
         match self {
             NormOp::LayerNorm(Norm {
                 input, scale, bias, ..
@@ -114,7 +114,7 @@ impl KernelRenderable for NormKernels {
     fn render<P: WgslPrimitive>(
         &self,
         inplace: bool,
-        dst: &Tensor,
+        dst: &OpTensor,
         workgroup_size: &WorkgroupSize,
     ) -> Result<KernelSource, OperationError> {
         let device = dst.device().try_gpu()?;
@@ -274,7 +274,7 @@ impl Kernel for NormKernels {
         }
     }
 
-    fn metadata(&self, _: &Tensor, _: &KernelElement) -> Result<Self::Metadata, OperationError> {
+    fn metadata(&self, _: &OpTensor, _: &KernelElement) -> Result<Self::Metadata, OperationError> {
         let NormKernels::Standard(inner) = self;
         let input = inner.srcs()[0];
         let rank = input.rank();
@@ -302,7 +302,7 @@ impl Kernel for NormKernels {
         Ok(meta)
     }
 
-    fn calculate_dispatch(&self, _: &Tensor) -> Result<Workload, OperationError> {
+    fn calculate_dispatch(&self, _: &OpTensor) -> Result<Workload, OperationError> {
         let NormKernels::Standard(inner) = self;
 
         let input = inner.srcs()[0];
@@ -326,7 +326,7 @@ impl Kernel for NormKernels {
         })
     }
 
-    fn kernel_element(&self, dst: &Tensor) -> KernelElement {
+    fn kernel_element(&self, dst: &OpTensor) -> KernelElement {
         let rank = dst.rank();
         let N = dst.shape()[rank - 1] as u32;
         if N % 4 == 0 {
@@ -341,7 +341,7 @@ impl Kernel for NormKernels {
     fn build_kernel(
         &self,
         inplace: bool,
-        dst: &Tensor,
+        dst: &OpTensor,
         workgroup_size: &WorkgroupSize,
     ) -> Result<KernelSource, OperationError> {
         let kernel_element = self.kernel_element(dst);
@@ -404,14 +404,14 @@ mod tests {
     use test_strategy::{proptest, Arbitrary};
 
     use crate::test_util::run_py_prg;
-    use crate::{rvec, Device, DeviceRequest, Tensor};
+    use crate::{rvec, Device, DeviceRequest, OpTensor};
 
     fn ground_truth(
         var: NormVariant,
-        input: &Tensor,
-        scale: &Tensor,
-        bias: Option<&Tensor>,
-    ) -> anyhow::Result<Tensor> {
+        input: &OpTensor,
+        scale: &OpTensor,
+        bias: Option<&OpTensor>,
+    ) -> anyhow::Result<OpTensor> {
         let ln_prg = r#"
 import torch
 import torch.nn.functional as F
@@ -443,11 +443,11 @@ def manual_rms_norm(input, scale):
 
     fn run_norm_trial(device: &Device, problem: NormProblem) -> anyhow::Result<()> {
         let NormProblem { var, B, M, N } = problem;
-        let input = Tensor::randn::<f32, _>(0., 1., (B, M, N), Device::CPU)?;
-        let scale = Tensor::randn::<f32, _>(0., 1., N, Device::CPU)?;
+        let input = OpTensor::randn::<f32, _>(0., 1., (B, M, N), Device::CPU, false)?;
+        let scale = OpTensor::randn::<f32, _>(0., 1., N, Device::CPU, false)?;
 
         let bias = match var {
-            NormVariant::LayerNorm => Some(Tensor::randn::<f32, _>(0., 1., N, Device::CPU)?),
+            NormVariant::LayerNorm => Some(OpTensor::randn::<f32, _>(0., 1., N, Device::CPU, false)?),
             NormVariant::RMSNorm => None,
         };
 

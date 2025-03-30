@@ -288,7 +288,7 @@ impl SimpleBackend for HashMap<String, Tensor> {
                 path: name.to_string(),
             })?
             .clone();
-        if tensor.shape() != &s {
+        if tensor.shape() != s {
             return Err(VarBuilderError::ShapeMismatch {
                 path: name.to_string(),
                 shape: s,

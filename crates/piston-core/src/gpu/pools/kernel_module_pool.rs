@@ -1,4 +1,4 @@
-use crate::{Kernel, KernelKey, KernelSource, OperationError, Tensor, WgpuDevice, WorkgroupSize};
+use crate::{Kernel, KernelKey, KernelSource, OperationError, OpTensor, WgpuDevice, WorkgroupSize};
 
 use super::static_resource_pool::{StaticResourcePool, StaticResourcePoolReadLockAccessor};
 use std::hash::Hash;
@@ -18,7 +18,7 @@ impl KernelModuleDesc {
         &self,
         op: &O,
         inplace: bool,
-        dst: &Tensor,
+        dst: &OpTensor,
         workgroup_size: &WorkgroupSize,
     ) -> Result<KernelSource, OperationError> {
         op.build_kernel(inplace, dst, workgroup_size)
@@ -42,7 +42,7 @@ impl KernelModulePool {
         desc: &KernelModuleDesc,
         kernel: &K,
         inplace: bool,
-        dst: &Tensor,
+        dst: &OpTensor,
         workgroup_size: &WorkgroupSize,
         device: &WgpuDevice,
     ) -> KernelModuleHandle {

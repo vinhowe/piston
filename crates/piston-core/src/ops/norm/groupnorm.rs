@@ -14,14 +14,14 @@ mod tests {
     use test_strategy::{proptest, Arbitrary};
 
     use crate::test_util::run_py_prg;
-    use crate::{rvec, Device, DeviceRequest, Tensor};
+    use crate::{rvec, Device, DeviceRequest, OpTensor};
 
     fn ground_truth(
-        input: &Tensor,
-        scale: &Tensor,
-        bias: Option<&Tensor>,
+        input: &OpTensor,
+        scale: &OpTensor,
+        bias: Option<&OpTensor>,
         num_groups: usize,
-    ) -> anyhow::Result<Tensor> {
+    ) -> anyhow::Result<OpTensor> {
         let prg = r#"
 import torch
 import torch.nn.functional as F
@@ -46,9 +46,9 @@ def manual_group_norm(input, scale, bias, num_groups):
             N,
         } = problem;
 
-        let input = Tensor::randn::<f32, _>(0., 1., (B, C, N), Device::CPU, false)?;
-        let scale = Tensor::randn::<f32, _>(0., 1., C, Device::CPU, false)?;
-        let bias = Some(Tensor::randn::<f32, _>(0., 1., C, Device::CPU, false)?);
+        let input = OpTensor::randn::<f32, _>(0., 1., (B, C, N), Device::CPU, false)?;
+        let scale = OpTensor::randn::<f32, _>(0., 1., C, Device::CPU, false)?;
+        let bias = Some(OpTensor::randn::<f32, _>(0., 1., C, Device::CPU, false)?);
 
         let ground = ground_truth(&input, &scale, bias.as_ref(), num_groups)?;
 

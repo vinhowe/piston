@@ -7,13 +7,13 @@ use piston_macros::{IrFields, WgslMetadata};
 use crate::{
     gpu::BindGroupLayoutDescriptor, rvec, Array, BindingMode, BuiltIn, DType, GPUOperation, Kernel,
     KernelElement, KernelRenderable, KernelSource, OpGuards, Operation, OperationError, RVec,
-    Scalar, Shape, StorageView, Stride, Tensor, Vec2, Vec4, WgslKernelBuilder, WgslPrimitive,
+    Scalar, Shape, StorageView, Stride, OpTensor, Vec2, Vec4, WgslKernelBuilder, WgslPrimitive,
     WorkgroupSize, Workload,
 };
 
 #[derive(new, Debug, Clone, IrFields)]
 pub struct Trilu {
-    pub src: Tensor,
+    pub src: OpTensor,
     pub upper: bool,
     pub k: Option<i32>,
 }
@@ -38,7 +38,7 @@ impl Operation for Trilu {
         Ok(StorageView::new(shape, crate::DType::F32, stride))
     }
 
-    fn srcs(&self) -> RVec<&Tensor> {
+    fn srcs(&self) -> RVec<&OpTensor> {
         rvec![&self.src]
     }
 
@@ -84,7 +84,7 @@ impl KernelRenderable for TriluKernels {
     fn render<P: WgslPrimitive>(
         &self,
         inplace: bool,
-        dst: &Tensor,
+        dst: &OpTensor,
         workgroup_size: &WorkgroupSize,
     ) -> Result<KernelSource, OperationError> {
         let device = dst.device().try_gpu()?;
@@ -159,11 +159,11 @@ impl Kernel for TriluKernels {
         }
     }
 
-    fn kernel_element(&self, _dst: &Tensor) -> KernelElement {
+    fn kernel_element(&self, _dst: &OpTensor) -> KernelElement {
         KernelElement::Scalar
     }
 
-    fn calculate_dispatch(&self, dst: &Tensor) -> Result<Workload, OperationError> {
+    fn calculate_dispatch(&self, dst: &OpTensor) -> Result<Workload, OperationError> {
         Ok(Workload::std(dst.shape().numel(), self.kernel_element(dst)))
     }
 
@@ -178,7 +178,7 @@ impl Kernel for TriluKernels {
         }
     }
 
-    fn metadata(&self, _: &Tensor, _: &KernelElement) -> Result<Self::Metadata, OperationError> {
+    fn metadata(&self, _: &OpTensor, _: &KernelElement) -> Result<Self::Metadata, OperationError> {
         let TriluKernels::Standard(inner) = self;
         let shape = inner.src.shape();
         let ndim = shape.len();
@@ -194,7 +194,7 @@ impl Kernel for TriluKernels {
     fn build_kernel(
         &self,
         inplace: bool,
-        dst: &Tensor,
+        dst: &OpTensor,
         workgroup_size: &WorkgroupSize,
     ) -> Result<KernelSource, OperationError> {
         let kernel_element = self.kernel_element(dst);
@@ -228,7 +228,7 @@ impl Kernel for TriluKernels {
 
 #[cfg(all(test, feature = "pyo3"))]
 mod tests {
-    use crate::{shape, test_util::run_py_prg, DType, Device, DeviceRequest, Tensor};
+    use crate::{shape, test_util::run_py_prg, DType, Device, DeviceRequest, OpTensor};
     use proptest::prelude::any;
     use test_strategy::{proptest, Arbitrary};
 
@@ -244,7 +244,7 @@ mod tests {
     /// # Returns
     ///
     /// A `Tensor` containing the ground truth data.
-    fn ground_truth(shape: &[usize], upper: bool, k: Option<i32>) -> anyhow::Result<Tensor> {
+    fn ground_truth(shape: &[usize], upper: bool, k: Option<i32>) -> anyhow::Result<OpTensor> {
         let prg = r#"
 import numpy as np
 def trilu(shape, upper, k):
@@ -313,7 +313,7 @@ def trilu(shape, upper, k):
         // Define the shape of the tensor.
         let shape = shape![B, M, N];
 
-        let src = Tensor::ones::<f32, _>(shape.clone(), &device, false).unwrap();
+        let src = OpTensor::ones::<f32, _>(shape.clone(), &device, false).unwrap();
 
         // Generate the ground truth using NumPy.
         let ground = ground_truth(&shape, upper, Some(k))

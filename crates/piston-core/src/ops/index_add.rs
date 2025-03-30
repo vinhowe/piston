@@ -1,7 +1,7 @@
 use crate::{
     gpu::BindGroupLayoutDescriptor, rvec, Array, BindingMode, BuiltIn, DType, GPUOperation, Kernel,
-    KernelElement, KernelRenderable, KernelSource, OpGuards, Operation, OperationError, RVec,
-    Scalar, StorageView, Tensor, Vec2, Vec4, WgslKernelBuilder, WgslPrimitive, WorkgroupSize,
+    KernelElement, KernelRenderable, KernelSource, OpGuards, OpTensor, Operation, OperationError,
+    RVec, Scalar, StorageView, Vec2, Vec4, WgslKernelBuilder, WgslPrimitive, WorkgroupSize,
     Workload,
 };
 use derive_new::new;
@@ -12,9 +12,9 @@ use piston_macros::{IrFields, WgslMetadata};
 
 #[derive(new, Debug, Clone, IrFields)]
 pub struct IndexAdd {
-    pub dst: Tensor,
-    pub src: Tensor,
-    pub ids: Tensor,
+    pub dst: OpTensor,
+    pub src: OpTensor,
+    pub ids: OpTensor,
     pub dim: usize,
 }
 
@@ -49,7 +49,7 @@ impl Operation for IndexAdd {
     }
 
     #[inline]
-    fn srcs(&self) -> RVec<&Tensor> {
+    fn srcs(&self) -> RVec<&OpTensor> {
         rvec![&self.dst, &self.src, &self.ids]
     }
 
@@ -87,7 +87,7 @@ impl KernelRenderable for IndexAddKernels {
     fn render<P: WgslPrimitive>(
         &self,
         inplace: bool,
-        dst: &Tensor,
+        dst: &OpTensor,
         workgroup_size: &WorkgroupSize,
     ) -> Result<KernelSource, OperationError> {
         let device = dst.device().try_gpu()?;
@@ -137,7 +137,7 @@ impl Kernel for IndexAddKernels {
         Ok(BindGroupLayoutDescriptor::ternary_inplace())
     }
 
-    fn calculate_dispatch(&self, _: &Tensor) -> Result<Workload, OperationError> {
+    fn calculate_dispatch(&self, _: &OpTensor) -> Result<Workload, OperationError> {
         let IndexAddKernels::Standard(inner) = self;
         Ok(Workload::std(
             inner.src.shape().numel(),
@@ -151,11 +151,11 @@ impl Kernel for IndexAddKernels {
         }
     }
 
-    fn kernel_element(&self, _dst: &Tensor) -> KernelElement {
+    fn kernel_element(&self, _dst: &OpTensor) -> KernelElement {
         KernelElement::Scalar
     }
 
-    fn metadata(&self, _: &Tensor, _: &KernelElement) -> Result<Self::Metadata, OperationError> {
+    fn metadata(&self, _: &OpTensor, _: &KernelElement) -> Result<Self::Metadata, OperationError> {
         let IndexAddKernels::Standard(inner) = self;
         let dim = inner.dim;
         let src_shape_vec = inner.src.shape().to_vec();
@@ -176,7 +176,7 @@ impl Kernel for IndexAddKernels {
     fn build_kernel(
         &self,
         inplace: bool,
-        dst: &Tensor,
+        dst: &OpTensor,
         workgroup_size: &WorkgroupSize,
     ) -> Result<KernelSource, OperationError> {
         let kernel_element = self.kernel_element(dst);
@@ -216,7 +216,7 @@ mod tests {
     use test_strategy::proptest;
 
     use crate::test_util::run_py_prg;
-    use crate::{rvec, Device, DeviceRequest, Shape, Tensor};
+    use crate::{Device, DeviceRequest, OpTensor, Shape};
 
     impl Arbitrary for IndexAddProblem {
         type Parameters = ();
@@ -226,9 +226,14 @@ mod tests {
             Shape::arbitrary_with(vec![1..=512usize, 1..=16usize])
                 .prop_flat_map(|input_shape| (Just(input_shape), 1..64usize))
                 .prop_map(|(input_shape, num_indices)| {
-                    let indices =
-                        Tensor::randint(0, input_shape[0] as i32, num_indices, Device::CPU)
-                            .unwrap();
+                    let indices = OpTensor::randint(
+                        0,
+                        input_shape[0] as i32,
+                        num_indices,
+                        Device::CPU,
+                        false,
+                    )
+                    .unwrap();
                     IndexAddProblem {
                         input_shape,
                         indices,
@@ -239,11 +244,11 @@ mod tests {
     }
 
     fn ground_truth(
-        input: &Tensor,
-        source: &Tensor,
-        indices: &Tensor,
+        input: &OpTensor,
+        source: &OpTensor,
+        indices: &OpTensor,
         dim: usize,
-    ) -> anyhow::Result<Tensor> {
+    ) -> anyhow::Result<OpTensor> {
         let prg = format!(
             r#"
 import torch
@@ -268,12 +273,12 @@ def index_add(input, source, indices):
         let mut source_shape = input_shape.clone();
         source_shape[0] = indices.shape()[0];
 
-        let input = Tensor::randn::<f32, _>(0., 1., input_shape.clone(), device.clone())
+        let input = OpTensor::randn::<f32, _>(0., 1., input_shape.clone(), device.clone(), false)
             .unwrap()
             .to(&Device::CPU)
             .unwrap();
 
-        let source = Tensor::randn::<f32, _>(0., 1., source_shape.clone(), device.clone())
+        let source = OpTensor::randn::<f32, _>(0., 1., source_shape.clone(), device.clone(), false)
             .unwrap()
             .to(&Device::CPU)
             .unwrap();
@@ -307,7 +312,7 @@ def index_add(input, source, indices):
     #[derive(Debug, Clone)]
     struct IndexAddProblem {
         input_shape: Shape,
-        indices: Tensor,
+        indices: OpTensor,
     }
 
     #[proptest(cases = 16)]

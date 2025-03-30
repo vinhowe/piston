@@ -1,15 +1,15 @@
-use crate::{rvec, OpGuards, Operation, Shape, StorageView, Stride, Tensor};
+use crate::{rvec, OpGuards, Operation, Shape, StorageView, Stride, OpTensor};
 
 use piston_macros::IrFields;
 
 #[derive(Debug, derive_new::new, Clone, IrFields)]
 pub struct View {
-    pub(crate) src: Tensor,
+    pub(crate) src: OpTensor,
     pub(crate) shape: Shape,
 }
 
 impl View {
-    pub fn input(&self) -> &Tensor {
+    pub fn input(&self) -> &OpTensor {
         &self.src
     }
 }
@@ -39,7 +39,7 @@ impl Operation for View {
     }
 
     #[inline]
-    fn srcs(&self) -> crate::RVec<&Tensor> {
+    fn srcs(&self) -> crate::RVec<&OpTensor> {
         rvec![&self.src]
     }
 }

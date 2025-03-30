@@ -2,7 +2,7 @@
 use crate::gpu::BindGroupLayoutEntryDescriptor;
 #[cfg(feature = "debug")]
 use crate::TensorId;
-use crate::{drvec, rvec, KernelKey, OperationError, PooledGPUBuffer, RVec, Tensor};
+use crate::{drvec, rvec, KernelKey, OperationError, PooledGPUBuffer, RVec, OpTensor};
 use crate::{
     gpu::{
         BindGroupDescriptor, BindGroupLayoutHandle, ComputePipelineHandle, GpuBindGroup,
@@ -66,8 +66,8 @@ impl CompiledOp {
     const MAX_BINDINGS_PER_GROUP: usize = 8;
 
     pub fn create_storage_bind_groups(
-        srcs: &[&Tensor],
-        dst: &Tensor,
+        srcs: &[&OpTensor],
+        dst: &OpTensor,
         bind_group_layouts: RVec<BindGroupLayoutHandle>,
         device: &WgpuDevice,
         inplace: bool,

@@ -99,12 +99,12 @@ macro_rules! shape {
 }
 
 pub mod prelude {
-    pub use crate::{rvec, shape, Device, DeviceRequest, Tensor};
+    pub use crate::{rvec, shape, Device, DeviceRequest, OpTensor};
 }
 
 #[cfg(feature = "pyo3")]
 pub mod test_util {
-    use crate::{DType, Tensor};
+    use crate::{DType, OpTensor};
     use half::f16;
     use regex::Regex;
     use {
@@ -115,10 +115,10 @@ pub mod test_util {
     /// It's a bit of a hack, but it's useful for testing.
     pub fn run_py_prg(
         prg: String,
-        tensors: &[&Tensor],
+        tensors: &[&OpTensor],
         args: &[&dyn ToPyObject],
         dst_dtype: DType,
-    ) -> anyhow::Result<Tensor> {
+    ) -> anyhow::Result<OpTensor> {
         let re = Regex::new(r"def\s+(\w+)\s*\(").unwrap();
         let func = match re.captures(&prg) {
             Some(caps) => caps.get(1).map(|m| m.as_str()).unwrap(),
@@ -138,7 +138,7 @@ pub mod test_util {
                 .collect::<Vec<_>>();
             let py_args = PyTuple::new(py, py_args);
             let py_result = prg.getattr(func)?.call1(py_args)?;
-            let result: Tensor = match dst_dtype {
+            let result: OpTensor = match dst_dtype {
                 DType::F32 => py_result.extract::<&PyArrayDyn<f32>>()?.into(),
                 DType::F16 => py_result.extract::<&PyArrayDyn<f16>>()?.into(),
                 DType::I32 => py_result.extract::<&PyArrayDyn<i32>>()?.into(),
@@ -151,9 +151,9 @@ pub mod test_util {
 
     pub fn run_py_prg_multiple(
         prg: String,
-        tensors: &[&Tensor],
+        tensors: &[&OpTensor],
         args: &[&dyn ToPyObject],
-    ) -> anyhow::Result<Vec<Tensor>> {
+    ) -> anyhow::Result<Vec<OpTensor>> {
         let re = Regex::new(r"def\s+(\w+)\s*\(").unwrap();
         let func = match re.captures(&prg) {
             Some(caps) => caps.get(1).map(|m| m.as_str()).unwrap(),
@@ -176,7 +176,7 @@ pub mod test_util {
             let mut tensors = Vec::new();
             for item in tuple.iter() {
                 let array: &PyArrayDyn<f32> = item.extract()?;
-                tensors.push(Tensor::from(array));
+                tensors.push(OpTensor::from(array));
             }
             Ok(tensors)
         })

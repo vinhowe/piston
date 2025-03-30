@@ -7,14 +7,14 @@ use piston_macros::{IrFields, WgslMetadata};
 use crate::{
     gpu::BindGroupLayoutDescriptor, rvec, Array, BindingMode, BuiltIn, DType, GPUOperation, Kernel,
     KernelElement, KernelRenderable, KernelSource, OpGuards, Operation, OperationError, RVec,
-    Scalar, Shape, StorageView, Stride, Tensor, Vec2, Vec4, WgslKernelBuilder, WgslPrimitive,
+    Scalar, Shape, StorageView, Stride, OpTensor, Vec2, Vec4, WgslKernelBuilder, WgslPrimitive,
     WorkgroupSize, Workload,
 };
 
 #[derive(new, Debug, Clone, IrFields)]
 pub struct IndexWrite {
-    dst: Tensor,
-    src: Tensor,
+    dst: OpTensor,
+    src: OpTensor,
     write_start: RVec<usize>,
 }
 
@@ -43,7 +43,7 @@ impl Operation for IndexWrite {
     }
 
     #[inline]
-    fn srcs(&self) -> RVec<&Tensor> {
+    fn srcs(&self) -> RVec<&OpTensor> {
         rvec![&self.dst, &self.src]
     }
 
@@ -80,7 +80,7 @@ impl KernelRenderable for IndexWriteKernels {
     fn render<P: WgslPrimitive>(
         &self,
         inplace: bool,
-        dst: &Tensor,
+        dst: &OpTensor,
         workgroup_size: &WorkgroupSize,
     ) -> Result<KernelSource, OperationError> {
         let device = dst.device().try_gpu()?;
@@ -131,7 +131,7 @@ impl Kernel for IndexWriteKernels {
         }
     }
 
-    fn metadata(&self, dst: &Tensor, _: &KernelElement) -> Result<Self::Metadata, OperationError> {
+    fn metadata(&self, dst: &OpTensor, _: &KernelElement) -> Result<Self::Metadata, OperationError> {
         let IndexWriteKernels::Standard(inner) = self;
         let padder = |mut shape: Shape| {
             shape.left_pad_to(1, 4);
@@ -154,7 +154,7 @@ impl Kernel for IndexWriteKernels {
         })
     }
 
-    fn calculate_dispatch(&self, _: &Tensor) -> Result<Workload, OperationError> {
+    fn calculate_dispatch(&self, _: &OpTensor) -> Result<Workload, OperationError> {
         let IndexWriteKernels::Standard(inner) = self;
         Ok(Workload::std(
             inner.src.shape().numel(),
@@ -162,14 +162,14 @@ impl Kernel for IndexWriteKernels {
         ))
     }
 
-    fn kernel_element(&self, _: &Tensor) -> KernelElement {
+    fn kernel_element(&self, _: &OpTensor) -> KernelElement {
         KernelElement::Scalar
     }
 
     fn build_kernel(
         &self,
         inplace: bool,
-        dst: &Tensor,
+        dst: &OpTensor,
         workgroup_size: &WorkgroupSize,
     ) -> Result<KernelSource, OperationError> {
         let kernel_element = self.kernel_element(dst);
@@ -204,20 +204,21 @@ impl Kernel for IndexWriteKernels {
 
 #[cfg(test)]
 mod tests {
-    use crate::{rvec, Device, DeviceRequest, Tensor};
+    use crate::{rvec, Device, DeviceRequest, OpTensor};
 
     #[test]
     fn test_index_write() {
         let device = Device::request_device(DeviceRequest::GPU).unwrap();
 
-        let dst = Tensor::from_data(vec![1., 2., 3., 4., 5., 6.], (3, 2), device.clone());
-        let src = Tensor::from_data(vec![7., 8.], (1, 2), device.clone());
+        let dst = OpTensor::from_data(vec![1., 2., 3., 4., 5., 6.], (3, 2), device.clone(), false);
+        let src = OpTensor::from_data(vec![7., 8.], (1, 2), device.clone(), false);
         let write_start = rvec![2, 0];
         let b = dst.index_write(src, write_start).unwrap();
 
         let result = b.to(&Device::CPU).unwrap();
 
-        let ground_truth = Tensor::from_data(vec![1., 2., 3., 4., 7., 8.], (3, 2), Device::CPU);
+        let ground_truth =
+            OpTensor::from_data(vec![1., 2., 3., 4., 7., 8.], (3, 2), Device::CPU, false);
         println!("result: {:?}", result);
         println!("ground_truth: {:?}", ground_truth);
         ground_truth.all_close(&result, 1e-8, 1e-8).unwrap();

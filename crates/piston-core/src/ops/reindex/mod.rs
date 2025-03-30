@@ -18,7 +18,7 @@ use crate::{
     gpu::{BindGroupLayoutDescriptor, CpuUniform},
     rvec, Array, BindingMode, BuiltIn, DType, GPUOperation, Kernel, KernelElement, KernelMetadata,
     KernelRenderable, KernelSource, OpGuards, Operation, OperationError, RVec, Scalar, Shape,
-    Stride, Tensor, WgslKernelBuilder, WgslPrimitive, WorkgroupSize, Workload,
+    Stride, OpTensor, WgslKernelBuilder, WgslPrimitive, WorkgroupSize, Workload,
 };
 use glam::UVec4;
 
@@ -49,7 +49,7 @@ impl KernelRenderable for ReindexKernels {
     fn render<P: WgslPrimitive>(
         &self,
         inplace: bool,
-        dst: &Tensor,
+        dst: &OpTensor,
         workgroup_size: &WorkgroupSize,
     ) -> Result<KernelSource, OperationError> {
         let device = dst.device().try_gpu().unwrap();
@@ -134,18 +134,18 @@ impl Kernel for ReindexKernels {
         }
     }
 
-    fn kernel_element(&self, _: &Tensor) -> KernelElement {
+    fn kernel_element(&self, _: &OpTensor) -> KernelElement {
         KernelElement::Scalar
     }
 
-    fn calculate_dispatch(&self, dst: &Tensor) -> Result<Workload, OperationError> {
+    fn calculate_dispatch(&self, dst: &OpTensor) -> Result<Workload, OperationError> {
         Ok(Workload::std(dst.shape().numel(), self.kernel_element(dst)))
     }
 
     fn build_kernel(
         &self,
         inplace: bool,
-        dst: &Tensor,
+        dst: &OpTensor,
         workgroup_size: &WorkgroupSize,
     ) -> Result<KernelSource, OperationError> {
         let kernel_element = self.kernel_element(dst);
@@ -167,7 +167,7 @@ impl Kernel for ReindexKernels {
         }
     }
 
-    fn metadata(&self, dst: &Tensor, _: &KernelElement) -> Result<Self::Metadata, OperationError> {
+    fn metadata(&self, dst: &OpTensor, _: &KernelElement) -> Result<Self::Metadata, OperationError> {
         let ReindexKernels::Standard(inner) = self;
         let srcs = inner.srcs();
         let src = srcs.first().unwrap();
@@ -293,7 +293,7 @@ impl Operation for Reindex {
     }
 
     #[inline]
-    fn srcs(&self) -> RVec<&Tensor> {
+    fn srcs(&self) -> RVec<&OpTensor> {
         match self {
             Reindex::Permute(p) => p.srcs(),
             Reindex::Slice(s) => s.srcs(),

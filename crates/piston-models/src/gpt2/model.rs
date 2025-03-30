@@ -200,14 +200,14 @@ impl Module for GPT2 {
 
     fn schedule(&self, input: Self::Input) -> anyhow::Result<Self::Output> {
         let GPT2Input { x, index_pos } = input;
-        let [b_size, seq_len]: [usize; 2] = x.shape().try_into()?;
+        let (b_size, seq_len) = x.shape().dims2()?;
 
         let mut x = self.wte.schedule(x)?;
 
         // Add positional embeddings based on the type
         if let Some(wpe) = &self.wpe {
             // Learned embeddings
-            let pos = Tensor::arange(0, seq_len as i32, x.device(), false)?;
+            let pos = Tensor::arange(0, seq_len as i32, &x.device(), false)?;
             let pos = pos.unsqueeze(0)?.broadcast_to((b_size, seq_len))?;
             let position_embeds = wpe.schedule(pos)?;
             x = x.add(position_embeds)?;
@@ -316,7 +316,7 @@ impl GPT2 {
 
 #[cfg(all(test, not(target_arch = "wasm32"), feature = "pyo3"))]
 mod tests {
-    use piston::{Device, DeviceRequest, Parameter, Tensor};
+    use piston::{Device, DeviceRequest, Tensor};
     use piston_datasets::{
         nlp::tinystories::{Dataset, DatasetRandomIter},
         Batcher,
@@ -371,8 +371,8 @@ mod tests {
         const BATCH_SIZE: usize = 1;
 
         for step in 0..100 {
-            let input = Tensor::zeros::<i32, _>((BATCH_SIZE, config.block_size), &device)?;
-            let tgt = Tensor::zeros::<i32, _>((BATCH_SIZE, config.block_size), &device)?;
+            let input = Tensor::zeros::<i32, _>((BATCH_SIZE, config.block_size), &device, false)?;
+            let tgt = Tensor::zeros::<i32, _>((BATCH_SIZE, config.block_size), &device, false)?;
 
             let (logits, _) = model.schedule(GPT2Input {
                 x: input,
@@ -427,8 +427,8 @@ mod tests {
         const BATCH_SIZE: usize = 10;
 
         for batch_index in 0..10 {
-            let input = Tensor::zeros::<i32, _>((BATCH_SIZE, config.block_size), &device)?;
-            let tgt = Tensor::zeros::<i32, _>((BATCH_SIZE, config.block_size), &device)?;
+            let input = Tensor::zeros::<i32, _>((BATCH_SIZE, config.block_size), &device, false)?;
+            let tgt = Tensor::zeros::<i32, _>((BATCH_SIZE, config.block_size), &device, false)?;
 
             let (logits, _) = model.schedule(GPT2Input {
                 x: input,

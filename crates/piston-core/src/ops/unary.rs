@@ -12,7 +12,7 @@ use crate::{
     gpu::{dtype::WgslDType, BindGroupLayoutDescriptor},
     rvec, Array, BindingMode, BuiltIn, DType, GPUOperation, Kernel, KernelElement,
     KernelRenderable, KernelSource, OpGuards, Operation, OperationError, RVec, Scalar, StorageView,
-    Tensor, Vec2, Vec4, WgslKernelBuilder, WgslPrimitive, WorkgroupSize, Workload,
+    OpTensor, Vec2, Vec4, WgslKernelBuilder, WgslPrimitive, WorkgroupSize, Workload,
 };
 
 #[cfg(test)]
@@ -77,7 +77,7 @@ impl UnaryOp {
 
 #[derive(new, Debug, Clone, IrFields)]
 pub struct Unary {
-    pub input: Tensor,
+    pub input: OpTensor,
     pub op: UnaryOp,
 }
 
@@ -100,7 +100,7 @@ impl KernelRenderable for UnaryKernels {
     fn render<P: WgslPrimitive>(
         &self,
         inplace: bool,
-        dst: &Tensor,
+        dst: &OpTensor,
         workgroup_size: &WorkgroupSize,
     ) -> Result<KernelSource, OperationError> {
         let device = dst.device().try_gpu()?;
@@ -185,7 +185,7 @@ impl Unary {
         &self.op
     }
 
-    pub fn input(&self) -> &Tensor {
+    pub fn input(&self) -> &OpTensor {
         &self.input
     }
 
@@ -314,7 +314,7 @@ impl Operation for Unary {
     }
 
     #[inline]
-    fn srcs(&self) -> RVec<&Tensor> {
+    fn srcs(&self) -> RVec<&OpTensor> {
         rvec![&self.input]
     }
 
@@ -355,7 +355,7 @@ impl Kernel for UnaryKernels {
         }
     }
 
-    fn kernel_element(&self, _dst: &Tensor) -> KernelElement {
+    fn kernel_element(&self, _dst: &OpTensor) -> KernelElement {
         let UnaryKernels::Standard(inner) = self;
 
         let a_rank = &inner.input.shape().rank();
@@ -370,14 +370,14 @@ impl Kernel for UnaryKernels {
         }
     }
 
-    fn calculate_dispatch(&self, dst: &Tensor) -> Result<Workload, OperationError> {
+    fn calculate_dispatch(&self, dst: &OpTensor) -> Result<Workload, OperationError> {
         Ok(Workload::std(dst.shape().numel(), self.kernel_element(dst)))
     }
 
     fn build_kernel(
         &self,
         inplace: bool,
-        dst: &Tensor,
+        dst: &OpTensor,
         workgroup_size: &WorkgroupSize,
     ) -> Result<KernelSource, OperationError> {
         let kernel_element = self.kernel_element(dst);
@@ -408,7 +408,7 @@ impl Kernel for UnaryKernels {
         }
     }
 
-    fn metadata(&self, dst: &Tensor, _: &KernelElement) -> Result<Self::Metadata, OperationError> {
+    fn metadata(&self, dst: &OpTensor, _: &KernelElement) -> Result<Self::Metadata, OperationError> {
         Ok(UnaryMeta {
             numel: dst.shape().numel() as u32,
         })
@@ -419,7 +419,7 @@ impl Kernel for UnaryKernels {
 mod tests {
     use test_strategy::{proptest, Arbitrary};
 
-    use crate::{test_util::run_py_prg, Device, DeviceRequest, Tensor, UnaryOp};
+    use crate::{test_util::run_py_prg, Device, DeviceRequest, OpTensor, UnaryOp};
 
     #[derive(Arbitrary, Debug)]
     struct UnaryProblem {
@@ -430,7 +430,7 @@ mod tests {
         M: usize,
     }
 
-    fn ground_truth(a: &Tensor, op: &UnaryOp, args: &str) -> anyhow::Result<Tensor> {
+    fn ground_truth(a: &OpTensor, op: &UnaryOp, args: &str) -> anyhow::Result<OpTensor> {
         let kn = op.kernel_name();
         let func_prg = format!(
             r#"
@@ -461,7 +461,7 @@ def {}(a):
 
     fn run_unary_trial(prob: UnaryProblem, device: Device) -> anyhow::Result<()> {
         let UnaryProblem { op, B, M } = prob;
-        let a = Tensor::randn::<f32, _>(0., 1., (B, M), Device::CPU)?;
+        let a = OpTensor::randn::<f32, _>(0., 1., (B, M), Device::CPU, false)?;
 
         let args = match op {
             UnaryOp::Gelu => "approximate=\"tanh\"",

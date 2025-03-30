@@ -4,7 +4,7 @@ use crate::{
         BufferDescriptor, BufferPool, BufferUsagesExt, CpuUniform, GpuBufferHandle,
         PooledGPUBuffer, TensorUsageRecords, WgpuDevice, UNIFORM_ALIGN,
     },
-    DeviceError, GpuCompileKey, Tensor, TensorId,
+    DeviceError, GpuCompileKey, OpTensor, TensorId,
 };
 use crate::{HashMap, LazyOp};
 use parking_lot::RwLock;
@@ -154,9 +154,9 @@ impl BufferAllocator {
     /// 3. If our PARENT (i.e the buffer we are about to apply an operation to) has multiple consumers
     ///    if it has multiple consumers, you can't inplace
     fn determine_tensor_source<'a>(
-        source: &'a Tensor,
+        source: &'a OpTensor,
         gpu_compile_keys: &HashMap<TensorId, GpuCompileKey>,
-    ) -> &'a Tensor {
+    ) -> &'a OpTensor {
         let old_source_id = source.id();
         let mut candidate = source;
         log::trace!("Determining source for {:?}", old_source_id);
@@ -217,7 +217,7 @@ impl BufferAllocator {
     //2. When we encounter the last consumer of a tensor, we start recording the interval.
     //3. When we encounter the producer of a tensor, we stop recording the interval.
     fn calculate_usage_records(
-        execution_order: &[&Tensor],
+        execution_order: &[&OpTensor],
         gpu_compile_keys: &HashMap<TensorId, GpuCompileKey>,
     ) -> HashMap<TensorId, TensorUsageRecord> {
         let mut records =
@@ -262,8 +262,8 @@ impl BufferAllocator {
     //Takes in const assignments as inplace may be performed on constants
     pub fn greedy_by_size(
         &self,
-        execution_order: &[&Tensor],
-        output_tensors: &BTreeMap<TensorId, &Tensor>,
+        execution_order: &[&OpTensor],
+        output_tensors: &BTreeMap<TensorId, &OpTensor>,
         assignments: &mut HashMap<TensorId, PooledGPUBuffer>,
         gpu_compile_keys: &HashMap<TensorId, GpuCompileKey>,
         use_shared_buffers: bool,
@@ -352,8 +352,8 @@ impl BufferAllocator {
     ///    and earlier tensors can use it.
     pub fn allocate_cfg(
         &self,
-        execution_order: &[&Tensor],
-        output_tensors: &BTreeMap<TensorId, &Tensor>,
+        execution_order: &[&OpTensor],
+        output_tensors: &BTreeMap<TensorId, &OpTensor>,
         gpu_compile_keys: &HashMap<TensorId, GpuCompileKey>,
         use_shared_buffers: bool,
         device: &WgpuDevice,
