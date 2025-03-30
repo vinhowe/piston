@@ -465,6 +465,11 @@ macro_rules! impl_binary_op {
             let left_required = shapes[0] != &broadcasted;
             let right_required = shapes[1] != &broadcasted;
 
+            // TODO: Incorporate this into the outer Tensor
+            // if inplace && (left_required || right_required) {
+            //     return Err(InvariantError::InplaceBroadcast.into());
+            // }
+
             (lhs, rhs) = if left_required {
                 (lhs.broadcast_to(broadcasted.clone())?, rhs.clone())
             } else if right_required {
@@ -502,6 +507,11 @@ macro_rules! impl_cmp_op {
             let broadcasted = broadcasted.unwrap();
             let left_required = shapes[0] != &broadcasted;
             let right_required = shapes[1] != &broadcasted;
+
+            // TODO: Incorporate this into the outer Tensor
+            // if inplace && (left_required || right_required) {
+            //     return Err(InvariantError::InplaceBroadcast.into());
+            // }
 
             (lhs, rhs) = if left_required {
                 (lhs.broadcast_to(broadcasted.clone())?, rhs.clone())
