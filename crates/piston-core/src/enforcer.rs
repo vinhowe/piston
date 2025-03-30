@@ -33,6 +33,8 @@ pub enum InvariantError {
     DuplicateDims,
     #[error("Broadcasting failed: {0:?}")]
     BroadcastingFailed(Vec<Shape>),
+    #[error("The expanded size of the tensor must match the existing size.")]
+    InplaceBroadcast,
     #[error("Dim out of range {dim} in shape {shape:?}.")]
     DimOutOfRange { dim: usize, shape: Shape },
 }
