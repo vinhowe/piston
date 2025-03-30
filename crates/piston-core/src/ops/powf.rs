@@ -8,12 +8,12 @@ use crate::{
     gpu::{dtype::WgslDType, BindGroupLayoutDescriptor},
     rvec, Array, BindingMode, BuiltIn, DType, GPUOperation, Kernel, KernelElement,
     KernelRenderable, KernelSource, OpGuards, Operation, OperationError, RVec, Scalar, StorageView,
-    Tensor, Vec2, Vec4, WgslKernelBuilder, WgslPrimitive, WorkgroupSize, Workload,
+    OpTensor, Vec2, Vec4, WgslKernelBuilder, WgslPrimitive, WorkgroupSize, Workload,
 };
 
 #[derive(new, Debug, Clone, IrFields)]
 pub struct Powf {
-    pub src: Tensor,
+    pub src: OpTensor,
     pub e: f32,
 }
 
@@ -42,7 +42,7 @@ impl Operation for Powf {
     }
 
     #[inline]
-    fn srcs(&self) -> RVec<&Tensor> {
+    fn srcs(&self) -> RVec<&OpTensor> {
         rvec![&self.src]
     }
 
@@ -83,7 +83,7 @@ impl KernelRenderable for PowfKernels {
     fn render<P: WgslPrimitive>(
         &self,
         inplace: bool,
-        dst: &Tensor,
+        dst: &OpTensor,
         workgroup_size: &WorkgroupSize,
     ) -> Result<KernelSource, OperationError> {
         let device = dst.device().try_gpu()?;
@@ -141,7 +141,7 @@ impl Kernel for PowfKernels {
         }
     }
 
-    fn calculate_dispatch(&self, dst: &Tensor) -> Result<Workload, OperationError> {
+    fn calculate_dispatch(&self, dst: &OpTensor) -> Result<Workload, OperationError> {
         let PowfKernels::Standard(inner) = self;
         Ok(Workload::std(
             inner.src.shape().numel(),
@@ -160,13 +160,13 @@ impl Kernel for PowfKernels {
         }
     }
 
-    fn metadata(&self, _: &Tensor, _: &KernelElement) -> Result<Self::Metadata, OperationError> {
+    fn metadata(&self, _: &OpTensor, _: &KernelElement) -> Result<Self::Metadata, OperationError> {
         let PowfKernels::Standard(inner) = self;
         let numel = inner.src.shape().numel() as u32;
         Ok(PowfMeta { numel, e: inner.e })
     }
 
-    fn kernel_element(&self, _dst: &Tensor) -> KernelElement {
+    fn kernel_element(&self, _dst: &OpTensor) -> KernelElement {
         let PowfKernels::Standard(inner) = self;
         let a_rank = inner.src.shape().rank();
         let N = if a_rank > 0 {
@@ -187,7 +187,7 @@ impl Kernel for PowfKernels {
     fn build_kernel(
         &self,
         inplace: bool,
-        dst: &Tensor,
+        dst: &OpTensor,
         workgroup_size: &WorkgroupSize,
     ) -> Result<KernelSource, OperationError> {
         let kernel_element = self.kernel_element(dst);
@@ -225,9 +225,9 @@ mod tests {
     use test_strategy::{proptest, Arbitrary};
 
     use crate::test_util::run_py_prg;
-    use crate::{Device, DeviceRequest, Tensor};
+    use crate::{Device, DeviceRequest, OpTensor};
 
-    fn ground_truth(a: &Tensor, e: f32) -> anyhow::Result<Tensor> {
+    fn ground_truth(a: &OpTensor, e: f32) -> anyhow::Result<OpTensor> {
         let func_prg = r#"
 import torch
 def powf(a, e):
@@ -244,11 +244,11 @@ def powf(a, e):
 
     fn run_powf_trial(problem: PowfProblem, device: Device) {
         let PowfProblem { B, M, N, e } = problem;
-        let a = Tensor::randn::<f32, _>(0., 1., (B, M, N), Device::CPU, false).unwrap();
+        let a = OpTensor::randn::<f32, _>(0., 1., (B, M, N), Device::CPU, false).unwrap();
         let ground = ground_truth(&a, e).unwrap();
 
         let a_gpu = a.to(&device).unwrap();
-        let b = a_gpu.powf(e).unwrap();
+        let b = a_gpu.pow(e).unwrap();
 
         let ours = b.to(&Device::CPU).unwrap();
 

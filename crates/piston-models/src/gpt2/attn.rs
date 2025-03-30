@@ -96,7 +96,7 @@ impl Module for GPT2SelfAttention {
             block_idx,
             cache,
         } = input;
-        let [batch_size, q_len, _]: [usize; 3] = input.shape().try_into()?;
+        let (batch_size, q_len, _) = input.shape().dims3()?;
 
         let qkv = self.c_attn.schedule(input)?;
 
@@ -186,7 +186,7 @@ impl Module for GPT2SelfAttention {
 
 fn masked_fill(on_false: &Tensor, mask: &Tensor, on_true: f32) -> anyhow::Result<Tensor> {
     let shape = mask.shape();
-    let on_true = Tensor::full(shape, on_true, on_false.device(), false)?;
-    let m = on_true.clone().r#where(mask, on_false.clone())?;
+    let on_true = Tensor::full(shape, on_true, &on_false.device(), false)?;
+    let m = on_true.where_cond(mask.clone(), on_false.clone())?;
     Ok(m)
 }

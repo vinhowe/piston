@@ -25,7 +25,7 @@ impl Module for Dropout {
 
         // Create a tensor of probabilities (1-p) to keep elements
         let keep_prob = 1.0 - self.p;
-        let probs = Tensor::full::<f32, _>(input.shape(), keep_prob, input.device(), false)?;
+        let probs = Tensor::full::<f32, _>(input.shape(), keep_prob, &input.device(), false)?;
 
         // Apply bernoulli sampling to get binary mask
         let mask = probs.bernoulli()?;

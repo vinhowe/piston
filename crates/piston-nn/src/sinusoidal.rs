@@ -46,7 +46,7 @@ impl Module for SinusoidalEmbedding {
         let pos_seq = Tensor::arange::<f32>(
             offset as f32,
             (offset + seq_len) as f32,
-            input.device(),
+            &input.device(),
             false,
         )?;
 

@@ -5,7 +5,7 @@ use piston_macros::WgslMetadata;
 use crate::{
     gpu::dtype::WgslDType, rvec, wgc, wgs, Array, BindGroupLayoutDescriptor, BindingMode, BuiltIn,
     DType, InvariantError, Kernel, KernelElement, KernelKey, KernelRenderable, KernelSource,
-    Matmul, MatmulSpec, OperationError, Scalar, Stride, Tensor, Vec4, WgslKernelBuilder,
+    Matmul, MatmulSpec, OperationError, Scalar, Stride, OpTensor, Vec4, WgslKernelBuilder,
     WgslPrimitive, WorkgroupCount, WorkgroupSize, Workload,
 };
 use glam::IVec3;
@@ -28,9 +28,9 @@ pub struct WorkgroupGEMVMeta {
 
 #[derive(Debug, Clone)]
 pub struct WorkgroupGEMV {
-    lhs: Tensor,
-    rhs: Tensor,
-    bias: Option<Tensor>,
+    lhs: OpTensor,
+    rhs: OpTensor,
+    bias: Option<OpTensor>,
     trans_lhs: bool,
     trans_rhs: bool,
     trans_dst: bool,
@@ -70,8 +70,8 @@ impl Kernel for WorkgroupGEMV {
         &self,
         workgroup_size: &WorkgroupSize,
         inplace: bool,
-        srcs: &[&Tensor],
-        dst: &Tensor,
+        srcs: &[&OpTensor],
+        dst: &OpTensor,
         kernel_element: &KernelElement,
     ) -> KernelKey {
         let (a_fit, b_fit, out_fit) = self.spec.tile_fit();
@@ -99,7 +99,7 @@ impl Kernel for WorkgroupGEMV {
         )
     }
 
-    fn metadata(&self, _: &Tensor, _: &KernelElement) -> Result<Self::Metadata, OperationError> {
+    fn metadata(&self, _: &OpTensor, _: &KernelElement) -> Result<Self::Metadata, OperationError> {
         let spec = &self.spec;
         let mut lhs_shape = spec.lhs_shape().clone();
         lhs_shape.insert(0, spec.lhs_stack());
@@ -130,7 +130,7 @@ impl Kernel for WorkgroupGEMV {
         })
     }
 
-    fn calculate_dispatch(&self, _: &Tensor) -> Result<crate::Workload, OperationError> {
+    fn calculate_dispatch(&self, _: &OpTensor) -> Result<crate::Workload, OperationError> {
         //GEMV workgroup style
         let (TX, TY) = self.spec.heuristic.as_workgroup_size();
         let group_x = WorkgroupCount::div_ceil(self.spec.lhs_shape()[0], TX);
@@ -141,14 +141,14 @@ impl Kernel for WorkgroupGEMV {
         })
     }
 
-    fn kernel_element(&self, _: &Tensor) -> KernelElement {
+    fn kernel_element(&self, _: &OpTensor) -> KernelElement {
         self.spec.select_kernel_element()
     }
 
     fn build_kernel(
         &self,
         inplace: bool,
-        dst: &Tensor,
+        dst: &OpTensor,
         workgroup_size: &WorkgroupSize,
     ) -> Result<KernelSource, OperationError> {
         let kernel_element = KernelElement::Scalar;
@@ -221,7 +221,7 @@ impl KernelRenderable for WorkgroupGEMV {
     fn render<P: WgslPrimitive>(
         &self,
         inplace: bool,
-        dst: &Tensor,
+        dst: &OpTensor,
         workgroup_size: &WorkgroupSize,
     ) -> Result<KernelSource, OperationError> {
         let device = dst.device().try_gpu()?;

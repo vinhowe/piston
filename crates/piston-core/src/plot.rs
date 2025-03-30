@@ -1,5 +1,5 @@
 #![cfg(feature = "plotting")]
-use crate::{CPUBuffer, DeviceStorage, GpuCompileKey, HashSet, LazyOp, Tensor, TensorId};
+use crate::{CPUBuffer, DeviceStorage, GpuCompileKey, HashSet, LazyOp, OpTensor, TensorId};
 use derive_new::new;
 use std::{
     borrow::Cow,
@@ -115,8 +115,8 @@ impl RenderableGraph {
     }
 
     fn build_graph(
-        post_order: &Vec<&Tensor>,
-        outputs: &BTreeMap<TensorId, &Tensor>,
+        post_order: &Vec<&OpTensor>,
+        outputs: &BTreeMap<TensorId, &OpTensor>,
         strong_counts_inplace: &crate::HashMap<TensorId, (usize, bool)>,
         cpu_bufs: Option<&crate::HashMap<TensorId, CPUBuffer>>,
     ) -> anyhow::Result<RenderableGraph> {
@@ -297,8 +297,8 @@ impl<'a> dot3::GraphWalk<'a, Nd, PlotEdge> for RenderableGraph {
 }
 
 pub fn render_to_file(
-    post_order: &Vec<&Tensor>,
-    outputs: &BTreeMap<TensorId, &Tensor>,
+    post_order: &Vec<&OpTensor>,
+    outputs: &BTreeMap<TensorId, &OpTensor>,
     strong_counts_inplace: &crate::HashMap<TensorId, (usize, bool)>,
     cpu_bufs: Option<&crate::HashMap<TensorId, CPUBuffer>>,
     fname: impl AsRef<Path>,

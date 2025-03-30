@@ -7,7 +7,7 @@ use crate::gpu::dtype::WgslDType;
 use crate::{
     gpu::{BindGroupLayoutDescriptor, WorkgroupCount},
     rvec, wgc, wgs, Array, BindingMode, BuiltIn, DType, KernelElement, KernelSource, OpGuards,
-    Operation, OperationError, RVec, Scalar, StorageView, Stride, Tensor, Vec2, Vec4,
+    Operation, OperationError, RVec, Scalar, StorageView, Stride, OpTensor, Vec2, Vec4,
     WgslKernelBuilder, WgslPrimitive, WorkgroupSize, Workload,
 };
 use crate::{GPUOperation, Kernel, KernelRenderable};
@@ -15,7 +15,7 @@ use inline_wgsl::wgsl;
 
 #[derive(new, Debug, Clone, IrFields)]
 pub struct RoPE {
-    pub(crate) input: Tensor,
+    pub(crate) input: OpTensor,
     pub(crate) dim: usize,
     pub(crate) base: f32,
     pub(crate) offset: usize,
@@ -25,7 +25,7 @@ pub struct RoPE {
 }
 
 impl RoPE {
-    pub fn input(&self) -> &Tensor {
+    pub fn input(&self) -> &OpTensor {
         &self.input
     }
 
@@ -81,7 +81,7 @@ impl Operation for RoPE {
     }
 
     #[inline]
-    fn srcs(&self) -> RVec<&Tensor> {
+    fn srcs(&self) -> RVec<&OpTensor> {
         rvec![&self.input]
     }
 
@@ -139,7 +139,7 @@ impl KernelRenderable for RoPEKernels {
     fn render<P: WgslPrimitive>(
         &self,
         inplace: bool,
-        dst: &Tensor,
+        dst: &OpTensor,
         workgroup_size: &WorkgroupSize,
     ) -> Result<KernelSource, OperationError> {
         let device = dst.device().try_gpu().unwrap();
@@ -217,7 +217,7 @@ impl Kernel for RoPEKernels {
         panic!("RoPE does not support out-of-place operation");
     }
 
-    fn metadata(&self, dst: &Tensor, _: &KernelElement) -> Result<Self::Metadata, OperationError> {
+    fn metadata(&self, dst: &OpTensor, _: &KernelElement) -> Result<Self::Metadata, OperationError> {
         let inner = match self {
             RoPEKernels::Forward(x) => x,
             RoPEKernels::Backward(x) => x,
@@ -240,11 +240,11 @@ impl Kernel for RoPEKernels {
         ))
     }
 
-    fn kernel_element(&self, _dst: &Tensor) -> KernelElement {
+    fn kernel_element(&self, _dst: &OpTensor) -> KernelElement {
         KernelElement::Scalar
     }
 
-    fn calculate_dispatch(&self, _dst: &Tensor) -> Result<Workload, OperationError> {
+    fn calculate_dispatch(&self, _dst: &OpTensor) -> Result<Workload, OperationError> {
         const WGSX: usize = 8;
         const WGSY: usize = 8;
         const WGSZ: usize = 1;
@@ -274,7 +274,7 @@ impl Kernel for RoPEKernels {
     fn build_kernel(
         &self,
         inplace: bool,
-        dst: &Tensor,
+        dst: &OpTensor,
         workgroup_size: &WorkgroupSize,
     ) -> Result<KernelSource, OperationError> {
         let kernel_element = self.kernel_element(dst);
@@ -315,9 +315,9 @@ mod tests {
     use test_strategy::{proptest, Arbitrary};
 
     use crate::test_util::run_py_prg;
-    use crate::{Device, DeviceRequest, Tensor};
+    use crate::{Device, DeviceRequest, OpTensor};
 
-    fn ground_truth(a: &Tensor, dim: usize, offset: usize) -> anyhow::Result<Tensor> {
+    fn ground_truth(a: &OpTensor, dim: usize, offset: usize) -> anyhow::Result<OpTensor> {
         let prg = r#"
 import mlx.core as mx
 import mlx.nn as nn
@@ -343,7 +343,7 @@ def mlx_rope(input, dim, offset):
             offset,
         } = problem;
         let shape = (BS, NH, SL, HD);
-        let a = Tensor::randn::<f32, _>(0., 1., shape, Device::CPU).unwrap();
+        let a = OpTensor::randn::<f32, _>(0., 1., shape, Device::CPU, false).unwrap();
         let ground = ground_truth(&a, dim, offset).unwrap();
 
         let a = a.to(&device).unwrap();

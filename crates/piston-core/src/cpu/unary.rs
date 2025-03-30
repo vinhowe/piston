@@ -1,5 +1,5 @@
 use crate::cpu::cpu_store_result;
-use crate::{CPUOperation, DType, OperationError, Tensor, TensorDType, Unary, UnaryOp};
+use crate::{CPUOperation, DType, OpTensor, OperationError, TensorDType, Unary, UnaryOp};
 use core::marker::PhantomData;
 use half::{bf16, f16};
 use maybe_async::maybe_async;
@@ -27,8 +27,8 @@ pub(crate) fn unary_map_inplace<T: TensorDType>(src: &mut [T], f: fn(T) -> T) {
 #[inline]
 #[maybe_async]
 pub(crate) async fn unary_apply_fn<T: TensorDType, U: TensorDType>(
-    input: &Tensor,
-    dst: &Tensor,
+    input: &OpTensor,
+    dst: &OpTensor,
     f: fn(T) -> U,
 ) -> Result<(), OperationError> {
     let input = input.to_vec::<T>().await?;
@@ -73,7 +73,7 @@ macro_rules! impl_unary_ops {
                 * ($conv(1.0) / ($conv(1.0) + (-x).exp())));
 
             #[maybe_async]
-            async fn apply(op: &Unary, dst: Tensor) -> Result<Tensor, OperationError> {
+            async fn apply(op: &Unary, dst: OpTensor) -> Result<OpTensor, OperationError> {
                 match op.op() {
                     UnaryOp::Gelu => Self::gelu(op.input(), dst).await,
                     UnaryOp::Tanh => Self::tanh(op.input(), dst).await,
@@ -102,7 +102,7 @@ macro_rules! impl_unary_ops {
 macro_rules! impl_cpu_unary_op {
     ($method_name:ident, $op:expr) => {
         #[maybe_async]
-        async fn $method_name(input: &Tensor, dst: Tensor) -> Result<Tensor, OperationError> {
+        async fn $method_name(input: &OpTensor, dst: OpTensor) -> Result<OpTensor, OperationError> {
             unary_apply_fn(input, &dst, $op).await?;
             Ok(dst)
         }
@@ -113,7 +113,7 @@ macro_rules! impl_cpu_unary_op {
 #[cfg_attr(target_arch = "wasm32", async_trait::async_trait)]
 impl CPUOperation for Unary {
     #[maybe_async]
-    async fn apply_cpu(&self, dst: Tensor) -> Result<Tensor, OperationError> {
+    async fn apply_cpu(&self, dst: OpTensor) -> Result<OpTensor, OperationError> {
         match dst.dtype() {
             DType::F32 => UnaryOps::<f32>::apply(self, dst).await,
             DType::F16 => UnaryOps::<f16>::apply(self, dst).await,

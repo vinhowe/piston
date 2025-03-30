@@ -8,7 +8,7 @@ use crate::{
     gpu::{dtype::WgslDType, BindGroupLayoutDescriptor},
     rvec, Array, BindingMode, BuiltIn, DType, GPUOperation, InvariantError, Kernel, KernelElement,
     KernelRenderable, KernelSource, OpGuards, Operation, OperationError, RVec, Scalar, Shape,
-    StorageView, Stride, Tensor, Vec2, Vec4, WgslKernelBuilder, WgslPrimitive, WorkgroupSize,
+    StorageView, Stride, OpTensor, Vec2, Vec4, WgslKernelBuilder, WgslPrimitive, WorkgroupSize,
     Workload,
 };
 #[cfg(test)]
@@ -51,8 +51,8 @@ impl CmpOp {
 
 #[derive(new, Debug, Clone, IrFields)]
 pub struct Cmp {
-    pub lhs: Tensor,
-    pub rhs: Tensor,
+    pub lhs: OpTensor,
+    pub rhs: OpTensor,
     pub op: CmpOp,
 }
 
@@ -96,7 +96,7 @@ impl KernelRenderable for CmpKernels {
     fn render<P: WgslPrimitive>(
         &self,
         inplace: bool,
-        dst: &Tensor,
+        dst: &OpTensor,
         workgroup_size: &WorkgroupSize,
     ) -> Result<KernelSource, OperationError> {
         let device = dst.device().try_gpu()?;
@@ -184,7 +184,7 @@ impl Operation for Cmp {
     }
 
     #[inline]
-    fn srcs(&self) -> RVec<&Tensor> {
+    fn srcs(&self) -> RVec<&OpTensor> {
         rvec![&self.lhs, &self.rhs]
     }
 }
@@ -210,7 +210,7 @@ impl Kernel for CmpKernels {
         }
     }
 
-    fn kernel_element(&self, dst: &Tensor) -> KernelElement {
+    fn kernel_element(&self, dst: &OpTensor) -> KernelElement {
         let numel = dst.shape().numel();
 
         if numel % 4 == 0 {
@@ -222,7 +222,7 @@ impl Kernel for CmpKernels {
         }
     }
 
-    fn calculate_dispatch(&self, dst: &Tensor) -> Result<Workload, OperationError> {
+    fn calculate_dispatch(&self, dst: &OpTensor) -> Result<Workload, OperationError> {
         Ok(Workload::std(dst.shape().numel(), self.kernel_element(dst)))
     }
 
@@ -236,7 +236,7 @@ impl Kernel for CmpKernels {
         Ok(BindGroupLayoutDescriptor::binary())
     }
 
-    fn metadata(&self, dst: &Tensor, _: &KernelElement) -> Result<Self::Metadata, OperationError> {
+    fn metadata(&self, dst: &OpTensor, _: &KernelElement) -> Result<Self::Metadata, OperationError> {
         let numel = dst.shape().numel() as _;
         Ok(CmpMeta { numel })
     }
@@ -244,7 +244,7 @@ impl Kernel for CmpKernels {
     fn build_kernel(
         &self,
         inplace: bool,
-        dst: &Tensor,
+        dst: &OpTensor,
         workgroup_size: &WorkgroupSize,
     ) -> Result<KernelSource, OperationError> {
         let CmpKernels::Standard(inner) = self;
@@ -288,7 +288,7 @@ impl Kernel for CmpKernels {
 
 #[cfg(all(test, feature = "pyo3"))]
 mod tests {
-    use crate::{test_util::run_py_prg, CmpOp, DType, Device, DeviceRequest, Shape, Tensor};
+    use crate::{test_util::run_py_prg, CmpOp, DType, Device, DeviceRequest, Shape, OpTensor};
     use test_strategy::{proptest, Arbitrary};
 
     #[derive(Arbitrary, Debug)]
@@ -298,7 +298,7 @@ mod tests {
         shape: Shape,
     }
 
-    fn ground_truth(a: &Tensor, b: &Tensor, op: &CmpOp) -> anyhow::Result<Tensor> {
+    fn ground_truth(a: &OpTensor, b: &OpTensor, op: &CmpOp) -> anyhow::Result<OpTensor> {
         let kn = op.kernel_name();
         let prg = format!(
             r#"
@@ -315,8 +315,8 @@ def {}(a, b):
     fn run_cmp_trial(prob: BinaryProblem, device: Device) -> anyhow::Result<()> {
         let cpu_device = Device::request_device(DeviceRequest::CPU)?;
         let BinaryProblem { op, shape } = prob;
-        let a = Tensor::randn::<f32, _>(0., 1., shape.clone(), cpu_device.clone())?;
-        let b = Tensor::randn::<f32, _>(0., 1., shape, cpu_device.clone())?;
+        let a = OpTensor::randn::<f32, _>(0., 1., shape.clone(), cpu_device.clone(), false)?;
+        let b = OpTensor::randn::<f32, _>(0., 1., shape, cpu_device.clone(), false)?;
         let ground = ground_truth(&a, &b, &op)?.cast(DType::F32)?;
 
         let a_gpu = a.to(&device)?;

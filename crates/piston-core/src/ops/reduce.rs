@@ -7,7 +7,7 @@ use crate::{
     gpu::{dtype::WgslDType, BindGroupLayoutDescriptor},
     rvec, wgc, wgs, Array, BindingMode, BuiltIn, DType, GPUOperation, Kernel, KernelElement,
     KernelRenderable, KernelSource, OpGuards, Operation, OperationError, RVec, Scalar, Shape,
-    StorageView, Stride, Tensor, WgslKernelBuilder, WgslPrimitive, WorkgroupSize, Workload,
+    StorageView, Stride, OpTensor, WgslKernelBuilder, WgslPrimitive, WorkgroupSize, Workload,
 };
 
 #[cfg(test)]
@@ -37,7 +37,7 @@ impl ReduceOp {
 
 #[derive(Debug, Clone, IrFields)]
 pub struct Reduce {
-    pub input: Tensor,
+    pub input: OpTensor,
     pub reduced_shape: Shape,
     pub keepdim: bool,
     pub op: ReduceOp,
@@ -50,7 +50,7 @@ pub struct Reduce {
 }
 
 impl Reduce {
-    pub fn new(input: Tensor, op: ReduceOp, reduce_dims: RVec<usize>, keepdim: bool) -> Self {
+    pub fn new(input: OpTensor, op: ReduceOp, reduce_dims: RVec<usize>, keepdim: bool) -> Self {
         // TODO: These are common to all reduce operations; we should make this more general
         let src_stride = input.stride().to_vec();
         let src_dims = input.shape().to_vec();
@@ -221,7 +221,7 @@ impl Operation for Reduce {
     }
 
     #[inline]
-    fn srcs(&self) -> RVec<&Tensor> {
+    fn srcs(&self) -> RVec<&OpTensor> {
         rvec![&self.input]
     }
 
@@ -251,7 +251,7 @@ impl Kernel for ReduceKernels {
         }
     }
 
-    fn kernel_element(&self, _dst: &Tensor) -> KernelElement {
+    fn kernel_element(&self, _dst: &OpTensor) -> KernelElement {
         // let input = self.srcs()[0];
         // let rank = input.rank();
         // let shape = input.shape();
@@ -276,7 +276,7 @@ impl Kernel for ReduceKernels {
         KernelElement::Scalar
     }
 
-    fn calculate_dispatch(&self, _dst: &Tensor) -> Result<Workload, OperationError> {
+    fn calculate_dispatch(&self, _dst: &OpTensor) -> Result<Workload, OperationError> {
         let ReduceKernels::Standard(inner) = self;
         // This one is a little tricky
         let sum_dim_size = if inner.reduce_dims.len() == inner.dims.len() {
@@ -302,7 +302,7 @@ impl Kernel for ReduceKernels {
         Ok(BindGroupLayoutDescriptor::unary())
     }
 
-    fn metadata(&self, _: &Tensor, _: &KernelElement) -> Result<Self::Metadata, OperationError> {
+    fn metadata(&self, _: &OpTensor, _: &KernelElement) -> Result<Self::Metadata, OperationError> {
         let ReduceKernels::Standard(inner) = self;
         let mut shape = [0; 4];
         for (i, &dim) in inner.dims.iter().enumerate() {
@@ -326,7 +326,7 @@ impl Kernel for ReduceKernels {
     fn build_kernel(
         &self,
         inplace: bool,
-        dst: &Tensor,
+        dst: &OpTensor,
         workgroup_size: &WorkgroupSize,
     ) -> Result<KernelSource, OperationError> {
         let ReduceKernels::Standard(inner) = self;
@@ -378,7 +378,7 @@ impl KernelRenderable for ReduceKernels {
     fn render<P: WgslPrimitive>(
         &self,
         inplace: bool,
-        dst: &Tensor,
+        dst: &OpTensor,
         workgroup_size: &WorkgroupSize,
     ) -> Result<KernelSource, OperationError> {
         let device = dst.device().try_gpu()?;
@@ -528,15 +528,15 @@ mod tests {
     use test_strategy::{proptest, Arbitrary};
 
     use crate::test_util::run_py_prg;
-    use crate::{DType, Device, DeviceRequest, Parameter, Tensor};
+    use crate::{DType, Device, DeviceRequest, OpTensor};
 
     use super::ReduceOp;
 
     fn ground_truth_forward(
-        a: &Tensor,
+        a: &OpTensor,
         op: &ReduceOp,
         dim: Option<usize>,
-    ) -> anyhow::Result<Tensor> {
+    ) -> anyhow::Result<OpTensor> {
         let dim_str = match dim {
             Some(d) => format!(", dim={}", d),
             None => "".to_string(),
@@ -576,7 +576,7 @@ def reduce(a):
         dim: Option<usize>,
         device: Device,
     ) -> anyhow::Result<()> {
-        let a = Tensor::randn::<f32, _>(0., 1., (B, M, N), Device::CPU, false)?;
+        let a = OpTensor::randn::<f32, _>(0., 1., (B, M, N), Device::CPU, false)?;
         let mut ground = ground_truth_forward(&a, op, dim)?;
 
         if dim.is_none() {
@@ -675,7 +675,7 @@ def reduce(a):
         N: usize,
     }
 
-    fn ground_truth_backward(a: &Tensor) -> anyhow::Result<Tensor> {
+    fn ground_truth_backward(a: &OpTensor) -> anyhow::Result<OpTensor> {
         let prg = r#"
 import torch
 def reduce_backward(a):
@@ -694,15 +694,15 @@ def reduce_backward(a):
     ) -> anyhow::Result<()> {
         let ReduceBackwardProblem { B, M, N } = problem;
         let gpu_device = device.try_gpu()?;
-        let a = Tensor::randn::<f32, _>(0., 1., (B, M, N), Device::CPU, false)?;
+        let a = OpTensor::randn::<f32, _>(0., 1., (B, M, N), Device::CPU, false)?;
         let ground = ground_truth_backward(&a)?;
 
-        let a_gpu = a.to(&device)?.set_requires_grad(true)?;
-        let b_gpu = a_var.as_tensor().clone().sum_all()?;
+        let a_gpu = a.to(&device)?.requires_grad_(true)?;
+        let b_gpu = a_gpu.clone().sum_all()?;
 
         b_gpu.backward()?;
         gpu_device.mark_step()?;
-        let a_grad = a_var.as_tensor().grad().unwrap().clone();
+        let a_grad = a_gpu.grad().unwrap().clone();
 
         let ours = a_grad.to(&Device::CPU)?;
         println!("ours = {:?}", ours);

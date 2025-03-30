@@ -5,7 +5,7 @@ use piston_macros::IrFields;
 use crate::{
     gpu::BindGroupLayoutDescriptor, rvec, shape, wgc, wgs, Array, BindingMode, BuiltIn, DType,
     DynKernelMetadata, GPUOperation, Kernel, KernelElement, KernelRenderable, KernelSource,
-    OpGuards, Operation, OperationError, RVec, Scalar, StorageView, Stride, Tensor,
+    OpGuards, Operation, OperationError, RVec, Scalar, StorageView, Stride, OpTensor,
     WgslKernelBuilder, WgslPrimitive, WorkgroupCount, WorkgroupSize, Workload,
 };
 
@@ -33,7 +33,7 @@ impl Operation for Arange {
     }
 
     /// The arange op has no input tensors, so return an empty array.
-    fn srcs(&self) -> RVec<&Tensor> {
+    fn srcs(&self) -> RVec<&OpTensor> {
         rvec![]
     }
 
@@ -104,7 +104,7 @@ impl KernelRenderable for ArangeKernels {
     fn render<P: WgslPrimitive>(
         &self,
         _inplace: bool,
-        dst: &Tensor,
+        dst: &OpTensor,
         workgroup_size: &WorkgroupSize,
     ) -> Result<KernelSource, OperationError> {
         let device = dst.device().try_gpu()?;
@@ -148,11 +148,11 @@ impl Kernel for ArangeKernels {
         }
     }
 
-    fn kernel_element(&self, _dst: &Tensor) -> KernelElement {
+    fn kernel_element(&self, _dst: &OpTensor) -> KernelElement {
         KernelElement::Scalar
     }
 
-    fn calculate_dispatch(&self, dst: &Tensor) -> Result<Workload, OperationError> {
+    fn calculate_dispatch(&self, dst: &OpTensor) -> Result<Workload, OperationError> {
         let workgroup_size = wgs![256, 1, 1];
         let numel = dst.shape().numel();
 
@@ -178,7 +178,7 @@ impl Kernel for ArangeKernels {
         Ok(BindGroupLayoutDescriptor::unary_inplace())
     }
 
-    fn metadata(&self, dst: &Tensor, _: &KernelElement) -> Result<Self::Metadata, OperationError> {
+    fn metadata(&self, dst: &OpTensor, _: &KernelElement) -> Result<Self::Metadata, OperationError> {
         let ArangeKernels::Standard(op) = self;
         let mut dyn_meta = DynKernelMetadata::new();
         if dst.dtype().is_float() {
@@ -195,7 +195,7 @@ impl Kernel for ArangeKernels {
     fn build_kernel(
         &self,
         inplace: bool,
-        dst: &Tensor,
+        dst: &OpTensor,
         workgroup_size: &WorkgroupSize,
     ) -> Result<KernelSource, OperationError> {
         let kernel_element = self.kernel_element(dst);
@@ -224,13 +224,13 @@ mod tests {
     use pyo3::ToPyObject;
     use test_strategy::{proptest, Arbitrary};
 
-    use crate::{test_util::run_py_prg, DType, Device, DeviceRequest, Tensor, TensorDType};
+    use crate::{test_util::run_py_prg, DType, Device, DeviceRequest, OpTensor, TensorDType};
 
     fn ground_truth(
         start: &dyn ToPyObject,
         stop: &dyn ToPyObject,
         step: &dyn ToPyObject,
-    ) -> anyhow::Result<Tensor> {
+    ) -> anyhow::Result<OpTensor> {
         let prg = r#"
 import torch
 def arange(start, stop, step):
@@ -259,7 +259,7 @@ def arange(start, stop, step):
         // Determine correct sign for step based on start/stop relationship
         let step = if stop >= start { abs(step) } else { -abs(step) };
 
-        let a = Tensor::arange_step(start, stop, step, device, false)
+        let a = OpTensor::arange_step(start, stop, step, device, false)
             .unwrap()
             .cast(DType::F32)
             .unwrap();
