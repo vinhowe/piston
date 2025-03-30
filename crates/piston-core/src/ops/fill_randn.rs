@@ -7,7 +7,7 @@ use piston_macros::{IrFields, WgslMetadata};
 use crate::{
     gpu::BindGroupLayoutDescriptor, rvec, Array, BindingMode, BuiltIn, DType, GPUOperation, Kernel,
     KernelElement, KernelRenderable, KernelSource, OpGuards, Operation, OperationError, RVec,
-    Scalar, Shape, StorageView, Stride, Tensor, Vec2, Vec4, WgslKernelBuilder, WgslPrimitive,
+    Scalar, Shape, StorageView, Stride, OpTensor, Vec2, Vec4, WgslKernelBuilder, WgslPrimitive,
     WorkgroupSize, Workload,
 };
 
@@ -38,7 +38,7 @@ impl Operation for FillRandn {
         Ok(StorageView::new(shape, crate::DType::F32, stride))
     }
 
-    fn srcs(&self) -> RVec<&Tensor> {
+    fn srcs(&self) -> RVec<&OpTensor> {
         rvec![]
     }
 
@@ -83,7 +83,7 @@ impl KernelRenderable for FillRandnKernels {
     fn render<P: WgslPrimitive>(
         &self,
         _: bool,
-        dst: &Tensor,
+        dst: &OpTensor,
         workgroup_size: &WorkgroupSize,
     ) -> Result<KernelSource, OperationError> {
         let device = dst.device().try_gpu()?;
@@ -149,11 +149,11 @@ impl Kernel for FillRandnKernels {
         }
     }
 
-    fn kernel_element(&self, _dst: &Tensor) -> KernelElement {
+    fn kernel_element(&self, _dst: &OpTensor) -> KernelElement {
         KernelElement::Scalar
     }
 
-    fn calculate_dispatch(&self, dst: &Tensor) -> Result<Workload, OperationError> {
+    fn calculate_dispatch(&self, dst: &OpTensor) -> Result<Workload, OperationError> {
         Ok(Workload::std(dst.shape().numel(), self.kernel_element(dst)))
     }
 
@@ -164,7 +164,7 @@ impl Kernel for FillRandnKernels {
         Ok(BindGroupLayoutDescriptor::unary_inplace())
     }
 
-    fn metadata(&self, _: &Tensor, _: &KernelElement) -> Result<Self::Metadata, OperationError> {
+    fn metadata(&self, _: &OpTensor, _: &KernelElement) -> Result<Self::Metadata, OperationError> {
         let FillRandnKernels::Standard(inner) = self;
         Ok(FillRandnMeta {
             numel: inner.shape.clone().numel() as u32,
@@ -177,7 +177,7 @@ impl Kernel for FillRandnKernels {
     fn build_kernel(
         &self,
         inplace: bool,
-        dst: &Tensor,
+        dst: &OpTensor,
         workgroup_size: &WorkgroupSize,
     ) -> Result<KernelSource, OperationError> {
         let kernel_element = self.kernel_element(dst);
@@ -213,9 +213,9 @@ impl Kernel for FillRandnKernels {
 mod tests {
     use test_strategy::{proptest, Arbitrary};
 
-    use crate::{test_util::run_py_prg, DType, Device, DeviceRequest, Tensor};
+    use crate::{test_util::run_py_prg, DType, Device, DeviceRequest, OpTensor};
 
-    fn normal_parameters(output: &Tensor) -> anyhow::Result<Tensor> {
+    fn normal_parameters(output: &OpTensor) -> anyhow::Result<OpTensor> {
         let prg = r#"
 import numpy as np
 
@@ -232,7 +232,7 @@ def check_normal(output):
     fn run_fill_randn_trial(problem: FillRandnProblem, device: Device) {
         let FillRandnProblem { B, M, N } = problem;
 
-        let a = Tensor::randn::<f32, _>(0f32, 1f32, (B, M, N), device.clone())
+        let a = OpTensor::randn::<f32, _>(0f32, 1f32, (B, M, N), device.clone(), false)
             .unwrap()
             .to(&Device::CPU)
             .unwrap();

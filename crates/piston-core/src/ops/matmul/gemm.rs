@@ -5,16 +5,16 @@ use piston_macros::WgslMetadata;
 use crate::{
     gpu::dtype::WgslDType, rvec, wgc, wgs, Array, BindGroupLayoutDescriptor as BGLD, BindingMode,
     BuiltIn, DType, InvariantError, Kernel, KernelElement, KernelKey, KernelRenderable,
-    KernelSource, Matmul, MatmulSpec, OperationError, Scalar, Stride, Tensor, Vec2, Vec4,
+    KernelSource, Matmul, MatmulSpec, OperationError, Scalar, Stride, OpTensor, Vec2, Vec4,
     WgslFragment, WgslKernelBuilder, WgslPrimitive, WorkgroupCount, WorkgroupSize, Workload,
 };
 use glam::IVec3;
 use inline_wgsl::wgsl;
 
 pub struct GEMM {
-    lhs: Tensor,
-    rhs: Tensor,
-    bias: Option<Tensor>,
+    lhs: OpTensor,
+    rhs: OpTensor,
+    bias: Option<OpTensor>,
     trans_lhs: bool,
     trans_rhs: bool,
     trans_dst: bool,
@@ -96,7 +96,7 @@ impl KernelRenderable for GEMM {
     fn render<P: WgslPrimitive>(
         &self,
         inplace: bool,
-        dst: &Tensor,
+        dst: &OpTensor,
         workgroup_size: &WorkgroupSize,
     ) -> Result<KernelSource, OperationError> {
         let device = dst.device().try_gpu()?;
@@ -134,8 +134,8 @@ impl Kernel for GEMM {
         &self,
         workgroup_size: &WorkgroupSize,
         inplace: bool,
-        srcs: &[&Tensor],
-        dst: &Tensor,
+        srcs: &[&OpTensor],
+        dst: &OpTensor,
         kernel_element: &KernelElement,
     ) -> KernelKey {
         let (a_fit, b_fit, out_fit) = self.spec.tile_fit();
@@ -163,7 +163,7 @@ impl Kernel for GEMM {
         )
     }
 
-    fn metadata(&self, _: &Tensor, _: &KernelElement) -> Result<Self::Metadata, OperationError> {
+    fn metadata(&self, _: &OpTensor, _: &KernelElement) -> Result<Self::Metadata, OperationError> {
         let spec = &self.spec;
         let mut lhs_shape = spec.lhs_shape().clone();
         lhs_shape.insert(0, spec.lhs_stack());
@@ -194,7 +194,7 @@ impl Kernel for GEMM {
         })
     }
 
-    fn calculate_dispatch(&self, _: &Tensor) -> Result<crate::Workload, OperationError> {
+    fn calculate_dispatch(&self, _: &OpTensor) -> Result<crate::Workload, OperationError> {
         //GEMM
         let TILE_DIM = 32;
         let lhs_shape = self.spec.lhs_shape();
@@ -226,7 +226,7 @@ impl Kernel for GEMM {
     fn build_kernel(
         &self,
         inplace: bool,
-        dst: &Tensor,
+        dst: &OpTensor,
         workgroup_size: &WorkgroupSize,
     ) -> Result<KernelSource, OperationError> {
         let kernel_element = self.spec.select_kernel_element();
@@ -257,7 +257,7 @@ impl Kernel for GEMM {
         }
     }
 
-    fn kernel_element(&self, _: &Tensor) -> KernelElement {
+    fn kernel_element(&self, _: &OpTensor) -> KernelElement {
         self.spec.select_kernel_element()
     }
 
@@ -304,7 +304,7 @@ impl GEMM {
 
     fn write_getters<P: WgslPrimitive>(
         &self,
-        _: &Tensor,
+        _: &OpTensor,
         builder: &mut WgslKernelBuilder,
     ) -> Result<(), OperationError> {
         let (A, _, _) = (&self.lhs, &self.rhs, &self.bias);

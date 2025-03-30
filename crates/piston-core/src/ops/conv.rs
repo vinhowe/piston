@@ -8,15 +8,15 @@ use crate::{
     gpu::{dtype::WgslDType, BindGroupLayoutDescriptor, WorkgroupCount},
     rvec, shape, wgc, wgs, Array, BindingMode, BuiltIn, DType, GPUOperation, Kernel, KernelElement,
     KernelRenderable, KernelSource, OpGuards, Operation, OperationError, RVec, Scalar, StorageView,
-    Stride, Tensor, Vec2, Vec4, WgslKernelBuilder, WgslPrimitive, WorkgroupSize, Workload,
+    Stride, OpTensor, Vec2, Vec4, WgslKernelBuilder, WgslPrimitive, WorkgroupSize, Workload,
 };
 use inline_wgsl::wgsl;
 
 #[derive(new, Debug, Clone, IrFields)]
 pub struct Conv {
-    pub input: Tensor,
-    pub weight: Tensor,
-    pub bias: Option<Tensor>,
+    pub input: OpTensor,
+    pub weight: OpTensor,
+    pub bias: Option<OpTensor>,
     pub stride: usize,
     pub padding: usize,
     //dilation: usize, TODO: implement dilation
@@ -40,7 +40,7 @@ impl KernelRenderable for ConvKernels {
     fn render<P: WgslPrimitive>(
         &self,
         inplace: bool,
-        dst: &Tensor,
+        dst: &OpTensor,
         workgroup_size: &WorkgroupSize,
     ) -> Result<KernelSource, OperationError> {
         let device = dst.device().try_gpu()?;
@@ -178,7 +178,7 @@ impl Operation for Conv {
     }
 
     #[inline]
-    fn srcs(&self) -> RVec<&Tensor> {
+    fn srcs(&self) -> RVec<&OpTensor> {
         rvec![&self.input, &self.weight, self.bias.as_ref().unwrap()]
     }
 }
@@ -203,7 +203,7 @@ impl Kernel for ConvKernels {
         }
     }
 
-    fn metadata(&self, dst: &Tensor, _: &KernelElement) -> Result<Self::Metadata, OperationError> {
+    fn metadata(&self, dst: &OpTensor, _: &KernelElement) -> Result<Self::Metadata, OperationError> {
         let ConvKernels::Threebythree(inner) = self;
         let [_N, Cin, Lin]: [usize; 3] = inner.input.shape().try_into()?;
         let [_Cout, _, KS]: [usize; 3] = inner.weight.shape().try_into()?;
@@ -222,7 +222,7 @@ impl Kernel for ConvKernels {
         ))
     }
 
-    fn calculate_dispatch(&self, _: &Tensor) -> Result<Workload, OperationError> {
+    fn calculate_dispatch(&self, _: &OpTensor) -> Result<Workload, OperationError> {
         let workgroup_size = wgs![256, 1, 1];
         let ConvKernels::Threebythree(inner) = self;
 
@@ -238,14 +238,14 @@ impl Kernel for ConvKernels {
         })
     }
 
-    fn kernel_element(&self, _: &Tensor) -> KernelElement {
+    fn kernel_element(&self, _: &OpTensor) -> KernelElement {
         KernelElement::Scalar
     }
 
     fn build_kernel(
         &self,
         inplace: bool,
-        dst: &Tensor,
+        dst: &OpTensor,
         workgroup_size: &WorkgroupSize,
     ) -> Result<KernelSource, OperationError> {
         let kernel_element = self.kernel_element(dst);
@@ -291,15 +291,15 @@ mod tests {
     use test_strategy::{proptest, Arbitrary};
 
     use crate::test_util::run_py_prg;
-    use crate::{Device, DeviceRequest, Tensor};
+    use crate::{Device, DeviceRequest, OpTensor};
 
     fn ground_truth(
-        input: &Tensor,
-        filters: &Tensor,
-        bias: &Tensor,
+        input: &OpTensor,
+        filters: &OpTensor,
+        bias: &OpTensor,
         stride: usize,
         padding: usize,
-    ) -> anyhow::Result<Tensor> {
+    ) -> anyhow::Result<OpTensor> {
         let prg = r#"
 import torch
 import torch.nn.functional as F
@@ -324,9 +324,9 @@ def conv(input, filters, bias, stride, padding):
             Cout,
             stride,
         } = problem;
-        let input = Tensor::randn::<f32, _>(0., 1., (1, Cin, Lin), Device::CPU).unwrap();
-        let weight = Tensor::randn::<f32, _>(0., 1., (Cout, Cin, 3), Device::CPU).unwrap();
-        let bias = Tensor::randn::<f32, _>(0., 1., (Cout), Device::CPU).unwrap();
+        let input = OpTensor::randn::<f32, _>(0., 1., (1, Cin, Lin), Device::CPU, false).unwrap();
+        let weight = OpTensor::randn::<f32, _>(0., 1., (Cout, Cin, 3), Device::CPU, false).unwrap();
+        let bias = OpTensor::randn::<f32, _>(0., 1., Cout, Device::CPU, false).unwrap();
         let ground = ground_truth(&input, &weight, &bias, stride, 1).unwrap();
 
         let input = input.to(device).unwrap();

@@ -5,7 +5,7 @@ use encase::ShaderType;
 use piston_macros::{IrFields, WgslMetadata};
 
 use crate::{
-    rvec, InvariantError, OpGuards, Operation, OperationError, RVec, StorageView, Stride, Tensor,
+    rvec, InvariantError, OpGuards, Operation, OperationError, RVec, StorageView, Stride, OpTensor,
 };
 
 #[derive(Debug, derive_new::new, WgslMetadata, ShaderType)]
@@ -21,7 +21,7 @@ pub struct PermuteMeta {
 
 #[derive(new, Debug, Clone, IrFields)]
 pub struct Permute {
-    pub src: Tensor,
+    pub src: OpTensor,
     pub dims: RVec<usize>,
 }
 
@@ -58,7 +58,7 @@ impl Operation for Permute {
         Ok(StorageView::new(output_shape, self.src.dtype(), stride))
     }
 
-    fn srcs(&self) -> RVec<&Tensor> {
+    fn srcs(&self) -> RVec<&OpTensor> {
         rvec![&self.src]
     }
 }
@@ -74,7 +74,7 @@ impl OpGuards for Permute {
 
 #[cfg(all(test, feature = "pyo3"))]
 mod tests {
-    use crate::{test_util::run_py_prg, Device, DeviceRequest, Permute, Shape, Tensor};
+    use crate::{test_util::run_py_prg, Device, DeviceRequest, Permute, Shape, OpTensor};
     use proptest::prelude::*;
     use test_strategy::{proptest, Arbitrary};
 
@@ -88,7 +88,7 @@ mod tests {
                 .prop_flat_map(|shape| (Just(shape.clone()), Just(vec![0, 1, 2, 3]).prop_shuffle()))
                 .prop_map(|(shape, perm)| {
                     Permute::new(
-                        Tensor::randn::<f32, _>(0., 1., shape, Device::CPU, false).unwrap(),
+                        OpTensor::randn::<f32, _>(0., 1., shape, Device::CPU, false).unwrap(),
                         perm.into(),
                     )
                 })
@@ -101,7 +101,7 @@ mod tests {
         op: Permute,
     }
 
-    fn ground_truth(a: &Tensor, args: &str) -> anyhow::Result<Tensor> {
+    fn ground_truth(a: &OpTensor, args: &str) -> anyhow::Result<OpTensor> {
         let prg = format!(
             r#"
 import torch

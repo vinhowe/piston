@@ -8,14 +8,14 @@ use crate::{
     gpu::{dtype::WgslDType, BindGroupLayoutDescriptor},
     rvec, Array, BindingMode, BuiltIn, DType, GPUOperation, Kernel, KernelElement,
     KernelRenderable, KernelSource, OpGuards, Operation, OperationError, RVec, Scalar, StorageView,
-    Tensor, Vec2, Vec4, WgslKernelBuilder, WgslPrimitive, WorkgroupSize, Workload,
+    OpTensor, Vec2, Vec4, WgslKernelBuilder, WgslPrimitive, WorkgroupSize, Workload,
 };
 
 #[derive(new, Debug, Clone, IrFields)]
 pub struct WhereCond {
-    pub input: Tensor,
-    pub on_true: Tensor,
-    pub on_false: Tensor,
+    pub input: OpTensor,
+    pub on_true: OpTensor,
+    pub on_false: OpTensor,
 }
 
 #[derive(Debug, ShaderType, WgslMetadata)]
@@ -48,7 +48,7 @@ impl Operation for WhereCond {
     }
 
     #[inline]
-    fn srcs(&self) -> RVec<&Tensor> {
+    fn srcs(&self) -> RVec<&OpTensor> {
         rvec![&self.input, &self.on_true, &self.on_false]
     }
 
@@ -79,7 +79,7 @@ impl Kernel for WhereCondKernels {
         }
     }
 
-    fn kernel_element(&self, _dst: &Tensor) -> KernelElement {
+    fn kernel_element(&self, _dst: &OpTensor) -> KernelElement {
         let WhereCondKernels::Standard(inner) = self;
         let a_rank = inner.input.shape().rank();
         let N = if a_rank > 0 {
@@ -97,7 +97,7 @@ impl Kernel for WhereCondKernels {
         }
     }
 
-    fn calculate_dispatch(&self, dst: &Tensor) -> Result<Workload, OperationError> {
+    fn calculate_dispatch(&self, dst: &OpTensor) -> Result<Workload, OperationError> {
         let WhereCondKernels::Standard(inner) = self;
         Ok(Workload::std(
             inner.input.shape().numel(),
@@ -116,7 +116,7 @@ impl Kernel for WhereCondKernels {
         }
     }
 
-    fn metadata(&self, _: &Tensor, _: &KernelElement) -> Result<Self::Metadata, OperationError> {
+    fn metadata(&self, _: &OpTensor, _: &KernelElement) -> Result<Self::Metadata, OperationError> {
         let WhereCondKernels::Standard(inner) = self;
         let numel = inner.input.shape().numel() as u32;
         Ok(WhereCondMeta { numel })
@@ -125,7 +125,7 @@ impl Kernel for WhereCondKernels {
     fn build_kernel(
         &self,
         inplace: bool,
-        dst: &Tensor,
+        dst: &OpTensor,
         workgroup_size: &WorkgroupSize,
     ) -> Result<KernelSource, OperationError> {
         let kernel_element = self.kernel_element(dst);
@@ -197,7 +197,7 @@ impl KernelRenderable for WhereCondKernels {
     fn render<P: WgslPrimitive>(
         &self,
         inplace: bool,
-        dst: &Tensor,
+        dst: &OpTensor,
         workgroup_size: &WorkgroupSize,
     ) -> Result<KernelSource, OperationError> {
         let device = dst.device().try_gpu()?;
@@ -252,9 +252,9 @@ mod tests {
     use test_strategy::{proptest, Arbitrary};
 
     use crate::test_util::run_py_prg;
-    use crate::{Device, DeviceRequest, Tensor};
+    use crate::{Device, DeviceRequest, OpTensor};
 
-    fn ground_truth(a: &Tensor, b: &Tensor, c: &Tensor) -> anyhow::Result<Tensor> {
+    fn ground_truth(a: &OpTensor, b: &OpTensor, c: &OpTensor) -> anyhow::Result<OpTensor> {
         let prg = r#"
 import torch
 def where_cond(a, b, c):
@@ -266,13 +266,13 @@ def where_cond(a, b, c):
     fn run_where_cond_trial(problem: WhereCondProblem, device: Device) {
         let WhereCondProblem { B, M, N } = problem;
         // Put through a ReLU so some of its entries are 0
-        let a = Tensor::randn::<f32, _>(0., 1., (B, M, N), Device::CPU)
+        let a = OpTensor::randn::<f32, _>(0., 1., (B, M, N), Device::CPU, false)
             .unwrap()
             .relu()
             .unwrap();
-        let b = Tensor::randn::<f32, _>(0., 1., (B, M, N), Device::CPU).unwrap();
-        let c = Tensor::randn::<f32, _>(0., 1., (B, M, N), Device::CPU).unwrap();
-        let ground = ground_truth(&a, &b, &c).unwrap();
+        let b = OpTensor::randn::<f32, _>(0., 1., (B, M, N), Device::CPU, false).unwrap();
+        let c = OpTensor::randn::<f32, _>(0., 1., (B, M, N), Device::CPU, false).unwrap();
+        let ground = ground_truth(&b, &a, &c).unwrap();
 
         let a_gpu = a.to(&device).unwrap();
         let b_gpu = b.to(&device).unwrap();

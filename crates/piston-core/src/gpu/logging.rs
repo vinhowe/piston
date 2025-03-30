@@ -1,6 +1,9 @@
 #[cfg(target_arch = "wasm32")]
 use crate::wgpu_buffer_to_cpu_buffer;
-use crate::{DType, ExportedTensorProfilingEntry, HashMap, Shape, Tensor, TensorId};
+use crate::{
+    DType, ExportedTensorProfilingEntry, HashMap, PooledGPUBuffer, Shape, OpTensor, TensorId,
+    WgpuDevice,
+};
 use derive_new::new;
 #[cfg(target_arch = "wasm32")]
 use half::f16;
@@ -186,7 +189,7 @@ pub struct StepLog {
 
 impl StepLog {
     pub fn from_post_order(
-        post_order: Vec<&Tensor>,
+        post_order: Vec<&OpTensor>,
         profiling_entries: Option<HashMap<TensorId, ExportedTensorProfilingEntry>>,
         mut gpu_bufs: Option<HashMap<TensorId, PooledGPUBuffer>>,
         hash: u64,

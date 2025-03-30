@@ -7,13 +7,13 @@ use piston_macros::{IrFields, WgslMetadata};
 use crate::{
     gpu::BindGroupLayoutDescriptor, rvec, Array, BindingMode, BuiltIn, DType, GPUOperation, Kernel,
     KernelElement, KernelRenderable, KernelSource, OpGuards, Operation, OperationError, RVec,
-    Scalar, StorageView, Stride, Tensor, Vec2, Vec4, WgslKernelBuilder, WgslPrimitive,
+    Scalar, StorageView, Stride, OpTensor, Vec2, Vec4, WgslKernelBuilder, WgslPrimitive,
     WorkgroupSize, Workload,
 };
 
 #[derive(new, Debug, Clone, IrFields)]
 pub struct Bernoulli {
-    pub probs: Tensor,
+    pub probs: OpTensor,
     pub seed: Option<u32>,
 }
 
@@ -35,7 +35,7 @@ impl Operation for Bernoulli {
         Ok(StorageView::new(shape, DType::F32, stride))
     }
 
-    fn srcs(&self) -> RVec<&Tensor> {
+    fn srcs(&self) -> RVec<&OpTensor> {
         rvec![&self.probs]
     }
 
@@ -85,7 +85,7 @@ impl KernelRenderable for BernoulliKernels {
     fn render<P: WgslPrimitive>(
         &self,
         _: bool,
-        dst: &Tensor,
+        dst: &OpTensor,
         workgroup_size: &WorkgroupSize,
     ) -> Result<KernelSource, OperationError> {
         let device = dst.device().try_gpu()?;
@@ -142,11 +142,11 @@ impl Kernel for BernoulliKernels {
         }
     }
 
-    fn kernel_element(&self, _dst: &Tensor) -> KernelElement {
+    fn kernel_element(&self, _dst: &OpTensor) -> KernelElement {
         KernelElement::Scalar
     }
 
-    fn calculate_dispatch(&self, dst: &Tensor) -> Result<Workload, OperationError> {
+    fn calculate_dispatch(&self, dst: &OpTensor) -> Result<Workload, OperationError> {
         Ok(Workload::std(dst.shape().numel(), self.kernel_element(dst)))
     }
 
@@ -157,7 +157,7 @@ impl Kernel for BernoulliKernels {
         Ok(BindGroupLayoutDescriptor::unary())
     }
 
-    fn metadata(&self, dst: &Tensor, _: &KernelElement) -> Result<Self::Metadata, OperationError> {
+    fn metadata(&self, dst: &OpTensor, _: &KernelElement) -> Result<Self::Metadata, OperationError> {
         let BernoulliKernels::Standard(inner) = self;
         Ok(BernoulliMeta {
             numel: dst.shape().numel() as u32,
@@ -168,7 +168,7 @@ impl Kernel for BernoulliKernels {
     fn build_kernel(
         &self,
         inplace: bool,
-        dst: &Tensor,
+        dst: &OpTensor,
         workgroup_size: &WorkgroupSize,
     ) -> Result<KernelSource, OperationError> {
         let kernel_element = self.kernel_element(dst);
@@ -204,7 +204,7 @@ impl Kernel for BernoulliKernels {
 mod tests {
     use test_strategy::{proptest, Arbitrary};
 
-    use crate::{Device, DeviceRequest, Tensor};
+    use crate::{Device, DeviceRequest, OpTensor};
 
     fn run_bernoulli_trial(problem: BernoulliProblem, device: Device) {
         let BernoulliProblem { B, M, N, seed } = problem;
@@ -212,7 +212,7 @@ mod tests {
         device.set_seed(seed as u64);
 
         // Create a tensor with random probabilities between 0 and 1
-        let probs = Tensor::rand::<f32, _>(0f32, 1f32, (B, M, N), Device::CPU, false).unwrap();
+        let probs = OpTensor::rand::<f32, _>(0f32, 1f32, (B, M, N), Device::CPU, false).unwrap();
         let probs_gpu = probs.to(&device).unwrap();
 
         // Apply Bernoulli sampling to the probabilities tensor

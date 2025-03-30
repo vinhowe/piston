@@ -2,7 +2,7 @@ use derive_new::new;
 use encase::ShaderType;
 use piston_macros::WgslMetadata;
 
-use crate::{rvec, OpGuards, Operation, OperationError, RVec, Shape, StorageView, Stride, Tensor};
+use crate::{rvec, OpGuards, Operation, OperationError, RVec, Shape, StorageView, Stride, OpTensor};
 use piston_macros::IrFields;
 
 #[derive(Debug, WgslMetadata, ShaderType, derive_new::new)]
@@ -17,7 +17,7 @@ pub struct BroadcastMeta {
 
 #[derive(new, Debug, Clone, IrFields)]
 pub struct Broadcast {
-    pub src: Tensor,
+    pub src: OpTensor,
     to: Shape,
 }
 
@@ -77,7 +77,7 @@ impl Operation for Broadcast {
         Ok(StorageView::new(self.to.clone(), self.src.dtype(), stride))
     }
 
-    fn srcs(&self) -> RVec<&Tensor> {
+    fn srcs(&self) -> RVec<&OpTensor> {
         rvec![&self.src]
     }
 }
@@ -90,7 +90,7 @@ mod tests {
     };
     use test_strategy::proptest;
 
-    use crate::{shape, test_util::run_py_prg, Broadcast, Device, DeviceRequest, Shape, Tensor};
+    use crate::{shape, test_util::run_py_prg, Broadcast, Device, DeviceRequest, Shape, OpTensor};
 
     impl Arbitrary for BroadcastProblem {
         type Parameters = ();
@@ -117,7 +117,7 @@ mod tests {
                 })
                 .prop_map(|(original_shape, to)| BroadcastProblem {
                     op: Broadcast::new(
-                        Tensor::randn::<f32, _>(0., 1., original_shape, Device::CPU, false)
+                        OpTensor::randn::<f32, _>(0., 1., original_shape, Device::CPU, false)
                             .unwrap(),
                         to,
                     ),
@@ -131,7 +131,7 @@ mod tests {
         op: Broadcast,
     }
 
-    fn ground_truth(a: &Tensor, args: &str) -> anyhow::Result<Tensor> {
+    fn ground_truth(a: &OpTensor, args: &str) -> anyhow::Result<OpTensor> {
         let prg = format!(
             r#"
 import torch
@@ -175,7 +175,7 @@ def slice(a):
         let device = Device::request_device(DeviceRequest::GPU).unwrap();
         let prob = BroadcastProblem {
             op: Broadcast::new(
-                Tensor::randn::<f32, _>(0., 1., 1, Device::CPU, false).unwrap(),
+                OpTensor::randn::<f32, _>(0., 1., 1, Device::CPU, false).unwrap(),
                 shape![4, 32, 128, 128],
             ),
         };

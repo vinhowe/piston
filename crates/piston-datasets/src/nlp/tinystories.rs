@@ -119,8 +119,8 @@ impl Iterator for DatasetRandomIter<'_> {
             return Some(Err(err.into()));
         }
         let tokens = tokens.into_iter().map(|v| v as i32).collect::<Vec<_>>();
-        let inputs = Tensor::from_data(&tokens[..seq_len], seq_len, self.device.clone(), false);
-        let targets = Tensor::from_data(&tokens[1..], seq_len, self.device.clone(), false);
+        let inputs = Tensor::from_data(&tokens[..seq_len], (seq_len,), self.device.clone(), false);
+        let targets = Tensor::from_data(&tokens[1..], (seq_len,), self.device.clone(), false);
         Some(Ok((inputs, targets)))
     }
 }

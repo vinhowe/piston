@@ -104,3 +104,4 @@ memmap2 = "0.9.5"
 maybe-async = "0.2"
 async-trait = "0.1.77"
 bitvec = { version = "1", default-features = false, features = ["alloc"] }
+paste = { version = "1.0.15" }

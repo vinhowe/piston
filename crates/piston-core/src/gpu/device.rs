@@ -1,4 +1,4 @@
-use crate::{gpu::*, DType, GpuCompileKey, Tensor, TensorId};
+use crate::{gpu::*, DType, GpuCompileKey, OpTensor, TensorId};
 use crate::{HashMap, TensorError};
 use maybe_async::maybe_async;
 use parking_lot::RwLock;
@@ -241,7 +241,7 @@ impl WgpuDevice {
         desc: &KernelModuleDesc,
         kernel: &K,
         inplace: bool,
-        dst: &Tensor,
+        dst: &OpTensor,
         workgroup_size: &WorkgroupSize,
         device: &WgpuDevice,
     ) -> KernelModuleHandle {
@@ -277,8 +277,8 @@ impl WgpuDevice {
     /// Additionally, allocates buffer for leaf node, the tensor upon which resolve was called.
     pub fn allocate_cfg(
         &self,
-        execution_order: &[&Tensor],
-        output_tensors: &BTreeMap<TensorId, &Tensor>,
+        execution_order: &[&OpTensor],
+        output_tensors: &BTreeMap<TensorId, &OpTensor>,
         gpu_compile_keys: &HashMap<TensorId, GpuCompileKey>,
         use_shared_buffers: bool,
         device: &WgpuDevice,
@@ -293,7 +293,7 @@ impl WgpuDevice {
     }
 
     // TODO(vinhowe): Not sure if I like these calls here
-    pub fn register_tensor(&self, tensor: &Tensor) {
+    pub fn register_tensor(&self, tensor: &OpTensor) {
         self.lazy_graph_executor.read().register_tensor(tensor);
     }
 
@@ -302,7 +302,7 @@ impl WgpuDevice {
     }
 
     #[maybe_async]
-    pub async fn mark_step(&self) -> Result<(), TensorError> {
+    pub async fn mark_step(&self) -> Result<(), LazyGraphExecutorError> {
         self.lazy_graph_executor
             .write()
             .sync_live_tensors_graph(self)
@@ -310,7 +310,10 @@ impl WgpuDevice {
     }
 
     #[maybe_async]
-    pub async fn sync_tensors_graph(&self, tensors: Vec<&Tensor>) -> Result<(), TensorError> {
+    pub async fn sync_tensors_graph(
+        &self,
+        tensors: Vec<&OpTensor>,
+    ) -> Result<(), LazyGraphExecutorError> {
         self.lazy_graph_executor
             .write()
             .sync_tensors_graph(tensors, self)

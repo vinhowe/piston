@@ -1,6 +1,6 @@
 use crate::{
     cpu::cpu_store_result, CPUOperation, DType, InvariantError, Matmul, MatmulSpec, OperationError,
-    Shape, Stride, Tensor, TensorDType,
+    Shape, Stride, OpTensor, TensorDType,
 };
 use anyhow::{anyhow, Result};
 use core::str::FromStr;
@@ -150,13 +150,13 @@ fn gemm_impl<T: TensorDType>(
 #[cfg_attr(target_arch = "wasm32", async_trait::async_trait)]
 impl CPUOperation for Matmul {
     #[maybe_async]
-    async fn apply_cpu(&self, dst: Tensor) -> Result<Tensor, OperationError> {
+    async fn apply_cpu(&self, dst: OpTensor) -> Result<OpTensor, OperationError> {
         #[maybe_async]
         async fn run_gemm<T: TensorDType>(
             spec: MatmulSpec,
-            lhs: &Tensor,
-            rhs: &Tensor,
-            dst: &Tensor,
+            lhs: &OpTensor,
+            rhs: &OpTensor,
+            dst: &OpTensor,
         ) -> Result<(), OperationError> {
             let lhs = lhs.to_vec::<T>().await?;
             let rhs = rhs.to_vec::<T>().await?;

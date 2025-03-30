@@ -7,8 +7,8 @@ use piston_macros::{IrFields, WgslMetadata};
 use crate::{
     gpu::{dtype::WgslDType, BindGroupLayoutDescriptor},
     rvec, Array, BindingMode, BuiltIn, DType, GPUOperation, InvariantError, Kernel, KernelElement,
-    KernelRenderable, KernelSource, OpGuards, Operation, OperationError, RVec, Scalar, Shape,
-    StorageView, Stride, Tensor, Vec2, Vec4, WgslKernelBuilder, WgslPrimitive, WorkgroupSize,
+    KernelRenderable, KernelSource, OpGuards, OpTensor, Operation, OperationError, RVec, Scalar,
+    Shape, StorageView, Stride, Vec2, Vec4, WgslKernelBuilder, WgslPrimitive, WorkgroupSize,
     Workload,
 };
 #[cfg(test)]
@@ -45,8 +45,8 @@ impl BinaryOp {
 
 #[derive(new, Debug, Clone, IrFields)]
 pub struct Binary {
-    pub lhs: Tensor,
-    pub rhs: Tensor,
+    pub lhs: OpTensor,
+    pub rhs: OpTensor,
     pub op: BinaryOp,
 }
 
@@ -71,7 +71,7 @@ impl KernelRenderable for BinaryKernels {
     fn render<P: WgslPrimitive>(
         &self,
         inplace: bool,
-        dst: &Tensor,
+        dst: &OpTensor,
         workgroup_size: &WorkgroupSize,
     ) -> Result<KernelSource, OperationError> {
         let device = dst.device().try_gpu()?;
@@ -118,11 +118,11 @@ impl Binary {
         &self.op
     }
 
-    pub fn lhs(&self) -> &Tensor {
+    pub fn lhs(&self) -> &OpTensor {
         &self.lhs
     }
 
-    pub fn rhs(&self) -> &Tensor {
+    pub fn rhs(&self) -> &OpTensor {
         &self.rhs
     }
 }
@@ -173,7 +173,7 @@ impl Operation for Binary {
     }
 
     #[inline]
-    fn srcs(&self) -> RVec<&Tensor> {
+    fn srcs(&self) -> RVec<&OpTensor> {
         rvec![&self.lhs, &self.rhs]
     }
 
@@ -214,14 +214,18 @@ impl Kernel for BinaryKernels {
         }
     }
 
-    fn metadata(&self, dst: &Tensor, _: &KernelElement) -> Result<Self::Metadata, OperationError> {
+    fn metadata(
+        &self,
+        dst: &OpTensor,
+        _: &KernelElement,
+    ) -> Result<Self::Metadata, OperationError> {
         let numel = dst.shape().numel() as _;
         let meta = BinaryMeta { numel };
 
         Ok(meta)
     }
 
-    fn kernel_element(&self, dst: &Tensor) -> KernelElement {
+    fn kernel_element(&self, dst: &OpTensor) -> KernelElement {
         let numel = dst.shape().numel();
 
         if numel % 4 == 0 {
@@ -233,14 +237,14 @@ impl Kernel for BinaryKernels {
         }
     }
 
-    fn calculate_dispatch(&self, dst: &Tensor) -> Result<Workload, OperationError> {
+    fn calculate_dispatch(&self, dst: &OpTensor) -> Result<Workload, OperationError> {
         Ok(Workload::std(dst.shape().numel(), self.kernel_element(dst)))
     }
 
     fn build_kernel(
         &self,
         inplace: bool,
-        dst: &Tensor,
+        dst: &OpTensor,
         workgroup_size: &WorkgroupSize,
     ) -> Result<KernelSource, OperationError> {
         let BinaryKernels::Standard(inner) = self;
@@ -275,7 +279,7 @@ impl Kernel for BinaryKernels {
 
 #[cfg(all(test, feature = "pyo3"))]
 mod tests {
-    use crate::{test_util::run_py_prg, BinaryOp, Device, DeviceRequest, Shape, Tensor};
+    use crate::{test_util::run_py_prg, BinaryOp, Device, DeviceRequest, OpTensor, Shape};
     use test_strategy::{proptest, Arbitrary};
 
     #[derive(Arbitrary, Debug)]
@@ -285,7 +289,7 @@ mod tests {
         shape: Shape,
     }
 
-    fn ground_truth(a: &Tensor, b: &Tensor, op: &BinaryOp) -> anyhow::Result<Tensor> {
+    fn ground_truth(a: &OpTensor, b: &OpTensor, op: &BinaryOp) -> anyhow::Result<OpTensor> {
         let kn = op.kernel_name();
         let prg = format!(
             r#"
@@ -301,8 +305,8 @@ def {}(a, b):
     fn run_binary_trial(prob: BinaryProblem, device: Device) -> anyhow::Result<()> {
         let cpu_device = Device::request_device(DeviceRequest::CPU)?;
         let BinaryProblem { op, shape } = prob;
-        let a = Tensor::randn::<f32, _>(0., 1., shape.clone(), cpu_device.clone())?;
-        let b = Tensor::randn::<f32, _>(0., 1., shape, cpu_device.clone())?;
+        let a = OpTensor::randn::<f32, _>(0., 1., shape.clone(), cpu_device.clone(), false)?;
+        let b = OpTensor::randn::<f32, _>(0., 1., shape, cpu_device.clone(), false)?;
         let ground = ground_truth(&a, &b, &op)?;
 
         let a = a.to(&device)?;

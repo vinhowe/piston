@@ -54,14 +54,15 @@ pub use rope::*;
 pub use scatter_add::*;
 pub use select::*;
 pub use softmax::*;
+pub use ternary::*;
 pub use trilu::*;
 pub use unary::*;
 pub use view::*;
 pub use where_cond::*;
 
 use crate::{
-    rvec, Compiled, CompiledCopy, CopyCompileKey, OpGuards, Operation, OperationError, RVec,
-    Storage, StorageView, Tensor,
+    rvec, Compiled, CompiledCopy, CopyCompileKey, OpGuards, OpTensor, Operation, OperationError,
+    RVec, Storage, StorageView,
 };
 
 /// # KernelElement
@@ -101,16 +102,16 @@ impl From<&KernelElement> for usize {
 
 #[derive(Debug, derive_new::new, Clone, IrFields)]
 pub struct TensorCopy {
-    pub src: Tensor,
-    pub dst: Tensor,
+    pub src: OpTensor,
+    pub dst: OpTensor,
 }
 
 impl TensorCopy {
-    pub fn src(&self) -> &Tensor {
+    pub fn src(&self) -> &OpTensor {
         &self.src
     }
 
-    pub fn dst(&self) -> &Tensor {
+    pub fn dst(&self) -> &OpTensor {
         &self.dst
     }
 
@@ -165,7 +166,7 @@ impl Operation for TensorCopy {
         "TensorCopy"
     }
 
-    fn srcs(&self) -> RVec<&Tensor> {
+    fn srcs(&self) -> RVec<&OpTensor> {
         rvec![&self.src]
     }
 
