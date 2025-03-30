@@ -21,7 +21,7 @@ impl Module for AlibiEmbedding {
     fn schedule(&self, input: Self::Input) -> anyhow::Result<Self::Output> {
         let AlibiInput { input } = input;
         // To make broadcasting work...
-        let alibi = Tensor::zeros::<f32, _>(&input.shape()[..3], input.device(), false)?;
+        let alibi = Tensor::zeros::<f32, _>(&input.shape()[..3], &input.device(), false)?;
         input + alibi.alibi(self.max_bias)?.unsqueeze(3)
     }
 }

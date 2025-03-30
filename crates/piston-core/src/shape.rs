@@ -390,7 +390,7 @@ macro_rules! extract_dims {
             }
         }
 
-        impl crate::Tensor {
+        impl crate::OpTensor {
             pub fn $fn_name(&self) -> Result<$out_type> {
                 self.shape().$fn_name()
             }

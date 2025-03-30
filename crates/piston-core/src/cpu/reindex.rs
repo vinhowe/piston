@@ -1,6 +1,6 @@
 use super::utils::cpu_store_result;
 use crate::{
-    Broadcast, CPUOperation, DType, OperationError, Permute, Reindex, Shape, Slice, Stride, Tensor,
+    Broadcast, CPUOperation, DType, OperationError, Permute, Reindex, Shape, Slice, Stride, OpTensor,
     TensorDType,
 };
 use half::{bf16, f16};
@@ -10,7 +10,7 @@ use maybe_async::maybe_async;
 #[cfg_attr(target_arch = "wasm32", async_trait::async_trait)]
 impl CPUOperation for Reindex {
     #[maybe_async]
-    async fn apply_cpu(&self, dst: Tensor) -> Result<Tensor, OperationError> {
+    async fn apply_cpu(&self, dst: OpTensor) -> Result<OpTensor, OperationError> {
         match self {
             Reindex::Permute(p) => p.apply_cpu(dst).await,
             Reindex::Slice(s) => s.apply_cpu(dst).await,
@@ -23,7 +23,7 @@ impl CPUOperation for Reindex {
 #[cfg_attr(target_arch = "wasm32", async_trait::async_trait)]
 impl CPUOperation for Permute {
     #[maybe_async]
-    async fn apply_cpu(&self, dst: Tensor) -> Result<Tensor, OperationError> {
+    async fn apply_cpu(&self, dst: OpTensor) -> Result<OpTensor, OperationError> {
         match dst.dtype() {
             DType::F32 => apply_permute::<f32>(self, dst).await,
             DType::BF16 => apply_permute::<bf16>(self, dst).await,
@@ -36,7 +36,7 @@ impl CPUOperation for Permute {
 }
 
 #[maybe_async]
-async fn apply_permute<T: TensorDType>(p: &Permute, dst: Tensor) -> Result<Tensor, OperationError> {
+async fn apply_permute<T: TensorDType>(p: &Permute, dst: OpTensor) -> Result<OpTensor, OperationError> {
     let perm: [usize; 4] = p.promote().as_slice().try_into().unwrap();
     let Permute { src, dims: _ } = p;
     let result = permute(&src.to_vec::<T>().await?, src.shape(), dst.shape(), perm);
@@ -82,7 +82,7 @@ fn permute<T: TensorDType, SrcShape: Into<Shape>, DstShape: Into<Shape>>(
 #[cfg_attr(target_arch = "wasm32", async_trait::async_trait)]
 impl CPUOperation for Slice {
     #[maybe_async]
-    async fn apply_cpu(&self, dst: Tensor) -> Result<Tensor, OperationError> {
+    async fn apply_cpu(&self, dst: OpTensor) -> Result<OpTensor, OperationError> {
         match dst.dtype() {
             DType::F32 => apply_slice::<f32>(self, dst).await,
             DType::BF16 => apply_slice::<bf16>(self, dst).await,
@@ -95,7 +95,7 @@ impl CPUOperation for Slice {
 }
 
 #[maybe_async]
-async fn apply_slice<T: TensorDType>(s: &Slice, dst: Tensor) -> Result<Tensor, OperationError> {
+async fn apply_slice<T: TensorDType>(s: &Slice, dst: OpTensor) -> Result<OpTensor, OperationError> {
     let (start, stop): (Vec<_>, Vec<_>) = s.indices().iter().map(|r| (r.start, r.end)).unzip();
     let result = slice(&s.src.to_vec::<T>().await?, s.src.stride(), &start, &stop);
 
@@ -143,7 +143,7 @@ pub(crate) fn slice<T: TensorDType>(
 #[cfg_attr(target_arch = "wasm32", async_trait::async_trait)]
 impl CPUOperation for Broadcast {
     #[maybe_async]
-    async fn apply_cpu(&self, dst: Tensor) -> Result<Tensor, OperationError> {
+    async fn apply_cpu(&self, dst: OpTensor) -> Result<OpTensor, OperationError> {
         match dst.dtype() {
             DType::F32 => apply_broadcast::<f32>(self, dst).await,
             DType::BF16 => apply_broadcast::<bf16>(self, dst).await,
@@ -158,8 +158,8 @@ impl CPUOperation for Broadcast {
 #[maybe_async]
 async fn apply_broadcast<T: TensorDType>(
     b: &Broadcast,
-    dst: Tensor,
-) -> Result<Tensor, OperationError> {
+    dst: OpTensor,
+) -> Result<OpTensor, OperationError> {
     let result = broadcast(&b.src.to_vec::<T>().await?, b.src.shape(), b.to());
     cpu_store_result(&dst, &result);
     Ok(dst)

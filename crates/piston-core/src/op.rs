@@ -8,7 +8,7 @@ use crate::gpu::{
 use crate::MIN_STORAGE_BUFFER_SIZE;
 use crate::{
     ops::*, rvec, CompiledOp, DType, HashMap, InvariantError, Kernel, KernelBuildError,
-    KernelMetadata, KernelModuleDesc, RVec, Shape, StorageView, Tensor, TensorId, WgslFragment,
+    KernelMetadata, KernelModuleDesc, OpTensor, RVec, Shape, StorageView, TensorId, WgslFragment,
     WorkgroupSize, Workload,
 };
 #[cfg(feature = "debug")]
@@ -100,7 +100,7 @@ impl LazyOp {
     }
 
     #[inline(always)]
-    pub fn srcs(&self) -> RVec<&Tensor> {
+    pub fn srcs(&self) -> RVec<&OpTensor> {
         match self {
             LazyOp::Binary(b) => b.srcs(),
             LazyOp::Cast(c) => c.srcs(),
@@ -290,8 +290,8 @@ impl KernelKey {
 
     pub fn new(
         stem: &str,
-        inputs: &[&Tensor],
-        output: &Tensor,
+        inputs: &[&OpTensor],
+        output: &OpTensor,
         workgroup_size: &WorkgroupSize,
         inplace: bool,
         kernel_element: &KernelElement,
@@ -549,8 +549,8 @@ impl<T: Into<IrValue>> From<Option<T>> for IrValue {
     }
 }
 
-impl From<Tensor> for IrValue {
-    fn from(value: Tensor) -> Self {
+impl From<OpTensor> for IrValue {
+    fn from(value: OpTensor) -> Self {
         IrValue::Tensor(IrTensorValue {
             id: value.id(),
             shape: value.shape().clone(),
@@ -621,7 +621,7 @@ macro_rules! impl_irvalue_for_rvec {
 }
 
 impl_irvalue_for_rvec!(RVec<Range<usize>>);
-impl_irvalue_for_rvec!(RVec<Tensor>);
+impl_irvalue_for_rvec!(RVec<OpTensor>);
 impl_irvalue_for_rvec!(RVec<usize>);
 impl_irvalue_for_rvec!(Shape);
 
@@ -644,7 +644,7 @@ impl<T: IrFields + 'static> From<T> for IrValue {
 }
 
 pub struct ComputeCompileKey<'a> {
-    pub dst: &'a Tensor,
+    pub dst: &'a OpTensor,
     pub workload: Workload,
     pub key: KernelKey,
     pub can_inplace: bool,
@@ -652,8 +652,8 @@ pub struct ComputeCompileKey<'a> {
 }
 
 pub struct CopyCompileKey<'a> {
-    pub src: &'a Tensor,
-    pub dst: &'a Tensor,
+    pub src: &'a OpTensor,
+    pub dst: &'a OpTensor,
 }
 
 pub enum GpuCompileKey<'a> {
@@ -693,7 +693,7 @@ pub trait Operation: OpGuards + IrFields + Debug + 'static {
     fn compute_view(&self) -> Result<StorageView, OperationError>;
 
     /// # Source Tensors
-    fn srcs(&self) -> RVec<&Tensor>;
+    fn srcs(&self) -> RVec<&OpTensor>;
 
     /// # Supports Inplace
     ///
@@ -729,7 +729,7 @@ pub trait GPUOperation: Operation {
 
     fn create_gpu_compile_key<'a>(
         &self,
-        dst: &'a Tensor,
+        dst: &'a OpTensor,
         can_inplace: bool,
         uniform: &mut CpuUniform,
     ) -> Result<ComputeCompileKey<'a>, OperationError> {

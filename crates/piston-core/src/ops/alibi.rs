@@ -7,14 +7,14 @@ use crate::{
     gpu::{BindGroupLayoutDescriptor, WorkgroupCount},
     rvec, wgc, wgs, Array, BindingMode, BuiltIn, DType, GPUOperation, Kernel, KernelElement,
     KernelRenderable, KernelSource, OpGuards, Operation, OperationError, RVec, Scalar, StorageView,
-    Tensor, WgslKernelBuilder, WgslPrimitive, WorkgroupSize, Workload,
+    OpTensor, WgslKernelBuilder, WgslPrimitive, WorkgroupSize, Workload,
 };
 
 /// Implements "alibi" (Attention Linear Bias)
 #[derive(new, Debug, Clone, IrFields)]
 pub struct Alibi {
     /// The input tensor, assumed to be rank 3: [B, n_head, seq].
-    pub input: Tensor,
+    pub input: OpTensor,
     /// The maximum bias to be distributed across heads.
     max_bias: f32,
 }
@@ -48,7 +48,7 @@ impl Operation for Alibi {
         Ok(self.input.storage_view().clone())
     }
 
-    fn srcs(&self) -> RVec<&Tensor> {
+    fn srcs(&self) -> RVec<&OpTensor> {
         rvec![&self.input]
     }
 
@@ -105,7 +105,7 @@ impl KernelRenderable for AlibiKernels {
     fn render<P: WgslPrimitive>(
         &self,
         inplace: bool,
-        dst: &Tensor,
+        dst: &OpTensor,
         workgroup_size: &WorkgroupSize,
     ) -> Result<KernelSource, OperationError> {
         let device = dst.device().try_gpu()?;
@@ -197,7 +197,7 @@ impl Kernel for AlibiKernels {
         }
     }
 
-    fn metadata(&self, _: &Tensor, _: &KernelElement) -> Result<Self::Metadata, OperationError> {
+    fn metadata(&self, _: &OpTensor, _: &KernelElement) -> Result<Self::Metadata, OperationError> {
         let AlibiKernels::Standard(inner) = self;
         let shape = inner.input.shape();
         let b = shape[0];
@@ -222,11 +222,11 @@ impl Kernel for AlibiKernels {
         ))
     }
 
-    fn kernel_element(&self, _dst: &Tensor) -> KernelElement {
+    fn kernel_element(&self, _dst: &OpTensor) -> KernelElement {
         KernelElement::Scalar
     }
 
-    fn calculate_dispatch(&self, _dst: &Tensor) -> Result<Workload, OperationError> {
+    fn calculate_dispatch(&self, _dst: &OpTensor) -> Result<Workload, OperationError> {
         const WGSX: usize = 16;
         const WGSY: usize = 16;
         const WGSZ: usize = 1;
@@ -254,7 +254,7 @@ impl Kernel for AlibiKernels {
     fn build_kernel(
         &self,
         inplace: bool,
-        dst: &Tensor,
+        dst: &OpTensor,
         workgroup_size: &WorkgroupSize,
     ) -> Result<KernelSource, OperationError> {
         let kernel_element = self.kernel_element(dst);
@@ -275,7 +275,7 @@ impl Kernel for AlibiKernels {
 
 #[cfg(all(test, feature = "pyo3"))]
 mod tests {
-    use crate::{test_util::run_py_prg, DType, Device, DeviceRequest, Tensor};
+    use crate::{test_util::run_py_prg, Device, DeviceRequest, OpTensor};
     use test_strategy::{proptest, Arbitrary};
 
     /// Ground truth reference, computed by a Python snippet:
@@ -287,7 +287,7 @@ mod tests {
     ///   - m1 = 2^(-(max_bias / 2.0) / n_heads_log2_floor)
     ///   - for each head in 0..n_head, offset = head - n_heads_log2_floor if head >= that
     ///     then out[b, head, col] += col * factor
-    fn ground_truth_alibi(a: &Tensor, max_bias: f32) -> anyhow::Result<Tensor> {
+    fn ground_truth_alibi(a: &OpTensor, max_bias: f32) -> anyhow::Result<OpTensor> {
         let prg = r#"
 import numpy as np
 import math
@@ -345,7 +345,7 @@ def alibi(input, max_bias):
         // shape = [B, n_head, seq]
         let shape = (b, n_head, seq);
         // let a_cpu = Tensor::randn::<f32, _>(0.0, 1.0, shape, Device::CPU).unwrap();
-        let a_cpu = Tensor::zeros::<f32, _>(shape, &Device::CPU).unwrap();
+        let a_cpu = OpTensor::zeros::<f32, _>(shape, &Device::CPU, false).unwrap();
 
         let ground = ground_truth_alibi(&a_cpu, max_bias).unwrap();
         let a_gpu = a_cpu.to(&device).unwrap();

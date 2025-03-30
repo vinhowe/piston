@@ -6,7 +6,7 @@ use crate::{
 
 // #[cfg(feature = "debug")] (for tensor?)
 use crate::gpu::Profiler;
-use crate::Tensor;
+use crate::OpTensor;
 #[cfg(feature = "debug")]
 use crate::{DType, HashMap, TensorId};
 #[cfg(feature = "debug")]
@@ -42,7 +42,7 @@ pub struct Executable {
     pub(crate) steps: Vec<Compiled>,
     gpu_uniform: GpuUniform,
     #[cfg(not(feature = "debug"))]
-    pub(crate) debug_list: Option<BTreeMap<TensorId, Tensor>>,
+    pub(crate) debug_list: Option<BTreeMap<TensorId, OpTensor>>,
     #[cfg(feature = "debug")]
     pub(crate) debug_list: Option<Vec<DebugTensor>>,
     #[cfg(feature = "debug")]
@@ -571,7 +571,7 @@ impl Executable {
         self.storage = Some(storage);
     }
 
-    pub fn with_tensors(self, tensors: &Vec<&Tensor>) -> anyhow::Result<Self> {
+    pub fn with_tensors(self, tensors: &Vec<&OpTensor>) -> anyhow::Result<Self> {
         assert_eq!(
             tensors.len(),
             self.storage.as_ref().unwrap().len(),

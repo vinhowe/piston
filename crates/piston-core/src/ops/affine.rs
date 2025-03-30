@@ -7,13 +7,13 @@ use piston_macros::{IrFields, WgslMetadata};
 use crate::{
     gpu::{dtype::WgslDType, BindGroupLayoutDescriptor},
     rvec, Array, BindingMode, BuiltIn, DType, GPUOperation, Kernel, KernelElement,
-    KernelRenderable, KernelSource, OpGuards, Operation, OperationError, RVec, Scalar, StorageView,
-    Tensor, Vec2, Vec4, WgslKernelBuilder, WgslPrimitive, WorkgroupSize, Workload,
+    KernelRenderable, KernelSource, OpGuards, OpTensor, Operation, OperationError, RVec, Scalar,
+    StorageView, Vec2, Vec4, WgslKernelBuilder, WgslPrimitive, WorkgroupSize, Workload,
 };
 
 #[derive(new, Debug, Clone, IrFields)]
 pub struct Affine {
-    pub src: Tensor,
+    pub src: OpTensor,
     pub mul: f32,
     pub add: f32,
 }
@@ -44,7 +44,7 @@ impl Operation for Affine {
     }
 
     #[inline]
-    fn srcs(&self) -> RVec<&Tensor> {
+    fn srcs(&self) -> RVec<&OpTensor> {
         rvec![&self.src]
     }
 
@@ -85,7 +85,7 @@ impl KernelRenderable for AffineKernels {
     fn render<P: WgslPrimitive>(
         &self,
         inplace: bool,
-        dst: &Tensor,
+        dst: &OpTensor,
         workgroup_size: &WorkgroupSize,
     ) -> Result<KernelSource, OperationError> {
         let device = dst.device().try_gpu()?;
@@ -147,7 +147,7 @@ impl Kernel for AffineKernels {
         }
     }
 
-    fn calculate_dispatch(&self, dst: &Tensor) -> Result<Workload, OperationError> {
+    fn calculate_dispatch(&self, dst: &OpTensor) -> Result<Workload, OperationError> {
         let AffineKernels::Standard(inner) = self;
         Ok(Workload::std(
             inner.src.shape().numel(),
@@ -166,7 +166,7 @@ impl Kernel for AffineKernels {
         }
     }
 
-    fn metadata(&self, _: &Tensor, _: &KernelElement) -> Result<Self::Metadata, OperationError> {
+    fn metadata(&self, _: &OpTensor, _: &KernelElement) -> Result<Self::Metadata, OperationError> {
         let AffineKernels::Standard(inner) = self;
         Ok(AffineMeta {
             numel: inner.src.shape().numel() as u32,
@@ -175,7 +175,7 @@ impl Kernel for AffineKernels {
         })
     }
 
-    fn kernel_element(&self, _dst: &Tensor) -> KernelElement {
+    fn kernel_element(&self, _dst: &OpTensor) -> KernelElement {
         let AffineKernels::Standard(inner) = self;
         let a_rank = inner.src.shape().rank();
         let N = if a_rank > 0 {
@@ -196,7 +196,7 @@ impl Kernel for AffineKernels {
     fn build_kernel(
         &self,
         inplace: bool,
-        dst: &Tensor,
+        dst: &OpTensor,
         workgroup_size: &WorkgroupSize,
     ) -> Result<KernelSource, OperationError> {
         let kernel_element = self.kernel_element(dst);
@@ -234,9 +234,9 @@ mod tests {
     use proptest::arbitrary::any;
     use test_strategy::{proptest, Arbitrary};
 
-    use crate::{test_util::run_py_prg, Device, DeviceRequest, Tensor};
+    use crate::{test_util::run_py_prg, Device, DeviceRequest, OpTensor};
 
-    fn ground_truth(a: &Tensor, mul: f32, add: f32) -> anyhow::Result<Tensor> {
+    fn ground_truth(a: &OpTensor, mul: f32, add: f32) -> anyhow::Result<OpTensor> {
         let prg = r#"
 import torch
 def affine(a, mul, add):
@@ -249,7 +249,7 @@ def affine(a, mul, add):
 
     fn run_affine_trial(problem: AffineProblem, device: Device) {
         let AffineProblem { B, M, N, add, mul } = problem;
-        let a = Tensor::randn::<f32, _>(0., 1., (B, M, N), Device::CPU).unwrap();
+        let a = OpTensor::randn::<f32, _>(0., 1., (B, M, N), Device::CPU, false).unwrap();
         let ground = ground_truth(&a, mul, add).unwrap();
 
         let a_gpu = a.to(&device).unwrap();

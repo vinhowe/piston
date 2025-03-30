@@ -2,7 +2,7 @@ use crate::{
     gpu::{dtype::WgslDType, BindGroupLayoutDescriptor},
     rvec, Array, BindingMode, BuiltIn, DType, GPUOperation, Kernel, KernelElement,
     KernelRenderable, KernelSource, OpGuards, Operation, OperationError, RVec, Scalar, StorageView,
-    Tensor, Vec2, Vec4, WgslKernelBuilder, WgslPrimitive, WorkgroupSize, Workload,
+    OpTensor, Vec2, Vec4, WgslKernelBuilder, WgslPrimitive, WorkgroupSize, Workload,
 };
 use derive_new::new;
 use encase::ShaderType;
@@ -12,8 +12,8 @@ use piston_macros::{IrFields, WgslMetadata};
 
 #[derive(new, Debug, Clone, IrFields)]
 pub struct Gather {
-    pub src: Tensor,
-    pub ids: Tensor,
+    pub src: OpTensor,
+    pub ids: OpTensor,
     pub dim: usize,
 }
 
@@ -50,7 +50,7 @@ impl Operation for Gather {
     }
 
     #[inline]
-    fn srcs(&self) -> RVec<&Tensor> {
+    fn srcs(&self) -> RVec<&OpTensor> {
         rvec![&self.src, &self.ids]
     }
 
@@ -88,7 +88,7 @@ impl KernelRenderable for GatherKernels {
     fn render<P: WgslPrimitive>(
         &self,
         _: bool,
-        dst: &Tensor,
+        dst: &OpTensor,
         workgroup_size: &WorkgroupSize,
     ) -> Result<KernelSource, OperationError> {
         let device = dst.device().try_gpu()?;
@@ -141,7 +141,7 @@ impl Kernel for GatherKernels {
         Ok(BindGroupLayoutDescriptor::binary())
     }
 
-    fn calculate_dispatch(&self, _dst: &Tensor) -> Result<Workload, OperationError> {
+    fn calculate_dispatch(&self, _dst: &OpTensor) -> Result<Workload, OperationError> {
         let GatherKernels::Standard(inner) = self;
         Ok(Workload::std(
             inner.ids.shape().numel(),
@@ -155,11 +155,11 @@ impl Kernel for GatherKernels {
         }
     }
 
-    fn kernel_element(&self, _dst: &Tensor) -> KernelElement {
+    fn kernel_element(&self, _dst: &OpTensor) -> KernelElement {
         KernelElement::Scalar
     }
 
-    fn metadata(&self, _: &Tensor, _: &KernelElement) -> Result<Self::Metadata, OperationError> {
+    fn metadata(&self, _: &OpTensor, _: &KernelElement) -> Result<Self::Metadata, OperationError> {
         let GatherKernels::Standard(inner) = self;
         let src_dims = inner.src.shape().to_vec();
 
@@ -180,7 +180,7 @@ impl Kernel for GatherKernels {
     fn build_kernel(
         &self,
         inplace: bool,
-        dst: &Tensor,
+        dst: &OpTensor,
         workgroup_size: &WorkgroupSize,
     ) -> Result<KernelSource, OperationError> {
         let kernel_element = self.kernel_element(dst);
@@ -218,9 +218,9 @@ mod tests {
     use test_strategy::{proptest, Arbitrary};
 
     use crate::test_util::run_py_prg;
-    use crate::{rvec, DType, Device, DeviceRequest, Tensor};
+    use crate::{rvec, DType, Device, DeviceRequest, OpTensor};
 
-    fn ground_truth(src: &Tensor, ids: &Tensor, dim: usize) -> anyhow::Result<Tensor> {
+    fn ground_truth(src: &OpTensor, ids: &OpTensor, dim: usize) -> anyhow::Result<OpTensor> {
         let prg = format!(
             r#"
 import torch
@@ -235,13 +235,13 @@ def gather(src, ids, dim):
     fn run_gather_trial(problem: GatherProblem, device: Device) {
         let GatherProblem { B, M, N, dim } = problem;
 
-        let src = Tensor::randn::<f32, _>(0., 1., (B, M, N), Device::CPU, false).unwrap();
+        let src = OpTensor::randn::<f32, _>(0., 1., (B, M, N), Device::CPU, false).unwrap();
 
         // Create the shape for ids tensor
         let mut ids_shape = rvec![B, M, N];
         ids_shape[dim] = 1;
         let ids =
-            Tensor::randint::<i32, _>(0, src.shape()[dim] as i32, ids_shape, Device::CPU, false)
+            OpTensor::randint::<i32, _>(0, src.shape()[dim] as i32, ids_shape, Device::CPU, false)
                 .unwrap();
 
         let ground = ground_truth(&src, &ids, dim).unwrap();
@@ -292,7 +292,7 @@ def gather(src, ids, dim):
         dim: usize,
     }
 
-    fn ground_truth_backward(src: &Tensor, ids: &Tensor, dim: usize) -> anyhow::Result<Tensor> {
+    fn ground_truth_backward(src: &OpTensor, ids: &OpTensor, dim: usize) -> anyhow::Result<OpTensor> {
         let prg = format!(
             r#"
 import torch
@@ -311,25 +311,25 @@ def gather_backward(src, ids):
     fn run_gather_backward_trial(problem: GatherBackwardProblem) -> anyhow::Result<()> {
         let device = Device::request_device(DeviceRequest::GPU).unwrap();
         let GatherBackwardProblem { B, M, N, dim } = problem;
-        let src = Tensor::randn::<f32, _>(0., 1., (B, M, N), Device::CPU, false)?;
+        let src = OpTensor::randn::<f32, _>(0., 1., (B, M, N), Device::CPU, false)?;
 
         // Create the shape for ids tensor
         let mut ids_shape = rvec![B, M, N];
         ids_shape[dim] = 1;
         let ids =
-            Tensor::randint::<i32, _>(0, src.shape()[dim] as i32, ids_shape, Device::CPU, false)?;
+            OpTensor::randint::<i32, _>(0, src.shape()[dim] as i32, ids_shape, Device::CPU, false)?;
 
         let ground = ground_truth_backward(&src, &ids, dim)?;
 
         let src_gpu = src.to(&device)?;
         let ids_gpu = ids.to(&device)?;
-        let src_var = src_gpu.set_requires_grad(true)?;
-        let result_gpu = src_var.as_tensor().clone().gather(ids_gpu, dim)?;
+        let src_var = src_gpu.requires_grad_(true)?;
+        let result_gpu = src_var.clone().gather(ids_gpu, dim)?;
 
         result_gpu.backward()?;
         device.try_gpu()?.mark_step()?;
 
-        let src_grad = src_var.as_tensor().grad().unwrap().clone();
+        let src_grad = src_var.grad().unwrap().clone();
 
         let ours = src_grad.to(&Device::CPU)?;
         let src_cpu = src.to(&Device::CPU)?;

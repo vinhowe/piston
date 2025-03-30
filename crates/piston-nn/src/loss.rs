@@ -38,7 +38,7 @@ pub fn nll_masked(inp: Tensor, target: Tensor) -> anyhow::Result<Tensor> {
     let mask = target.clone().ne(Tensor::full(
         target.shape(),
         ignore_index,
-        target.device(),
+        &target.device(),
         false,
     )?)?;
 
@@ -91,7 +91,7 @@ pub fn label_smoothed_nll(log_probs: Tensor, target: Tensor, alpha: f32) -> anyh
         .ne(Tensor::full(
             target.shape(),
             ignore_index,
-            target.device(),
+            &target.device(),
             false,
         )?)?
         .cast(piston::DType::F32)?;

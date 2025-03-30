@@ -3,7 +3,7 @@ use std::fmt::Debug;
 
 use crate::{
     BindGroupLayoutDescriptor, CpuUniform, KernelElement, KernelKey, KernelSource, OperationError,
-    Tensor, WgslFragment, WgslKernelBuilder, WgslPrimitive, WorkgroupSize, Workload, UNIFORM_ALIGN,
+    OpTensor, WgslFragment, WgslKernelBuilder, WgslPrimitive, WorkgroupSize, Workload, UNIFORM_ALIGN,
 };
 
 use encase::{internal::WriteInto, ShaderType};
@@ -160,14 +160,14 @@ pub trait Kernel: KernelRenderable {
 
     fn metadata(
         &self,
-        dst: &Tensor,
+        dst: &OpTensor,
         kernel_element: &KernelElement,
     ) -> Result<Self::Metadata, OperationError>;
 
     /// # Calculate Dispatch
     ///
     /// Determine required amount of workgroups to execute the operation.
-    fn calculate_dispatch(&self, dst: &Tensor) -> Result<Workload, OperationError>;
+    fn calculate_dispatch(&self, dst: &OpTensor) -> Result<Workload, OperationError>;
 
     /// # Kernel Key
     ///
@@ -180,8 +180,8 @@ pub trait Kernel: KernelRenderable {
         &self,
         workgroup_size: &WorkgroupSize,
         inplace: bool,
-        srcs: &[&Tensor],
-        dst: &Tensor,
+        srcs: &[&OpTensor],
+        dst: &OpTensor,
         kernel_element: &KernelElement,
     ) -> KernelKey {
         KernelKey::new(
@@ -198,12 +198,12 @@ pub trait Kernel: KernelRenderable {
     /// # Kernel Element
     ///
     /// Determine the largest possible unit data type that can be used (e.g f32, vec2<f32>, vec4<f32>)
-    fn kernel_element(&self, dst: &Tensor) -> KernelElement;
+    fn kernel_element(&self, dst: &OpTensor) -> KernelElement;
 
     fn build_kernel(
         &self,
         inplace: bool,
-        dst: &Tensor,
+        dst: &OpTensor,
         workgroup_size: &WorkgroupSize,
     ) -> Result<KernelSource, OperationError>;
 }
@@ -224,7 +224,7 @@ pub trait KernelRenderable {
     fn render<P: WgslPrimitive>(
         &self,
         inplace: bool,
-        dst: &Tensor,
+        dst: &OpTensor,
         workgroup_size: &WorkgroupSize,
     ) -> Result<KernelSource, OperationError>;
 }

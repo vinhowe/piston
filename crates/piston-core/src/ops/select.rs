@@ -7,23 +7,23 @@ use crate::{
     gpu::{BindGroupLayoutDescriptor, WorkgroupCount},
     rvec, wgc, wgs, Array, BindingMode, BuiltIn, DType, GPUOperation, Kernel, KernelElement,
     KernelRenderable, KernelSource, OpGuards, Operation, OperationError, RVec, Scalar, StorageView,
-    Stride, Tensor, Vec2, Vec4, WgslKernelBuilder, WgslPrimitive, WorkgroupSize, Workload,
+    Stride, OpTensor, Vec2, Vec4, WgslKernelBuilder, WgslPrimitive, WorkgroupSize, Workload,
 };
 use inline_wgsl::wgsl;
 
 #[derive(new, Debug, Clone, IrFields)]
 pub struct IndexSelect {
-    pub src: Tensor,
-    pub indices: Tensor,
+    pub src: OpTensor,
+    pub indices: OpTensor,
     pub dim: usize,
 }
 
 impl IndexSelect {
-    pub fn src(&self) -> &Tensor {
+    pub fn src(&self) -> &OpTensor {
         &self.src
     }
 
-    pub fn indices(&self) -> &Tensor {
+    pub fn indices(&self) -> &OpTensor {
         &self.indices
     }
 
@@ -60,7 +60,7 @@ impl Operation for IndexSelect {
     }
 
     #[inline]
-    fn srcs(&self) -> RVec<&Tensor> {
+    fn srcs(&self) -> RVec<&OpTensor> {
         rvec![&self.src, &self.indices]
     }
 }
@@ -138,7 +138,7 @@ impl KernelRenderable for IndexSelectKernels {
     fn render<P: WgslPrimitive>(
         &self,
         inplace: bool,
-        dst: &Tensor,
+        dst: &OpTensor,
         workgroup_size: &WorkgroupSize,
     ) -> Result<KernelSource, OperationError> {
         let device = dst.device().try_gpu()?;
@@ -221,7 +221,7 @@ impl Kernel for IndexSelectKernels {
         }
     }
 
-    fn metadata(&self, dst: &Tensor, _: &KernelElement) -> Result<Self::Metadata, OperationError> {
+    fn metadata(&self, dst: &OpTensor, _: &KernelElement) -> Result<Self::Metadata, OperationError> {
         let IndexSelectKernels::Standard(inner) = self;
 
         let dst_numel = dst.shape().numel() as u32;
@@ -239,7 +239,7 @@ impl Kernel for IndexSelectKernels {
         })
     }
 
-    fn calculate_dispatch(&self, dst: &Tensor) -> Result<Workload, OperationError> {
+    fn calculate_dispatch(&self, dst: &OpTensor) -> Result<Workload, OperationError> {
         let workgroup_size = wgs![8, 8, 1];
         let IndexSelectKernels::Standard(inner) = self;
         let numel = match inner.src.dtype() {
@@ -254,14 +254,14 @@ impl Kernel for IndexSelectKernels {
         })
     }
 
-    fn kernel_element(&self, _: &Tensor) -> KernelElement {
+    fn kernel_element(&self, _: &OpTensor) -> KernelElement {
         KernelElement::Scalar
     }
 
     fn build_kernel(
         &self,
         inplace: bool,
-        dst: &Tensor,
+        dst: &OpTensor,
         workgroup_size: &WorkgroupSize,
     ) -> Result<KernelSource, OperationError> {
         let kernel_element = self.kernel_element(dst);
@@ -307,7 +307,7 @@ mod tests {
     use test_strategy::proptest;
 
     use crate::test_util::run_py_prg;
-    use crate::{quantize, rvec, shape, Device, DeviceRequest, Shape, Tensor, Q8_0F};
+    use crate::{quantize, rvec, shape, Device, DeviceRequest, Shape, OpTensor, Q8_0F};
 
     impl Arbitrary for IndexSelectProblem {
         type Parameters = ();
@@ -318,7 +318,7 @@ mod tests {
                 .prop_flat_map(|input_shape| (Just(input_shape), 1..64usize))
                 .prop_map(|(input_shape, num_indices)| {
                     let indices =
-                        Tensor::randint(0, input_shape[0] as i32, num_indices, Device::CPU)
+                        OpTensor::randint(0, input_shape[0] as i32, num_indices, Device::CPU, false)
                             .unwrap();
                     IndexSelectProblem {
                         input_shape,
@@ -329,7 +329,7 @@ mod tests {
         }
     }
 
-    fn ground_truth(input: &Tensor, indices: &Tensor, dim: usize) -> anyhow::Result<Tensor> {
+    fn ground_truth(input: &OpTensor, indices: &OpTensor, dim: usize) -> anyhow::Result<OpTensor> {
         let prg = format!(
             r#"
 import torch
@@ -346,7 +346,7 @@ def index_select(input, indices):
             input_shape,
             indices,
         } = problem;
-        let mut input = Tensor::randn::<f32, _>(0., 1., input_shape, Device::CPU).unwrap();
+        let mut input = OpTensor::randn::<f32, _>(0., 1., input_shape, Device::CPU, false).unwrap();
 
         let ground_truth = ground_truth(&input, &indices, 0).unwrap();
         if quant {
@@ -367,7 +367,7 @@ def index_select(input, indices):
     fn test_qindex_select() {
         let prob = IndexSelectProblem {
             input_shape: shape![256, 32],
-            indices: Tensor::from_data(vec![64, 192, 255], 3, Device::CPU),
+            indices: OpTensor::from_data(vec![64, 192, 255], 3, Device::CPU, false),
         };
         let device = Device::request_device(DeviceRequest::GPU).unwrap();
         run_index_select_trial(prob.clone(), device, true);
@@ -379,7 +379,7 @@ def index_select(input, indices):
     #[derive(Debug, Clone)]
     struct IndexSelectProblem {
         input_shape: Shape,
-        indices: Tensor,
+        indices: OpTensor,
     }
 
     #[proptest(cases = 16)]

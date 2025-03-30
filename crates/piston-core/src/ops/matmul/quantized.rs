@@ -5,7 +5,7 @@ use piston_macros::WgslMetadata;
 use crate::{
     rvec, Array, BindGroupLayoutDescriptor, BindingMode, BuiltIn, DType, InvariantError, Kernel,
     KernelElement, KernelRenderable, KernelSource, Matmul, MatmulSpec, OperationError, Scalar,
-    Tensor, WgslKernelBuilder, WgslPrimitive, WorkgroupSize, Workload,
+    OpTensor, WgslKernelBuilder, WgslPrimitive, WorkgroupSize, Workload,
 };
 use inline_wgsl::wgsl;
 
@@ -17,9 +17,9 @@ pub struct QuantizedMeta {
 
 #[derive(Debug, Clone)]
 pub struct QMatMul {
-    lhs: Tensor,
-    rhs: Tensor,
-    bias: Option<Tensor>,
+    lhs: OpTensor,
+    rhs: OpTensor,
+    bias: Option<OpTensor>,
     trans_lhs: bool,
     trans_rhs: bool,
     trans_dst: bool,
@@ -57,24 +57,24 @@ impl Kernel for QMatMul {
 
     fn metadata(
         &self,
-        _: &Tensor,
+        _: &OpTensor,
         _: &crate::KernelElement,
     ) -> Result<Self::Metadata, OperationError> {
         Ok(QuantizedMeta { dummy: 0 })
     }
 
-    fn calculate_dispatch(&self, dst: &Tensor) -> Result<crate::Workload, OperationError> {
+    fn calculate_dispatch(&self, dst: &OpTensor) -> Result<crate::Workload, OperationError> {
         Ok(Workload::std(dst.shape().numel(), self.kernel_element(dst)))
     }
 
-    fn kernel_element(&self, _: &Tensor) -> crate::KernelElement {
+    fn kernel_element(&self, _: &OpTensor) -> crate::KernelElement {
         KernelElement::Scalar
     }
 
     fn build_kernel(
         &self,
         inplace: bool,
-        dst: &Tensor,
+        dst: &OpTensor,
         workgroup_size: &WorkgroupSize,
     ) -> Result<KernelSource, OperationError> {
         let kernel_element = self.spec.select_kernel_element();
@@ -138,7 +138,7 @@ impl KernelRenderable for QMatMul {
     fn render<P: WgslPrimitive>(
         &self,
         inplace: bool,
-        dst: &Tensor,
+        dst: &OpTensor,
         workgroup_size: &WorkgroupSize,
     ) -> Result<KernelSource, OperationError> {
         let device = dst.device().try_gpu()?;

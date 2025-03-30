@@ -5,12 +5,24 @@ use crate::{
 };
 #[cfg(feature = "debug")]
 use crate::{DebugTensor, Device, DeviceStorage};
-use crate::{Tensor, TensorId};
+use crate::{OpTensor, TensorId};
 use maybe_async::maybe_async;
 use parking_lot::RwLock;
 use std::collections::BTreeMap;
 use std::hash::Hasher;
 use std::sync::{Arc, Weak};
+
+#[derive(Debug, thiserror::Error)]
+pub enum LazyGraphExecutorError {
+    #[error("one of the variables needed for gradient computation has been modified by an inplace operation.")]
+    InplaceError,
+    #[error(transparent)]
+    TensorError(#[from] crate::TensorError),
+    #[error(transparent)]
+    DeviceError(#[from] crate::DeviceError),
+    #[error(transparent)]
+    OperationError(#[from] crate::OperationError),
+}
 
 enum EmitStatus {
     Emitting,
@@ -18,7 +30,7 @@ enum EmitStatus {
 }
 
 type EmissionMap = HashMap<TensorId, EmitStatus>;
-type PostOrderData<'a> = Vec<&'a Tensor>;
+type PostOrderData<'a> = Vec<&'a OpTensor>;
 
 struct CachedExecutable {
     executable: Arc<Executable>,
@@ -54,7 +66,7 @@ macro_rules! mut_in_debug {
     };
 }
 
-fn compute_post_order(tensor: &Tensor) -> Vec<&Tensor> {
+fn compute_post_order(tensor: &OpTensor) -> Vec<&OpTensor> {
     let mut post_order = Vec::new();
     let mut node_stack = vec![tensor];
     let mut emission_map = EmissionMap::default();
@@ -88,7 +100,7 @@ fn compute_post_order(tensor: &Tensor) -> Vec<&Tensor> {
     post_order
 }
 
-fn compute_post_order_from_nodes(roots: Vec<&Tensor>) -> PostOrderData {
+fn compute_post_order_from_nodes(roots: Vec<&OpTensor>) -> PostOrderData {
     let mut post_order = Vec::new();
     for root in roots {
         post_order.extend(compute_post_order(root));
@@ -113,7 +125,7 @@ impl LazyGraphExecutor {
         }
     }
 
-    pub fn register_tensor(&self, tensor: &Tensor) {
+    pub fn register_tensor(&self, tensor: &OpTensor) {
         log::trace!("Registering tensor {:?}", tensor.id());
         self.tensors
             .write()
@@ -126,7 +138,7 @@ impl LazyGraphExecutor {
         self.tensors.write().remove(&id);
     }
 
-    fn get_live_tensors(&self) -> BTreeMap<TensorId, Tensor> {
+    fn get_live_tensors(&self) -> BTreeMap<TensorId, OpTensor> {
         self.tensors
             .read()
             .iter()
@@ -135,13 +147,13 @@ impl LazyGraphExecutor {
             .filter_map(|(id, weak_inner)| {
                 weak_inner
                     .upgrade()
-                    .map(|arc_inner| (*id, Tensor { inner: arc_inner }))
+                    .map(|arc_inner| (*id, OpTensor { inner: arc_inner }))
                     .filter(|(_, t)| !t.resolved())
             })
             .collect()
     }
 
-    fn run_post_order<'a>(&self, tensors: Vec<&'a Tensor>) -> PostOrderData<'a> {
+    fn run_post_order<'a>(&self, tensors: Vec<&'a OpTensor>) -> PostOrderData<'a> {
         compute_post_order_from_nodes(tensors)
     }
 
@@ -149,7 +161,7 @@ impl LazyGraphExecutor {
     pub async fn sync_live_tensors_graph(
         &mut self,
         gpu_device: &WgpuDevice,
-    ) -> anyhow::Result<(), TensorError> {
+    ) -> anyhow::Result<(), LazyGraphExecutorError> {
         reset_scope_context();
         log::trace!("Syncing live tensors graph");
         let tensors = self.get_live_tensors();
@@ -162,9 +174,9 @@ impl LazyGraphExecutor {
     #[maybe_async]
     pub async fn sync_tensors_graph(
         &mut self,
-        tensors: Vec<&Tensor>,
+        tensors: Vec<&OpTensor>,
         gpu_device: &WgpuDevice,
-    ) -> anyhow::Result<(), TensorError> {
+    ) -> anyhow::Result<(), LazyGraphExecutorError> {
         self.sync_tensors_graph_impl(
             tensors.into_iter().map(|t| (t.id(), t.clone())).collect(),
             None,
@@ -198,10 +210,10 @@ impl LazyGraphExecutor {
     #[maybe_async]
     async fn sync_tensors_graph_impl(
         &mut self,
-        tensors: BTreeMap<TensorId, Tensor>,
+        tensors: BTreeMap<TensorId, OpTensor>,
         owned_tensors: Option<HashSet<TensorId>>,
         gpu_device: &WgpuDevice,
-    ) -> Result<(), TensorError> {
+    ) -> Result<(), LazyGraphExecutorError> {
         // First check if the tensors are already resolved
         log::debug!("Syncing tensors graph");
         if tensors.values().all(|t| t.resolved()) {

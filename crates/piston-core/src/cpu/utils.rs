@@ -1,8 +1,8 @@
-use crate::{CPUBuffer, Shape, Storage, Stride, Tensor};
+use crate::{CPUBuffer, Shape, Storage, Stride, OpTensor};
 use bytemuck::NoUninit;
 use std::ops::Range;
 
-pub fn cpu_store_result<T: NoUninit>(dst: &Tensor, data: &[T]) {
+pub fn cpu_store_result<T: NoUninit>(dst: &OpTensor, data: &[T]) {
     dst.update_storage(Storage::CPU(CPUBuffer::from_slice(data, dst.shape())));
 }
 

@@ -4,7 +4,7 @@ use crate::cpu::unary::unary_map_inplace;
 use crate::cpu::utils::cpu_store_result;
 use crate::reindex::broadcast_vector;
 use crate::{
-    CPUOperation, DType, GroupNorm, InvariantError, Norm, NormOp, OperationError, Shape, Tensor,
+    CPUOperation, DType, GroupNorm, InvariantError, Norm, NormOp, OperationError, Shape, OpTensor,
     TensorDType,
 };
 use core::iter::Sum;
@@ -17,7 +17,7 @@ use num_traits::NumOps;
 #[cfg_attr(target_arch = "wasm32", async_trait::async_trait)]
 impl CPUOperation for NormOp {
     #[maybe_async]
-    async fn apply_cpu(&self, dst: Tensor) -> Result<Tensor, OperationError> {
+    async fn apply_cpu(&self, dst: OpTensor) -> Result<OpTensor, OperationError> {
         match self {
             NormOp::LayerNorm(n) => apply_layer_norm(n, dst).await,
             NormOp::RMSNorm(n) => apply_rms_norm(n, dst).await,
@@ -34,8 +34,8 @@ async fn apply_layer_norm(
         bias,
         eps,
     }: &Norm,
-    dst: Tensor,
-) -> Result<Tensor, OperationError> {
+    dst: OpTensor,
+) -> Result<OpTensor, OperationError> {
     if input.dtype() != scale.dtype() {
         return Err(InvariantError::DTypeMismatch {
             expected: input.dtype(),
@@ -95,11 +95,11 @@ where
 
 #[maybe_async]
 async fn layer_norm<T>(
-    input: &Tensor,
-    scale: &Tensor,
-    bias: &Option<Tensor>,
+    input: &OpTensor,
+    scale: &OpTensor,
+    bias: &Option<OpTensor>,
     eps: f32,
-    dst: &Tensor,
+    dst: &OpTensor,
 ) -> Result<(), OperationError>
 where
     T: TensorDType + Float + NumOps + for<'a> Sum<&'a T>,
@@ -160,8 +160,8 @@ async fn apply_rms_norm(
         bias,
         eps,
     }: &Norm,
-    dst: Tensor,
-) -> Result<Tensor, OperationError> {
+    dst: OpTensor,
+) -> Result<OpTensor, OperationError> {
     if input.dtype() != scale.dtype() {
         return Err(InvariantError::DTypeMismatch {
             expected: input.dtype(),
@@ -191,10 +191,10 @@ async fn apply_rms_norm(
 
 #[maybe_async]
 async fn rms_norm<T>(
-    input: &Tensor,
-    scale: &Tensor,
+    input: &OpTensor,
+    scale: &OpTensor,
     eps: f32,
-    dst: &Tensor,
+    dst: &OpTensor,
 ) -> Result<(), OperationError>
 where
     T: TensorDType + Float + NumOps + for<'a> Sum<&'a T>,
@@ -226,7 +226,7 @@ where
 }
 
 #[maybe_async]
-async fn apply_group_norm(_n: &GroupNorm, dst: Tensor) -> Result<Tensor, OperationError> {
+async fn apply_group_norm(_n: &GroupNorm, dst: OpTensor) -> Result<OpTensor, OperationError> {
     //let result = norm(&b.src.to_vec::<T>()?, b.src.shape(), b.to());
     //cpu_store_result(&dst, &result);
     Ok(dst)

@@ -3,7 +3,7 @@ use crate::gpu::WgslPrimitive;
 use crate::{
     rvec, wgc, wgs, Array, BindGroupLayoutDescriptor, BindingMode, BuiltIn, DType, InvariantError,
     KernelElement, KernelKey, KernelRenderable, KernelSource, Matmul, MatmulSpec, OperationError,
-    Scalar, Tensor, Vec4, WgslFragment, WgslKernelBuilder, WorkgroupSize, Workload,
+    Scalar, OpTensor, Vec4, WgslFragment, WgslKernelBuilder, WorkgroupSize, Workload,
 };
 use encase::ShaderType;
 use half::f16;
@@ -14,9 +14,9 @@ use piston_macros::WgslMetadata;
 use crate::Kernel;
 
 pub struct SubgroupGEMV {
-    lhs: Tensor,
-    rhs: Tensor,
-    bias: Option<Tensor>,
+    lhs: OpTensor,
+    rhs: OpTensor,
+    bias: Option<OpTensor>,
     trans_lhs: bool,
     trans_rhs: bool,
     trans_dst: bool,
@@ -89,7 +89,7 @@ impl KernelRenderable for SubgroupGEMV {
     fn render<P: WgslPrimitive>(
         &self,
         inplace: bool,
-        dst: &Tensor,
+        dst: &OpTensor,
         workgroup_size: &WorkgroupSize,
     ) -> Result<KernelSource, OperationError> {
         const TM: usize = 4;
@@ -319,8 +319,8 @@ impl Kernel for SubgroupGEMV {
         &self,
         workgroup_size: &WorkgroupSize,
         inplace: bool,
-        srcs: &[&Tensor],
-        dst: &Tensor,
+        srcs: &[&OpTensor],
+        dst: &OpTensor,
         kernel_element: &KernelElement,
     ) -> KernelKey {
         let (a_fit, b_fit, out_fit) = self.spec.tile_fit();
@@ -348,14 +348,14 @@ impl Kernel for SubgroupGEMV {
         )
     }
 
-    fn metadata(&self, _: &Tensor, _: &KernelElement) -> Result<Self::Metadata, OperationError> {
+    fn metadata(&self, _: &OpTensor, _: &KernelElement) -> Result<Self::Metadata, OperationError> {
         Ok(SubgroupGEMVMeta {
             OVL: self.spec.new_dim_lhs_outer() as _,
             IVL: self.spec.new_dim_rhs_outer() as _,
         })
     }
 
-    fn calculate_dispatch(&self, _: &Tensor) -> Result<Workload, OperationError> {
+    fn calculate_dispatch(&self, _: &OpTensor) -> Result<Workload, OperationError> {
         let tile_size = 32;
         Ok(Workload {
             workgroup_count: wgc![
@@ -367,7 +367,7 @@ impl Kernel for SubgroupGEMV {
         })
     }
 
-    fn kernel_element(&self, _: &Tensor) -> KernelElement {
+    fn kernel_element(&self, _: &OpTensor) -> KernelElement {
         KernelElement::Scalar
     }
 
@@ -393,7 +393,7 @@ impl Kernel for SubgroupGEMV {
     fn build_kernel(
         &self,
         inplace: bool,
-        dst: &crate::Tensor,
+        dst: &crate::OpTensor,
         workgroup_size: &crate::WorkgroupSize,
     ) -> Result<crate::KernelSource, crate::OperationError> {
         let kernel_element = self.kernel_element(dst);

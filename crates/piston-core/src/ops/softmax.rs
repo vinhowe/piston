@@ -7,13 +7,13 @@ use piston_macros::{IrFields, WgslMetadata};
 use crate::{
     gpu::{dtype::WgslDType, BindGroupLayoutDescriptor},
     rvec, wgc, wgs, Array, BindingMode, BuiltIn, DType, GPUOperation, Kernel, KernelElement,
-    KernelRenderable, KernelSource, OpGuards, Operation, OperationError, RVec, Scalar, StorageView,
-    Tensor, Vec2, Vec4, WgslKernelBuilder, WgslPrimitive, WorkgroupSize, Workload,
+    KernelRenderable, KernelSource, OpGuards, OpTensor, Operation, OperationError, RVec, Scalar,
+    StorageView, Vec2, Vec4, WgslKernelBuilder, WgslPrimitive, WorkgroupSize, Workload,
 };
 
 #[derive(new, Debug, Clone, IrFields)]
 pub struct Softmax {
-    pub(crate) input: Tensor,
+    pub(crate) input: OpTensor,
     pub(crate) dim: usize,
 }
 
@@ -55,7 +55,7 @@ impl KernelRenderable for SoftmaxKernels {
     fn render<P: WgslPrimitive>(
         &self,
         inplace: bool,
-        dst: &Tensor,
+        dst: &OpTensor,
         workgroup_size: &WorkgroupSize,
     ) -> Result<KernelSource, OperationError> {
         let device = dst.device().try_gpu()?;
@@ -190,7 +190,7 @@ impl Operation for Softmax {
     }
 
     #[inline]
-    fn srcs(&self) -> RVec<&Tensor> {
+    fn srcs(&self) -> RVec<&OpTensor> {
         rvec![&self.input]
     }
 
@@ -208,7 +208,7 @@ impl Kernel for SoftmaxKernels {
         }
     }
 
-    fn kernel_element(&self, _dst: &Tensor) -> KernelElement {
+    fn kernel_element(&self, _dst: &OpTensor) -> KernelElement {
         let inner = match self {
             Self::Standard(op) => op,
         };
@@ -226,7 +226,7 @@ impl Kernel for SoftmaxKernels {
     fn build_kernel(
         &self,
         inplace: bool,
-        dst: &Tensor,
+        dst: &OpTensor,
         workgroup_size: &WorkgroupSize,
     ) -> Result<KernelSource, OperationError> {
         let kernel_element = self.kernel_element(dst);
@@ -257,7 +257,7 @@ impl Kernel for SoftmaxKernels {
         }
     }
 
-    fn calculate_dispatch(&self, _dst: &Tensor) -> Result<Workload, OperationError> {
+    fn calculate_dispatch(&self, _dst: &OpTensor) -> Result<Workload, OperationError> {
         let inner = match self {
             Self::Standard(op) => op,
         };
@@ -271,7 +271,7 @@ impl Kernel for SoftmaxKernels {
         })
     }
 
-    fn metadata(&self, _: &Tensor, _: &KernelElement) -> Result<Self::Metadata, OperationError> {
+    fn metadata(&self, _: &OpTensor, _: &KernelElement) -> Result<Self::Metadata, OperationError> {
         let inner = match self {
             Self::Standard(op) => op,
         };
@@ -311,9 +311,9 @@ mod tests {
     use test_strategy::{proptest, Arbitrary};
 
     use crate::test_util::run_py_prg;
-    use crate::{Device, DeviceRequest, Tensor};
+    use crate::{Device, DeviceRequest, OpTensor};
 
-    fn ground_truth(a: &Tensor) -> anyhow::Result<Tensor> {
+    fn ground_truth(a: &OpTensor) -> anyhow::Result<OpTensor> {
         let prg = r#"
 import torch
 import torch.nn.functional as F
@@ -325,7 +325,7 @@ def softmax(a):
 
     fn run_softmax_trial(problem: SoftmaxProblem, device: Device) {
         let SoftmaxProblem { B, M, N } = problem;
-        let a = Tensor::randn::<f32, _>(0., 1., (B, M, N), Device::CPU).unwrap();
+        let a = OpTensor::randn::<f32, _>(0., 1., (B, M, N), Device::CPU, false).unwrap();
         let ground = ground_truth(&a).unwrap();
 
         let a_gpu = a.to(&device).unwrap();

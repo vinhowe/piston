@@ -9,7 +9,7 @@ mod utils;
 
 use crate::{
     dequantize, Cast, Concat, DType, IndexSelect, InvariantError, LazyOp, Operation,
-    OperationError, RVec, Shape, Tensor, TensorDType,
+    OperationError, RVec, Shape, OpTensor, TensorDType,
 };
 use anyhow::anyhow;
 use half::{bf16, f16};
@@ -19,9 +19,10 @@ use unary::unary_apply_fn;
 use utils::cpu_store_result;
 
 #[maybe_async]
-pub async fn apply_operation(op: LazyOp, dst: Tensor) -> Result<Tensor, OperationError> {
+pub async fn apply_operation(op: LazyOp, dst: OpTensor) -> Result<OpTensor, OperationError> {
     match op {
         LazyOp::Binary(b) => b.apply_cpu(dst).await,
+        LazyOp::Ternary(_t) => todo!(),
         LazyOp::Cast(c) => cpu_cast(c, dst).await,
         LazyOp::Matmul(m) => m.apply_cpu(dst).await,
         LazyOp::Softmax(s) => s.apply_cpu(dst).await,
@@ -58,14 +59,14 @@ pub async fn apply_operation(op: LazyOp, dst: Tensor) -> Result<Tensor, Operatio
 #[maybe_async(AFIT)]
 #[cfg_attr(target_arch = "wasm32", async_trait::async_trait)]
 pub trait CPUOperation: Operation {
-    async fn apply_cpu(&self, dst: Tensor) -> Result<Tensor, OperationError>;
+    async fn apply_cpu(&self, dst: OpTensor) -> Result<OpTensor, OperationError>;
 }
 
 #[maybe_async]
 async fn index_select<T: TensorDType>(
     index_select: IndexSelect,
-    dst: Tensor,
-) -> Result<Tensor, OperationError> {
+    dst: OpTensor,
+) -> Result<OpTensor, OperationError> {
     let src = index_select.src();
     let indices = index_select.indices();
     let dim = index_select.dim();
@@ -109,7 +110,7 @@ async fn index_select<T: TensorDType>(
 }
 
 #[maybe_async]
-async fn qindex_select(op: IndexSelect, dst: Tensor) -> Result<Tensor, OperationError> {
+async fn qindex_select(op: IndexSelect, dst: OpTensor) -> Result<OpTensor, OperationError> {
     // NOTE: qindex_select is functional but not optimized at all.
     // Currently we simply dequantize the entire input tensor to f32 and then call index_select.
     // Because of borrowing rules dequantizing also requires a deep clone of the input tensor, which is less than ideal.
@@ -126,7 +127,7 @@ async fn qindex_select(op: IndexSelect, dst: Tensor) -> Result<Tensor, Operation
 }
 
 #[maybe_async]
-pub async fn cpu_index_select(i: IndexSelect, dst: Tensor) -> Result<Tensor, OperationError> {
+pub async fn cpu_index_select(i: IndexSelect, dst: OpTensor) -> Result<OpTensor, OperationError> {
     match i.src().dtype() {
         DType::F32 => index_select::<f32>(i, dst).await,
         DType::F16 => index_select::<f16>(i, dst).await,
@@ -138,8 +139,8 @@ pub async fn cpu_index_select(i: IndexSelect, dst: Tensor) -> Result<Tensor, Ope
 
 #[maybe_async]
 async fn direct_cast<T: TensorDType, U: TensorDType>(
-    input: &Tensor,
-    dst: &Tensor,
+    input: &OpTensor,
+    dst: &OpTensor,
 ) -> Result<(), OperationError> {
     let input = input.to_vec::<T>().await?;
     let result =
@@ -149,7 +150,7 @@ async fn direct_cast<T: TensorDType, U: TensorDType>(
 }
 
 #[maybe_async]
-pub async fn cpu_cast(cast: Cast, dst: Tensor) -> Result<Tensor, OperationError> {
+pub async fn cpu_cast(cast: Cast, dst: OpTensor) -> Result<OpTensor, OperationError> {
     if cast.input().dtype() == cast.dst_dtype() {
         return Ok(cast.input().clone());
     }
@@ -218,10 +219,10 @@ pub(crate) fn concat<T: TensorDType>(
 
 #[maybe_async]
 pub(crate) async fn apply_concat<T: TensorDType>(
-    inputs: RVec<Tensor>,
+    inputs: RVec<OpTensor>,
     dim: usize,
-    dst: Tensor,
-) -> Result<Tensor, OperationError> {
+    dst: OpTensor,
+) -> Result<OpTensor, OperationError> {
     let dst_size = dst.shape().numel();
     let mut result = vec![T::zero(); dst_size];
 
@@ -243,8 +244,8 @@ pub(crate) async fn apply_concat<T: TensorDType>(
 #[maybe_async]
 pub async fn cpu_concat(
     Concat { inputs, dim }: Concat,
-    dst: Tensor,
-) -> Result<Tensor, OperationError> {
+    dst: OpTensor,
+) -> Result<OpTensor, OperationError> {
     match dst.dtype() {
         DType::F32 => apply_concat::<f32>(inputs, dim, dst).await,
         DType::F16 => apply_concat::<f16>(inputs, dim, dst).await,

@@ -21,7 +21,7 @@ pub struct SliceMeta {
 /// This is a temporary, user hostile implementation.
 #[derive(derive_new::new, Debug, Clone, IrFields)]
 pub struct Slice {
-    pub src: Tensor,
+    pub src: OpTensor,
     pub indices: RVec<Range<usize>>,
 }
 
@@ -63,7 +63,7 @@ impl Operation for Slice {
         Ok(StorageView::new(output_shape, self.src.dtype(), stride))
     }
 
-    fn srcs(&self) -> RVec<&Tensor> {
+    fn srcs(&self) -> RVec<&OpTensor> {
         rvec![&self.src]
     }
 }
@@ -72,7 +72,7 @@ impl Operation for Slice {
 mod tests {
     use std::ops::Range;
 
-    use crate::{test_util::run_py_prg, Device, DeviceRequest, Tensor};
+    use crate::{test_util::run_py_prg, Device, DeviceRequest, OpTensor};
     use crate::{Shape, Slice};
     use proptest::prelude::*;
     use test_strategy::proptest;
@@ -134,7 +134,7 @@ mod tests {
                         let indices = sub_slices.into_iter().map(|sub| sub.0).collect();
                         SliceProblem {
                             op: Slice::new(
-                                Tensor::randn::<f32, _>(0., 1., shape.clone(), Device::CPU)
+                                OpTensor::randn::<f32, _>(0., 1., shape.clone(), Device::CPU, false)
                                     .unwrap(),
                                 indices,
                             ),
@@ -145,7 +145,7 @@ mod tests {
         }
     }
 
-    fn ground_truth(a: &Tensor, args: &str) -> anyhow::Result<Tensor> {
+    fn ground_truth(a: &OpTensor, args: &str) -> anyhow::Result<OpTensor> {
         let prg = format!(
             r#"
 import torch

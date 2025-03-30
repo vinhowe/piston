@@ -1,12 +1,12 @@
 use crate::{
     concat,
     cpu::{cpu_store_result, gemm::gemm, reindex::slice},
-    shape, DType, OperationError, RoPE, Shape, Stride, Tensor,
+    shape, DType, OperationError, RoPE, Shape, Stride, OpTensor,
 };
 use maybe_async::maybe_async;
 
 #[maybe_async]
-pub async fn cpu_rope(op: RoPE, dst: Tensor) -> Result<Tensor, OperationError> {
+pub async fn cpu_rope(op: RoPE, dst: OpTensor) -> Result<OpTensor, OperationError> {
     match op.input().dtype() {
         DType::F32 => {
             let dim = op.dim();

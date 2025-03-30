@@ -7,15 +7,15 @@ use piston_macros::{IrFields, WgslMetadata};
 use crate::{
     gpu::BindGroupLayoutDescriptor, rvec, Array, BindingMode, BuiltIn, DType, GPUOperation, Kernel,
     KernelElement, KernelRenderable, KernelSource, OpGuards, Operation, OperationError, RVec,
-    Scalar, StorageView, Tensor, Vec2, Vec4, WgslKernelBuilder, WgslPrimitive, WorkgroupSize,
+    Scalar, StorageView, OpTensor, Vec2, Vec4, WgslKernelBuilder, WgslPrimitive, WorkgroupSize,
     Workload,
 };
 
 #[derive(new, Debug, Clone, IrFields)]
 pub struct ScatterAdd {
-    pub dst: Tensor,
-    pub src: Tensor,
-    pub ids: Tensor,
+    pub dst: OpTensor,
+    pub src: OpTensor,
+    pub ids: OpTensor,
     pub dim: usize,
 }
 
@@ -51,7 +51,7 @@ impl Operation for ScatterAdd {
     }
 
     #[inline]
-    fn srcs(&self) -> RVec<&Tensor> {
+    fn srcs(&self) -> RVec<&OpTensor> {
         rvec![&self.dst, &self.src, &self.ids]
     }
 
@@ -88,7 +88,7 @@ impl KernelRenderable for ScatterAddKernels {
     fn render<P: WgslPrimitive>(
         &self,
         inplace: bool,
-        dst: &Tensor,
+        dst: &OpTensor,
         workgroup_size: &WorkgroupSize,
     ) -> Result<KernelSource, OperationError> {
         let device = dst.device().try_gpu()?;
@@ -133,11 +133,11 @@ impl Kernel for ScatterAddKernels {
         }
     }
 
-    fn kernel_element(&self, _dst: &Tensor) -> KernelElement {
+    fn kernel_element(&self, _dst: &OpTensor) -> KernelElement {
         KernelElement::Scalar
     }
 
-    fn calculate_dispatch(&self, dst: &Tensor) -> Result<Workload, OperationError> {
+    fn calculate_dispatch(&self, dst: &OpTensor) -> Result<Workload, OperationError> {
         let ScatterAddKernels::Standard(inner) = self;
         let dim = inner.dim;
         let src_shape_vec = inner.src.shape().to_vec();
@@ -157,7 +157,7 @@ impl Kernel for ScatterAddKernels {
         Ok(BindGroupLayoutDescriptor::ternary_inplace())
     }
 
-    fn metadata(&self, _: &Tensor, _: &KernelElement) -> Result<Self::Metadata, OperationError> {
+    fn metadata(&self, _: &OpTensor, _: &KernelElement) -> Result<Self::Metadata, OperationError> {
         let ScatterAddKernels::Standard(inner) = self;
         let dim = inner.dim;
         let src_shape_vec = inner.src.shape().to_vec();
@@ -178,7 +178,7 @@ impl Kernel for ScatterAddKernels {
     fn build_kernel(
         &self,
         inplace: bool,
-        dst: &Tensor,
+        dst: &OpTensor,
         workgroup_size: &WorkgroupSize,
     ) -> Result<KernelSource, OperationError> {
         let ScatterAddKernels::Standard(inner) = self;
@@ -218,14 +218,14 @@ mod tests {
     use test_strategy::{proptest, Arbitrary};
 
     use crate::test_util::run_py_prg;
-    use crate::{shape, Device, DeviceRequest, Tensor};
+    use crate::{shape, Device, DeviceRequest, OpTensor};
 
     fn ground_truth(
-        dst: &Tensor,
-        src: &Tensor,
-        ids: &Tensor,
+        dst: &OpTensor,
+        src: &OpTensor,
+        ids: &OpTensor,
         dim: usize,
-    ) -> anyhow::Result<Tensor> {
+    ) -> anyhow::Result<OpTensor> {
         let prg = format!(
             r#"
 import torch
@@ -248,11 +248,11 @@ def scatter_add(dst, src, ids):
         let mut src_shape = vec![B, M, N];
         src_shape[dim] = max(M.min(N) / 2, 1); // Make src dimension smaller than dst
 
-        let dst = Tensor::zeros::<f32, _>(&dst_shape, &Device::CPU, false).unwrap();
-        let src = Tensor::ones::<f32, _>(src_shape, &Device::CPU, false).unwrap();
+        let dst = OpTensor::zeros::<f32, _>(&dst_shape, &Device::CPU, false).unwrap();
+        let src = OpTensor::ones::<f32, _>(src_shape, &Device::CPU, false).unwrap();
 
         // Create ids tensor with the same shape as src, but with values in range [0, dst_shape[dim])
-        let ids = Tensor::randint(
+        let ids = OpTensor::randint(
             0,
             dst_shape[dim] as i32,
             src.shape().clone(),

@@ -7,18 +7,18 @@ use piston_macros::{IrFields, WgslMetadata};
 use crate::{
     gpu::BindGroupLayoutDescriptor, rvec, Array, BindingMode, BuiltIn, DType, GPUOperation, Kernel,
     KernelElement, KernelRenderable, KernelSource, OpGuards, Operation, OperationError, RVec,
-    Scalar, StorageView, Stride, Tensor, Vec2, Vec4, WgslKernelBuilder, WgslPrimitive,
+    Scalar, StorageView, Stride, OpTensor, Vec2, Vec4, WgslKernelBuilder, WgslPrimitive,
     WorkgroupSize, Workload,
 };
 
 #[derive(new, Debug, Clone, IrFields)]
 pub struct Cast {
-    pub input: Tensor,
+    pub input: OpTensor,
     pub dst_dtype: DType,
 }
 
 impl Cast {
-    pub fn input(&self) -> &Tensor {
+    pub fn input(&self) -> &OpTensor {
         &self.input
     }
 
@@ -56,7 +56,7 @@ impl KernelRenderable for CastKernels {
     fn render<SP: WgslPrimitive>(
         &self,
         inplace: bool,
-        dst: &Tensor,
+        dst: &OpTensor,
         workgroup_size: &WorkgroupSize,
     ) -> Result<KernelSource, OperationError> {
         let device = dst.device().try_gpu()?;
@@ -122,7 +122,7 @@ impl Operation for Cast {
     }
 
     #[inline]
-    fn srcs(&self) -> RVec<&Tensor> {
+    fn srcs(&self) -> RVec<&OpTensor> {
         rvec![&self.input]
     }
 
@@ -163,16 +163,16 @@ impl Kernel for CastKernels {
         }
     }
 
-    fn metadata(&self, dst: &Tensor, _: &KernelElement) -> Result<Self::Metadata, OperationError> {
+    fn metadata(&self, dst: &OpTensor, _: &KernelElement) -> Result<Self::Metadata, OperationError> {
         let numel = dst.shape().numel() as u32;
         Ok(CastMeta { numel })
     }
 
-    fn calculate_dispatch(&self, dst: &Tensor) -> Result<Workload, OperationError> {
+    fn calculate_dispatch(&self, dst: &OpTensor) -> Result<Workload, OperationError> {
         Ok(Workload::std(dst.shape().numel(), self.kernel_element(dst)))
     }
 
-    fn kernel_element(&self, dst: &Tensor) -> KernelElement {
+    fn kernel_element(&self, dst: &OpTensor) -> KernelElement {
         let numel = dst.shape().numel();
         if numel % 4 == 0 {
             KernelElement::Vec4
@@ -186,7 +186,7 @@ impl Kernel for CastKernels {
     fn build_kernel(
         &self,
         inplace: bool,
-        dst: &Tensor,
+        dst: &OpTensor,
         workgroup_size: &WorkgroupSize,
     ) -> Result<KernelSource, OperationError> {
         let kernel_element = self.kernel_element(dst);
@@ -233,7 +233,7 @@ mod tests {
     use half::f16;
     use test_strategy::{proptest, Arbitrary};
 
-    use crate::{test_util::run_py_prg, DType, Device, DeviceRequest, Tensor};
+    use crate::{test_util::run_py_prg, DType, Device, DeviceRequest, OpTensor};
 
     #[derive(Arbitrary, Debug)]
     struct CastProblem {
@@ -246,7 +246,7 @@ mod tests {
         N: usize,
     }
 
-    fn ground_truth(input: &Tensor, dst_dtype: DType) -> anyhow::Result<Tensor> {
+    fn ground_truth(input: &OpTensor, dst_dtype: DType) -> anyhow::Result<OpTensor> {
         let prg = format!(
             r#"
 import torch
@@ -265,7 +265,7 @@ def cast(a):
             return Ok(());
         }
         let CastProblem { dst_dtype, B, M, N } = prob;
-        let input = Tensor::randn::<f32, _>(0., 1., (B, M, N), Device::CPU, false)?;
+        let input = OpTensor::randn::<f32, _>(0., 1., (B, M, N), Device::CPU, false)?;
         let ground = ground_truth(&input, dst_dtype)?;
 
         let input = input.to(&device)?;

@@ -4,8 +4,9 @@
 use crate::ops::{BinaryOp, UnaryOp};
 use crate::{
     rvec, Affine, Alibi, Binary, Broadcast, Cast, Cmp, Concat, Conv, DType, Gather, GroupNorm,
-    IndexAdd, IndexSelect, LazyOp, Matmul, Norm, NormOp, Permute, Powf, Reduce, ReduceOp, Reindex,
-    RoPE, ScatterAdd, ScopePusher, Slice, Softmax, Tensor, TensorId, Unary, View, WhereCond,
+    IndexAdd, IndexSelect, LazyOp, Matmul, Norm, NormOp, OpTensor, Permute, Powf, Reduce, ReduceOp,
+    Reindex, RoPE, ScatterAdd, ScopePusher, Slice, Softmax, Tensor, TensorId, Ternary, Unary, View,
+    WhereCond,
 };
 use crate::{HashMap, Trilu};
 use anyhow::Result;
@@ -18,7 +19,7 @@ pub enum BackpropError {
 
 // arg has been reduced to node via reduce_dims, expand it back to arg.
 // This has to handle keepdims.
-fn broadcast_back(arg: &Tensor, node: &Tensor, reduced_dims: &[usize]) -> Result<Tensor> {
+fn broadcast_back(arg: &OpTensor, node: &OpTensor, reduced_dims: &[usize]) -> Result<OpTensor> {
     if arg.rank() == node.rank() {
         // keepdim = true
         node.clone().broadcast_to(arg.shape().clone())
@@ -32,7 +33,7 @@ fn broadcast_back(arg: &Tensor, node: &Tensor, reduced_dims: &[usize]) -> Result
 
 /// Get the gradient tensor associated with the given tensor, or, if it does not exist,
 /// insert a tensor of zeroes, with the same shape and type as the given tensors and return it
-fn or_insert(tensor: &Tensor) -> Result<Tensor> {
+fn or_insert(tensor: &OpTensor) -> Result<OpTensor> {
     let grad = match tensor.grad() {
         Some(grad) => grad,
         None => {
@@ -46,7 +47,7 @@ fn or_insert(tensor: &Tensor) -> Result<Tensor> {
 
 /// If there's an existing gradient for `tensor`, add `grad` to it.
 /// Otherwise, just store `grad` as-is (no need to create zeros and then add).
-fn accumulate_add(tensor: &Tensor, grad: Tensor) -> Result<()> {
+fn accumulate_add(tensor: &OpTensor, grad: OpTensor) -> Result<()> {
     match tensor.grad() {
         Some(grad) => {
             tensor.set_grad(grad.clone().add(grad)?);
@@ -61,7 +62,7 @@ fn accumulate_add(tensor: &Tensor, grad: Tensor) -> Result<()> {
     Ok(())
 }
 
-fn accumulate_sub(tensor: &Tensor, grad: Tensor) -> Result<()> {
+fn accumulate_sub(tensor: &OpTensor, grad: OpTensor) -> Result<()> {
     match tensor.grad() {
         Some(grad) => {
             tensor.set_grad(grad.clone().sub(grad)?);
@@ -87,21 +88,21 @@ thread_local! {
     }
 }
 
-impl Tensor {
+impl OpTensor {
     /// Return all the nodes that lead to this value in a topologically sorted vec, the first
     /// elements having dependencies on the latter ones, e.g. the first element if any is the
     /// argument.
     /// This assumes that the op graph is a DAG.
     // TODO(vinhowe): This could be consolidated with execution_order and whatever caching we
     // do...
-    fn sorted_nodes(&self) -> Vec<&Tensor> {
+    fn sorted_nodes(&self) -> Vec<&OpTensor> {
         // The vec of sorted nodes is passed as an owned value rather than a mutable reference
         // to get around some lifetime limitations.
         fn walk<'a>(
-            node: &'a Tensor,
-            nodes: Vec<&'a Tensor>,
+            node: &'a OpTensor,
+            nodes: Vec<&'a OpTensor>,
             already_seen: &mut HashMap<TensorId, bool>,
-        ) -> (bool, Vec<&'a Tensor>) {
+        ) -> (bool, Vec<&'a OpTensor>) {
             if let Some(&tg) = already_seen.get(&node.id()) {
                 return (tg, nodes);
             }
@@ -387,7 +388,7 @@ impl Tensor {
                     } else {
                         let mut dims = arg_dims.clone();
                         dims[first_different_index] = indices[first_different_index].start;
-                        Some(Tensor::zeros::<f32, _>(dims, arg.device(), false)?)
+                        Some(OpTensor::zeros::<f32, _>(dims, arg.device(), false)?)
                     };
 
                     let right_pad =
@@ -397,19 +398,19 @@ impl Tensor {
                             let mut dims = arg_dims.clone();
                             dims[first_different_index] = arg_dims[first_different_index]
                                 - indices[first_different_index].end;
-                            Some(Tensor::zeros::<f32, _>(dims, arg.device(), false)?)
+                            Some(OpTensor::zeros::<f32, _>(dims, arg.device(), false)?)
                         };
 
                     let arg_grad = match (left_pad, right_pad) {
                         (None, None) => grad.clone(),
                         (Some(left_pad), None) => {
-                            Tensor::cat(rvec![left_pad, grad], first_different_index)?
+                            OpTensor::cat(rvec![left_pad, grad], first_different_index)?
                         }
                         (None, Some(right_pad)) => {
-                            Tensor::cat(rvec![grad, right_pad], first_different_index)?
+                            OpTensor::cat(rvec![grad, right_pad], first_different_index)?
                         }
                         (Some(left_pad), Some(right_pad)) => {
-                            Tensor::cat(rvec![left_pad, grad, right_pad], first_different_index)?
+                            OpTensor::cat(rvec![left_pad, grad, right_pad], first_different_index)?
                         }
                     };
 
@@ -640,7 +641,7 @@ impl Tensor {
                     indices,
                     dim,
                 }) => {
-                    let sum_grad = or_insert(&arg)?;
+                    let sum_grad = or_insert(arg)?;
                     arg.set_grad(sum_grad.clone().index_add(
                         indices.clone(),
                         grad.clone(),
@@ -771,5 +772,11 @@ impl Tensor {
             };
         }
         Ok(())
+    }
+}
+
+impl Tensor {
+    pub fn backward(&self) -> Result<()> {
+        self.inner().read().backward()
     }
 }

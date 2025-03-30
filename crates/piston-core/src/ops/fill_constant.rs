@@ -7,7 +7,7 @@ use crate::{
     gpu::{dtype::WgslDType, BindGroupLayoutDescriptor},
     rvec, Array, BindingMode, BuiltIn, DType, DynKernelMetadata, GPUOperation, Kernel,
     KernelElement, KernelRenderable, KernelSource, OpGuards, Operation, OperationError, RVec,
-    Scalar, Shape, StorageView, Stride, Tensor, Vec2, Vec4, WgslKernelBuilder, WgslPrimitive,
+    Scalar, Shape, StorageView, Stride, OpTensor, Vec2, Vec4, WgslKernelBuilder, WgslPrimitive,
     WorkgroupSize, Workload,
 };
 
@@ -27,7 +27,7 @@ impl Operation for FillConstant {
         Ok(StorageView::new(shape, DType::F32, stride))
     }
 
-    fn srcs(&self) -> RVec<&Tensor> {
+    fn srcs(&self) -> RVec<&OpTensor> {
         rvec![]
     }
 
@@ -72,7 +72,7 @@ impl KernelRenderable for FillConstantKernels {
     fn render<P: WgslPrimitive>(
         &self,
         _: bool,
-        dst: &Tensor,
+        dst: &OpTensor,
         workgroup_size: &WorkgroupSize,
     ) -> Result<KernelSource, OperationError> {
         let device = dst.device().try_gpu()?;
@@ -114,7 +114,7 @@ impl Kernel for FillConstantKernels {
         }
     }
 
-    fn kernel_element(&self, dst: &Tensor) -> KernelElement {
+    fn kernel_element(&self, dst: &OpTensor) -> KernelElement {
         let rank = dst.shape().rank();
         let N = if rank > 0 { dst.shape()[rank - 1] } else { 1 };
 
@@ -127,7 +127,7 @@ impl Kernel for FillConstantKernels {
         }
     }
 
-    fn calculate_dispatch(&self, dst: &Tensor) -> Result<Workload, OperationError> {
+    fn calculate_dispatch(&self, dst: &OpTensor) -> Result<Workload, OperationError> {
         Ok(Workload::std(dst.shape().numel(), self.kernel_element(dst)))
     }
 
@@ -138,7 +138,7 @@ impl Kernel for FillConstantKernels {
         Ok(BindGroupLayoutDescriptor::unary_inplace())
     }
 
-    fn metadata(&self, dst: &Tensor, _: &KernelElement) -> Result<Self::Metadata, OperationError> {
+    fn metadata(&self, dst: &OpTensor, _: &KernelElement) -> Result<Self::Metadata, OperationError> {
         let FillConstantKernels::Standard(op) = self;
         let mut dyn_meta = DynKernelMetadata::new();
         dyn_meta.add_field("numel", dst.shape().numel() as u32);
@@ -153,7 +153,7 @@ impl Kernel for FillConstantKernels {
     fn build_kernel(
         &self,
         inplace: bool,
-        dst: &Tensor,
+        dst: &OpTensor,
         workgroup_size: &WorkgroupSize,
     ) -> Result<KernelSource, OperationError> {
         let kernel_element = self.kernel_element(dst);
@@ -198,9 +198,9 @@ impl Kernel for FillConstantKernels {
 mod tests {
     use test_strategy::{proptest, Arbitrary};
 
-    use crate::{test_util::run_py_prg, DType, Device, DeviceRequest, Tensor};
+    use crate::{test_util::run_py_prg, DType, Device, DeviceRequest, OpTensor};
 
-    fn ground_truth(shape: &[usize], value: f32) -> anyhow::Result<Tensor> {
+    fn ground_truth(shape: &[usize], value: f32) -> anyhow::Result<OpTensor> {
         let prg = r#"
 import torch
 def fill_constant(shape, value):
@@ -213,7 +213,7 @@ def fill_constant(shape, value):
     fn run_fill_constant_trial(problem: FillConstantProblem, device: Device) {
         let FillConstantProblem { B, M, N, value } = problem;
 
-        let a = Tensor::full((B, M, N), value, &device, false).unwrap();
+        let a = OpTensor::full((B, M, N), value, &device, false).unwrap();
         let ground = ground_truth(&[B, M, N], value).unwrap();
 
         let a_gpu = a.to(&device).unwrap();

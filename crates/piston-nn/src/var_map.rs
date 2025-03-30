@@ -1,7 +1,7 @@
 use piston::HashMap;
 use std::sync::{Arc, Mutex};
 
-use piston::{Device, Shape, Tensor};
+use piston::{Device, OpTensor, Shape, Tensor};
 
 #[cfg(target_arch = "wasm32")]
 use {
@@ -39,9 +39,22 @@ impl VarMap {
     /// Save the map in the safetensors format.
     #[cfg(not(target_arch = "wasm32"))]
     pub fn save<P: AsRef<std::path::Path>>(&self, path: P) -> anyhow::Result<()> {
+        use piston::OpTensor;
+
         let tensor_data = self.data.lock().unwrap();
-        let data = tensor_data.iter().map(|(k, v)| (k, v.clone()));
-        safetensors::tensor::serialize_to_file(data, &None, path.as_ref())?;
+        // Create a temporary Vec to hold the tensors and ensure they remain valid
+        let tensors: Vec<(String, OpTensor)> = tensor_data
+            .iter()
+            .map(|(k, v)| (k.clone(), v.inner().read().clone()))
+            .collect();
+
+        safetensors::tensor::serialize_to_file(
+            tensors
+                .iter()
+                .map(|(k, tensor)| (k.as_str(), tensor as &OpTensor)),
+            &None,
+            path.as_ref(),
+        )?;
         Ok(())
     }
 
@@ -51,10 +64,17 @@ impl VarMap {
         data: Vec<(String, Tensor)>,
     ) -> anyhow::Result<String, JsValue> {
         // Convert (String, Tensor) -> (&String, &Tensor) for serialization
-        let data_ref: Vec<(&String, &Tensor)> = data.iter().map(|(k, v)| (k, v)).collect();
+
+        let data_ref: Vec<(&String, OpTensor)> = data
+            .iter()
+            .map(|(k, v)| (k, v.inner().read().clone()))
+            .collect::<Vec<_>>();
 
         // Safetensors serialization
-        let serialized = safetensors::tensor::serialize(data_ref, &None).unwrap();
+        let serialized =
+            // TODO(vinhowe): This probably looks really dumb; there's a better more rust-like way
+            // to do this
+            safetensors::tensor::serialize(data_ref.iter().map(|(k, v)| (k, v)), &None).unwrap();
 
         // Create a Blob from the serialized data
         let uint8_array = js_sys::Uint8Array::from(&serialized[..]);
@@ -159,7 +179,7 @@ impl VarMap {
         let mut tensor_data = self.data.lock().unwrap();
         if let Some(tensor) = tensor_data.get(path) {
             let tensor_shape = tensor.shape();
-            if &shape != tensor_shape {
+            if shape != tensor_shape {
                 // candle::bail!("shape mismatch on {path}: {shape:?} <> {tensor_shape:?}")
                 panic!("shape mismatch on {path}: {shape:?} <> {tensor_shape:?}")
             }
