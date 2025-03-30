@@ -1,7 +1,7 @@
 /// Adapted from candle:
 /// https://github.com/huggingface/candle/blob/main/candle-core/src/backprop.rs
 /// Methods for backpropagation of gradients.
-use crate::ops::{BinaryOp, UnaryOp};
+use crate::ops::{BinaryOp, TernaryOp, UnaryOp};
 use crate::{
     rvec, Affine, Alibi, Binary, Broadcast, Cast, Cmp, Concat, Conv, DType, Gather, GroupNorm,
     IndexAdd, IndexSelect, LazyOp, Matmul, Norm, NormOp, OpTensor, Permute, Powf, Reduce, ReduceOp,
@@ -131,6 +131,12 @@ impl OpTensor {
                         input: t1,
                         on_true: t2,
                         on_false: t3,
+                    })
+                    | LazyOp::Ternary(Ternary {
+                        input: t1,
+                        tensor1: t2,
+                        tensor2: t3,
+                        ..
                     }) => {
                         let (tg, nodes) = walk(t1, nodes, already_seen);
                         track_grad |= tg;
@@ -314,6 +320,50 @@ impl OpTensor {
                     accumulate_add(lhs, lhs_grad)?;
                     let rhs_grad = grad.mul(lhs.clone())?.div(rhs.clone().square()?)?;
                     accumulate_sub(rhs, rhs_grad)?;
+                }
+                LazyOp::Ternary(Ternary {
+                    input,
+                    tensor1,
+                    tensor2,
+                    value,
+                    op: TernaryOp::Addcdiv,
+                }) => {
+                    // addcdiv: input + value * (tensor1 / tensor2)
+                    // Gradient for input is simply grad
+                    accumulate_add(input, grad.clone())?;
+
+                    // Gradient for tensor1 is grad * value / tensor2
+                    let tensor1_grad = grad
+                        .clone()
+                        .mul(tensor2.clone().recip()?)?
+                        .affine(*value, 0.)?;
+                    accumulate_add(tensor1, tensor1_grad)?;
+
+                    // Gradient for tensor2 is -grad * value * tensor1 / tensor2^2
+                    let tensor2_grad = grad
+                        .mul(tensor1.clone())?
+                        .div(tensor2.clone().square()?)?
+                        .affine(-*value, 0.)?;
+                    accumulate_add(tensor2, tensor2_grad)?;
+                }
+                LazyOp::Ternary(Ternary {
+                    input,
+                    tensor1,
+                    tensor2,
+                    value,
+                    op: TernaryOp::Addcmul,
+                }) => {
+                    // addcmul: input + value * (tensor1 * tensor2)
+                    // Gradient for input is simply grad
+                    accumulate_add(input, grad.clone())?;
+
+                    // Gradient for tensor1 is grad * value * tensor2
+                    let tensor1_grad = grad.clone().mul(tensor2.clone())?.affine(*value, 0.)?;
+                    accumulate_add(tensor1, tensor1_grad)?;
+
+                    // Gradient for tensor2 is grad * value * tensor1
+                    let tensor2_grad = grad.mul(tensor1.clone())?.affine(*value, 0.)?;
+                    accumulate_add(tensor2, tensor2_grad)?;
                 }
                 LazyOp::WhereCond(WhereCond {
                     input,

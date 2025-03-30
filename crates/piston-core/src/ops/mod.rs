@@ -22,6 +22,7 @@ mod rope;
 mod scatter_add;
 mod select;
 mod softmax;
+mod ternary;
 mod trilu;
 mod unary;
 mod view;
