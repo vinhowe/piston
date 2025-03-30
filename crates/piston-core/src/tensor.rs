@@ -491,6 +491,57 @@ macro_rules! impl_binary_op {
     };
 }
 
+macro_rules! impl_ternary_op {
+    ($method_name:ident, $op:expr) => {
+        #[allow(clippy::should_implement_trait)]
+        pub fn $method_name(
+            self,
+            tensor1: OpTensor,
+            tensor2: OpTensor,
+            value: f32,
+        ) -> Result<Self> {
+            let device = self.device.clone();
+            // Broadcast tensors
+            let (mut input, mut t1, mut t2) = (self, tensor1, tensor2);
+            let shapes = &[input.shape(), t1.shape(), t2.shape()];
+            let broadcasted = Shape::multi_broadcast(shapes);
+            if broadcasted.is_none() {
+                let failed = shapes.iter().map(|s| (*s).clone()).collect::<Vec<_>>();
+                return Err(InvariantError::BroadcastingFailed(failed).into());
+            }
+            let broadcasted = broadcasted.unwrap();
+            let input_required = shapes[0] != &broadcasted;
+            let t1_required = shapes[1] != &broadcasted;
+            let t2_required = shapes[2] != &broadcasted;
+
+            // TODO: Incorporate this into the outer Tensor
+            // if inplace && (left_required || right_required) {
+            //     return Err(InvariantError::InplaceBroadcast.into());
+            // }
+
+            if input_required {
+                input = input.broadcast_to(broadcasted.clone())?;
+            }
+            if t1_required {
+                t1 = t1.broadcast_to(broadcasted.clone())?;
+            }
+            if t2_required {
+                t2 = t2.broadcast_to(broadcasted.clone())?;
+            }
+
+            let ternary = Ternary::new(input, t1, t2, value, $op);
+            let new_view = ternary.compute_view()?;
+
+            Ok(OpTensor::lazy(
+                LazyOp::Ternary(ternary),
+                new_view,
+                device,
+                false,
+            ))
+        }
+    };
+}
+
 macro_rules! impl_cmp_op {
     ($method_name:ident, $op:expr) => {
         #[allow(clippy::should_implement_trait)]
@@ -546,6 +597,9 @@ impl OpTensor {
     impl_binary_op!(sub, BinaryOp::Sub);
     impl_binary_op!(mul, BinaryOp::Mul);
     impl_binary_op!(div, BinaryOp::Div);
+
+    impl_ternary_op!(addcdiv, TernaryOp::Addcdiv);
+    impl_ternary_op!(addcmul, TernaryOp::Addcmul);
 
     impl_cmp_op!(eq, CmpOp::Eq);
     impl_cmp_op!(ne, CmpOp::Ne);
@@ -2029,6 +2083,7 @@ pub fn compile_gpu_for_op(
 ) -> Option<CompiledOp> {
     match op {
         LazyOp::Binary(b) => b.compile_gpu(gpu_compile_key, gpu_device, debug).ok(),
+        LazyOp::Ternary(t) => t.compile_gpu(gpu_compile_key, gpu_device, debug).ok(),
         LazyOp::Cast(c) => c.compile_gpu(gpu_compile_key, gpu_device, debug).ok(),
         LazyOp::Matmul(m) => m.compile_gpu(gpu_compile_key, gpu_device, debug).ok(),
         LazyOp::Softmax(s) => s.compile_gpu(gpu_compile_key, gpu_device, debug).ok(),
@@ -2577,6 +2632,9 @@ impl Tensor {
     impl_binary_op_wrapper!(sub, BinaryOp::Sub);
     impl_binary_op_wrapper!(mul, BinaryOp::Mul);
     impl_binary_op_wrapper!(div, BinaryOp::Div);
+
+    impl_ternary_op_wrapper!(addcdiv, TernaryOp::Addcdiv);
+    impl_ternary_op_wrapper!(addcmul, TernaryOp::Addcmul);
 
     impl_cmp_op_wrapper!(eq, CmpOp::Eq);
     impl_cmp_op_wrapper!(ne, CmpOp::Ne);
