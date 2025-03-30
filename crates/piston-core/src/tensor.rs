@@ -1767,6 +1767,7 @@ impl OpTensor {
     ) -> Option<ComputeCompileKey<'a>> {
         match op {
             LazyOp::Binary(b) => b.create_gpu_compile_key(self, can_inplace, uniform).ok(),
+            LazyOp::Ternary(t) => t.create_gpu_compile_key(self, can_inplace, uniform).ok(),
             LazyOp::Cast(c) => c.create_gpu_compile_key(self, can_inplace, uniform).ok(),
             LazyOp::Matmul(m) => m.create_gpu_compile_key(self, can_inplace, uniform).ok(),
             LazyOp::Softmax(s) => s.create_gpu_compile_key(self, can_inplace, uniform).ok(),
