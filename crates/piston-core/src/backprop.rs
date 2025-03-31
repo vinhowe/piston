@@ -794,7 +794,7 @@ impl OpTensor {
                     accumulate_add(arg, arg_grad)?;
                 }
                 LazyOp::Gather(Gather { src, ids, dim, .. }) => {
-                    let sum_grad = or_insert(&src)?;
+                    let sum_grad = or_insert(src)?;
                     src.set_grad(
                         sum_grad
                             .clone()
