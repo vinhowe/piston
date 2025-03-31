@@ -321,6 +321,20 @@ impl OpTensor {
                     let rhs_grad = grad.mul(lhs.clone())?.div(rhs.clone().square()?)?;
                     accumulate_sub(rhs, rhs_grad)?;
                 }
+                LazyOp::Binary(Binary {
+                    lhs,
+                    rhs,
+                    op: BinaryOp::Maximum,
+                }) => {
+                    let lhs_mask = lhs.clone().gt(rhs.clone())?.cast(grad.dtype())?;
+                    let rhs_mask = lhs_mask.clone().affine(-1., 1.)?;
+
+                    let lhs_grad = grad.clone().mul(lhs_mask)?;
+                    accumulate_add(lhs, lhs_grad)?;
+
+                    let rhs_grad = grad.mul(rhs_mask)?;
+                    accumulate_add(rhs, rhs_grad)?;
+                }
                 LazyOp::Ternary(Ternary {
                     input,
                     tensor1,

@@ -84,7 +84,7 @@ macro_rules! impl_cpu_binary_op {
 macro_rules! cpu_binary_op_fn {
     ($method_name:ident, $op:expr) => {
         #[inline]
-        pub(crate) fn $method_name<T: TensorDType + NumOps>(lhs: &mut [T], rhs: &[T]) {
+        pub(crate) fn $method_name<T: TensorDType + NumOps + PartialOrd>(lhs: &mut [T], rhs: &[T]) {
             binary_map_inplace::<T>(lhs, rhs, $op);
         }
     };
@@ -94,6 +94,7 @@ cpu_binary_op_fn!(add, |lhs, rhs| lhs + rhs);
 cpu_binary_op_fn!(sub, |lhs, rhs| lhs - rhs);
 cpu_binary_op_fn!(mul, |lhs, rhs| lhs * rhs);
 cpu_binary_op_fn!(div, |lhs, rhs| lhs / rhs);
+cpu_binary_op_fn!(maximum, |lhs, rhs| if lhs > rhs { lhs } else { rhs });
 
 macro_rules! impl_cpu_binary {
     ($dtype:ident) => {
@@ -102,7 +103,11 @@ macro_rules! impl_cpu_binary {
             impl_cpu_binary_op!(sub, $dtype, |lhs, rhs| lhs - rhs);
             impl_cpu_binary_op!(mul, $dtype, |lhs, rhs| lhs * rhs);
             impl_cpu_binary_op!(div, $dtype, |lhs, rhs| lhs / rhs);
-
+            impl_cpu_binary_op!(maximum, $dtype, |lhs, rhs| if lhs > rhs {
+                lhs
+            } else {
+                rhs
+            });
             #[maybe_async]
             pub async fn apply(op: &Binary, dst: OpTensor) -> Result<OpTensor, OperationError> {
                 match op.op() {
@@ -110,6 +115,7 @@ macro_rules! impl_cpu_binary {
                     BinaryOp::Sub => Self::sub(op.lhs(), op.rhs(), &dst).await,
                     BinaryOp::Mul => Self::mul(op.lhs(), op.rhs(), &dst).await,
                     BinaryOp::Div => Self::div(op.lhs(), op.rhs(), &dst).await,
+                    BinaryOp::Maximum => Self::maximum(op.lhs(), op.rhs(), &dst).await,
                 }
             }
         }
