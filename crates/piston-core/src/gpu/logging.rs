@@ -1,6 +1,4 @@
 #[cfg(target_arch = "wasm32")]
-use super::{PooledGPUBuffer, WgpuDevice};
-#[cfg(target_arch = "wasm32")]
 use crate::wgpu_buffer_to_cpu_buffer;
 use crate::{DType, ExportedTensorProfilingEntry, HashMap, Shape, Tensor, TensorId};
 use derive_new::new;
