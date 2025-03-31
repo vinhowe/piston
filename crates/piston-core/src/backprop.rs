@@ -325,14 +325,24 @@ impl OpTensor {
                     lhs,
                     rhs,
                     op: BinaryOp::Maximum,
+                })
+                | LazyOp::Binary(Binary {
+                    lhs,
+                    rhs,
+                    op: BinaryOp::Minimum,
                 }) => {
-                    let lhs_mask = lhs.clone().gt(rhs.clone())?.cast(grad.dtype())?;
-                    let rhs_mask = lhs_mask.clone().affine(-1., 1.)?;
+                    let mask_lhs = (*node).clone().eq(lhs.clone())?.cast(grad.dtype())?;
+                    let mask_rhs = (*node).clone().eq(rhs.clone())?.cast(grad.dtype())?;
 
-                    let lhs_grad = grad.clone().mul(lhs_mask)?;
+                    // If both masks are 1 one the same point, we want to scale the
+                    // gradient by 0.5 rather than 1.
+                    let lhs_grad = mask_lhs
+                        .clone()
+                        .mul(grad.clone())?
+                        .div((mask_rhs.clone() + 1.)?)?;
                     accumulate_add(lhs, lhs_grad)?;
 
-                    let rhs_grad = grad.mul(rhs_mask)?;
+                    let rhs_grad = mask_rhs.mul(grad)?.div((mask_lhs + 1.)?)?;
                     accumulate_add(rhs, rhs_grad)?;
                 }
                 LazyOp::Ternary(Ternary {
