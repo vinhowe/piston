@@ -597,6 +597,7 @@ impl OpTensor {
     impl_binary_op!(sub, BinaryOp::Sub);
     impl_binary_op!(mul, BinaryOp::Mul);
     impl_binary_op!(div, BinaryOp::Div);
+    impl_binary_op!(maximum, BinaryOp::Maximum);
 
     impl_ternary_op!(addcdiv, TernaryOp::Addcdiv);
     impl_ternary_op!(addcmul, TernaryOp::Addcmul);
@@ -2632,6 +2633,7 @@ impl Tensor {
     impl_binary_op_wrapper!(sub, BinaryOp::Sub);
     impl_binary_op_wrapper!(mul, BinaryOp::Mul);
     impl_binary_op_wrapper!(div, BinaryOp::Div);
+    impl_binary_op_wrapper!(maximum, BinaryOp::Maximum);
 
     impl_ternary_op_wrapper!(addcdiv, TernaryOp::Addcdiv);
     impl_ternary_op_wrapper!(addcmul, TernaryOp::Addcmul);

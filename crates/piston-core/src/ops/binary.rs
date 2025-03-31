@@ -21,6 +21,7 @@ pub enum BinaryOp {
     Sub,
     Mul,
     Div,
+    Maximum,
 }
 
 impl BinaryOp {
@@ -30,15 +31,17 @@ impl BinaryOp {
             BinaryOp::Sub => "sub",
             BinaryOp::Mul => "mul",
             BinaryOp::Div => "div",
+            BinaryOp::Maximum => "maximum",
         }
     }
 
-    pub fn kernel_operator(&self) -> &'static str {
+    pub fn kernel_expression(&self, op1: &'static str, op2: &'static str) -> String {
         match self {
-            BinaryOp::Add => "+",
-            BinaryOp::Sub => "-",
-            BinaryOp::Mul => "*",
-            BinaryOp::Div => "/",
+            BinaryOp::Add => wgsl! { 'op1 + 'op2 },
+            BinaryOp::Sub => wgsl! { 'op1 - 'op2 },
+            BinaryOp::Mul => wgsl! { 'op1 * 'op2 },
+            BinaryOp::Div => wgsl! { 'op1 / 'op2 },
+            BinaryOp::Maximum => wgsl! { max('op1, 'op2) },
         }
     }
 }
@@ -99,14 +102,15 @@ impl KernelRenderable for BinaryKernels {
         });
 
         let BinaryKernels::Standard(inner) = self;
-        let op = inner.op.kernel_operator();
         let apply = if inplace {
+            let expression = inner.op.kernel_expression("val", "B[index]");
             wgsl! {
                 let val = A[index];
-                A[index] = val 'op B[index];
+                A[index] = 'expression;
             }
         } else {
-            wgsl! { Y[index] = A[index] 'op B[index]; }
+            let expression = inner.op.kernel_expression("A[index]", "B[index]");
+            wgsl! { Y[index] = 'expression; }
         };
         kernel_builder.write_main(apply);
         Ok(kernel_builder.build()?)
@@ -151,6 +155,7 @@ impl Operation for Binary {
             BinaryOp::Sub => "Sub",
             BinaryOp::Mul => "Mul",
             BinaryOp::Div => "Div",
+            BinaryOp::Maximum => "Maximum",
         }
     }
 
@@ -317,6 +322,7 @@ def {}(a, b):
             BinaryOp::Sub => a.sub(b)?,
             BinaryOp::Mul => a.mul(b)?,
             BinaryOp::Div => a.div(b)?,
+            BinaryOp::Maximum => a.maximum(b)?,
         };
 
         let d = c.to(&Device::CPU)?;
