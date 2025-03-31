@@ -22,6 +22,7 @@ pub enum BinaryOp {
     Mul,
     Div,
     Maximum,
+    Minimum,
 }
 
 impl BinaryOp {
@@ -32,6 +33,7 @@ impl BinaryOp {
             BinaryOp::Mul => "mul",
             BinaryOp::Div => "div",
             BinaryOp::Maximum => "maximum",
+            BinaryOp::Minimum => "minimum",
         }
     }
 
@@ -42,6 +44,7 @@ impl BinaryOp {
             BinaryOp::Mul => wgsl! { 'op1 * 'op2 },
             BinaryOp::Div => wgsl! { 'op1 / 'op2 },
             BinaryOp::Maximum => wgsl! { max('op1, 'op2) },
+            BinaryOp::Minimum => wgsl! { min('op1, 'op2) },
         }
     }
 }
@@ -156,6 +159,7 @@ impl Operation for Binary {
             BinaryOp::Mul => "Mul",
             BinaryOp::Div => "Div",
             BinaryOp::Maximum => "Maximum",
+            BinaryOp::Minimum => "Minimum",
         }
     }
 
@@ -323,6 +327,7 @@ def {}(a, b):
             BinaryOp::Mul => a.mul(b)?,
             BinaryOp::Div => a.div(b)?,
             BinaryOp::Maximum => a.maximum(b)?,
+            BinaryOp::Minimum => a.minimum(b)?,
         };
 
         let d = c.to(&Device::CPU)?;

@@ -108,6 +108,11 @@ macro_rules! impl_cpu_binary {
             } else {
                 rhs
             });
+            impl_cpu_binary_op!(minimum, $dtype, |lhs, rhs| if lhs < rhs {
+                lhs
+            } else {
+                rhs
+            });
             #[maybe_async]
             pub async fn apply(op: &Binary, dst: OpTensor) -> Result<OpTensor, OperationError> {
                 match op.op() {
@@ -116,6 +121,7 @@ macro_rules! impl_cpu_binary {
                     BinaryOp::Mul => Self::mul(op.lhs(), op.rhs(), &dst).await,
                     BinaryOp::Div => Self::div(op.lhs(), op.rhs(), &dst).await,
                     BinaryOp::Maximum => Self::maximum(op.lhs(), op.rhs(), &dst).await,
+                    BinaryOp::Minimum => Self::minimum(op.lhs(), op.rhs(), &dst).await,
                 }
             }
         }
