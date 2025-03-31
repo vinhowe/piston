@@ -3123,6 +3123,10 @@ impl Tensor {
         Ok(Self::wrap(self.inner.read().clone().bernoulli()?))
     }
 
+    pub fn bernoulli_(self) -> Result<Self> {
+        Ok(self.wrap_inplace(self.inner.read().clone().bernoulli()?))
+    }
+
     pub fn zeros<T: TensorDType + num_traits::AsPrimitive<f32>, S: Into<Shape>>(
         shape: S,
         device: &Device,
