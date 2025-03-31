@@ -3171,7 +3171,7 @@ impl Tensor {
         Ok(Self::wrap(self.inner.read().clone().triu(k)?))
     }
 
-    pub fn triu_<D: Dim>(self, k: Option<i32>) -> Result<Self> {
+    pub fn triu_(self, k: Option<i32>) -> Result<Self> {
         let inner = self.inner.read().clone();
         Ok(self.wrap_inplace(inner.triu(k)?))
     }
@@ -3180,7 +3180,7 @@ impl Tensor {
         Ok(Self::wrap(self.inner.read().clone().tril(k)?))
     }
 
-    pub fn tril_<D: Dim>(self, k: Option<i32>) -> Result<Self> {
+    pub fn tril_(self, k: Option<i32>) -> Result<Self> {
         let inner = self.inner.read().clone();
         Ok(self.wrap_inplace(inner.tril(k)?))
     }
