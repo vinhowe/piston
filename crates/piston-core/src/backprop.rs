@@ -71,7 +71,7 @@ fn accumulate_sub(tensor: &OpTensor, grad: OpTensor) -> Result<()> {
             // TODO(vinhowe): This is a hack to avoid creating zeros and then adding; it does
             // increase perf.
             // It's not great; we should do a tensor copy or something.
-            tensor.set_grad(grad.affine(1., 0.)?);
+            tensor.set_grad(grad.neg()?);
         }
     }
     Ok(())
