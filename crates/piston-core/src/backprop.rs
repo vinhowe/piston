@@ -743,51 +743,82 @@ impl OpTensor {
                     bias,
                     eps,
                 })) => {
-                    let d = arg.shape()[1] as f32;
+                    // TODO(vinhowe): The following is an AI-generated celebration of laziness,
+                    // and it requires many, many backward ops for a single forward op. This should
+                    // instead be implemented in a single backward kernel, and its implementation
+                    // should be understood by its author (the human, not Gemini 2.5 Pro).
+                    let rank = arg.rank();
+                    let norm_axis = rank - 1;
+                    let d = arg.shape()[norm_axis] as f32;
 
-                    // Retrieve the necessary intermediate values from the forward pass
-                    let mean = (arg.clone().sum(0)? / d)?; // Compute mean of the input
-                    let mean_broadcast = mean.clone().broadcast_to(arg.shape().clone())?;
+                    // Determine axes to reduce over for gamma/beta grads (all except norm_axis)
+                    let mut sum_axes: Vec<usize> = (0..rank).collect();
+                    sum_axes.remove(norm_axis);
 
-                    let var = (arg.clone().sub(mean_broadcast.clone())?.square()?.sum(0)? / d)?;
-
-                    let x_normed = arg
+                    // Recompute intermediate values using the correct normalization axis
+                    // Ideally, these should be cached from the forward pass
+                    let mean = arg
                         .clone()
-                        .sub(mean_broadcast)?
-                        .div((var.clone() + *eps)?.sqrt()?)?;
+                        // Keepdim for broadcasting
+                        .sum_keepdim(norm_axis)?
+                        .affine(1. / d, 0.)?;
+                    let var = arg
+                        .clone()
+                        .sub(mean.clone())?
+                        .square()?
+                        .sum_keepdim(norm_axis)?
+                        .affine(1. / d, 0.)?; // Keepdim for broadcasting
 
-                    // Compute the gradients with respect to beta and gamma
-                    let grad_beta = grad.clone().sum_keepdim(0)?;
-                    let grad_gamma = (x_normed.clone().mul(grad.clone()))?.sum_keepdim(0)?;
+                    let std = (var.clone() + *eps)?.sqrt()?;
+                    let x_normed = arg.clone().sub(mean)?.div(std.clone())?;
 
-                    // Compute the gradient with respect to the normalized input
+                    // Compute gradients w.r.t scale (gamma) and bias (beta)
+                    let grad_gamma = x_normed
+                        .clone()
+                        .mul(grad.clone())?
+                        .sum_keepdim(sum_axes.as_slice())?;
+                    accumulate_add(scale, grad_gamma)?;
+
+                    if let Some(bias) = bias {
+                        let grad_beta = grad.clone().sum_keepdim(sum_axes.as_slice())?;
+                        accumulate_add(bias, grad_beta)?;
+                    }
+
+                    // Compute gradient w.r.t normalized input
                     let grad_x_normed = grad.clone().mul(scale.clone())?;
 
-                    // Compute the gradients with respect to mean and variance
-                    let std = (var.clone() + *eps)?.sqrt()?;
-                    let grad_mean =
-                        (grad_x_normed.clone().sum_keepdim(1)?.neg())?.div(std.clone())?;
-                    let grad_var = ((grad_x_normed.clone().mul(x_normed.clone()))?
-                        .sum_keepdim(1)?
-                        .neg()?
-                        .div((var.clone() + *eps)?)?
-                        / 2.0)?;
-
-                    let grad_x = grad_x_normed
+                    // Compute gradients w.r.t mean and variance (using correct reduction axis)
+                    // dL/dmu = sum(dL/dx_normed * (-1/std)) over norm_axis
+                    let grad_mean = grad_x_normed
                         .clone()
-                        .div(std.clone())?
-                        .add((grad_mean.clone() / d)?)?
+                        .sum_keepdim(norm_axis)?
+                        .neg()?
+                        .div(std.clone())?;
+
+                    // dL/dVar = sum(dL/dx_normed * (-x_normed)) / (2 * std^2) over norm_axis
+                    let grad_var = grad_x_normed
+                        .clone()
+                        .mul(x_normed.clone())?
+                        .sum_keepdim(norm_axis)?
+                        .neg()?
+                        .div(var.clone().affine(1., *eps)?)? // std^2 = var + eps
+                        .affine(0.5, 0.)?;
+
+                    // Compute gradient w.r.t input x using the chain rule:
+                    // dL/dx = (dL/dx_normed / std) + (dL/dvar * dvar/dx) + (dL/dmu * dmu/dx)
+                    // dvar/dx = (2/N) * (x - mu)
+                    // dmu/dx = 1/N
+                    let grad_x = grad_x_normed
+                        .div(std.clone())? // (dL/dx_normed / std)
                         .add(
-                            (x_normed
-                                .clone()
-                                .mul(std.clone())?
-                                .mul((grad_var.clone() * 2.0)?)?
-                                / d)?,
-                        )?;
+                            grad_var
+                                .mul(x_normed.clone().mul(std)?)?
+                                .affine(2. / d, 0.)?,
+                        )?
+                        // dL/dvar * (2/N) * (x - mu) = dL/dvar * (2/N) * x_normed * std
+                        .add(grad_mean.affine(1. / d, 0.)?)?; // dL/dmu * (1/N)
 
                     accumulate_add(arg, grad_x)?;
-                    accumulate_add(scale, grad_gamma)?;
-                    accumulate_add(&bias.clone().unwrap(), grad_beta)?;
                 }
                 LazyOp::Affine(Affine { src: arg, mul, .. }) => {
                     let arg_grad = grad.affine(*mul, 0.)?;
