@@ -825,12 +825,10 @@ impl OpTensor {
                     accumulate_add(arg, arg_grad)?;
                 }
                 LazyOp::Gather(Gather { src, ids, dim, .. }) => {
-                    let sum_grad = or_insert(src)?;
-                    src.set_grad(
-                        sum_grad
-                            .clone()
-                            .scatter_add(ids.clone(), grad.clone(), *dim)?,
-                    );
+                    // We can't use or_insert here because we need to scatter into a zero tensor.
+                    let sum_grad = src.zeros_like::<f32>(None, false)?;
+                    let src_grad = sum_grad.scatter_add(ids.clone(), grad.clone(), *dim)?;
+                    accumulate_add(src, src_grad)?;
                 }
                 LazyOp::ScatterAdd(ScatterAdd { dst, src, ids, dim }) => {
                     accumulate_add(dst, grad.clone())?;
