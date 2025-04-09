@@ -49,8 +49,8 @@ fn or_insert(tensor: &OpTensor) -> Result<OpTensor> {
 /// Otherwise, just store `grad` as-is (no need to create zeros and then add).
 fn accumulate_add(tensor: &OpTensor, grad: OpTensor) -> Result<()> {
     match tensor.grad() {
-        Some(grad) => {
-            tensor.set_grad(grad.clone().add(grad)?);
+        Some(existing_grad) => {
+            tensor.set_grad(existing_grad.clone().add(grad)?);
         }
         None => {
             // TODO(vinhowe): This is a hack to avoid creating zeros and then adding; it does
@@ -64,8 +64,8 @@ fn accumulate_add(tensor: &OpTensor, grad: OpTensor) -> Result<()> {
 
 fn accumulate_sub(tensor: &OpTensor, grad: OpTensor) -> Result<()> {
     match tensor.grad() {
-        Some(grad) => {
-            tensor.set_grad(grad.clone().sub(grad)?);
+        Some(existing_grad) => {
+            tensor.set_grad(existing_grad.clone().sub(grad)?);
         }
         None => {
             // TODO(vinhowe): This is a hack to avoid creating zeros and then adding; it does
