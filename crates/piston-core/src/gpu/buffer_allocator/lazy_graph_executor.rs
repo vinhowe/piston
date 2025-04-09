@@ -290,7 +290,9 @@ impl LazyGraphExecutor {
                             to_modify_src.requires_grad()
                         );
 
-                        if !self.inplace_support {
+                        if tensor.is_inplace() {
+                            true
+                        } else if !self.inplace_support {
                             // TODO(vinhowe): This really is horrible; we should be able to just
                             // check if the op supports inplace.
                             match tensor.op() {
