@@ -8,8 +8,8 @@ use piston_macros::WgslMetadata;
 use crate::{
     gpu::{dtype::WgslDType, BindGroupLayoutDescriptor},
     rvec, wgc, wgs, Array, BindingMode, BuiltIn, DType, GPUOperation, Kernel, KernelElement,
-    KernelRenderable, KernelSource, OpGuards, Operation, OperationError, RVec, Scalar, StorageView,
-    OpTensor, Vec2, Vec4, WgslKernelBuilder, WgslPrimitive, WorkgroupSize, Workload,
+    KernelRenderable, KernelSource, OpGuards, OpTensor, Operation, OperationError, RVec, Scalar,
+    StorageView, Vec2, Vec4, WgslKernelBuilder, WgslPrimitive, WorkgroupSize, Workload,
 };
 use derive_new::new;
 use inline_wgsl::wgsl;
@@ -447,7 +447,9 @@ def manual_rms_norm(input, scale):
         let scale = OpTensor::randn::<f32, _>(0., 1., N, Device::CPU, false)?;
 
         let bias = match var {
-            NormVariant::LayerNorm => Some(OpTensor::randn::<f32, _>(0., 1., N, Device::CPU, false)?),
+            NormVariant::LayerNorm => {
+                Some(OpTensor::randn::<f32, _>(0., 1., N, Device::CPU, false)?)
+            }
             NormVariant::RMSNorm => None,
         };
 
