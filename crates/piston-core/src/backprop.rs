@@ -611,11 +611,10 @@ impl OpTensor {
                     input: arg,
                     op: UnaryOp::Relu,
                 }) => {
-                    let relu_grad = arg.clone().affine(2.0, 0.0)?.mul(
-                        arg.clone()
-                            .ge(arg.clone().zeros_like::<f32>(None, false)?)?
-                            .cast(arg.dtype())?,
-                    )?;
+                    let relu_grad = arg
+                        .clone()
+                        .ge(arg.clone().zeros_like::<f32>(None, false)?)?
+                        .cast(arg.dtype())?;
                     let arg_grad = grad.mul(relu_grad)?;
                     accumulate_add(arg, arg_grad)?;
                 }
@@ -623,10 +622,11 @@ impl OpTensor {
                     input: arg,
                     op: UnaryOp::Relu2,
                 }) => {
-                    let relu_grad = arg
-                        .clone()
-                        .ge(arg.clone().zeros_like::<f32>(None, false)?)?
-                        .cast(arg.dtype())?;
+                    let relu_grad = arg.clone().affine(2.0, 0.0)?.mul(
+                        arg.clone()
+                            .ge(arg.clone().zeros_like::<f32>(None, false)?)?
+                            .cast(arg.dtype())?,
+                    )?;
                     let arg_grad = grad.mul(relu_grad)?;
                     accumulate_add(arg, arg_grad)?;
                 }
