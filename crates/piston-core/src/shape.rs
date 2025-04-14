@@ -131,7 +131,10 @@ impl Shape {
         self.0.drain(range)
     }
 
-    pub fn slice(&self, range: std::ops::Range<usize>) -> Self {
+    pub fn slice<R>(&self, range: R) -> Self
+    where
+        R: std::ops::RangeBounds<usize> + std::slice::SliceIndex<[usize], Output = [usize]>,
+    {
         Shape(self.0[range].to_vec().into())
     }
 
