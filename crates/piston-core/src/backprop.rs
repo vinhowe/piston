@@ -777,11 +777,11 @@ impl OpTensor {
                         .clone()
                         .mul(grad.clone())?
                         .sum_keepdim(sum_axes.as_slice())?;
-                    accumulate_add(scale, grad_gamma)?;
+                    accumulate_add(scale, grad_gamma.squeeze_all()?)?;
 
                     if let Some(bias) = bias {
                         let grad_beta = grad.clone().sum_keepdim(sum_axes.as_slice())?;
-                        accumulate_add(bias, grad_beta)?;
+                        accumulate_add(bias, grad_beta.squeeze_all()?)?;
                     }
 
                     // Compute gradient w.r.t normalized input
