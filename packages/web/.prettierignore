@@ -1,0 +1,5 @@
+dist
+coverage
+.rpt2_cache
+node_modules
+docs
