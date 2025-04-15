@@ -136,8 +136,8 @@ async function trainingLoop(
 
 			const { example: evalExample, metric: evalMetric } = task.eval(config.task_parameters);
 
-			// After every 10 steps, evaluate the model
-			if (step % 10 === 0) {
+			// After every n steps, evaluate the model
+			if (step % 50 === 0) {
 				const [streamingSequence, streamingTarget] = evalExample();
 				let streamingExampleCompletion: number[] | null = null;
 				const streamingExampleLogits: number[] = [];
