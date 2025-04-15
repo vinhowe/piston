@@ -20,6 +20,7 @@ use slotmap::Key;
 #[cfg(not(feature = "debug"))]
 use std::collections::BTreeMap;
 use std::iter::Peekable;
+#[cfg(feature = "debug")]
 use std::sync::Arc;
 use wgpu::SubmissionIndex;
 
