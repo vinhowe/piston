@@ -571,10 +571,6 @@
 						isTraining = true;
 					}
 
-					if (currentStepCount === 3) {
-						addMessage('Graph hash is consistent; reallocating with shared objects...');
-					}
-
 					const currentTime = performance.now();
 					const stepsPerSecond = 1000 / (currentTime - lastStepTime);
 					lastStepTime = currentTime;
