@@ -4,3 +4,7 @@
 @theme {
   --font-mono: 'JetBrains Mono', monospace;
 }
+
+:root {
+    interpolate-size: allow-keywords;
+}
