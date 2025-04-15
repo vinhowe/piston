@@ -14,7 +14,7 @@
 		"format": "prettier --write ."
 	},
 	"dependencies": {
-		"@piston-ml/piston-web": "link:../../target/pkg/piston-web",
+		"@piston-ml/piston-web": "workspace:^",
 		"chart.js": "^4.4.7",
 		"mathjs": "^14.2.1"
 	},
