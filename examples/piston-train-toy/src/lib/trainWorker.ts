@@ -124,6 +124,8 @@ async function trainingLoop(
 
 			const logOutput = await trainer.take_step_log();
 			const usingCache = logOutput?.cached ?? false;
+			const totalElapsed = 0;
+			const averageElapsed = 0;
 			const logits = result.get('logits') as Map<string, Uint8Array | number[]>;
 			const loss = result.get('loss') as Map<string, number>;
 			const attn_masks = result.get('attn_masks') as Map<string, Uint8Array | number[]>;
@@ -201,6 +203,8 @@ async function trainingLoop(
 			if (sessionId === currentSession) {
 				self.postMessage({
 					type: 'step',
+					totalElapsed,
+					averageElapsed,
 					usingCache,
 					input: input.map((x) => x.map((t) => tokenizer.ids[t])),
 					target: target.map((t) => t.map((t) => tokenizer.ids[t])),

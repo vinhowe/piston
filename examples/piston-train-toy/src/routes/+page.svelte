@@ -17,12 +17,16 @@
 	let memoryChart: Chart;
 	let lrChart: Chart;
 	let accuracyChart: Chart;
+	let totalElapsedChart: Chart;
+	let averageElapsedChart: Chart;
 	let usingCacheChart: Chart;
 	let canvas: HTMLCanvasElement;
 	let speedCanvas: HTMLCanvasElement;
 	let memoryCanvas: HTMLCanvasElement;
 	let lrCanvas: HTMLCanvasElement;
 	let accuracyCanvas: HTMLCanvasElement;
+	let totalElapsedCanvas: HTMLCanvasElement;
+	let averageElapsedCanvas: HTMLCanvasElement;
 	let usingCacheCanvas: HTMLCanvasElement;
 	let attentionCanvases: HTMLCanvasElement[][] = [];
 	let showAdvanced = false;
@@ -383,6 +387,26 @@
 			pointStyle: false
 		});
 
+		// Add dataset to total elapsed chart
+		totalElapsedChart.data.datasets.push({
+			label: '', // Will be set by updateAllLabels
+			data: [],
+			borderColor: colors[runCount % colors.length],
+			tension: 0.1,
+			order: -runCount,
+			pointStyle: false
+		});
+
+		// Add dataset to average elapsed chart
+		averageElapsedChart.data.datasets.push({
+			label: '', // Will be set by updateAllLabels
+			data: [],
+			borderColor: colors[runCount % colors.length],
+			tension: 0.1,
+			order: -runCount,
+			pointStyle: false
+		});
+
 		// Add dataset to using cache chart
 		usingCacheChart.data.datasets.push({
 			label: '', // Will be set by updateAllLabels
@@ -578,6 +602,10 @@
 
 					const currentLossDataset = chart.data.datasets[chart.data.datasets.length - 1];
 					const currentSpeedDataset = speedChart.data.datasets[speedChart.data.datasets.length - 1];
+					const currentTotalElapsedDataset =
+						totalElapsedChart.data.datasets[totalElapsedChart.data.datasets.length - 1];
+					const currentAverageElapsedDataset =
+						averageElapsedChart.data.datasets[averageElapsedChart.data.datasets.length - 1];
 					const currentUsingCacheDataset =
 						usingCacheChart.data.datasets[usingCacheChart.data.datasets.length - 1];
 					const currentMemoryDataset =
@@ -586,6 +614,8 @@
 
 					currentLossDataset.data.push(loss);
 					currentSpeedDataset.data.push(stepsPerSecond);
+					currentTotalElapsedDataset.data.push(data.totalElapsed);
+					currentAverageElapsedDataset.data.push(data.averageElapsed);
 					currentUsingCacheDataset.data.push(data.usingCache * 1);
 					currentMemoryDataset.data.push(Number(data.usage_bytes) / (1024 * 1024)); // Convert bigint to number then to MB
 					currentLrDataset.data.push(data.learning_rate);
@@ -608,6 +638,8 @@
 					const labels = Array.from({ length: maxLength }, (_, i) => i.toString());
 					chart.data.labels = labels;
 					speedChart.data.labels = labels;
+					totalElapsedChart.data.labels = labels;
+					averageElapsedChart.data.labels = labels;
 					usingCacheChart.data.labels = labels;
 					memoryChart.data.labels = labels;
 					lrChart.data.labels = labels;
@@ -673,6 +705,8 @@
 
 					chart.update();
 					speedChart.update();
+					totalElapsedChart.update();
+					averageElapsedChart.update();
 					usingCacheChart.update();
 					memoryChart.update();
 					lrChart.update();
@@ -744,6 +778,78 @@
 					title: {
 						display: true,
 						text: 'Steps/Second',
+						font: {
+							weight: 'bold'
+						}
+					}
+				},
+				datasets: {
+					line: {
+						order: -1
+					}
+				}
+			}
+		});
+
+		// Initialize total elapsed chart
+		totalElapsedChart = new Chart(totalElapsedCanvas, {
+			type: 'line',
+			data: {
+				labels: [],
+				datasets: []
+			},
+			options: {
+				responsive: true,
+				animation: false,
+				aspectRatio: 4,
+				scales: {
+					y: {
+						beginAtZero: true
+					}
+				},
+				plugins: {
+					legend: {
+						display: false
+					},
+					title: {
+						display: true,
+						text: 'Total Elapsed',
+						font: {
+							weight: 'bold'
+						}
+					}
+				},
+				datasets: {
+					line: {
+						order: -1
+					}
+				}
+			}
+		});
+
+		// Initialize average elapsed chart
+		averageElapsedChart = new Chart(averageElapsedCanvas, {
+			type: 'line',
+			data: {
+				labels: [],
+				datasets: []
+			},
+			options: {
+				responsive: true,
+				animation: false,
+				aspectRatio: 4,
+				scales: {
+					y: {
+						beginAtZero: true
+					}
+				},
+				plugins: {
+					legend: {
+						display: false
+					},
+					title: {
+						display: true,
+						text: 'Average Elapsed',
 						font: {
 							weight: 'bold'
 						}
@@ -1069,6 +1175,12 @@
 			</div>
 			<div class="relative w-full">
 				<canvas bind:this={speedCanvas} />
+			</div>
+			<div class="relative w-full">
+				<canvas bind:this={totalElapsedCanvas} />
+			</div>
+			<div class="relative w-full">
+				<canvas bind:this={averageElapsedCanvas} />
 			</div>
 			<div class="relative w-full">
 				<canvas bind:this={usingCacheCanvas} />
