@@ -40,7 +40,7 @@
 	let currentModelHeads = 0;
 	let showAttention = true;
 	let attentionOnly = false;
-	let positional_encoding = 'alibi';
+	let positional_encoding = 'learned';
 	let seed: string | undefined = 'autoregressive';
 	let layernorm_position = 'pre';
 	let hasWebGPU = true;
@@ -50,11 +50,11 @@
 	let inplace_support = true;
 	// Model parameters
 	let n_layer = 1;
-	let n_head = 6;
-	let n_8_embd_per_head = 2;
+	let n_head = 12;
+	let n_8_embd_per_head = 8;
 	let n_embd = n_8_embd_per_head * 8 * n_head;
-	let batch_size = 2;
-	let dataset = 'sort';
+	let batch_size = 4;
+	let dataset = 'repeat';
 	let activation = 'swiglu';
 	let label_smoothing = -5; // log10 scale
 	let embd_pdrop = 0.1;
@@ -62,11 +62,11 @@
 	let resid_pdrop = 0.1;
 
 	// Optimizer parameters
-	let lr = -3; // log10 scale
+	let lr = -3.5; // log10 scale
 	let beta1 = 0.9;
 	let beta2 = 0.999;
 	let eps = -8; // log10 scale
-	let weight_decay = -1; // log10 scale
+	let weight_decay = -4; // log10 scale
 
 	// Track last parameter values to detect actual changes
 	let lastParams: Record<string, any> | null = null;
@@ -339,7 +339,7 @@
 				beta1,
 				beta2,
 				eps: Math.pow(10, eps),
-				weight_decay: Math.pow(10, weight_decay),
+				weight_decay: weight_decay === -4 ? 0 : Math.pow(10, weight_decay),
 				momentum,
 				scheduler_type,
 				scheduler_factor,
@@ -1289,17 +1289,15 @@
 				<h2 class="text-lg font-semibold mb-4">Model Architecture</h2>
 				<TickSlider bind:value={n_layer} min={1} max={6} label="Number of Transformer Layers" />
 
-				<TickSlider bind:value={n_head} min={1} max={6} label="Number of Attention Heads" />
+				<TickSlider bind:value={n_head} min={1} max={12} label="Number of Attention Heads" />
 
-				<div>
-					<TickSlider
-						bind:value={n_8_embd_per_head}
-						min={1}
-						max={8}
-						label="Embedding Size"
-						formatter={(v) => `${v * 8} per head`}
-					/>
-				</div>
+				<TickSlider
+					bind:value={n_8_embd_per_head}
+					min={1}
+					max={8}
+					label="Embedding Size"
+					formatter={(v) => `${v * 8} per head`}
+				/>
 
 				<div class="form-group">
 					<label class="block text-sm font-medium mb-1">Activation Function</label>
@@ -1405,7 +1403,7 @@
 					</div>
 				</div>
 
-				<LogSlider bind:value={lr} minExp={-4} maxExp={0} label="Learning Rate" />
+				<LogSlider bind:value={lr} minExp={-5} maxExp={0} label="Learning Rate" />
 
 				{#if optimizer_type === 'adamw'}
 					<button
