@@ -11,5 +11,13 @@
     "onlyBuiltDependencies": [
       "esbuild"
     ]
+  },
+  "scripts": {
+    "build": "pnpm -r build",
+    "test": "pnpm -r test",
+    "lint": "pnpm -r lint",
+    "changeset": "changeset",
+    "version": "changeset version",
+    "publish": "pnpm build && changeset publish"
   }
 }
