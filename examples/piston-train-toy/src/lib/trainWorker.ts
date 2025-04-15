@@ -1,5 +1,5 @@
-import { Trainer } from '@piston-ml/piston-web';
 import { type TaskConfigMap, tasks, type TaskSpec, type SimpleTokenizer } from '$lib/tasks';
+import { Trainer, init } from '@piston-ml/piston-web';
 
 let trainer: Trainer;
 let sessionCounter = 0;
@@ -46,6 +46,7 @@ function markStopTraining() {
 }
 
 async function initializeTrainer(config: TrainerConfig) {
+	await init();
 	// Stop all existing training sessions
 	markStopTraining();
 
