@@ -1,5 +1,5 @@
 mod access_granularity;
-pub mod dtype;
+pub(crate) mod dtype;
 mod kernel;
 mod kernel_binding;
 mod kernel_builder;
