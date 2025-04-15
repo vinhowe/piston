@@ -2,9 +2,9 @@
 @import 'tailwindcss';
 
 @theme {
-  --font-mono: 'JetBrains Mono', monospace;
+	--font-mono: 'JetBrains Mono', monospace;
 }
 
 :root {
-    interpolate-size: allow-keywords;
+	interpolate-size: allow-keywords;
 }
