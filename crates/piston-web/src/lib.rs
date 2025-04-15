@@ -1,5 +1,11 @@
 #![cfg(target_arch = "wasm32")]
+mod device;
+mod dtype;
 mod model;
+mod serialization;
+mod shape;
+mod tensor;
+
 #[cfg(test)]
 mod test_utils;
 

@@ -32,8 +32,12 @@ wasm-opt = [
 piston-models = { path = "../piston-models" }
 piston-nn = { path = "../piston-nn" }
 piston-datasets = { path = "../piston-datasets" }
+piston-macros = { path = "../piston-macros" }
 piston = { path = "../piston-core" }
+half = { workspace = true }
+wgpu = { workspace = true }
 wasm-bindgen = { workspace = true }
+safetensors = { workspace = true }
 wasm-bindgen-futures = { workspace = true }
 js-sys = { workspace = true }
 thiserror.workspace = true
@@ -51,6 +55,7 @@ tokenizers = { version = "0.19.1", default-features = false, features = [
 ] }
 futures = "0.3.30"
 async-trait = { workspace = true }
+paste = { workspace = true }
 [dependencies.web-sys]
 features = ['console', 'Window', 'Navigator']
 workspace = true
