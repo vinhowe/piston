@@ -492,8 +492,6 @@
 		// Check for WebGPU support
 		hasWebGPU = 'gpu' in navigator;
 
-		// Remove the canvas initialization since it's now handled by the reactive statement
-
 		// Initialize worker once
 		worker = new TrainWorker();
 		addMessage('Starting worker...');
