@@ -40,6 +40,7 @@
 	let seed: string | undefined = 'autoregressive';
 	let layernorm_position = 'pre';
 	let hasWebGPU = true;
+	let isSavingCheckpoint = false;
 
 	let caching_enabled = false;
 	let inplace_support = true;
@@ -435,6 +436,22 @@
 		attentionCanvases = []; // Clear canvases when stopping
 	}
 
+	function saveCheckpoint() {
+		if (!worker || !isTraining) return;
+
+		isSavingCheckpoint = true;
+		addMessage('Saving checkpoint...');
+
+		// Generate a filename with timestamp
+		const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+		const filename = `toy-transformer-checkpoint-${timestamp}.safetensors`;
+
+		worker.postMessage({
+			type: 'save_checkpoint',
+			path: filename
+		});
+	}
+
 	// function clearChart() {
 	// 	chart.data.datasets = [];
 	// 	speedChart.data.datasets = [];
@@ -466,6 +483,31 @@
 					break;
 				case 'modelReady':
 					addMessage('Model initialized and ready');
+					break;
+				case 'checkpoint_saved':
+					isSavingCheckpoint = false;
+					if (data.success) {
+						addMessage('Checkpoint saved successfully');
+
+						// Handle the download in the main thread
+						if (data.url) {
+							// Create an anchor element and trigger the download
+							const a = document.createElement('a');
+							a.href = data.url;
+							a.download = data.filename;
+							a.style.display = 'none';
+							document.body.appendChild(a);
+							a.click();
+
+							// Clean up
+							setTimeout(() => {
+								document.body.removeChild(a);
+								URL.revokeObjectURL(data.url);
+							}, 100);
+						}
+					} else {
+						addMessage(`Failed to save checkpoint: ${data.error || 'Unknown error'}`);
+					}
 					break;
 				case 'evalStreaming':
 					// Convert sequence and completion to strings
@@ -1062,6 +1104,13 @@
 						class="flex-1 bg-gray-500 text-white py-2 px-4 hover:bg-gray-600 transition-colors"
 					>
 						Stop
+					</button>
+					<button
+						on:click={saveCheckpoint}
+						disabled={isSavingCheckpoint}
+						class="flex-1 bg-blue-500 text-white py-2 px-4 hover:bg-blue-600 transition-colors disabled:bg-blue-300 disabled:cursor-not-allowed"
+					>
+						{isSavingCheckpoint ? 'Saving...' : 'Download Model'}
 					</button>
 				{/if}
 			</div>

@@ -5,6 +5,7 @@ let trainer: Trainer;
 let sessionCounter = 0;
 let currentSession = 0;
 const trainingSessions: Record<number, boolean> = {};
+let saveCheckpointPath: string | null = null;
 
 export interface TrainerConfig {
 	vocab_size: number;
@@ -86,6 +87,28 @@ async function trainingLoop(
 		// Skip if this isn't the current session anymore
 		if (sessionId !== currentSession) {
 			break;
+		}
+
+		// Check if we need to save a checkpoint
+		if (saveCheckpointPath !== null) {
+			try {
+				// Get the URL from the save_checkpoint method instead of handling the download directly
+				const url = await trainer.save_checkpoint();
+				self.postMessage({
+					type: 'checkpoint_saved',
+					success: true,
+					url: url,
+					filename: saveCheckpointPath
+				});
+			} catch (error) {
+				self.postMessage({
+					type: 'checkpoint_saved',
+					success: false,
+					error: error instanceof Error ? error.message : String(error)
+				});
+			}
+			// Reset the path after saving
+			saveCheckpointPath = null;
 		}
 
 		try {
@@ -217,6 +240,10 @@ async function trainingLoop(
 self.onmessage = async (e: MessageEvent) => {
 	if (e.data.type === 'stop') {
 		markStopTraining();
+		return;
+	}
+	if (e.data.type === 'save_checkpoint') {
+		saveCheckpointPath = e.data.path;
 		return;
 	}
 	// If we receive a configuration object, initialize a new trainer
