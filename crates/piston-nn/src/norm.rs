@@ -1,5 +1,5 @@
 use maybe_async::maybe_async;
-use piston::{DType, Tensor};
+use piston::Tensor;
 use piston_macros::scoped_module;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -58,34 +58,8 @@ impl crate::Module for LayerNorm {
     type Input = Tensor;
     type Output = Tensor;
 
-    // Shader-accelerated implementation that I don't know how to broadcast
-    // correctly
-    // fn schedule(&self, input: Self::Input) -> anyhow::Result<Tensor> {
-    //     input.layer_norm(self.weight.clone(), self.bias.clone(), self.eps)
-    // }
-
-    fn schedule(&self, x: Self::Input) -> anyhow::Result<Tensor> {
-        let x_dtype = x.dtype();
-        let internal_dtype = match x_dtype {
-            DType::F16 => DType::F32,
-            d => d,
-        };
-        let hidden_size = x.shape()[x.rank() - 1];
-        let last_dim = x.rank() - 1;
-        let x = x.cast(internal_dtype)?;
-        let x = if self.remove_mean {
-            let mean_x = (x.clone().sum_keepdim(last_dim)? / hidden_size as f32)?;
-            x.clone().sub(mean_x.clone())?
-        } else {
-            x
-        };
-        let norm_x = (x.clone().square()?.sum_keepdim(last_dim)? / hidden_size as f32)?;
-        let x_normed = x.clone().div((norm_x + self.eps)?.sqrt()?)?;
-        let x = x_normed.cast(x_dtype)?.mul(self.weight.clone())?;
-        match &self.bias {
-            None => Ok(x),
-            Some(bias) => x.add(bias.clone()),
-        }
+    fn schedule(&self, input: Self::Input) -> anyhow::Result<Tensor> {
+        input.layer_norm(self.weight.clone(), self.bias.clone(), self.eps)
     }
 }
 
