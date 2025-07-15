@@ -59,4 +59,5 @@ export { init };
 export { Buffer, Parameter } from "@/parameter";
 export { save } from "@/serialization";
 export { Tensor } from "@/tensor";
+export * from "@/utils";
 export { Device, DType } from "@/wasm";
