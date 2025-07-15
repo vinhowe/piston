@@ -30,7 +30,7 @@ impl JsTensor {
         self.inner.dim()
     }
 
-    #[wasm_bindgen(method, getter = ndim)]
+    #[wasm_bindgen(getter = ndim)]
     pub fn ndim(&self) -> usize {
         self.inner.dim()
     }
@@ -77,7 +77,7 @@ impl JsTensor {
         }
     }
 
-    #[wasm_bindgen(method, getter = nbytes)]
+    #[wasm_bindgen(getter = nbytes)]
     pub fn num_bytes(&self) -> usize {
         self.inner.num_bytes()
     }
@@ -130,7 +130,7 @@ impl JsTensor {
         self.inner.is_scalar()
     }
 
-    #[wasm_bindgen(method, getter = requiresGrad)]
+    #[wasm_bindgen(getter = requiresGrad)]
     pub fn requires_grad(&self) -> bool {
         self.inner.requires_grad()
     }
@@ -780,12 +780,12 @@ impl JsTensor {
         }
     }
 
-    #[wasm_bindgen(method, getter = grad)]
+    #[wasm_bindgen(getter = grad)]
     pub fn grad(&self) -> Result<Option<JsTensor>, JsValue> {
         Ok(self.inner.grad().map(|grad| JsTensor { inner: grad }))
     }
 
-    #[wasm_bindgen(method, setter = grad)]
+    #[wasm_bindgen(setter = grad)]
     pub fn set_grad(&self, grad: Option<JsTensor>) {
         self.inner.set_grad(grad.map(|g| g.inner));
     }
