@@ -286,6 +286,7 @@ pub struct Inner {
     device: Device,
     view: StorageView,
     requires_grad: bool,
+    invalidated: Arc<RwLock<bool>>,
     storage: ManuallyDrop<Arc<RwLock<Option<Storage>>>>,
     grad: Arc<RwLock<Option<OpTensor>>>,
     #[cfg(not(feature = "debug"))]
@@ -317,6 +318,7 @@ impl Inner {
             storage: ManuallyDrop::new(Arc::new(RwLock::new(storage))),
             grad: Arc::new(RwLock::new(None)),
             requires_grad,
+            invalidated: Arc::new(RwLock::new(false)),
             #[cfg(not(feature = "debug"))]
             debug_tensor: Arc::new(RwLock::new(None)),
             inplace: RwLock::new(false),
@@ -340,6 +342,7 @@ impl Inner {
             storage: ManuallyDrop::new(storage),
             grad: Arc::new(RwLock::new(None)),
             requires_grad,
+            invalidated: Arc::new(RwLock::new(false)),
             #[cfg(not(feature = "debug"))]
             debug_tensor: Arc::new(RwLock::new(None)),
             inplace: RwLock::new(false),
@@ -386,7 +389,11 @@ impl OpTensor {
     }
 
     pub fn resolved(&self) -> bool {
-        self.storage().is_some()
+        self.storage().is_some() || *self.inner.invalidated.read()
+    }
+
+    pub fn invalidated(&self) -> bool {
+        *self.inner.invalidated.read()
     }
 
     pub fn op(&self) -> &LazyOp {
@@ -2115,6 +2122,13 @@ impl OpTensor {
         log::trace!("Taking grad for {:?}", self.id());
         self.grad.write().take()
     }
+
+    /// Invalidates the tensor by setting its storage to None.
+    /// After calling this method, the tensor will no longer be resolved.
+    pub fn invalidate(&self) {
+        *self.storage.write() = None;
+        *self.invalidated.write() = true;
+    }
 }
 
 pub fn compile_gpu_for_op(
@@ -3462,6 +3476,12 @@ impl Tensor {
                 Storage::CPU(_) => None,
                 Storage::GPU(g) => Some(g.inner().global_id().inner() as _),
             })
+    }
+
+    /// Invalidates the tensor by setting its storage to None.
+    /// After calling this method, the tensor will no longer be resolved.
+    pub fn invalidate(&self) {
+        self.inner_or_source().invalidate();
     }
 }
 
