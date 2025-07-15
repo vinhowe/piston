@@ -130,7 +130,7 @@ impl JsTensor {
         self.inner.is_scalar()
     }
 
-    #[wasm_bindgen(js_name = requiresGrad)]
+    #[wasm_bindgen(method, getter = requiresGrad)]
     pub fn requires_grad(&self) -> bool {
         self.inner.requires_grad()
     }

@@ -500,8 +500,8 @@ export class Tensor {
     return this._cloneInner().isScalar();
   }
 
-  requiresGrad(): boolean {
-    return this._cloneInner().requiresGrad();
+  get requiresGrad(): boolean {
+    return this._cloneInner().requiresGrad;
   }
 
   debugTensor(): Tensor {
