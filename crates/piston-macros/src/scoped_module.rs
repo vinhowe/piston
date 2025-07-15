@@ -1,9 +1,15 @@
 use proc_macro::TokenStream;
+use proc_macro2::TokenStream as TokenStream2;
 use quote::quote;
-use syn::{parse_macro_input, ImplItem, ItemImpl, Type};
+use syn::{parse2, ImplItem, ItemImpl, Type};
 
 pub fn scoped_module(item: TokenStream) -> TokenStream {
-    let mut impl_block = parse_macro_input!(item as ItemImpl);
+    let input = proc_macro2::TokenStream::from(item);
+    scoped_module_impl(input).into()
+}
+
+fn scoped_module_impl(input: TokenStream2) -> TokenStream2 {
+    let mut impl_block = parse2::<ItemImpl>(input).expect("Expected impl block");
     let self_ty = &impl_block.self_ty;
 
     let mut has_module_name = false;
@@ -60,5 +66,5 @@ pub fn scoped_module(item: TokenStream) -> TokenStream {
             .push(syn::parse2(module_name_method).unwrap());
     }
 
-    quote! { #impl_block }.into()
+    quote! { #impl_block }
 }
