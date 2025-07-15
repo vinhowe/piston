@@ -79,7 +79,7 @@ impl JsTensor {
         }
     }
 
-    #[wasm_bindgen(getter)]
+    #[wasm_bindgen(getter = nbytes)]
     pub fn num_bytes(&self) -> usize {
         self.inner.num_bytes()
     }
