@@ -9,7 +9,6 @@ import {
   TensorCreationFunction,
   VarConfig,
 } from "@/types";
-import { inferShapeFromNestedArray } from "@/utils";
 import {
   cpu_wasm,
   Device,
@@ -152,6 +151,39 @@ function wrapWithParam<Args extends unknown[]>(
     }
     return tensor;
   };
+}
+
+export function inferShapeFromNestedArray(arr: NestedNumberList): number[] {
+  if (!Array.isArray(arr)) {
+    // Base case: number
+    return [];
+  }
+
+  if (!Array.isArray(arr[0])) {
+    // Base case: array of numbers
+    return [arr.length];
+  }
+
+  if (arr.length === 0) return [0];
+
+  // Get shape of first element
+  const restShape = inferShapeFromNestedArray(arr[0]);
+
+  // Verify all elements have the same shape
+  for (let i = 1; i < arr.length; i++) {
+    const shape = inferShapeFromNestedArray(arr[i]);
+    if (shape.length !== restShape.length) {
+      throw new Error("Inconsistent dimensions in nested array");
+    }
+    for (let j = 0; j < shape.length; j++) {
+      if (shape[j] !== restShape[j]) {
+        throw new Error("Inconsistent dimensions in nested array");
+      }
+    }
+  }
+
+  // Return the full shape: [this level's length, ...shape of elements]
+  return [arr.length, ...restShape];
 }
 
 export async function initGlobals() {
