@@ -30,11 +30,9 @@ export interface AdamWConfig {
 }
 
 /**
- * Implementation of the AdamW optimizer (based on original PyTorch
- * implementation)
+ * Implementation of the AdamW optimizer (based on original PyTorch implementation)
  *
- * The original Adam algorithm was proposed in "Adam: A Method for Stochastic
- * Optimization".
+ * The original Adam algorithm was proposed in "Adam: A Method for Stochastic Optimization".
  * The AdamW variant was proposed in "Decoupled Weight Decay Regularization".
  */
 export class AdamW extends Optimizer<AdamWParamState> {
@@ -45,10 +43,9 @@ export class AdamW extends Optimizer<AdamWParamState> {
    * @param device - The device to perform computations on
    * @param config - Configuration options for the optimizer:
    *  - `lr` (number): Learning rate (default: 1e-3)
-   *  - `betas` ([number, number]): Coefficients for computing running averages 
-   *     of gradient and its square (default: [0.9, 0.999])
-   *  - `eps` (number): Term added to denominator for numerical stability
-   *    (default: 1e-8)
+   *  - `betas` ([number, number]): Coefficients for computing running averages of gradient and its
+   *     square (default: [0.9, 0.999])
+   *  - `eps` (number): Term added to denominator for numerical stability (default: 1e-8)
    *  - `weightDecay` (number): Weight decay coefficient (default: 1e-2)
    *  - `amsgrad` (boolean): Whether to use the AMSGrad variant (default: false)
    */

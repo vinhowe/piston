@@ -27,11 +27,10 @@ export interface SGDConfig {
 }
 
 /**
- * Implementation of the SGD optimizer (based on original PyTorch
- * implementation)
+ * Implementation of the SGD optimizer (based on original PyTorch implementation)
  *
- * Nesterov momentum is based on the paper "On the importance of initialization
- * and momentum in deep learning".
+ * Nesterov momentum is based on the paper "On the importance of initialization and momentum in deep
+ * learning".
  */
 export class SGD extends Optimizer<SGDParamState> {
   /**
