@@ -203,6 +203,55 @@ impl OpTensor {
     pub(crate) fn update_storage(&self, storage: Storage) {
         *self.inner.storage.write() = Some(storage);
     }
+
+    // Helper method to handle broadcasting for multiple tensors
+    fn broadcast_tensors(tensors: RVec<Self>) -> Result<RVec<Self>, OperationError> {
+        if tensors.is_empty() {
+            return Ok(rvec![]);
+        }
+
+        let shapes: RVec<Shape> = tensors.iter().map(|t| t.shape().clone()).collect();
+        let shape_refs: RVec<&Shape> = shapes.iter().collect();
+        let broadcasted = Shape::multi_broadcast(&shape_refs);
+
+        if broadcasted.is_none() {
+            return Err(InvariantError::BroadcastingFailed(shapes.to_vec()).into());
+        }
+
+        let broadcasted = broadcasted.unwrap();
+        let mut result = RVec::with_capacity(tensors.len());
+
+        for (tensor, shape) in tensors.into_iter().zip(shapes.iter()) {
+            if shape != &broadcasted {
+                result.push(tensor.broadcast_to(broadcasted.clone())?);
+            } else {
+                result.push(tensor);
+            }
+        }
+
+        Ok(result)
+    }
+
+    // Convenience method for binary operations
+    fn broadcast_for_binary_op(self, other: Self) -> Result<(Self, Self), OperationError> {
+        let mut result = Self::broadcast_tensors(rvec![self, other])?;
+        let rhs = result.pop().unwrap();
+        let lhs = result.pop().unwrap();
+        Ok((lhs, rhs))
+    }
+
+    // Convenience method for ternary operations
+    fn broadcast_for_ternary_op(
+        self,
+        tensor1: Self,
+        tensor2: Self,
+    ) -> Result<(Self, Self, Self), OperationError> {
+        let mut result = Self::broadcast_tensors(rvec![self, tensor1, tensor2])?;
+        let t2 = result.pop().unwrap();
+        let t1 = result.pop().unwrap();
+        let input = result.pop().unwrap();
+        Ok((input, t1, t2))
+    }
 }
 
 impl std::fmt::Debug for OpTensor {
@@ -472,31 +521,7 @@ macro_rules! impl_binary_op {
         #[allow(clippy::should_implement_trait)]
         pub fn $method_name(self, other: OpTensor) -> Result<Self> {
             let device = self.device.clone();
-            //TODO: avoid broadcasting if either operand is scalar
-            let (mut lhs, mut rhs) = (self, other);
-            let shapes = &[lhs.shape(), rhs.shape()];
-            let broadcasted = Shape::multi_broadcast(shapes);
-            if broadcasted.is_none() {
-                let failed = shapes.iter().map(|s| (*s).clone()).collect::<Vec<_>>();
-                return Err(InvariantError::BroadcastingFailed(failed).into());
-            }
-            let broadcasted = broadcasted.unwrap();
-            let left_required = shapes[0] != &broadcasted;
-            let right_required = shapes[1] != &broadcasted;
-
-            // TODO: Incorporate this into the outer Tensor
-            // if inplace && (left_required || right_required) {
-            //     return Err(InvariantError::InplaceBroadcast.into());
-            // }
-
-            (lhs, rhs) = if left_required {
-                (lhs.broadcast_to(broadcasted.clone())?, rhs.clone())
-            } else if right_required {
-                (lhs, rhs.broadcast_to(broadcasted.clone())?)
-            } else {
-                (lhs, rhs)
-            };
-
+            let (lhs, rhs) = self.broadcast_for_binary_op(other)?;
             let binary = Binary::new(lhs, rhs, $op);
             let new_view = binary.compute_view()?;
 
@@ -520,34 +545,7 @@ macro_rules! impl_ternary_op {
             value: f32,
         ) -> Result<Self> {
             let device = self.device.clone();
-            // Broadcast tensors
-            let (mut input, mut t1, mut t2) = (self, tensor1, tensor2);
-            let shapes = &[input.shape(), t1.shape(), t2.shape()];
-            let broadcasted = Shape::multi_broadcast(shapes);
-            if broadcasted.is_none() {
-                let failed = shapes.iter().map(|s| (*s).clone()).collect::<Vec<_>>();
-                return Err(InvariantError::BroadcastingFailed(failed).into());
-            }
-            let broadcasted = broadcasted.unwrap();
-            let input_required = shapes[0] != &broadcasted;
-            let t1_required = shapes[1] != &broadcasted;
-            let t2_required = shapes[2] != &broadcasted;
-
-            // TODO: Incorporate this into the outer Tensor
-            // if inplace && (left_required || right_required) {
-            //     return Err(InvariantError::InplaceBroadcast.into());
-            // }
-
-            if input_required {
-                input = input.broadcast_to(broadcasted.clone())?;
-            }
-            if t1_required {
-                t1 = t1.broadcast_to(broadcasted.clone())?;
-            }
-            if t2_required {
-                t2 = t2.broadcast_to(broadcasted.clone())?;
-            }
-
+            let (input, t1, t2) = self.broadcast_for_ternary_op(tensor1, tensor2)?;
             let ternary = Ternary::new(input, t1, t2, value, $op);
             let new_view = ternary.compute_view()?;
 
@@ -566,34 +564,9 @@ macro_rules! impl_cmp_op {
         #[allow(clippy::should_implement_trait)]
         pub fn $method_name(self, other: OpTensor) -> Result<Self> {
             let device = self.device.clone();
-            //TODO: avoid broadcasting if either operand is scalar
-            let (mut lhs, mut rhs) = (self, other);
-            let shapes = &[lhs.shape(), rhs.shape()];
-            let broadcasted = Shape::multi_broadcast(shapes);
-            if broadcasted.is_none() {
-                let failed = shapes.iter().map(|s| (*s).clone()).collect::<Vec<_>>();
-                return Err(InvariantError::BroadcastingFailed(failed).into());
-            }
-            let broadcasted = broadcasted.unwrap();
-            let left_required = shapes[0] != &broadcasted;
-            let right_required = shapes[1] != &broadcasted;
-
-            // TODO: Incorporate this into the outer Tensor
-            // if inplace && (left_required || right_required) {
-            //     return Err(InvariantError::InplaceBroadcast.into());
-            // }
-
-            (lhs, rhs) = if left_required {
-                (lhs.broadcast_to(broadcasted.clone())?, rhs.clone())
-            } else if right_required {
-                (lhs, rhs.broadcast_to(broadcasted.clone())?)
-            } else {
-                (lhs, rhs)
-            };
-
+            let (lhs, rhs) = self.broadcast_for_binary_op(other)?;
             let cmp = Cmp::new(lhs, rhs, $op);
             let new_view = cmp.compute_view()?;
-
             Ok(Self::lazy(LazyOp::Cmp(cmp), new_view, device, false))
         }
     };
