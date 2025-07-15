@@ -1135,7 +1135,9 @@ impl OpTensor {
     pub fn transpose<D: Dim>(self, dim0: D, dim1: D) -> Result<Self> {
         let dim0 = dim0.to_index(self.shape(), "transpose")?;
         let dim1 = dim1.to_index(self.shape(), "transpose")?;
-        self.permute(rvec![dim0, dim1])
+        let mut dims: RVec<usize> = (0..self.rank()).collect();
+        dims.swap(dim0, dim1);
+        self.permute(dims)
     }
 
     pub fn t(self) -> Result<Self> {
