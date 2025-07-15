@@ -744,12 +744,12 @@ impl JsTensor {
     pub async fn item(&self, dtype: Option<JsDType>) -> Result<JsValue, JsValue> {
         let dtype = dtype.map(|d| d.dtype).unwrap_or(self.inner.dtype());
         match dtype {
-            DType::F32 => Ok(JsValue::from_f64(self.inner.item::<f32>().await as f64)),
+            DType::F32 => Ok(JsValue::from_f64(self.inner.item::<f32>().await.into())),
             DType::F16 => Ok(JsValue::from_f64(
-                f16::to_f32(self.inner.item::<f16>().await) as f64,
+                f16::to_f32(self.inner.item::<f16>().await).into(),
             )),
-            DType::I32 => Ok(JsValue::from_f64(self.inner.item::<i32>().await as f64)),
-            DType::U32 => Ok(JsValue::from_f64(self.inner.item::<u32>().await as f64)),
+            DType::I32 => Ok(JsValue::from_f64(self.inner.item::<i32>().await.into())),
+            DType::U32 => Ok(JsValue::from_f64(self.inner.item::<u32>().await.into())),
             _ => panic!("Unsupported dtype"),
         }
     }
