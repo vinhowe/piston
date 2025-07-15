@@ -1533,6 +1533,10 @@ impl OpTensor {
         Self::ones::<T, _>(self.shape(), device.unwrap_or(self.device()), requires_grad)
     }
 
+    pub fn zero_(self) -> Result<Self> {
+        self.affine(0., 0.)
+    }
+
     // TODO(vinhowe): Add inplace
     fn trilu(self, upper: bool, k: Option<i32>) -> Result<Self> {
         let device = self.device.clone();
@@ -3222,6 +3226,11 @@ impl Tensor {
             self.inner_or_source()
                 .ones_like::<T>(device, requires_grad)?,
         ))
+    }
+
+    pub fn zero_(self) -> Result<Self> {
+        let inner = self.inner_or_source().clone();
+        Ok(self.wrap_inplace(inner.zero_()?))
     }
 
     pub fn triu(self, k: Option<i32>) -> Result<Self> {

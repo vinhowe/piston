@@ -551,6 +551,8 @@ impl JsTensor {
 
     pub fn bernoulli_(self) -> JsTensorResult {}
 
+    pub fn zero_(self) -> JsTensorResult {}
+
     #[dtype_generic]
     pub fn zeros(
         shape: Shape,

@@ -395,6 +395,10 @@ export class Tensor {
     return this.wrappedOp((a) => a.bernoulli_());
   }
 
+  zero_(): Tensor {
+    return this.wrappedOp((a) => a.zero_());
+  }
+
   // We skip onesLike and zerosLike because they're not defined as members in
   // the Tensor class in PyTorch
 
