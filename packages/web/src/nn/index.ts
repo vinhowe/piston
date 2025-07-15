@@ -7,6 +7,7 @@ export { CrossEntropyLoss } from "./loss";
 export { Module, ModuleDict, ModuleList } from "./module";
 export { LayerNorm, RMSNorm } from "./normalization";
 export { RotaryEmbedding } from "./rope";
+export { SinusoidalEmbedding } from "./sinusoidal";
 export {
   ModuleScopeItem,
   nameFromScope,
