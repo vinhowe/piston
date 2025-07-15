@@ -472,14 +472,27 @@ impl LazyGraphExecutor {
         };
 
         #[cfg(debug_assertions)]
-        log::debug!(
-            "Resolved tensors in post order: {:?}",
-            post_order
-                .iter()
-                .filter(|t| t.resolved())
-                .map(|t| t.id())
-                .collect::<Vec<_>>()
-        );
+        {
+            let resolved_tensors = post_order.iter().filter(|t| t.resolved()).count();
+            let resolved_tensors_len = post_order.len();
+            log::trace!(
+                "Post order: {:?}",
+                post_order.iter().map(|t| t.id()).collect::<Vec<_>>()
+            );
+            log::trace!(
+                "Resolved tensors: {:?}",
+                post_order
+                    .iter()
+                    .filter(|t| t.resolved())
+                    .map(|t| t.id())
+                    .collect::<Vec<_>>()
+            );
+            log::debug!(
+                "Length of resolved tensors in post order: {} / {}",
+                resolved_tensors,
+                resolved_tensors_len
+            );
+        }
 
         #[cfg(feature = "debug")]
         let mut compute_dsts = Vec::new();
