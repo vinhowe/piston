@@ -1,5 +1,5 @@
 use piston::{Dim, Dims, RVec, Shape, ShapeWithOneHole, D};
-use wasm_bindgen::{JsCast, JsValue};
+use wasm_bindgen::{JsCast, JsError, JsValue};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct FromJsDim(pub(crate) isize);
@@ -39,7 +39,7 @@ impl Dims for FromJsVecISize {
 
 impl FromJsVecISize {
     // Create a function instead of implementing TryFrom for Option<FromJsDims>
-    pub fn from_js_value(value: JsValue) -> Result<Option<Self>, JsValue> {
+    pub fn from_js_value(value: JsValue) -> Result<Option<Self>, JsError> {
         if value.is_null() || value.is_undefined() {
             return Ok(None);
         }
@@ -65,7 +65,7 @@ impl FromJsVecISize {
                 .collect::<Vec<_>>();
             Ok(Some(FromJsVecISize(dims)))
         } else {
-            Err(JsValue::from_str("Expected a number, array, or Int32Array"))
+            Err(JsError::new("Expected a number, array, or Int32Array"))
         }
     }
 }

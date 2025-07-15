@@ -1,9 +1,11 @@
+use crate::error::IntoJsError;
 use half::f16;
 use paste::paste;
 use piston::{DType, Device, Dim, IrScalarValue, IrValue, LazyOp, RVec, Shape, Tensor};
 use piston_macros::js_tensor_operations;
 use std::collections::HashMap;
 use wasm_bindgen::prelude::*;
+use wasm_bindgen::JsError;
 
 use crate::{
     device::{gpu_sync, JsDevice, GPU_DEVICE},
@@ -16,7 +18,7 @@ pub struct JsTensor {
     pub(crate) inner: Tensor,
 }
 
-type JsTensorResult = Result<JsTensor, JsValue>;
+type JsTensorResult = Result<JsTensor, JsError>;
 
 #[wasm_bindgen(js_class = Tensor)]
 impl JsTensor {
@@ -158,17 +160,17 @@ macro_rules! impl_binary_op {
                             .inner
                             .clone()
                             .$op(other.inner)
-                            .map_err(|e| e.to_string())?,
+                            .map_err(|e| e.into_js_error())?,
                     })
                 } else {
                     let other: Option<f32> = other.as_f64().map(|f| f as f32);
                     if let Some(other) = other {
                         Ok(JsTensor {
                             inner: ($op_fn)(self.inner.clone(), other)
-                                .map_err(|e| e.to_string())?,
+                                .map_err(|e| e.into_js_error())?,
                         })
                     } else {
-                        Err(JsValue::from_str(&format!(
+                        Err(JsError::new(&format!(
                             "{}: other must be a tensor or a number",
                             stringify!($op)
                         )))
@@ -354,7 +356,7 @@ impl JsTensor {
         } else {
             self.inner.sum_all()
         }
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| e.into_js_error())?;
         Ok(JsTensor { inner: tensor })
     }
 
@@ -368,7 +370,7 @@ impl JsTensor {
         } else {
             self.inner.mean_all()
         }
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| e.into_js_error())?;
         Ok(JsTensor { inner: tensor })
     }
 
@@ -382,7 +384,7 @@ impl JsTensor {
         } else {
             self.inner.var_all()
         }
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| e.into_js_error())?;
         Ok(JsTensor { inner: tensor })
     }
 
@@ -392,7 +394,7 @@ impl JsTensor {
         } else {
             self.inner.max(dim)
         }
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| e.into_js_error())?;
         Ok(JsTensor { inner: tensor })
     }
 
@@ -402,7 +404,7 @@ impl JsTensor {
         } else {
             self.inner.min(dim)
         }
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| e.into_js_error())?;
         Ok(JsTensor { inner: tensor })
     }
 
@@ -412,7 +414,7 @@ impl JsTensor {
         } else {
             self.inner.argmax(dim)
         }
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| e.into_js_error())?;
         Ok(JsTensor { inner: tensor })
     }
 
@@ -422,7 +424,7 @@ impl JsTensor {
         } else {
             self.inner.argmin(dim)
         }
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| e.into_js_error())?;
         Ok(JsTensor { inner: tensor })
     }
 
@@ -434,7 +436,7 @@ impl JsTensor {
         let tensor = self
             .inner
             .flatten(start_dim, end_dim)
-            .map_err(|e| e.to_string())?;
+            .map_err(|e| e.into_js_error())?;
         Ok(JsTensor { inner: tensor })
     }
 
@@ -454,7 +456,7 @@ impl JsTensor {
                 }
             })
             .collect::<Vec<_>>();
-        let result = self.inner.slice(&ranges).map_err(|e| e.to_string())?;
+        let result = self.inner.slice(&ranges).map_err(|e| e.into_js_error())?;
         Ok(JsTensor { inner: result })
     }
 
@@ -468,7 +470,7 @@ impl JsTensor {
             Some(dims) => inner.squeeze(dims),
             None => inner.squeeze_all(),
         }
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| e.into_js_error())?;
         Ok(Self { inner: result })
     }
 
@@ -624,16 +626,16 @@ impl JsTensor {
         let tensor = if data.is_array() {
             let array = data
                 .dyn_into::<js_sys::Array>()
-                .map_err(|_| JsValue::from_str("Failed to convert data to array"))?;
+                .map_err(|_| JsError::new("Failed to convert data to array"))?;
 
             let data = array
                 .iter()
                 .map(|v| {
                     v.as_f64()
                         .map(|f| f as f32)
-                        .ok_or_else(|| JsValue::from_str("Array contains non-numeric values"))
+                        .ok_or_else(|| JsError::new("Array contains non-numeric values"))
                 })
-                .collect::<Result<Vec<f32>, JsValue>>()?;
+                .collect::<Result<Vec<f32>, JsError>>()?;
 
             Tensor::from_data(data, shape, device.clone(), requires_grad)
         } else if js_sys::Float32Array::instanceof(&data) {
@@ -657,7 +659,7 @@ impl JsTensor {
             let data = array.to_vec().into_iter().collect::<Vec<_>>();
             Tensor::from_data(data, shape, device.clone(), requires_grad)
         } else {
-            return Err(JsValue::from_str("Unsupported data type"));
+            return Err(JsError::new("Unsupported data type"));
         };
         Ok(JsTensor { inner: tensor })
     }
@@ -698,7 +700,7 @@ impl JsTensor {
 #[wasm_bindgen(js_class = Tensor)]
 impl JsTensor {
     #[wasm_bindgen(js_name = toVec, unchecked_return_type = "Float32Array | Int32Array | Uint32Array")]
-    pub async fn to_vec(&self, dtype: Option<JsDType>) -> Result<JsValue, JsValue> {
+    pub async fn to_vec(&self, dtype: Option<JsDType>) -> Result<JsValue, JsError> {
         let dtype = dtype.map(|d| d.dtype).unwrap_or(self.inner.dtype());
         match dtype {
             DType::F32 => {
@@ -706,7 +708,7 @@ impl JsTensor {
                     .inner
                     .to_vec::<f32>()
                     .await
-                    .map_err(|e| JsValue::from(e.to_string()))?;
+                    .map_err(|e| e.into_js_error())?;
                 let array = js_sys::Float32Array::new_with_length(result.len() as u32);
                 array.copy_from(&result);
                 Ok(array.into())
@@ -716,7 +718,7 @@ impl JsTensor {
                     .inner
                     .to_vec::<f16>()
                     .await
-                    .map_err(|e| JsValue::from(e.to_string()))?;
+                    .map_err(|e| e.into_js_error())?;
                 let f32_vec: Vec<f32> = result.iter().map(|&x| f16::to_f32(x)).collect();
                 let array = js_sys::Float32Array::new_with_length(f32_vec.len() as u32);
                 array.copy_from(&f32_vec);
@@ -727,7 +729,7 @@ impl JsTensor {
                     .inner
                     .to_vec::<i32>()
                     .await
-                    .map_err(|e| JsValue::from(e.to_string()))?;
+                    .map_err(|e| e.into_js_error())?;
                 let array = js_sys::Int32Array::new_with_length(result.len() as u32);
                 array.copy_from(&result);
                 Ok(array.into())
@@ -737,7 +739,7 @@ impl JsTensor {
                     .inner
                     .to_vec::<u32>()
                     .await
-                    .map_err(|e| JsValue::from(e.to_string()))?;
+                    .map_err(|e| e.into_js_error())?;
                 let array = js_sys::Uint32Array::new_with_length(result.len() as u32);
                 array.copy_from(&result);
                 Ok(array.into())
@@ -749,7 +751,7 @@ impl JsTensor {
     }
 
     #[wasm_bindgen(unchecked_return_type = "number")]
-    pub async fn item(&self, dtype: Option<JsDType>) -> Result<JsValue, JsValue> {
+    pub async fn item(&self, dtype: Option<JsDType>) -> Result<JsValue, JsError> {
         let dtype = dtype.map(|d| d.dtype).unwrap_or(self.inner.dtype());
         match dtype {
             DType::F32 => Ok(JsValue::from_f64(self.inner.item::<f32>().await.into())),
@@ -762,19 +764,15 @@ impl JsTensor {
         }
     }
 
-    pub async fn to(&self, device: String) -> Result<JsTensor, JsValue> {
+    pub async fn to(&self, device: String) -> Result<JsTensor, JsError> {
         let device = match device.as_str() {
             "cpu" => Device::CPU,
             "gpu" | "webgpu" => {
                 GPU_DEVICE.with(|device| device.borrow().clone().unwrap().inner.clone())
             }
-            _ => return Err(JsValue::from_str("Unsupported device")),
+            _ => return Err(JsError::new("Unsupported device")),
         };
-        let inner = self
-            .inner
-            .to(&device)
-            .await
-            .map_err(|e| JsValue::from(e.to_string()))?;
+        let inner = self.inner.to(&device).await?;
         Ok(JsTensor { inner })
     }
 
@@ -789,7 +787,7 @@ impl JsTensor {
     }
 
     #[wasm_bindgen(getter)]
-    pub fn grad(&self) -> Result<Option<JsTensor>, JsValue> {
+    pub fn grad(&self) -> Result<Option<JsTensor>, JsError> {
         Ok(self.inner.grad().map(|grad| JsTensor { inner: grad }))
     }
 
@@ -800,24 +798,17 @@ impl JsTensor {
 
     #[cfg(not(feature = "debug"))]
     #[wasm_bindgen(js_name = debugTensor)]
-    pub fn debug_tensor(&self) -> Result<JsTensor, JsValue> {
-        let tensor = self
-            .inner
-            .get_or_create_debug_tensor()
-            .map_err(|e| JsValue::from(e.to_string()))?;
+    pub fn debug_tensor(&self) -> Result<JsTensor, JsError> {
+        let tensor = self.inner.get_or_create_debug_tensor()?;
         Ok(JsTensor { inner: tensor })
     }
 
-    pub fn backward(&self) -> Result<(), JsValue> {
-        self.inner
-            .backward()
-            .map_err(|e| JsValue::from(e.to_string()))
+    pub fn backward(&self) -> Result<(), JsError> {
+        self.inner.backward().map_err(|e| e.into_js_error())
     }
 
-    pub fn invalidate(&mut self) -> Result<(), JsValue> {
-        self.inner
-            .invalidate()
-            .map_err(|e| JsValue::from(e.to_string()))
+    pub fn invalidate(&mut self) -> Result<(), JsError> {
+        self.inner.invalidate().map_err(|e| e.into())
     }
 }
 

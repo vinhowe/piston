@@ -227,10 +227,10 @@ pub fn js_tensor_operations(item: TokenStream) -> TokenStream {
 
             let result_call = if is_async {
                 quote! {
-                    .await.map_err(|e| e.to_string())?
+                    .await.map_err(|e| e.into_js_error())?
                 }
             } else {
-                quote! { .map_err(|e| e.to_string())? }
+                quote! { .map_err(|e| e.into_js_error())? }
             };
 
             let gen_body = if input_fn.block.stmts.is_empty() {
@@ -328,7 +328,7 @@ pub fn js_tensor_operations(item: TokenStream) -> TokenStream {
                             #(#prelude_stmts)*
                             let result = (match dtype {
                                 #(#arms)*
-                                _ => return Err(JsValue::from_str("Unsupported dtype")),
+                                _ => return Err(JsError::new("Unsupported dtype")),
                             }) #result_call;
                             Ok(Self { inner: result })
                         }
@@ -447,7 +447,7 @@ fn generate_type_and_conversion(
         let result_expr = if is_option {
             quote! {?}
         } else {
-            quote! {?.ok_or(JsValue::from_str("Missing required dims"))?}
+            quote! {?.ok_or(JsError::new("Missing required dims"))?}
         };
         TypeConversion::new(
             syn::parse_quote!(JsValue),
@@ -475,7 +475,7 @@ fn generate_type_and_conversion(
         let result_expr = if is_option {
             quote! {?}
         } else {
-            quote! {?.ok_or(JsValue::from_str("Missing required dims"))?}
+            quote! {?.ok_or(JsError::new("Missing required dims"))?}
         };
         TypeConversion::new(
             syn::parse_quote!(JsValue),

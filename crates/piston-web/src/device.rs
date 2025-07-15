@@ -69,10 +69,10 @@ pub async fn gpu() -> Result<JsDevice, JsValue> {
     Ok(js_device)
 }
 
-pub fn gpu_sync() -> Result<JsDevice, JsValue> {
+pub fn gpu_sync() -> Result<JsDevice, JsError> {
     GPU_DEVICE
         .with(|refcell| refcell.borrow().clone())
-        .ok_or(JsValue::from_str("GPU device not initialized"))
+        .ok_or(JsError::new("GPU device not initialized"))
 }
 
 pub async fn cpu() -> JsDevice {

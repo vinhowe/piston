@@ -1,6 +1,7 @@
 #![cfg(target_arch = "wasm32")]
 mod device;
 mod dtype;
+mod error;
 mod model;
 mod serialization;
 mod shape;
