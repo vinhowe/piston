@@ -30,7 +30,7 @@ impl JsTensor {
         self.inner.dim()
     }
 
-    #[wasm_bindgen(getter = ndim)]
+    #[wasm_bindgen(getter)]
     pub fn ndim(&self) -> usize {
         self.inner.dim()
     }
@@ -77,7 +77,7 @@ impl JsTensor {
         }
     }
 
-    #[wasm_bindgen(getter = nbytes)]
+    #[wasm_bindgen(getter)]
     pub fn num_bytes(&self) -> usize {
         self.inner.num_bytes()
     }
@@ -780,7 +780,7 @@ impl JsTensor {
         }
     }
 
-    #[wasm_bindgen(getter = grad)]
+    #[wasm_bindgen(getter)]
     pub fn grad(&self) -> Result<Option<JsTensor>, JsValue> {
         Ok(self.inner.grad().map(|grad| JsTensor { inner: grad }))
     }
