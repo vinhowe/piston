@@ -4,7 +4,7 @@ export { Embedding } from "./embedding";
 export { Linear } from "./linear";
 export { CrossEntropyLoss } from "./loss";
 export { Module, ModuleDict, ModuleList } from "./module";
-export { LayerNorm } from "./normalization";
+export { LayerNorm, RMSNorm } from "./normalization";
 export {
   ModuleScopeItem,
   nameFromScope,

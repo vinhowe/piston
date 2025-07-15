@@ -20,3 +20,19 @@ export class LayerNorm extends Module {
     return input.layerNorm(this.weight, this.bias, this.eps);
   }
 }
+
+export class RMSNorm extends Module {
+  weight: Parameter;
+
+  constructor(
+    normalizedShape: number,
+    private eps = 1e-5,
+  ) {
+    super();
+    this.weight = new Parameter(ones([normalizedShape]));
+  }
+
+  forward(input: Tensor) {
+    return input.rmsNorm(this.weight, this.eps);
+  }
+}
