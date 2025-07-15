@@ -1,7 +1,6 @@
 import { Buffer, Parameter } from "@/parameter";
 import { TensorHook } from "@/tensor";
 import { RemovableHandle } from "@/utils";
-import { Tensor_wasm } from "@/wasm";
 
 import { ModuleScopeItem, ScopeItem, withScope } from "./tracking";
 
@@ -127,7 +126,7 @@ export class Module<Input = unknown, Output = unknown> {
     };
 
     // Handle Parameter assignment
-    if (Parameter._unwrap(value as Parameter) instanceof Tensor_wasm) {
+    if (value instanceof Parameter) {
       if (!this._parameters) {
         throw new Error("Cannot assign parameters before Module constructor call");
       }
@@ -183,7 +182,7 @@ export class Module<Input = unknown, Output = unknown> {
   }
 
   registerParameter(name: string, param: Parameter | null): Module<Input, Output> {
-    if (param !== null && !(Parameter._unwrap(param) instanceof Tensor_wasm)) {
+    if (param !== null && !(param instanceof Parameter)) {
       throw new TypeError(
         `Cannot assign '${(param as unknown)?.constructor?.name || typeof param}' as parameter '${name}'`,
       );
