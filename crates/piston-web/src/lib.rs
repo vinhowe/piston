@@ -15,13 +15,14 @@ use wasm_bindgen::prelude::*;
 pub fn start() {
     console_error_panic_hook::set_once();
     let logger = fern::Dispatch::new()
-        .format(|out, message, record| {
+        .format(|out, _message, record| {
             out.finish(format_args!(
-                "{}[{}][{}] {}",
-                chrono::Local::now().format("[%Y-%m-%d][%H:%M:%S]"),
-                record.target(),
-                record.level(),
-                message
+                "[WASM {file}:{line}] {text}",
+                file = record.file().unwrap_or_else(|| record.target()),
+                line = record
+                    .line()
+                    .map_or_else(|| "[Unknown]".to_string(), |line| line.to_string()),
+                text = record.args(),
             ))
         })
         .level_for("tokenizers", log::LevelFilter::Off)

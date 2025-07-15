@@ -46,7 +46,7 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 serde-wasm-bindgen = { workspace = true }
 console_error_panic_hook = { workspace = true }
-console_log = { workspace = true, features = ["color"] }
+console_log = { workspace = true }
 log.workspace = true
 chrono = { workspace = true }
 fern = { workspace = true }
