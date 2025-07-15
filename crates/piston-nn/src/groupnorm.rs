@@ -50,7 +50,7 @@ impl crate::Module for GroupNorm {
     fn schedule(&self, input: Self::Input) -> anyhow::Result<Self::Output> {
         input.group_norm(
             self.num_groups,
-            self.weight.clone(),
+            Some(self.weight.clone()),
             self.bias.clone(),
             self.eps,
         )

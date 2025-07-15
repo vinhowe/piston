@@ -184,7 +184,7 @@ export class Tensor {
     return this.wrappedOp((a) => a.cast(dstDtype?._clone()));
   }
 
-  groupNorm(numGroups: number, weight: Tensor, bias?: Tensor, eps: number = 1e-5): Tensor {
+  groupNorm(numGroups: number, weight?: Tensor, bias?: Tensor, eps: number = 1e-5): Tensor {
     Tensor.runHooks(weight, { dependency: true });
     if (bias) {
       Tensor.runHooks(bias, { dependency: true });
@@ -194,7 +194,7 @@ export class Tensor {
     );
   }
 
-  layerNorm(weight: Tensor, bias?: Tensor, eps: number = 1e-5): Tensor {
+  layerNorm(weight?: Tensor, bias?: Tensor, eps: number = 1e-5): Tensor {
     Tensor.runHooks(weight, { dependency: true });
     if (bias) {
       Tensor.runHooks(bias, { dependency: true });
@@ -204,7 +204,7 @@ export class Tensor {
     );
   }
 
-  rmsNorm(weight: Tensor, eps: number = 1e-5): Tensor {
+  rmsNorm(weight?: Tensor, eps: number = 1e-5): Tensor {
     Tensor.runHooks(weight, { dependency: true });
     return this.wrappedOp((a) => a.rmsNorm(weight?._cloneInner(), eps));
   }

@@ -18,7 +18,7 @@ use piston_macros::IrFields;
 #[derive(new, Debug, Clone, IrFields)]
 pub struct Norm {
     pub(crate) input: OpTensor,
-    pub(crate) scale: OpTensor,
+    pub(crate) scale: Option<OpTensor>,
     pub(crate) bias: Option<OpTensor>,
     pub(crate) eps: f32,
 }
@@ -42,9 +42,11 @@ impl OpGuards for NormOp {
         };
 
         input.dtype().is_float();
-        scale.dtype().is_float();
-        if bias.is_some() {
-            bias.as_ref().unwrap().dtype().is_float();
+        if let Some(scale) = scale {
+            scale.dtype().is_float();
+        }
+        if let Some(bias) = bias {
+            bias.dtype().is_float();
         }
     }
 }
@@ -64,24 +66,19 @@ impl Operation for NormOp {
 
     #[inline]
     fn srcs(&self) -> RVec<&OpTensor> {
-        match self {
-            NormOp::LayerNorm(Norm {
-                input, scale, bias, ..
-            }) => match bias {
-                Some(bias) => rvec![input, scale, bias],
-                None => rvec![input, scale],
-            },
-            NormOp::RMSNorm(Norm { input, scale, .. }) => rvec![input, scale],
-            NormOp::GroupNorm(GroupNorm {
-                norm: Norm {
-                    input, scale, bias, ..
-                },
-                ..
-            }) => match bias {
-                Some(bias) => rvec![input, scale, bias],
-                None => rvec![input, scale],
-            },
+        let norm = match self {
+            NormOp::LayerNorm(norm) | NormOp::RMSNorm(norm) => norm,
+            NormOp::GroupNorm(GroupNorm { norm, .. }) => norm,
+        };
+
+        let mut sources = rvec![&norm.input];
+        if let Some(scale) = &norm.scale {
+            sources.push(scale);
         }
+        if let Some(bias) = &norm.bias {
+            sources.push(bias);
+        }
+        sources
     }
 }
 
@@ -100,12 +97,20 @@ impl KernelRenderable for NormKernels {
     ) -> Result<(), OperationError> {
         let arr = Array::<P>::default();
         builder.register_storage("X", BindingMode::ReadOnly, arr);
-        builder.register_storage("S", BindingMode::ReadOnly, arr);
 
         let NormKernels::Standard(inner) = self;
-        if !matches!(inner, NormOp::RMSNorm(_)) {
+        let norm = match inner {
+            NormOp::LayerNorm(norm) | NormOp::RMSNorm(norm) => norm,
+            NormOp::GroupNorm(GroupNorm { norm, .. }) => norm,
+        };
+
+        if norm.scale.is_some() {
+            builder.register_storage("S", BindingMode::ReadOnly, arr);
+        }
+        if norm.bias.is_some() {
             builder.register_storage("B", BindingMode::ReadOnly, arr);
         }
+
         builder.register_storage("Y", BindingMode::ReadWrite, arr);
         builder.register_uniform();
         Ok(())
@@ -198,10 +203,16 @@ impl KernelRenderable for NormKernels {
         };
         kernel_builder.write_main(sigma);
 
-        let loop_core = if matches!(inner, NormOp::RMSNorm(_)) {
-            wgsl! { Y[anchor + i] = val * S[i]; }
-        } else {
-            wgsl! { Y[anchor + i] = fma(val, S[i], B[i]); }
+        let norm = match inner {
+            NormOp::LayerNorm(norm) | NormOp::RMSNorm(norm) => norm,
+            NormOp::GroupNorm(GroupNorm { norm, .. }) => norm,
+        };
+
+        let loop_core = match (norm.scale.is_some(), norm.bias.is_some()) {
+            (true, true) => wgsl! { Y[anchor + i] = fma(val, S[i], B[i]); },
+            (true, false) => wgsl! { Y[anchor + i] = val * S[i]; },
+            (false, true) => wgsl! { Y[anchor + i] = val + B[i]; },
+            (false, false) => wgsl! { Y[anchor + i] = val; },
         };
 
         kernel_builder.write_main(wgsl! {
@@ -378,16 +389,21 @@ impl Kernel for NormKernels {
         _inplace: bool,
     ) -> Result<BindGroupLayoutDescriptor, OperationError> {
         let NormKernels::Standard(inner) = self;
-        match inner {
-            NormOp::LayerNorm(l) => match l.bias {
-                Some(_) => Ok(BindGroupLayoutDescriptor::ternary()),
-                None => Ok(BindGroupLayoutDescriptor::binary()),
-            },
-            NormOp::RMSNorm(_) => Ok(BindGroupLayoutDescriptor::binary()),
-            NormOp::GroupNorm(l) => match l.norm.bias {
-                Some(_) => Ok(BindGroupLayoutDescriptor::ternary()),
-                None => Ok(BindGroupLayoutDescriptor::binary()),
-            },
+        let norm = match inner {
+            NormOp::LayerNorm(norm) | NormOp::RMSNorm(norm) => norm,
+            NormOp::GroupNorm(GroupNorm { norm, .. }) => norm,
+        };
+
+        let num_input_buffers = 1 + // X (input)
+            if norm.scale.is_some() { 1 } else { 0 } + // S (scale)
+            if norm.bias.is_some() { 1 } else { 0 }; // B (bias)
+
+        // +1 for output buffer Y
+        match num_input_buffers {
+            1 => Ok(BindGroupLayoutDescriptor::unary()), // Only X and Y
+            2 => Ok(BindGroupLayoutDescriptor::binary()), // X + (S or B) + Y
+            3 => Ok(BindGroupLayoutDescriptor::ternary()), // X + S + B + Y
+            _ => unreachable!("Invalid number of input buffers"),
         }
     }
 }
@@ -410,7 +426,7 @@ mod tests {
     fn ground_truth(
         var: NormVariant,
         input: &OpTensor,
-        scale: &OpTensor,
+        scale: Option<&OpTensor>,
         bias: Option<&OpTensor>,
     ) -> anyhow::Result<OpTensor> {
         let ln_prg = r#"
@@ -434,10 +450,13 @@ def manual_rms_norm(input, scale):
             NormVariant::RMSNorm => rms_prg,
         };
 
-        let inputs = match bias {
-            Some(bias) => rvec![input, scale, bias],
-            None => rvec![input, scale],
-        };
+        let mut inputs = rvec![input];
+        if let Some(scale) = scale {
+            inputs.push(scale);
+        }
+        if let Some(bias) = bias {
+            inputs.push(bias);
+        }
 
         run_py_prg(prg.to_string(), &inputs, &[], input.dtype())
     }
@@ -455,8 +474,8 @@ def manual_rms_norm(input, scale):
         };
 
         let ground = match var {
-            NormVariant::LayerNorm => ground_truth(var, &input, &scale, bias.as_ref())?,
-            NormVariant::RMSNorm => ground_truth(var, &input, &scale, None)?,
+            NormVariant::LayerNorm => ground_truth(var, &input, Some(&scale), bias.as_ref())?,
+            NormVariant::RMSNorm => ground_truth(var, &input, Some(&scale), None)?,
         };
 
         let input_gpu = input.to(device)?;
@@ -464,8 +483,8 @@ def manual_rms_norm(input, scale):
         let bias_gpu = bias.map(|b| b.to(device)).transpose()?;
 
         let result = match var {
-            NormVariant::LayerNorm => input_gpu.layer_norm(scale_gpu, bias_gpu, 1e-5)?,
-            NormVariant::RMSNorm => input_gpu.rms_norm(scale_gpu, 1e-5)?,
+            NormVariant::LayerNorm => input_gpu.layer_norm(Some(scale_gpu), bias_gpu, 1e-5)?,
+            NormVariant::RMSNorm => input_gpu.rms_norm(Some(scale_gpu), 1e-5)?,
         };
 
         let ours = result.to(&Device::CPU)?;

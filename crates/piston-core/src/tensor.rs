@@ -674,7 +674,7 @@ impl OpTensor {
     pub fn group_norm(
         self,
         num_groups: usize,
-        weight: Self,
+        weight: Option<Self>,
         bias: Option<Self>,
         eps: f32,
     ) -> Result<Self> {
@@ -685,7 +685,7 @@ impl OpTensor {
         Ok(Self::lazy(LazyOp::Norm(norm_op), new_view, device, false))
     }
 
-    pub fn layer_norm(self, weight: Self, bias: Option<Self>, eps: f32) -> Result<Self> {
+    pub fn layer_norm(self, weight: Option<Self>, bias: Option<Self>, eps: f32) -> Result<Self> {
         let device = self.device.clone();
         let layer_norm = Norm::new(self, weight, bias, eps);
         let op = NormOp::LayerNorm(layer_norm);
@@ -693,7 +693,7 @@ impl OpTensor {
         Ok(Self::lazy(LazyOp::Norm(op), new_view, device, false))
     }
 
-    pub fn rms_norm(self, weight: Self, eps: f32) -> Result<Self> {
+    pub fn rms_norm(self, weight: Option<Self>, eps: f32) -> Result<Self> {
         let device = self.device.clone();
         let rms = Norm::new(self, weight, None, eps);
         let op = NormOp::RMSNorm(rms);
@@ -2785,32 +2785,31 @@ impl Tensor {
     pub fn group_norm(
         self,
         num_groups: usize,
-        weight: Self,
+        weight: Option<Self>,
         bias: Option<Self>,
         eps: f32,
     ) -> Result<Self> {
         Ok(Self::wrap(self.inner_or_source().clone().group_norm(
             num_groups,
-            weight.inner_or_source().clone(),
+            weight.map(|w| w.inner_or_source().clone()),
             bias.map(|b| b.inner_or_source().clone()),
             eps,
         )?))
     }
 
-    pub fn layer_norm(self, weight: Self, bias: Option<Self>, eps: f32) -> Result<Self> {
+    pub fn layer_norm(self, weight: Option<Self>, bias: Option<Self>, eps: f32) -> Result<Self> {
         Ok(Self::wrap(self.inner_or_source().clone().layer_norm(
-            weight.inner_or_source().clone(),
+            weight.map(|w| w.inner_or_source().clone()),
             bias.map(|b| b.inner_or_source().clone()),
             eps,
         )?))
     }
 
-    pub fn rms_norm(self, weight: Tensor, eps: f32) -> Result<Self> {
-        Ok(Self::wrap(
-            self.inner_or_source()
-                .clone()
-                .rms_norm(weight.inner_or_source().clone(), eps)?,
-        ))
+    pub fn rms_norm(self, weight: Option<Self>, eps: f32) -> Result<Self> {
+        Ok(Self::wrap(self.inner_or_source().clone().rms_norm(
+            weight.map(|w| w.inner_or_source().clone()),
+            eps,
+        )?))
     }
 
     pub fn conv1d(

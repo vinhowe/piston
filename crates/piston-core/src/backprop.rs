@@ -806,7 +806,9 @@ impl OpTensor {
                         .clone()
                         .mul(grad.clone())?
                         .sum_keepdim(sum_axes.as_slice())?;
-                    ctx.add(scale, grad_gamma.squeeze_all()?)?;
+                    if let Some(scale) = scale.as_ref() {
+                        ctx.add(scale, grad_gamma.squeeze_all()?)?;
+                    }
 
                     if let Some(bias) = bias {
                         let grad_beta = grad.clone().sum_keepdim(sum_axes.as_slice())?;
@@ -814,7 +816,10 @@ impl OpTensor {
                     }
 
                     // Compute gradient w.r.t normalized input
-                    let grad_x_normed = grad.clone().mul(scale.clone())?;
+                    let grad_x_normed = match scale.as_ref() {
+                        Some(scale) => grad.clone().mul(scale.clone())?,
+                        None => grad.clone(),
+                    };
 
                     // Compute gradients w.r.t mean and variance (using correct reduction axis)
                     // dL/dmu = sum(dL/dx_normed * (-1/std)) over norm_axis
@@ -889,10 +894,15 @@ impl OpTensor {
                         .clone()
                         .mul(grad.clone())?
                         .sum_keepdim(sum_axes.as_slice())?;
-                    ctx.add(scale, grad_gamma.squeeze_all()?)?;
+                    if let Some(scale) = scale.as_ref() {
+                        ctx.add(scale, grad_gamma.squeeze_all()?)?;
+                    }
 
-                    // Intermediate: dY * scale
-                    let grad_scaled = grad.clone().mul(scale.clone())?;
+                    // Intermediate: dY * scale (or identity if no scale)
+                    let grad_scaled = match scale.as_ref() {
+                        Some(scale) => grad.clone().mul(scale.clone())?,
+                        None => grad.clone(),
+                    };
 
                     // Projection term: sum(dY * scale * x) over norm_axis (keepdim)
                     let proj = grad_scaled

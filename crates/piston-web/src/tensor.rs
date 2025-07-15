@@ -295,15 +295,21 @@ impl JsTensor {
     pub fn group_norm(
         &self,
         num_groups: usize,
-        weight: Tensor,
+        weight: Option<Tensor>,
         bias: Option<Tensor>,
         eps: f32,
     ) -> JsTensorResult {
     }
 
-    pub fn layer_norm(&self, weight: Tensor, bias: Option<Tensor>, eps: f32) -> JsTensorResult {}
+    pub fn layer_norm(
+        &self,
+        weight: Option<Tensor>,
+        bias: Option<Tensor>,
+        eps: f32,
+    ) -> JsTensorResult {
+    }
 
-    pub fn rms_norm(&self, weight: Tensor, eps: f32) -> JsTensorResult {}
+    pub fn rms_norm(&self, weight: Option<Tensor>, eps: f32) -> JsTensorResult {}
 
     pub fn conv1d(
         &self,
