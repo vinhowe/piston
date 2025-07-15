@@ -324,7 +324,7 @@ impl JsTensor {
 
     pub fn softmax(&self, dim: Dim) -> JsTensorResult {}
 
-    pub fn rope(&self, dim: Dim, base: f32, offset: usize) -> JsTensorResult {}
+    pub fn rope(&self, dim: usize, base: f32, offset: usize) -> JsTensorResult {}
 
     pub fn alibi(&self, max_bias: f32) -> JsTensorResult {}
 

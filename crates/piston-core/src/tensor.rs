@@ -732,13 +732,11 @@ impl OpTensor {
         Ok(Self::lazy(LazyOp::RoPE(rope), new_view, device, false))
     }
 
-    pub fn rope<D: Dim>(self, dim: D, base: f32, offset: usize) -> Result<Self> {
-        let dim = dim.to_index(self.shape(), "rope")?;
+    pub fn rope(self, dim: usize, base: f32, offset: usize) -> Result<Self> {
         self.rope_impl(dim, base, offset, false)
     }
 
-    pub(crate) fn rope_backward<D: Dim>(self, dim: D, base: f32, offset: usize) -> Result<Self> {
-        let dim = dim.to_index(self.shape(), "rope_backward")?;
+    pub(crate) fn rope_backward(self, dim: usize, base: f32, offset: usize) -> Result<Self> {
         self.rope_impl(dim, base, offset, true)
     }
 
@@ -2827,7 +2825,7 @@ impl Tensor {
         Ok(Self::wrap(self.inner_or_source().clone().softmax(dim)?))
     }
 
-    pub fn rope<D: Dim>(self, dim: D, base: f32, offset: usize) -> Result<Self> {
+    pub fn rope(self, dim: usize, base: f32, offset: usize) -> Result<Self> {
         Ok(Self::wrap(
             self.inner_or_source().clone().rope(dim, base, offset)?,
         ))
