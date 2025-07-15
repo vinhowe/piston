@@ -22,7 +22,7 @@ pub fn clip_grad_norm(vars: Vec<Tensor>, max_norm: f32, device: &Device) -> anyh
         .where_cond(clip_coef.clone().lt(ones_max.clone())?, ones_max)?;
 
     for var in vars.iter() {
-        var.set_grad(var.grad().unwrap().mul(clip_coef.clone())?);
+        var.set_grad(Some(var.grad().unwrap().mul(clip_coef.clone())?));
     }
 
     Ok(total_norm)

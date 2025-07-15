@@ -2075,8 +2075,8 @@ impl OpTensor {
         self.grad.read().as_ref().cloned()
     }
 
-    pub fn set_grad(&self, grad: OpTensor) {
-        *self.grad.write() = Some(grad);
+    pub fn set_grad(&self, grad: Option<OpTensor>) {
+        *self.grad.write() = grad;
     }
 
     pub fn take_grad(&self) -> Option<OpTensor> {
@@ -3393,9 +3393,9 @@ impl Tensor {
         self.inner_or_source().grad().map(Self::wrap)
     }
 
-    pub fn set_grad(&self, grad: Self) {
+    pub fn set_grad(&self, grad: Option<Self>) {
         self.inner_or_source()
-            .set_grad(grad.inner_or_source().clone());
+            .set_grad(grad.map(|g| g.inner_or_source().clone()));
     }
 
     pub fn take_grad(&self) -> Option<Self> {

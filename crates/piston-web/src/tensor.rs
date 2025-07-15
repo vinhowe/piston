@@ -766,8 +766,14 @@ impl JsTensor {
         }
     }
 
+    #[wasm_bindgen(method, getter = grad)]
     pub fn grad(&self) -> Result<Option<JsTensor>, JsValue> {
         Ok(self.inner.grad().map(|grad| JsTensor { inner: grad }))
+    }
+
+    #[wasm_bindgen(method, setter = grad)]
+    pub fn set_grad(&self, grad: Option<JsTensor>) {
+        self.inner.set_grad(grad.map(|g| g.inner));
     }
 
     #[cfg(not(feature = "debug"))]

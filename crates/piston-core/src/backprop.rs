@@ -8,7 +8,7 @@ use crate::{
     Reindex, RoPE, ScatterAdd, ScopePusher, Slice, Softmax, Tensor, TensorId, Ternary, Unary, View,
     WhereCond,
 };
-use crate::{HashMap, Trilu};
+use crate::{HashMap, HashSet, Trilu};
 use anyhow::Result;
 
 #[derive(thiserror::Error, Debug)]
@@ -38,43 +38,62 @@ fn or_insert(tensor: &OpTensor) -> Result<OpTensor> {
         Some(grad) => grad,
         None => {
             let grad = tensor.clone().zeros_like::<f32>(None, false)?;
-            tensor.set_grad(grad.clone());
+            tensor.set_grad(Some(grad.clone()));
             grad
         }
     };
     Ok(grad)
 }
 
-/// If there's an existing gradient for `tensor`, add `grad` to it.
-/// Otherwise, just store `grad` as-is (no need to create zeros and then add).
-fn accumulate_add(tensor: &OpTensor, grad: OpTensor) -> Result<()> {
-    match tensor.grad() {
-        Some(existing_grad) => {
-            tensor.set_grad(existing_grad.clone().add(grad)?);
-        }
-        None => {
-            // TODO(vinhowe): This is a hack to avoid creating zeros and then adding; it does
-            // increase perf.
-            // It's not great; we should do a tensor copy or something.
-            tensor.set_grad(grad.affine(1., 0.)?);
-        }
-    }
-    Ok(())
+/// Context for gradient accumulation during backpropagation.
+/// Tracks which tensors should receive gradients and provides methods for accumulation.
+struct GradAccumContext {
+    tracked: HashSet<TensorId>,
 }
 
-fn accumulate_sub(tensor: &OpTensor, grad: OpTensor) -> Result<()> {
-    match tensor.grad() {
-        Some(existing_grad) => {
-            tensor.set_grad(existing_grad.clone().sub(grad)?);
-        }
-        None => {
-            // TODO(vinhowe): This is a hack to avoid creating zeros and then adding; it does
-            // increase perf.
-            // It's not great; we should do a tensor copy or something.
-            tensor.set_grad(grad.neg()?);
-        }
+impl GradAccumContext {
+    fn new(tracked_nodes: &[&OpTensor]) -> Self {
+        let tracked = tracked_nodes.iter().map(|node| node.id()).collect();
+        Self { tracked }
     }
-    Ok(())
+
+    /// Add gradient to tensor if it's being tracked
+    fn add(&self, tensor: &OpTensor, grad: OpTensor) -> Result<()> {
+        if !self.tracked.contains(&tensor.id()) {
+            return Ok(());
+        }
+        match tensor.grad() {
+            Some(existing_grad) => {
+                tensor.set_grad(Some(existing_grad.clone().add(grad)?));
+            }
+            None => {
+                // TODO(vinhowe): This is a hack to avoid creating zeros and then adding; it does
+                // increase perf.
+                // It's not great; we should do a tensor copy or something.
+                tensor.set_grad(Some(grad.affine(1., 0.)?));
+            }
+        }
+        Ok(())
+    }
+
+    /// Subtract gradient from tensor if it's being tracked
+    fn sub(&self, tensor: &OpTensor, grad: OpTensor) -> Result<()> {
+        if !self.tracked.contains(&tensor.id()) {
+            return Ok(());
+        }
+        match tensor.grad() {
+            Some(existing_grad) => {
+                tensor.set_grad(Some(existing_grad.clone().sub(grad)?));
+            }
+            None => {
+                // TODO(vinhowe): This is a hack to avoid creating zeros and then adding; it does
+                // increase perf.
+                // It's not great; we should do a tensor copy or something.
+                tensor.set_grad(Some(grad.neg()?));
+            }
+        }
+        Ok(())
+    }
 }
 
 thread_local! {
@@ -265,7 +284,11 @@ impl OpTensor {
     pub fn backward(&self) -> Result<()> {
         let _scope_guard = ScopePusher::new("backward");
         let sorted_nodes = self.sorted_nodes();
-        self.set_grad(self.ones_like::<f32>(None, false)?.contiguous()?);
+
+        // Create gradient context for tracked tensors
+        let ctx = GradAccumContext::new(&sorted_nodes);
+
+        self.set_grad(Some(self.ones_like::<f32>(None, false)?.contiguous()?));
         for node in sorted_nodes.iter() {
             let _op_scope_guard = ScopePusher::new(&format!("for:{}", node.op().name()));
             if node.requires_grad() {
@@ -290,16 +313,16 @@ impl OpTensor {
                     rhs,
                     op: BinaryOp::Add,
                 }) => {
-                    accumulate_add(lhs, grad.clone())?;
-                    accumulate_add(rhs, grad)?;
+                    ctx.add(lhs, grad.clone())?;
+                    ctx.add(rhs, grad)?;
                 }
                 LazyOp::Binary(Binary {
                     lhs,
                     rhs,
                     op: BinaryOp::Sub,
                 }) => {
-                    accumulate_add(lhs, grad.clone())?;
-                    accumulate_sub(rhs, grad)?;
+                    ctx.add(lhs, grad.clone())?;
+                    ctx.sub(rhs, grad)?;
                 }
                 LazyOp::Binary(Binary {
                     lhs,
@@ -307,9 +330,9 @@ impl OpTensor {
                     op: BinaryOp::Mul,
                 }) => {
                     let lhs_grad = grad.clone().mul(rhs.clone())?;
-                    accumulate_add(lhs, lhs_grad)?;
+                    ctx.add(lhs, lhs_grad)?;
                     let rhs_grad = grad.mul(lhs.clone())?;
-                    accumulate_add(rhs, rhs_grad)?;
+                    ctx.add(rhs, rhs_grad)?;
                 }
                 LazyOp::Binary(Binary {
                     lhs,
@@ -317,9 +340,9 @@ impl OpTensor {
                     op: BinaryOp::Div,
                 }) => {
                     let lhs_grad = grad.clone().div(rhs.clone())?;
-                    accumulate_add(lhs, lhs_grad)?;
+                    ctx.add(lhs, lhs_grad)?;
                     let rhs_grad = grad.mul(lhs.clone())?.div(rhs.clone().square()?)?;
-                    accumulate_sub(rhs, rhs_grad)?;
+                    ctx.sub(rhs, rhs_grad)?;
                 }
                 LazyOp::Binary(Binary {
                     lhs,
@@ -340,10 +363,10 @@ impl OpTensor {
                         .clone()
                         .mul(grad.clone())?
                         .div((mask_rhs.clone() + 1.)?)?;
-                    accumulate_add(lhs, lhs_grad)?;
+                    ctx.add(lhs, lhs_grad)?;
 
                     let rhs_grad = mask_rhs.mul(grad)?.div((mask_lhs + 1.)?)?;
-                    accumulate_add(rhs, rhs_grad)?;
+                    ctx.add(rhs, rhs_grad)?;
                 }
                 LazyOp::Ternary(Ternary {
                     input,
@@ -354,21 +377,21 @@ impl OpTensor {
                 }) => {
                     // addcdiv: input + value * (tensor1 / tensor2)
                     // Gradient for input is simply grad
-                    accumulate_add(input, grad.clone())?;
+                    ctx.add(input, grad.clone())?;
 
                     // Gradient for tensor1 is grad * value / tensor2
                     let tensor1_grad = grad
                         .clone()
                         .mul(tensor2.clone().recip()?)?
                         .affine(*value, 0.)?;
-                    accumulate_add(tensor1, tensor1_grad)?;
+                    ctx.add(tensor1, tensor1_grad)?;
 
                     // Gradient for tensor2 is -grad * value * tensor1 / tensor2^2
                     let tensor2_grad = grad
                         .mul(tensor1.clone())?
                         .div(tensor2.clone().square()?)?
                         .affine(-*value, 0.)?;
-                    accumulate_add(tensor2, tensor2_grad)?;
+                    ctx.add(tensor2, tensor2_grad)?;
                 }
                 LazyOp::Ternary(Ternary {
                     input,
@@ -379,15 +402,15 @@ impl OpTensor {
                 }) => {
                     // addcmul: input + value * (tensor1 * tensor2)
                     // Gradient for input is simply grad
-                    accumulate_add(input, grad.clone())?;
+                    ctx.add(input, grad.clone())?;
 
                     // Gradient for tensor1 is grad * value * tensor2
                     let tensor1_grad = grad.clone().mul(tensor2.clone())?.affine(*value, 0.)?;
-                    accumulate_add(tensor1, tensor1_grad)?;
+                    ctx.add(tensor1, tensor1_grad)?;
 
                     // Gradient for tensor2 is grad * value * tensor1
                     let tensor2_grad = grad.mul(tensor1.clone())?.affine(*value, 0.)?;
-                    accumulate_add(tensor2, tensor2_grad)?;
+                    ctx.add(tensor2, tensor2_grad)?;
                 }
                 LazyOp::WhereCond(WhereCond {
                     input,
@@ -396,9 +419,9 @@ impl OpTensor {
                 }) => {
                     let zeros = grad.clone().zeros_like::<f32>(None, false)?;
                     let t_grad = grad.clone().where_cond(input.clone(), zeros.clone())?;
-                    accumulate_add(on_true, t_grad)?;
+                    ctx.add(on_true, t_grad)?;
                     let f_grad = zeros.clone().where_cond(input.clone(), grad)?;
-                    accumulate_add(on_false, f_grad)?;
+                    ctx.add(on_false, f_grad)?;
                 }
                 LazyOp::Matmul(Matmul {
                     lhs,
@@ -411,17 +434,17 @@ impl OpTensor {
                     let lhs_grad =
                         grad.clone()
                             .gemm(rhs.clone(), None, *trans_dst, !trans_rhs, *trans_lhs)?;
-                    accumulate_add(lhs, lhs_grad)?;
+                    ctx.add(lhs, lhs_grad)?;
 
                     let rhs_grad =
                         lhs.clone()
                             .gemm(grad.clone(), None, !trans_lhs, *trans_dst, *trans_rhs)?;
-                    accumulate_add(rhs, rhs_grad)?;
+                    ctx.add(rhs, rhs_grad)?;
 
                     // Calculate the gradient with respect to the bias term
                     if let Some(bias) = bias {
                         let bias_grad = grad.sum_keepdim(1)?; // Assuming bias is summed over the appropriate axis
-                        accumulate_add(bias, bias_grad)?;
+                        ctx.add(bias, bias_grad)?;
                     }
                 }
                 LazyOp::Reindex(Reindex::Broadcast(Broadcast { src, .. })) => {
@@ -444,7 +467,7 @@ impl OpTensor {
                     for _i in 0..left_dims {
                         arg_grad = arg_grad.squeeze_all()?;
                     }
-                    accumulate_add(src, arg_grad.broadcast_to(src.shape().clone())?)?;
+                    ctx.add(src, arg_grad.broadcast_to(src.shape().clone())?)?;
                 }
                 LazyOp::Reindex(Reindex::Slice(Slice { src: arg, indices })) => {
                     let arg_dims = arg.shape().inner();
@@ -488,7 +511,7 @@ impl OpTensor {
                         }
                     };
 
-                    accumulate_add(arg, arg_grad)?;
+                    ctx.add(arg, arg_grad)?;
                 }
                 LazyOp::Reindex(Reindex::Permute(Permute { src: arg, dims })) => {
                     let mut inv_dims = rvec![0; dims.len()];
@@ -496,7 +519,7 @@ impl OpTensor {
                         inv_dims[dim] = i;
                     }
                     let arg_grad = grad.permute(inv_dims)?;
-                    accumulate_add(arg, arg_grad)?;
+                    ctx.add(arg, arg_grad)?;
                 }
                 LazyOp::Reduce(Reduce {
                     input: arg,
@@ -505,7 +528,7 @@ impl OpTensor {
                     ..
                 }) => {
                     let grad = broadcast_back(arg, &grad, reduced_shape.inner())?;
-                    accumulate_add(arg, grad)?;
+                    ctx.add(arg, grad)?;
                 }
                 LazyOp::Reduce(Reduce {
                     input: arg,
@@ -516,7 +539,7 @@ impl OpTensor {
                     let node = broadcast_back(arg, node, reduced_shape.inner())?;
                     let grad = broadcast_back(arg, &grad, reduced_shape.inner())?;
                     let grad = node.eq(arg.clone())?.cast(grad.dtype())?.mul(grad)?;
-                    accumulate_add(arg, grad.broadcast_to(arg.shape().clone())?)?;
+                    ctx.add(arg, grad.broadcast_to(arg.shape().clone())?)?;
                 }
                 LazyOp::Reduce(Reduce {
                     input: arg,
@@ -527,28 +550,28 @@ impl OpTensor {
                     let node = broadcast_back(arg, node, reduced_shape.inner())?;
                     let grad = broadcast_back(arg, &grad, reduced_shape.inner())?;
                     let grad = node.eq(arg.clone())?.cast(grad.dtype())?.mul(grad)?;
-                    accumulate_add(arg, grad.broadcast_to(arg.shape().clone())?)?;
+                    ctx.add(arg, grad.broadcast_to(arg.shape().clone())?)?;
                 }
                 LazyOp::Unary(Unary {
                     input: arg,
                     op: UnaryOp::Log,
                 }) => {
                     let arg_grad = (grad / arg.clone())?;
-                    accumulate_add(arg, arg_grad)?;
+                    ctx.add(arg, arg_grad)?;
                 }
                 LazyOp::Unary(Unary {
                     input: arg,
                     op: UnaryOp::Sin,
                 }) => {
                     let arg_grad = (grad * arg.clone().cos())?;
-                    accumulate_add(arg, arg_grad)?;
+                    ctx.add(arg, arg_grad)?;
                 }
                 LazyOp::Unary(Unary {
                     input: arg,
                     op: UnaryOp::Cos,
                 }) => {
                     let arg_grad = (grad * arg.clone().sin())?;
-                    accumulate_sub(arg, arg_grad)?;
+                    ctx.sub(arg, arg_grad)?;
                 }
                 LazyOp::Unary(Unary {
                     input: arg,
@@ -556,7 +579,7 @@ impl OpTensor {
                 }) => {
                     let minus_dtanh = ((*node).clone().square()? - 1.)?;
                     let arg_grad = (grad.clone() * minus_dtanh)?;
-                    accumulate_sub(arg, arg_grad)?;
+                    ctx.sub(arg, arg_grad)?;
                 }
                 LazyOp::Unary(Unary {
                     input: arg,
@@ -568,27 +591,27 @@ impl OpTensor {
                         .ge(arg.clone().zeros_like::<f32>(None, false)?)?
                         .where_cond(ones.clone(), ones.neg()?)?;
                     let arg_grad = (grad * abs_grad)?;
-                    accumulate_add(arg, arg_grad)?;
+                    ctx.add(arg, arg_grad)?;
                 }
                 LazyOp::Unary(Unary {
                     input: arg,
                     op: UnaryOp::Exp,
                 }) => {
                     let arg_grad = (grad * (*node).clone())?;
-                    accumulate_add(arg, arg_grad)?;
+                    ctx.add(arg, arg_grad)?;
                 }
                 LazyOp::Unary(Unary {
                     input: arg,
                     op: UnaryOp::Neg,
                 }) => {
-                    accumulate_sub(arg, grad)?;
+                    ctx.sub(arg, grad)?;
                 }
                 LazyOp::Unary(Unary {
                     input: arg,
                     op: UnaryOp::Reciprocal,
                 }) => {
                     let arg_grad = (grad / arg.clone().square()?)?;
-                    accumulate_sub(arg, arg_grad)?;
+                    ctx.sub(arg, arg_grad)?;
                 }
                 LazyOp::Unary(Unary {
                     input: _,
@@ -605,7 +628,7 @@ impl OpTensor {
                             * (1. - tanh.clone().pow(2.)?))?
                         + 0.5)?;
                     let arg_grad = (grad * gelu_grad)?;
-                    accumulate_add(arg, arg_grad)?;
+                    ctx.add(arg, arg_grad)?;
                 }
                 LazyOp::Unary(Unary {
                     input: arg,
@@ -616,7 +639,7 @@ impl OpTensor {
                         .ge(arg.clone().zeros_like::<f32>(None, false)?)?
                         .cast(arg.dtype())?;
                     let arg_grad = grad.mul(relu_grad)?;
-                    accumulate_add(arg, arg_grad)?;
+                    ctx.add(arg, arg_grad)?;
                 }
                 LazyOp::Unary(Unary {
                     input: arg,
@@ -628,7 +651,7 @@ impl OpTensor {
                             .cast(arg.dtype())?,
                     )?;
                     let arg_grad = grad.mul(relu_grad)?;
-                    accumulate_add(arg, arg_grad)?;
+                    ctx.add(arg, arg_grad)?;
                 }
                 LazyOp::Unary(Unary {
                     input: arg,
@@ -638,7 +661,7 @@ impl OpTensor {
                     let silu_grad =
                         (sigmoid_arg.clone() * (1. + (arg.clone() * (1. - sigmoid_arg)?)?)?)?;
                     let arg_grad = grad.mul(silu_grad)?;
-                    accumulate_add(arg, arg_grad)?;
+                    ctx.add(arg, arg_grad)?;
                 }
                 LazyOp::Unary(Unary {
                     input: arg,
@@ -667,21 +690,21 @@ impl OpTensor {
                     let swiglu_grad = product_term_1.add(product_term_2)?;
                     let arg_grad = grad.mul(swiglu_grad)?;
 
-                    accumulate_add(arg, arg_grad)?;
+                    ctx.add(arg, arg_grad)?;
                 }
                 LazyOp::Unary(Unary {
                     input: arg,
                     op: UnaryOp::Square,
                 }) => {
                     let arg_grad = arg.clone().mul(grad)?.affine(2., 0.)?;
-                    accumulate_add(arg, arg_grad)?;
+                    ctx.add(arg, arg_grad)?;
                 }
                 LazyOp::Unary(Unary {
                     input: arg,
                     op: UnaryOp::Sqrt,
                 }) => {
                     let arg_grad = grad.div((*node).clone())?.affine(0.5, 0.)?;
-                    accumulate_add(arg, arg_grad)?;
+                    ctx.add(arg, arg_grad)?;
                 }
                 LazyOp::Detach(_) => todo!(),
                 LazyOp::Unary(Unary {
@@ -708,19 +731,21 @@ impl OpTensor {
                 | LazyOp::Arange(_) => {}
                 LazyOp::View(View { src: arg, .. }) => {
                     let arg_grad = grad.clone().view(arg.shape().clone())?;
-                    accumulate_add(arg, arg_grad)?;
+                    ctx.add(arg, arg_grad)?;
                 }
                 LazyOp::Select(IndexSelect {
                     src: arg,
                     indices,
                     dim,
                 }) => {
-                    let sum_grad = or_insert(arg)?;
-                    arg.set_grad(sum_grad.clone().index_add(
-                        indices.clone(),
-                        grad.clone(),
-                        *dim,
-                    )?);
+                    if ctx.tracked.contains(&arg.id()) {
+                        let sum_grad = or_insert(arg)?;
+                        arg.set_grad(Some(sum_grad.clone().index_add(
+                            indices.clone(),
+                            grad.clone(),
+                            *dim,
+                        )?));
+                    }
                 }
                 LazyOp::Softmax(Softmax { input: arg, dim }) => {
                     // Get the softmax output (s)
@@ -735,7 +760,7 @@ impl OpTensor {
                         .mul(grad.clone())?
                         .sub(softmax_output.clone().mul(sum_grad)?)?;
 
-                    accumulate_add(arg, input_grad)?;
+                    ctx.add(arg, input_grad)?;
                 }
                 LazyOp::Norm(NormOp::LayerNorm(Norm {
                     input: arg,
@@ -777,11 +802,11 @@ impl OpTensor {
                         .clone()
                         .mul(grad.clone())?
                         .sum_keepdim(sum_axes.as_slice())?;
-                    accumulate_add(scale, grad_gamma.squeeze_all()?)?;
+                    ctx.add(scale, grad_gamma.squeeze_all()?)?;
 
                     if let Some(bias) = bias {
                         let grad_beta = grad.clone().sum_keepdim(sum_axes.as_slice())?;
-                        accumulate_add(bias, grad_beta.squeeze_all()?)?;
+                        ctx.add(bias, grad_beta.squeeze_all()?)?;
                     }
 
                     // Compute gradient w.r.t normalized input
@@ -818,22 +843,22 @@ impl OpTensor {
                         // dL/dvar * (2/N) * (x - mu) = dL/dvar * (2/N) * x_normed * std
                         .add(grad_mean.affine(1. / d, 0.)?)?; // dL/dmu * (1/N)
 
-                    accumulate_add(arg, grad_x)?;
+                    ctx.add(arg, grad_x)?;
                 }
                 LazyOp::Affine(Affine { src: arg, mul, .. }) => {
                     let arg_grad = grad.affine(*mul, 0.)?;
-                    accumulate_add(arg, arg_grad)?;
+                    ctx.add(arg, arg_grad)?;
                 }
                 LazyOp::Gather(Gather { src, ids, dim, .. }) => {
                     // We can't use or_insert here because we need to scatter into a zero tensor.
                     let sum_grad = src.zeros_like::<f32>(None, false)?;
                     let src_grad = sum_grad.scatter_add(ids.clone(), grad.clone(), *dim)?;
-                    accumulate_add(src, src_grad)?;
+                    ctx.add(src, src_grad)?;
                 }
                 LazyOp::ScatterAdd(ScatterAdd { dst, src, ids, dim }) => {
-                    accumulate_add(dst, grad.clone())?;
+                    ctx.add(dst, grad.clone())?;
                     let src_grad = grad.gather(ids.clone(), *dim)?;
-                    accumulate_add(src, src_grad)?;
+                    ctx.add(src, src_grad)?;
                 }
                 LazyOp::Trilu(Trilu { src: arg, upper, k }) => {
                     let masked_grad = if *upper {
@@ -841,16 +866,16 @@ impl OpTensor {
                     } else {
                         grad.tril(*k)?
                     };
-                    accumulate_add(arg, masked_grad)?;
+                    ctx.add(arg, masked_grad)?;
                 }
                 LazyOp::Alibi(Alibi { input, .. }) => {
-                    accumulate_add(input, grad)?;
+                    ctx.add(input, grad)?;
                 }
                 LazyOp::Cast(Cast {
                     input,
                     dst_dtype: _,
                 }) => {
-                    accumulate_add(input, grad.cast(input.dtype())?)?;
+                    ctx.add(input, grad.cast(input.dtype())?)?;
                 }
                 LazyOp::Norm(_) => todo!(),
                 LazyOp::Const => panic!("piston internal error - const node in backprop"),
@@ -865,7 +890,7 @@ impl OpTensor {
                     ..
                 }) => {
                     let arg_grad = grad.rope_backward(*dim, *base, *offset)?;
-                    accumulate_add(arg, arg_grad)?;
+                    ctx.add(arg, arg_grad)?;
                 }
                 LazyOp::Conv(_) => todo!(),
                 LazyOp::IndexWrite(_) => todo!(),

@@ -496,9 +496,13 @@ export class Tensor {
     return Tensor._wrap(this._cloneInner().debugTensor());
   }
 
-  grad(): Tensor | undefined {
-    const grad = this._cloneInner().grad();
+  get grad(): Tensor | undefined {
+    const grad = this._cloneInner().grad;
     return grad ? Tensor._wrap(grad) : undefined;
+  }
+
+  set grad(grad: Tensor | undefined | null) {
+    this._cloneInner().grad = grad ? grad._cloneInner() : undefined;
   }
 
   backward(): void {
