@@ -476,7 +476,8 @@ impl OpTensor {
                     let arg_dims = arg.shape().inner();
                     let index_lens = indices.iter().map(|range| range.end - range.start);
 
-                    // Get index of first dimension with length that doesn't match as a heuristic to make cat work
+                    // Get index of first dimension with length that doesn't match as a heuristic
+                    // to make cat work
                     let first_different_index = arg_dims
                         .iter()
                         .zip(index_lens)
