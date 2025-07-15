@@ -28,6 +28,11 @@ impl JsDType {
     pub fn itemsize(&self) -> usize {
         self.dtype.size_of()
     }
+
+    #[wasm_bindgen(getter)]
+    pub fn name(&self) -> String {
+        self.dtype.as_str().to_string()
+    }
 }
 
 #[wasm_bindgen(getter)]
