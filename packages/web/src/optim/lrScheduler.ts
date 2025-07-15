@@ -231,6 +231,15 @@ export class LinearLR extends LRScheduler<LinearConfig> {
     lastEpoch: number = -1,
   ) {
     super(optimizer, lastEpoch);
+    if (startFactor > 1.0 || startFactor <= 0) {
+      throw new Error(
+        "Starting multiplicative factor expected to be greater than 0 and less or equal to 1.",
+      );
+    }
+
+    if (endFactor > 1.0 || endFactor < 0) {
+      throw new Error("Ending multiplicative factor expected to be between 0 and 1.");
+    }
     this.startFactor = startFactor;
     this.endFactor = endFactor;
     this.totalIters = totalIters;
@@ -242,11 +251,14 @@ export class LinearLR extends LRScheduler<LinearConfig> {
     }
 
     if (this.lastEpoch > this.totalIters) {
-      return this.baseLrs.map((lr) => lr * this.endFactor);
+      return this.baseLrs.map((lr) => lr);
     }
 
-    const progress = this.lastEpoch / this.totalIters;
-    const factor = this.startFactor + progress * (this.endFactor - this.startFactor);
+    const factor =
+      1 +
+      (this.endFactor - this.startFactor) /
+        (this.totalIters * this.startFactor +
+          (this.lastEpoch - 1) * (this.endFactor - this.startFactor));
     return this.baseLrs.map((lr) => lr * factor);
   }
 }
