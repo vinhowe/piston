@@ -26,7 +26,6 @@ export class Module<Input = unknown, Output = unknown> {
   >;
   /** @internal Tensor class can access the map on its parent module to execute hooks */
   _tensorHooks: Map<number, TensorHook>;
-  protected _nextHookId: number;
   // Name of the property on the parent module that this module is assigned to
   // Helps us keep track of module scopes
   nameOnParent: string | undefined;
@@ -38,7 +37,6 @@ export class Module<Input = unknown, Output = unknown> {
     this._buffers = {};
     this._modules = {};
     this._nonPersistentBuffersSet = new Set<string>();
-    this._nextHookId = 0;
     this._forwardPreHooks = new Map();
     this._forwardHooks = new Map();
     this._tensorHooks = new Map();
