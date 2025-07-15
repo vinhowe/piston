@@ -31,6 +31,14 @@ impl JsDevice {
             .map_err(|e| e.to_string())?;
         Ok(())
     }
+
+    #[wasm_bindgen(getter)]
+    pub fn name(&self) -> String {
+        match self.inner {
+            Device::CPU => "cpu".to_string(),
+            Device::GPU(_) => "webgpu".to_string(),
+        }
+    }
 }
 
 thread_local! {
