@@ -1,4 +1,5 @@
 import { ScopeItem, withScope } from "@/nn/tracking";
+import { zerosLike } from "@/globals";
 import { Parameter } from "@/nn/parameter";
 import { Tensor, TensorHook } from "@/tensor";
 import { RemovableHandle } from "@/utils";
@@ -358,10 +359,9 @@ export class Optimizer<TState extends OptimizerParamState = OptimizerParamState>
         const grad = param.grad;
         if (grad) {
           if (setToNone) {
-            // TODO: Need to implement proper "set grad to null" logic
-            grad.mul(0); // For now, just zero it out
+            param.grad = null;
           } else {
-            grad.mul(0);
+            param.grad = zerosLike(grad);
           }
         }
       }
