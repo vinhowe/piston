@@ -1,26 +1,9 @@
-import { Parameter } from "@/parameter";
+import { Buffer, Parameter } from "@/parameter";
 import { TensorHook } from "@/tensor";
 import { RemovableHandle } from "@/utils";
 import { Tensor_wasm } from "@/wasm";
 
 import { ModuleScopeItem, ScopeItem, withScope } from "./tracking";
-
-// TODO(vinhowe): These implementations are not very good right now
-
-/**
- * Buffer class to represent non-trainable tensors
- * Buffers are tensors that do not require gradients for optimization during training.
- * This is similar to torch.Tensor in PyTorch.
- */
-export class Buffer {
-  data: Tensor;
-  persistent: boolean;
-
-  constructor(data: Tensor, persistent: boolean = true) {
-    this.data = data;
-    this.persistent = persistent;
-  }
-}
 
 /**
  * Module class to represent neural network modules
@@ -285,8 +268,8 @@ export class Module<Input = unknown, Output = unknown> {
       }
     }
 
-    (buffer as Buffer).data.scope = [...(this.scope || [])];
-    (buffer as Buffer).data.nameOnParent = name;
+    (buffer as Buffer).scope = [...(this.scope || [])];
+    (buffer as Buffer).nameOnParent = name;
     return this;
   }
 
@@ -323,7 +306,7 @@ export class Module<Input = unknown, Output = unknown> {
       (param as Parameter).scope = [...thisScope, ...(param.scope ?? [])];
     });
     module?.buffers().forEach((buf) => {
-      (buf as Buffer).data.scope = [...thisScope, ...(buf.data.scope ?? [])];
+      (buf as Buffer).scope = [...thisScope, ...(buf.scope ?? [])];
     });
     module?.modules().forEach((mod) => {
       (mod as Module<unknown, unknown>).scope = [
