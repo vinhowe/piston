@@ -1,6 +1,7 @@
 // Slop
 use heck::ToLowerCamelCase;
 use proc_macro::TokenStream;
+use proc_macro2::TokenStream as TokenStream2;
 use quote::quote;
 use syn::{parse_macro_input, FnArg, ImplItem, ItemImpl, Pat, PatIdent, Type};
 
@@ -23,10 +24,8 @@ fn to_lower_camel_case_with_underscore(ident: &str) -> String {
     )
 }
 
-pub fn js_tensor_operations(item: TokenStream) -> TokenStream {
-    // Parse the attribute arguments.
-    let mut item_impl = parse_macro_input!(item as ItemImpl);
-
+/// Core logic for js_tensor_operations using proc_macro2 types
+pub fn process_js_tensor_operations(mut item_impl: ItemImpl) -> TokenStream2 {
     // Extract the name of the struct being implemented (e.g., "JsTensor")
     let js_struct_name = match &*item_impl.self_ty {
         Type::Path(type_path) => type_path.path.segments.last().unwrap().ident.to_string(),
@@ -103,6 +102,7 @@ pub fn js_tensor_operations(item: TokenStream) -> TokenStream {
                             || is_type(&pat_type.ty, "ShapeWithOneHole")
                             || is_type_ref(&pat_type.ty, "ShapeWithOneHole")
                             || is_type(&pat_type.ty, "Dims")
+                            || is_type(&pat_type.ty, "TensorOrScalar")
                             || is_optional_of_type(&pat_type.ty, "Shape")
                             || is_optional_of_type(&pat_type.ty, "Dims")
                         {
@@ -114,6 +114,8 @@ pub fn js_tensor_operations(item: TokenStream) -> TokenStream {
                                 || is_optional_of_type(&pat_type.ty, "ShapeWithOneHole")
                             {
                                 "Int32Array | number[]".to_string()
+                            } else if is_type(&pat_type.ty, "TensorOrScalar") {
+                                "Tensor | number".to_string()
                             } else {
                                 "Uint32Array | number[]".to_string()
                             };
@@ -359,9 +361,20 @@ pub fn js_tensor_operations(item: TokenStream) -> TokenStream {
         }
     }
 
-    TokenStream::from(quote! {
+    quote! {
         #item_impl
-    })
+    }
+}
+
+/// Proc macro wrapper for js_tensor_operations
+pub fn js_tensor_operations(item: TokenStream) -> TokenStream {
+    // Parse the attribute arguments.
+    let item_impl = parse_macro_input!(item as ItemImpl);
+
+    // Process with core logic
+    let result = process_js_tensor_operations(item_impl);
+
+    TokenStream::from(result)
 }
 
 struct TypeConversion {
@@ -408,6 +421,15 @@ fn generate_type_and_conversion(
             quote! { #ty },
             ident,
             Some(quote! { #expr.inner }),
+            false,
+            false,
+        )
+    } else if is_type(ty, "TensorOrScalar") {
+        TypeConversion::new(
+            syn::parse_quote!(JsValue),
+            quote! { JsTensorOrScalar },
+            ident,
+            Some(quote! { JsTensorOrScalar { inner: #expr } }),
             false,
             false,
         )

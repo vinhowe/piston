@@ -5,8 +5,8 @@ use crate::ops::{BinaryOp, TernaryOp, UnaryOp};
 use crate::{
     rvec, Affine, Alibi, Binary, Broadcast, Cast, Cmp, Concat, Conv, DType, Gather, GroupNorm,
     IndexAdd, IndexSelect, LazyOp, Matmul, Norm, NormOp, OpTensor, Permute, Powf, Reduce, ReduceOp,
-    Reindex, RoPE, ScatterAdd, ScopePusher, Slice, Softmax, Tensor, TensorId, Ternary, Unary, View,
-    WhereCond,
+    Reindex, RoPE, ScatterAdd, ScopePusher, Slice, Softmax, Tensor, TensorId,
+    TensorTypeOrScalarEnum, Ternary, Unary, View, WhereCond,
 };
 use crate::{HashMap, HashSet, Trilu};
 use anyhow::Result;
@@ -146,11 +146,6 @@ impl OpTensor {
                         ids: t3,
                         ..
                     })
-                    | LazyOp::WhereCond(WhereCond {
-                        input: t1,
-                        on_true: t2,
-                        on_false: t3,
-                    })
                     | LazyOp::Ternary(Ternary {
                         input: t1,
                         tensor1: t2,
@@ -165,12 +160,30 @@ impl OpTensor {
                         track_grad |= tg;
                         nodes
                     }
+                    LazyOp::WhereCond(WhereCond {
+                        condition,
+                        on_true,
+                        on_false,
+                    }) => {
+                        let (tg, mut nodes) = walk(condition, nodes, already_seen);
+                        track_grad |= tg;
+                        if let TensorTypeOrScalarEnum::Tensor(on_true) = on_true {
+                            let (tg, _nodes) = walk(on_true, nodes, already_seen);
+                            track_grad |= tg;
+                            nodes = _nodes;
+                        }
+                        if let TensorTypeOrScalarEnum::Tensor(on_false) = on_false {
+                            let (tg, _nodes) = walk(on_false, nodes, already_seen);
+                            track_grad |= tg;
+                            nodes = _nodes;
+                        }
+                        nodes
+                    }
                     LazyOp::Conv(Conv {
                         input: lhs,
                         weight: rhs,
                         ..
                     })
-                    | LazyOp::Binary(Binary { lhs, rhs, .. })
                     | LazyOp::Gather(Gather {
                         src: lhs, ids: rhs, ..
                     })
@@ -185,6 +198,17 @@ impl OpTensor {
                         let (tg, nodes) = walk(rhs, nodes, already_seen);
                         track_grad |= tg;
                         nodes
+                    }
+                    LazyOp::Binary(Binary { lhs, rhs, .. }) => {
+                        let (tg, nodes) = walk(lhs, nodes, already_seen);
+                        track_grad |= tg;
+                        if let TensorTypeOrScalarEnum::Tensor(rhs) = rhs {
+                            let (tg, nodes) = walk(rhs, nodes, already_seen);
+                            track_grad |= tg;
+                            nodes
+                        } else {
+                            nodes
+                        }
                     }
                     LazyOp::Concat(Concat { inputs, .. }) => {
                         inputs.iter().fold(nodes, |nodes, input| {
@@ -317,7 +341,9 @@ impl OpTensor {
                     op: BinaryOp::Add,
                 }) => {
                     ctx.add(lhs, grad.clone())?;
-                    ctx.add(rhs, grad)?;
+                    if let TensorTypeOrScalarEnum::Tensor(rhs) = rhs {
+                        ctx.add(rhs, grad)?;
+                    }
                 }
                 LazyOp::Binary(Binary {
                     lhs,
@@ -325,7 +351,9 @@ impl OpTensor {
                     op: BinaryOp::Sub,
                 }) => {
                     ctx.add(lhs, grad.clone())?;
-                    ctx.sub(rhs, grad)?;
+                    if let TensorTypeOrScalarEnum::Tensor(rhs) = rhs {
+                        ctx.sub(rhs, grad)?;
+                    }
                 }
                 LazyOp::Binary(Binary {
                     lhs,
@@ -334,8 +362,10 @@ impl OpTensor {
                 }) => {
                     let lhs_grad = grad.clone().mul(rhs.clone())?;
                     ctx.add(lhs, lhs_grad)?;
-                    let rhs_grad = grad.mul(lhs.clone())?;
-                    ctx.add(rhs, rhs_grad)?;
+                    if let TensorTypeOrScalarEnum::Tensor(rhs) = rhs {
+                        let rhs_grad = grad.mul(lhs.clone())?;
+                        ctx.add(rhs, rhs_grad)?;
+                    }
                 }
                 LazyOp::Binary(Binary {
                     lhs,
@@ -344,8 +374,22 @@ impl OpTensor {
                 }) => {
                     let lhs_grad = grad.clone().div(rhs.clone())?;
                     ctx.add(lhs, lhs_grad)?;
-                    let rhs_grad = grad.mul(lhs.clone())?.div(rhs.clone().square()?)?;
-                    ctx.sub(rhs, rhs_grad)?;
+                    if let TensorTypeOrScalarEnum::Tensor(rhs) = rhs {
+                        let rhs_grad = grad.mul(lhs.clone())?.div(rhs.clone().square()?)?;
+                        ctx.sub(rhs, rhs_grad)?;
+                    }
+                }
+                LazyOp::Binary(Binary {
+                    lhs,
+                    rhs,
+                    op: BinaryOp::Pow,
+                }) => {
+                    let lhs_grad = grad.clone().mul(rhs.clone())?;
+                    ctx.add(lhs, lhs_grad)?;
+                    if let TensorTypeOrScalarEnum::Tensor(rhs) = rhs {
+                        let rhs_grad = grad.clone().mul(lhs.clone())?.div(rhs.clone())?;
+                        ctx.add(rhs, rhs_grad)?;
+                    }
                 }
                 LazyOp::Binary(Binary {
                     lhs,
@@ -368,8 +412,14 @@ impl OpTensor {
                         .div((mask_rhs.clone() + 1.)?)?;
                     ctx.add(lhs, lhs_grad)?;
 
-                    let rhs_grad = mask_rhs.mul(grad)?.div((mask_lhs + 1.)?)?;
-                    ctx.add(rhs, rhs_grad)?;
+                    if let TensorTypeOrScalarEnum::Tensor(rhs) = rhs {
+                        let rhs_grad = mask_rhs.mul(grad)?.div((mask_lhs + 1.)?)?;
+                        ctx.add(rhs, rhs_grad)?;
+                    } else {
+                        return Err(BackpropError::BackwardNotSupported {
+                            op: "Maximum/Minimum with scalar rhs",
+                        })?;
+                    }
                 }
                 LazyOp::Ternary(Ternary {
                     input,
@@ -416,15 +466,19 @@ impl OpTensor {
                     ctx.add(tensor2, tensor2_grad)?;
                 }
                 LazyOp::WhereCond(WhereCond {
-                    input,
+                    condition,
                     on_true,
                     on_false,
                 }) => {
                     let zeros = grad.clone().zeros_like::<f32>(None, false)?;
-                    let t_grad = grad.clone().where_cond(input.clone(), zeros.clone())?;
-                    ctx.add(on_true, t_grad)?;
-                    let f_grad = zeros.clone().where_cond(input.clone(), grad)?;
-                    ctx.add(on_false, f_grad)?;
+                    if let TensorTypeOrScalarEnum::Tensor(on_true) = on_true {
+                        let t_grad = grad.clone().where_cond(condition.clone(), zeros.clone())?;
+                        ctx.add(on_true, t_grad)?;
+                    }
+                    if let TensorTypeOrScalarEnum::Tensor(on_false) = on_false {
+                        let f_grad = zeros.clone().where_cond(condition.clone(), grad)?;
+                        ctx.add(on_false, f_grad)?;
+                    }
                 }
                 LazyOp::Matmul(Matmul {
                     lhs,

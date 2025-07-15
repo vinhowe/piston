@@ -7,7 +7,7 @@ use crate::gpu::dtype::WgslDType;
 use crate::{
     gpu::{BindGroupLayoutDescriptor, WorkgroupCount},
     rvec, wgc, wgs, Array, BindingMode, BuiltIn, DType, KernelElement, KernelSource, OpGuards,
-    Operation, OperationError, RVec, Scalar, StorageView, Stride, OpTensor, Vec2, Vec4,
+    OpTensor, Operation, OperationError, RVec, Scalar, StorageView, Stride, Vec2, Vec4,
     WgslKernelBuilder, WgslPrimitive, WorkgroupSize, Workload,
 };
 use crate::{GPUOperation, Kernel, KernelRenderable};
@@ -127,11 +127,13 @@ impl KernelRenderable for RoPEKernels {
         builder: &mut WgslKernelBuilder,
         inplace: bool,
     ) -> Result<(), OperationError> {
-        if !inplace {
-            panic!("Only inplace rope is supported");
-        }
         let arr = Array::<P>::default();
-        builder.register_storage("in", BindingMode::ReadWrite, arr);
+        if inplace {
+            builder.register_storage("in", BindingMode::ReadWrite, arr);
+        } else {
+            builder.register_storage("in", BindingMode::ReadOnly, arr);
+            builder.register_storage("out", BindingMode::ReadWrite, arr);
+        }
         builder.register_uniform();
         Ok(())
     }
@@ -164,6 +166,18 @@ impl KernelRenderable for RoPEKernels {
         let body_code = rope_body(is_backward);
 
         let dtype = P::T::DT;
+        let write_operations = if inplace {
+            wgsl! {
+                in[out_index_1] = rx1;
+                in[out_index_2] = rx2;
+            }
+        } else {
+            wgsl! {
+                out[out_index_1] = rx1;
+                out[out_index_2] = rx2;
+            }
+        };
+
         kernel_builder.write_main(wgsl! {
             if(global_invocation_id.y >= metadata.seq_len) {
               return;
@@ -189,8 +203,7 @@ impl KernelRenderable for RoPEKernels {
 
             'body_code
 
-            in[out_index_1] = rx1;
-            in[out_index_2] = rx2;
+            'write_operations
         });
 
         Ok(kernel_builder.build()?)
@@ -212,12 +225,17 @@ impl Kernel for RoPEKernels {
         inplace: bool,
     ) -> Result<BindGroupLayoutDescriptor, OperationError> {
         if inplace {
-            return Ok(BindGroupLayoutDescriptor::unary_inplace());
+            Ok(BindGroupLayoutDescriptor::unary_inplace())
+        } else {
+            Ok(BindGroupLayoutDescriptor::unary())
         }
-        panic!("RoPE does not support out-of-place operation");
     }
 
-    fn metadata(&self, dst: &OpTensor, _: &KernelElement) -> Result<Self::Metadata, OperationError> {
+    fn metadata(
+        &self,
+        dst: &OpTensor,
+        _: &KernelElement,
+    ) -> Result<Self::Metadata, OperationError> {
         let inner = match self {
             RoPEKernels::Forward(x) => x,
             RoPEKernels::Backward(x) => x,

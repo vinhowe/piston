@@ -2,6 +2,7 @@ use crate::error::IntoJsError;
 use half::f16;
 use paste::paste;
 use piston::{DType, Device, Dim, IrScalarValue, IrValue, LazyOp, RVec, Shape, Tensor};
+use piston::{TensorTypeOrScalar, TensorTypeOrScalarEnum};
 use piston_macros::js_tensor_operations;
 use std::collections::HashMap;
 use wasm_bindgen::prelude::*;
@@ -147,45 +148,21 @@ impl JsTensor {
 
 macro_rules! impl_binary_op {
     ($op:ident) => {
+        #[wasm_bindgen(js_class = Tensor)]
+        #[js_tensor_operations]
+        impl JsTensor {
+            pub fn $op(&self, other: TensorOrScalar) -> JsTensorResult {}
+        }
+    };
+}
+
+macro_rules! impl_binary_op_tensor_only {
+    ($op:ident) => {
         paste! {
             #[wasm_bindgen(js_class = Tensor)]
             #[js_tensor_operations]
             impl JsTensor {
                 pub fn $op(&self, other: Tensor) -> JsTensorResult {}
-                pub fn [<$op _>](&self, other: Tensor) -> JsTensorResult {}
-            }
-        }
-    };
-    ($op:ident, $op_fn:expr) => {
-        #[wasm_bindgen(js_class = Tensor)]
-        #[js_tensor_operations]
-        impl JsTensor {
-            pub fn $op(
-                &self,
-                #[wasm_bindgen(unchecked_param_type = "Tensor | number")] other: JsValue,
-            ) -> JsTensorResult {
-                if let Ok(other) = JsTensor::try_from(other.clone()) {
-                    Ok(JsTensor {
-                        inner: self
-                            .inner
-                            .clone()
-                            .$op(other.inner)
-                            .map_err(|e| e.into_js_error())?,
-                    })
-                } else {
-                    let other: Option<f32> = other.as_f64().map(|f| f as f32);
-                    if let Some(other) = other {
-                        Ok(JsTensor {
-                            inner: ($op_fn)(self.inner.clone(), other)
-                                .map_err(|e| e.into_js_error())?,
-                        })
-                    } else {
-                        Err(JsError::new(&format!(
-                            "{}: other must be a tensor or a number",
-                            stringify!($op)
-                        )))
-                    }
-                }
             }
         }
     };
@@ -210,8 +187,8 @@ macro_rules! impl_cmp_op {
             #[wasm_bindgen(js_class = Tensor)]
             #[js_tensor_operations]
             impl JsTensor {
-                pub fn $op(&self, other: Tensor) -> JsTensorResult {}
-                pub fn [<$op _>](&self, other: Tensor) -> JsTensorResult {}
+                pub fn $op(&self, other: TensorOrScalar) -> JsTensorResult {}
+                pub fn [<$op _>](&self, other: TensorOrScalar) -> JsTensorResult {}
             }
         }
     };
@@ -230,17 +207,18 @@ macro_rules! impl_unary_op {
     };
 }
 
-impl_binary_op!(add, |tensor: Tensor, other| tensor.affine(1., other));
-impl_binary_op!(add_, |tensor: Tensor, other| tensor.affine_(1., other));
-impl_binary_op!(sub, |tensor: Tensor, other: f32| tensor.affine(1., -other));
-impl_binary_op!(sub_, |tensor: Tensor, other: f32| tensor
-    .affine_(1., -other));
-impl_binary_op!(mul, |tensor: Tensor, other| tensor.affine(other, 0.));
-impl_binary_op!(mul_, |tensor: Tensor, other| tensor.affine_(other, 0.));
-impl_binary_op!(div, |tensor: Tensor, other| tensor.affine(1. / other, 0.));
-impl_binary_op!(div_, |tensor: Tensor, other| tensor.affine_(1. / other, 0.));
-impl_binary_op!(minimum);
-impl_binary_op!(maximum);
+impl_binary_op!(add);
+impl_binary_op!(add_);
+impl_binary_op!(sub);
+impl_binary_op!(sub_);
+impl_binary_op!(mul);
+impl_binary_op!(mul_);
+impl_binary_op!(div);
+impl_binary_op!(div_);
+impl_binary_op!(pow);
+impl_binary_op!(pow_);
+impl_binary_op_tensor_only!(minimum);
+impl_binary_op_tensor_only!(maximum);
 
 impl_ternary_op!(addcdiv);
 impl_ternary_op!(addcmul);
@@ -337,10 +315,6 @@ impl JsTensor {
     }
 
     pub fn affine(&self, mul: f32, add: f32) -> JsTensorResult {}
-
-    pub fn pow(self, e: f32) -> JsTensorResult {}
-
-    pub fn pow_(self, e: f32) -> JsTensorResult {}
 
     pub fn sum(self, dim: Option<Dims>, keepdim: bool) -> JsTensorResult {
         let tensor = if let Some(sum_dims) = dim {
@@ -492,7 +466,7 @@ impl JsTensor {
 
     pub fn index_write(self, src: Tensor, write_start: Dims) -> JsTensorResult {}
 
-    pub fn where_cond(self, on_true: Tensor, on_false: Tensor) -> JsTensorResult {}
+    pub fn where_cond(self, condition: Tensor, on_false: TensorOrScalar) -> JsTensorResult {}
 
     pub fn scatter_add(self, indices: Tensor, source: Tensor, dim: Dim) -> JsTensorResult {}
 
@@ -783,8 +757,8 @@ impl JsTensor {
     }
 
     #[wasm_bindgen(getter)]
-    pub fn grad(&self) -> Result<Option<JsTensor>, JsError> {
-        Ok(self.inner.grad().map(|grad| JsTensor { inner: grad }))
+    pub fn grad(&self) -> Option<JsTensor> {
+        self.inner.grad().map(|grad| JsTensor { inner: grad })
     }
 
     #[wasm_bindgen(setter = grad)]
@@ -814,6 +788,26 @@ impl JsTensor {
     pub fn _clone(&self) -> JsTensor {
         JsTensor {
             inner: self.inner.clone(),
+        }
+    }
+}
+
+#[derive(Clone)]
+struct JsTensorOrScalar {
+    inner: JsValue,
+}
+
+impl TensorTypeOrScalar<Tensor> for JsTensorOrScalar {
+    fn tensor_or_scalar(&self) -> anyhow::Result<TensorTypeOrScalarEnum<Tensor>> {
+        if let Ok(other) = JsTensor::try_from(self.inner.clone()) {
+            Ok(TensorTypeOrScalarEnum::Tensor(other.inner))
+        } else {
+            let other: f32 = self
+                .inner
+                .as_f64()
+                .map(|f| f as f32)
+                .ok_or_else(|| anyhow::anyhow!("Failed to convert JsValue to f32"))?;
+            Ok(TensorTypeOrScalarEnum::Scalar(other))
         }
     }
 }

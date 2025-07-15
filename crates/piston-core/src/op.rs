@@ -8,8 +8,8 @@ use crate::gpu::{
 use crate::MIN_STORAGE_BUFFER_SIZE;
 use crate::{
     ops::*, rvec, CompiledOp, DType, HashMap, InvariantError, Kernel, KernelBuildError,
-    KernelMetadata, KernelModuleDesc, OpTensor, RVec, Shape, StorageView, TensorId, WgslFragment,
-    WorkgroupSize, Workload,
+    KernelMetadata, KernelModuleDesc, OpTensor, RVec, Shape, StorageView, TensorId,
+    TensorTypeOrScalarEnum, WgslFragment, WorkgroupSize, Workload,
 };
 #[cfg(feature = "debug")]
 use slotmap::Key;
@@ -646,6 +646,15 @@ impl From<Ir> for IrValue {
 impl<T: IrFields + 'static> From<T> for IrValue {
     fn from(value: T) -> Self {
         IrValue::Fields(Box::new(value))
+    }
+}
+
+impl<T: Into<IrValue>> From<TensorTypeOrScalarEnum<T>> for IrValue {
+    fn from(value: TensorTypeOrScalarEnum<T>) -> Self {
+        match value {
+            TensorTypeOrScalarEnum::Tensor(tensor) => tensor.into(),
+            TensorTypeOrScalarEnum::Scalar(scalar) => scalar.into(),
+        }
     }
 }
 

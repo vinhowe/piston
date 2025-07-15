@@ -519,12 +519,38 @@ impl OpTensor {
 macro_rules! impl_binary_op {
     ($method_name:ident, $op:expr) => {
         #[allow(clippy::should_implement_trait)]
+        pub fn $method_name<T: TensorTypeOrScalar<OpTensor>>(self, other: T) -> Result<Self> {
+            let device = self.device.clone();
+            let (lhs, rhs) = match other.tensor_or_scalar() {
+                Ok(TensorTypeOrScalarEnum::Tensor(other)) => {
+                    let (lhs, rhs) = self.broadcast_for_binary_op(other)?;
+                    (lhs, TensorTypeOrScalarEnum::Tensor(rhs))
+                }
+                Ok(TensorTypeOrScalarEnum::Scalar(other)) => {
+                    (self, TensorTypeOrScalarEnum::Scalar(other)) // TODO: this is wrong
+                }
+                Err(e) => return Err(e),
+            };
+            let binary = Binary::new(lhs, rhs, $op);
+            let new_view = binary.compute_view()?;
+            Ok(OpTensor::lazy(
+                LazyOp::Binary(binary),
+                new_view,
+                device,
+                false,
+            ))
+        }
+    };
+}
+
+macro_rules! impl_binary_op_tensor_only {
+    ($method_name:ident, $op:expr) => {
+        #[allow(clippy::should_implement_trait)]
         pub fn $method_name(self, other: OpTensor) -> Result<Self> {
             let device = self.device.clone();
             let (lhs, rhs) = self.broadcast_for_binary_op(other)?;
-            let binary = Binary::new(lhs, rhs, $op);
+            let binary = Binary::new(lhs, TensorTypeOrScalarEnum::Tensor(rhs), $op);
             let new_view = binary.compute_view()?;
-
             Ok(OpTensor::lazy(
                 LazyOp::Binary(binary),
                 new_view,
@@ -562,12 +588,23 @@ macro_rules! impl_ternary_op {
 macro_rules! impl_cmp_op {
     ($method_name:ident, $op:expr) => {
         #[allow(clippy::should_implement_trait)]
-        pub fn $method_name(self, other: OpTensor) -> Result<Self> {
-            let device = self.device.clone();
-            let (lhs, rhs) = self.broadcast_for_binary_op(other)?;
-            let cmp = Cmp::new(lhs, rhs, $op);
-            let new_view = cmp.compute_view()?;
-            Ok(Self::lazy(LazyOp::Cmp(cmp), new_view, device, false))
+        pub fn $method_name<T: TensorTypeOrScalar<OpTensor>>(self, other: T) -> Result<Self> {
+            match other.tensor_or_scalar() {
+                Ok(TensorTypeOrScalarEnum::Tensor(other)) => {
+                    let device = self.device.clone();
+                    let (lhs, rhs) = self.broadcast_for_binary_op(other)?;
+                    let cmp = Cmp::new(lhs, TensorTypeOrScalarEnum::Tensor(rhs), $op);
+                    let new_view = cmp.compute_view()?;
+                    Ok(Self::lazy(LazyOp::Cmp(cmp), new_view, device, false))
+                }
+                Ok(TensorTypeOrScalarEnum::Scalar(other)) => {
+                    let device = self.device.clone();
+                    let cmp = Cmp::new(self, TensorTypeOrScalarEnum::Scalar(other), $op);
+                    let new_view = cmp.compute_view()?;
+                    Ok(Self::lazy(LazyOp::Cmp(cmp), new_view, device, false))
+                }
+                Err(e) => Err(e),
+            }
         }
     };
 }
@@ -589,8 +626,9 @@ impl OpTensor {
     impl_binary_op!(sub, BinaryOp::Sub);
     impl_binary_op!(mul, BinaryOp::Mul);
     impl_binary_op!(div, BinaryOp::Div);
-    impl_binary_op!(maximum, BinaryOp::Maximum);
-    impl_binary_op!(minimum, BinaryOp::Minimum);
+    impl_binary_op!(pow, BinaryOp::Pow);
+    impl_binary_op_tensor_only!(maximum, BinaryOp::Maximum);
+    impl_binary_op_tensor_only!(minimum, BinaryOp::Minimum);
 
     impl_ternary_op!(addcdiv, TernaryOp::Addcdiv);
     impl_ternary_op!(addcmul, TernaryOp::Addcmul);
@@ -747,13 +785,6 @@ impl OpTensor {
         let affine = Affine::new(self, mul, add);
         let new_view = affine.compute_view()?;
         Ok(Self::lazy(LazyOp::Affine(affine), new_view, device, false))
-    }
-
-    pub fn pow(self, e: f32) -> Result<Self> {
-        let device = self.device.clone();
-        let powf = Powf::new(self, e);
-        let new_view = powf.compute_view()?;
-        Ok(Self::lazy(LazyOp::Powf(powf), new_view, device, false))
     }
 
     fn reduce_impl(self, dim: usize, keepdim: bool, op: ReduceOp) -> Result<Self> {
@@ -1176,9 +1207,14 @@ impl OpTensor {
         Ok(OpTensor::lazy(op, new_view, device, false))
     }
 
-    pub fn where_cond(self, condition: Self, on_false: Self) -> Result<Self> {
+    pub fn where_cond<T: TensorTypeOrScalar<OpTensor>>(
+        self,
+        condition: Self,
+        on_false: T,
+    ) -> Result<Self> {
+        let on_false = on_false.tensor_or_scalar()?;
         let device = self.device.clone();
-        let where_cond = WhereCond::new(condition, self, on_false);
+        let where_cond = WhereCond::new(condition, TensorTypeOrScalarEnum::Tensor(self), on_false);
         let new_view = where_cond.compute_view()?;
         Ok(Self::lazy(
             LazyOp::WhereCond(where_cond),
@@ -2621,18 +2657,28 @@ macro_rules! impl_binary_op_wrapper {
     ($method_name:ident, $op:expr) => {
         paste! {
             #[allow(clippy::should_implement_trait)]
-            pub fn $method_name(self, other: Self) -> Result<Self> {
+            pub fn $method_name<T: TensorTypeOrScalar<Tensor>>(self, other: T) -> Result<Self> {
                 self
                 .inner_or_source()
                 .clone()
-                .$method_name(other.inner_or_source().clone())
+                .$method_name(other.map_tensor(|t| t.inner_or_source().clone()))
                 .map(Self::wrap)
             }
 
-            pub fn [<$method_name _>](self, other: Self) -> Result<Self> {
+            pub fn [<$method_name _>]<T: TensorTypeOrScalar<Tensor>>(self, other: T) -> Result<Self> {
                 let inner = self.inner_or_source().clone();
-                let other = other.inner_or_source().clone();
+                let other = other.map_tensor(|t| t.inner_or_source().clone());
                 Ok(self.wrap_inplace(inner.$method_name(other)?))
+            }
+        }
+    };
+}
+
+macro_rules! impl_binary_op_wrapper_tensor_only {
+    ($method_name:ident, $op:expr) => {
+        paste! {
+            pub fn $method_name(self, other: Self) -> Result<Self> {
+                self.inner_or_source().clone().$method_name(other.inner_or_source().clone()).map(Self::wrap)
             }
         }
     };
@@ -2669,17 +2715,17 @@ macro_rules! impl_cmp_op_wrapper {
     ($method_name:ident, $op:expr) => {
         paste! {
             #[allow(clippy::should_implement_trait)]
-            pub fn $method_name(self, other: Self) -> Result<Self> {
+            pub fn $method_name<T: TensorTypeOrScalar<Tensor>>(self, other: T) -> Result<Self> {
                 self
                 .inner_or_source()
                 .clone()
-                .$method_name(other.inner_or_source().clone())
+                .$method_name(other.map_tensor(|t| t.inner_or_source().clone()))
                 .map(Self::wrap)
             }
 
-            pub fn [<$method_name _>](self, other: Self) -> Result<Self> {
+            pub fn [<$method_name _>]<T: TensorTypeOrScalar<Tensor>>(self, other: T) -> Result<Self> {
                 let inner = self.inner_or_source().clone();
-                let other = other.inner_or_source().clone();
+                let other = other.map_tensor(|t| t.inner_or_source().clone());
                 Ok(self.wrap_inplace(inner.$method_name(other)?))
             }
         }
@@ -2707,8 +2753,9 @@ impl Tensor {
     impl_binary_op_wrapper!(sub, BinaryOp::Sub);
     impl_binary_op_wrapper!(mul, BinaryOp::Mul);
     impl_binary_op_wrapper!(div, BinaryOp::Div);
-    impl_binary_op_wrapper!(maximum, BinaryOp::Maximum);
-    impl_binary_op_wrapper!(minimum, BinaryOp::Minimum);
+    impl_binary_op_wrapper!(pow, BinaryOp::Pow);
+    impl_binary_op_wrapper_tensor_only!(maximum, BinaryOp::Maximum);
+    impl_binary_op_wrapper_tensor_only!(minimum, BinaryOp::Minimum);
 
     impl_ternary_op_wrapper!(addcdiv, TernaryOp::Addcdiv);
     impl_ternary_op_wrapper!(addcmul, TernaryOp::Addcmul);
@@ -2876,15 +2923,6 @@ impl Tensor {
     pub fn affine_(self, mul: f32, add: f32) -> Result<Self> {
         let inner = self.inner_or_source().clone();
         Ok(self.wrap_inplace(inner.affine(mul, add)?))
-    }
-
-    pub fn pow(self, e: f32) -> Result<Self> {
-        self.inner_or_source().clone().pow(e).map(Self::wrap)
-    }
-
-    pub fn pow_(self, e: f32) -> Result<Self> {
-        let inner = self.inner_or_source().clone();
-        Ok(self.wrap_inplace(inner.pow(e)?))
     }
 
     pub fn sum_keepdim<D: Dims>(self, sum_dims: D) -> Result<Self> {
@@ -3127,12 +3165,21 @@ impl Tensor {
             .map(Self::wrap)
     }
 
-    pub fn where_cond(self, condition: Self, on_false: Self) -> Result<Self> {
+    pub fn where_cond<T: TensorTypeOrScalar<Tensor>>(
+        self,
+        condition: Self,
+        on_false: T,
+    ) -> Result<Self> {
         self.inner_or_source()
             .clone()
             .where_cond(
                 condition.inner_or_source().clone(),
-                on_false.inner_or_source().clone(),
+                match on_false.tensor_or_scalar()? {
+                    TensorTypeOrScalarEnum::Tensor(t) => {
+                        TensorTypeOrScalarEnum::Tensor(t.inner_or_source().clone())
+                    }
+                    TensorTypeOrScalarEnum::Scalar(s) => TensorTypeOrScalarEnum::Scalar(s),
+                },
             )
             .map(Self::wrap)
     }
@@ -3547,6 +3594,67 @@ impl std::ops::Div<Tensor> for f32 {
     #[allow(clippy::suspicious_arithmetic_impl)]
     fn div(self, rhs: Tensor) -> Self::Output {
         rhs.recip()? * self
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum TensorTypeOrScalarEnum<T> {
+    Tensor(T),
+    Scalar(f32),
+}
+
+pub trait TensorTypeOrScalar<TensorType> {
+    fn tensor_or_scalar(&self) -> Result<TensorTypeOrScalarEnum<TensorType>>;
+    fn tensor(&self) -> Option<TensorType> {
+        self.tensor_or_scalar().ok().and_then(|x| match x {
+            TensorTypeOrScalarEnum::Tensor(t) => Some(t),
+            _ => None,
+        })
+    }
+    fn map_tensor<ReturnTensorType, F: FnOnce(TensorType) -> ReturnTensorType>(
+        &self,
+        f: F,
+    ) -> Result<TensorTypeOrScalarEnum<ReturnTensorType>> {
+        match self.tensor_or_scalar()? {
+            TensorTypeOrScalarEnum::Tensor(t) => Ok(TensorTypeOrScalarEnum::Tensor(f(t))),
+            TensorTypeOrScalarEnum::Scalar(s) => Ok(TensorTypeOrScalarEnum::Scalar(s)),
+        }
+    }
+}
+
+impl TensorTypeOrScalar<OpTensor> for OpTensor {
+    fn tensor_or_scalar(&self) -> Result<TensorTypeOrScalarEnum<OpTensor>> {
+        Ok(TensorTypeOrScalarEnum::Tensor(self.clone()))
+    }
+}
+
+impl TensorTypeOrScalar<Tensor> for Tensor {
+    fn tensor_or_scalar(&self) -> Result<TensorTypeOrScalarEnum<Tensor>> {
+        Ok(TensorTypeOrScalarEnum::Tensor(self.clone()))
+    }
+}
+
+impl<T: Clone> TensorTypeOrScalar<T> for Result<TensorTypeOrScalarEnum<T>> {
+    fn tensor_or_scalar(&self) -> Result<TensorTypeOrScalarEnum<T>> {
+        match self {
+            Ok(value) => Ok(value.clone()),
+            Err(e) => Err(anyhow::anyhow!("{}", e)),
+        }
+    }
+}
+
+impl<T, U: TensorDType + num_traits::Float> TensorTypeOrScalar<T> for U {
+    fn tensor_or_scalar(&self) -> Result<TensorTypeOrScalarEnum<T>> {
+        Ok(TensorTypeOrScalarEnum::Scalar(
+            self.to_f32()
+                .ok_or(anyhow::anyhow!("Could not convert to f32"))?,
+        ))
+    }
+}
+
+impl<T: Clone> TensorTypeOrScalar<T> for TensorTypeOrScalarEnum<T> {
+    fn tensor_or_scalar(&self) -> Result<TensorTypeOrScalarEnum<T>> {
+        Ok(self.clone())
     }
 }
 
