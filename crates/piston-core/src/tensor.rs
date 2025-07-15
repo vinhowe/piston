@@ -2564,12 +2564,7 @@ impl Tensor {
         device: &Device,
         requires_grad: bool,
     ) -> Result<Self> {
-        Ok(Self::wrap(OpTensor::full(
-            shape,
-            value,
-            device,
-            requires_grad,
-        )?))
+        OpTensor::full(shape, value, device, requires_grad).map(Self::wrap)
     }
 }
 
@@ -2654,7 +2649,11 @@ macro_rules! impl_binary_op_wrapper {
         paste! {
             #[allow(clippy::should_implement_trait)]
             pub fn $method_name(self, other: Self) -> Result<Self> {
-                Ok(Self::wrap(self.inner_or_source().clone().$method_name(other.inner_or_source().clone())?))
+                self
+                .inner_or_source()
+                .clone()
+                .$method_name(other.inner_or_source().clone())
+                .map(Self::wrap)
             }
 
             pub fn [<$method_name _>](self, other: Self) -> Result<Self> {
@@ -2671,11 +2670,12 @@ macro_rules! impl_ternary_op_wrapper {
         paste! {
             #[allow(clippy::should_implement_trait)]
             pub fn $method_name(self, tensor1: Self, tensor2: Self, value: f32) -> Result<Self> {
-                Ok(Self::wrap(self.inner_or_source().clone().$method_name(
+                self.inner_or_source().clone().$method_name(
                     tensor1.inner_or_source().clone(),
                     tensor2.inner_or_source().clone(),
                     value
-                )?))
+                )
+                .map(Self::wrap)
             }
 
             pub fn [<$method_name _>](self, tensor1: Self, tensor2: Self, value: f32) -> Result<Self> {
@@ -2697,7 +2697,11 @@ macro_rules! impl_cmp_op_wrapper {
         paste! {
             #[allow(clippy::should_implement_trait)]
             pub fn $method_name(self, other: Self) -> Result<Self> {
-                Ok(Self::wrap(self.inner_or_source().clone().$method_name(other.inner_or_source().clone())?))
+                self
+                .inner_or_source()
+                .clone()
+                .$method_name(other.inner_or_source().clone())
+                .map(Self::wrap)
             }
 
             pub fn [<$method_name _>](self, other: Self) -> Result<Self> {
@@ -2714,7 +2718,7 @@ macro_rules! impl_unary_op_wrapper {
         paste! {
             #[allow(clippy::should_implement_trait)]
             pub fn $method_name(self) -> Result<Self> {
-                Ok(Self::wrap(self.inner_or_source().clone().$method_name()?))
+                self.inner_or_source().clone().$method_name().map(Self::wrap)
             }
 
             pub fn [<$method_name _>](self) -> Result<Self> {
@@ -2763,17 +2767,23 @@ impl Tensor {
     impl_unary_op_wrapper!(recip, UnaryOp::Reciprocal);
 
     pub fn cast(self, dst_dtype: DType) -> Result<Self> {
-        Ok(Self::wrap(self.inner_or_source().clone().cast(dst_dtype)?))
+        self.inner_or_source()
+            .clone()
+            .cast(dst_dtype)
+            .map(Self::wrap)
     }
 
     /// Cast a tensor to full precision (IEEE 754 32-bit floating point).
     pub fn float(self) -> Result<Self> {
-        Ok(Self::wrap(self.inner_or_source().clone().float()?))
+        self.inner_or_source().clone().float().map(Self::wrap)
     }
 
     /// Cast a tensor to half precision (IEEE 754 16-bit floating point).
     pub fn half(self) -> Result<Self> {
-        Ok(Self::wrap(self.inner_or_source().clone().cast(DType::F16)?))
+        self.inner_or_source()
+            .clone()
+            .cast(DType::F16)
+            .map(Self::wrap)
     }
 
     pub fn group_norm(
@@ -2783,27 +2793,33 @@ impl Tensor {
         bias: Option<Self>,
         eps: f32,
     ) -> Result<Self> {
-        Ok(Self::wrap(self.inner_or_source().clone().group_norm(
-            num_groups,
-            weight.map(|w| w.inner_or_source().clone()),
-            bias.map(|b| b.inner_or_source().clone()),
-            eps,
-        )?))
+        self.inner_or_source()
+            .clone()
+            .group_norm(
+                num_groups,
+                weight.map(|w| w.inner_or_source().clone()),
+                bias.map(|b| b.inner_or_source().clone()),
+                eps,
+            )
+            .map(Self::wrap)
     }
 
     pub fn layer_norm(self, weight: Option<Self>, bias: Option<Self>, eps: f32) -> Result<Self> {
-        Ok(Self::wrap(self.inner_or_source().clone().layer_norm(
-            weight.map(|w| w.inner_or_source().clone()),
-            bias.map(|b| b.inner_or_source().clone()),
-            eps,
-        )?))
+        self.inner_or_source()
+            .clone()
+            .layer_norm(
+                weight.map(|w| w.inner_or_source().clone()),
+                bias.map(|b| b.inner_or_source().clone()),
+                eps,
+            )
+            .map(Self::wrap)
     }
 
     pub fn rms_norm(self, weight: Option<Self>, eps: f32) -> Result<Self> {
-        Ok(Self::wrap(self.inner_or_source().clone().rms_norm(
-            weight.map(|w| w.inner_or_source().clone()),
-            eps,
-        )?))
+        self.inner_or_source()
+            .clone()
+            .rms_norm(weight.map(|w| w.inner_or_source().clone()), eps)
+            .map(Self::wrap)
     }
 
     pub fn conv1d(
@@ -2813,39 +2829,48 @@ impl Tensor {
         stride: usize,
         padding: usize,
     ) -> Result<Self> {
-        Ok(Self::wrap(self.inner_or_source().clone().conv1d(
-            weight.inner_or_source().clone(),
-            bias.map(|b| b.inner_or_source().clone()),
-            stride,
-            padding,
-        )?))
+        self.inner_or_source()
+            .clone()
+            .conv1d(
+                weight.inner_or_source().clone(),
+                bias.map(|b| b.inner_or_source().clone()),
+                stride,
+                padding,
+            )
+            .map(Self::wrap)
     }
 
     pub fn softmax<D: Dim>(self, dim: D) -> Result<Self> {
-        Ok(Self::wrap(self.inner_or_source().clone().softmax(dim)?))
+        self.inner_or_source().clone().softmax(dim).map(Self::wrap)
     }
 
     pub fn rope(self, dim: usize, base: f32, offset: usize) -> Result<Self> {
-        Ok(Self::wrap(
-            self.inner_or_source().clone().rope(dim, base, offset)?,
-        ))
+        self.inner_or_source()
+            .clone()
+            .rope(dim, base, offset)
+            .map(Self::wrap)
     }
 
     pub fn alibi(self, max_bias: f32) -> Result<Self> {
-        Ok(Self::wrap(self.inner_or_source().clone().alibi(max_bias)?))
+        self.inner_or_source()
+            .clone()
+            .alibi(max_bias)
+            .map(Self::wrap)
     }
 
     pub fn alibi_inplace(self, max_bias: f32) -> Result<Self> {
-        Ok(Self::wrap(self.inner_or_source().clone().alibi(max_bias)?))
+        self.inner_or_source()
+            .clone()
+            .alibi(max_bias)
+            .map(Self::wrap)
     }
 
     //TODO (vinhowe): figure out how to make this interface more like pytorch
     pub fn matmul(self, rhs: Self, trans_lhs: bool, trans_rhs: bool) -> Result<Self> {
-        Ok(Self::wrap(self.inner_or_source().clone().matmul(
-            rhs.inner_or_source().clone(),
-            trans_lhs,
-            trans_rhs,
-        )?))
+        self.inner_or_source()
+            .clone()
+            .matmul(rhs.inner_or_source().clone(), trans_lhs, trans_rhs)
+            .map(Self::wrap)
     }
 
     pub fn gemm(
@@ -2856,17 +2881,23 @@ impl Tensor {
         trans_rhs: bool,
         trans_out: bool,
     ) -> Result<Self> {
-        Ok(Self::wrap(self.inner_or_source().clone().gemm(
-            rhs.inner_or_source().clone(),
-            bias.map(|b| b.inner_or_source().clone()),
-            trans_lhs,
-            trans_rhs,
-            trans_out,
-        )?))
+        self.inner_or_source()
+            .clone()
+            .gemm(
+                rhs.inner_or_source().clone(),
+                bias.map(|b| b.inner_or_source().clone()),
+                trans_lhs,
+                trans_rhs,
+                trans_out,
+            )
+            .map(Self::wrap)
     }
 
     pub fn affine(self, mul: f32, add: f32) -> Result<Self> {
-        Ok(Self::wrap(self.inner_or_source().clone().affine(mul, add)?))
+        self.inner_or_source()
+            .clone()
+            .affine(mul, add)
+            .map(Self::wrap)
     }
 
     pub fn affine_(self, mul: f32, add: f32) -> Result<Self> {
@@ -2875,7 +2906,7 @@ impl Tensor {
     }
 
     pub fn pow(self, e: f32) -> Result<Self> {
-        Ok(Self::wrap(self.inner_or_source().clone().pow(e)?))
+        self.inner_or_source().clone().pow(e).map(Self::wrap)
     }
 
     pub fn pow_(self, e: f32) -> Result<Self> {
@@ -2884,106 +2915,122 @@ impl Tensor {
     }
 
     pub fn sum_keepdim<D: Dims>(self, sum_dims: D) -> Result<Self> {
-        Ok(Self::wrap(
-            self.inner_or_source().clone().sum_keepdim(sum_dims)?,
-        ))
+        self.inner_or_source()
+            .clone()
+            .sum_keepdim(sum_dims)
+            .map(Self::wrap)
     }
 
     pub fn sum<D: Dims>(self, sum_dims: D) -> Result<Self> {
-        Ok(Self::wrap(self.inner_or_source().clone().sum(sum_dims)?))
+        self.inner_or_source().clone().sum(sum_dims).map(Self::wrap)
     }
 
     pub fn sum_all(self) -> Result<Self> {
-        Ok(Self::wrap(self.inner_or_source().clone().sum_all()?))
+        self.inner_or_source().clone().sum_all().map(Self::wrap)
     }
 
     pub fn mean_keepdim<D: Dims>(self, dim: D) -> Result<Self> {
-        Ok(Self::wrap(
-            self.inner_or_source().clone().mean_keepdim(dim)?,
-        ))
+        self.inner_or_source()
+            .clone()
+            .mean_keepdim(dim)
+            .map(Self::wrap)
     }
 
     pub fn mean<D: Dims>(self, dim: D) -> Result<Self> {
-        Ok(Self::wrap(self.inner_or_source().clone().mean(dim)?))
+        self.inner_or_source().clone().mean(dim).map(Self::wrap)
     }
 
     pub fn mean_all(self) -> Result<Self> {
-        Ok(Self::wrap(self.inner_or_source().clone().mean_all()?))
+        self.inner_or_source().clone().mean_all().map(Self::wrap)
     }
 
     pub fn var_keepdim<D: Dims>(self, dim: D) -> Result<Self> {
-        Ok(Self::wrap(self.inner_or_source().clone().var_keepdim(dim)?))
+        self.inner_or_source()
+            .clone()
+            .var_keepdim(dim)
+            .map(Self::wrap)
     }
 
     pub fn var<D: Dims>(self, dim: D) -> Result<Self> {
-        Ok(Self::wrap(self.inner_or_source().clone().var(dim)?))
+        self.inner_or_source().clone().var(dim).map(Self::wrap)
     }
 
     pub fn var_all(self) -> Result<Self> {
-        Ok(Self::wrap(self.inner_or_source().clone().var_all()?))
+        self.inner_or_source().clone().var_all().map(Self::wrap)
     }
 
     pub fn max_keepdim<D: Dim>(self, dim: D) -> Result<Self> {
-        Ok(Self::wrap(self.inner_or_source().clone().max_keepdim(dim)?))
+        self.inner_or_source()
+            .clone()
+            .max_keepdim(dim)
+            .map(Self::wrap)
     }
 
     pub fn max<D: Dim>(self, dim: D) -> Result<Self> {
-        Ok(Self::wrap(self.inner_or_source().clone().max(dim)?))
+        self.inner_or_source().clone().max(dim).map(Self::wrap)
     }
 
     pub fn min_keepdim<D: Dim>(self, dim: D) -> Result<Self> {
-        Ok(Self::wrap(self.inner_or_source().clone().min_keepdim(dim)?))
+        self.inner_or_source()
+            .clone()
+            .min_keepdim(dim)
+            .map(Self::wrap)
     }
 
     pub fn min<D: Dim>(self, dim: D) -> Result<Self> {
-        Ok(Self::wrap(self.inner_or_source().clone().min(dim)?))
+        self.inner_or_source().clone().min(dim).map(Self::wrap)
     }
 
     pub fn argmax_keepdim<D: Dim>(self, dim: D) -> Result<Self> {
-        Ok(Self::wrap(
-            self.inner_or_source().clone().argmax_keepdim(dim)?,
-        ))
+        self.inner_or_source()
+            .clone()
+            .argmax_keepdim(dim)
+            .map(Self::wrap)
     }
 
     pub fn argmax<D: Dim>(self, dim: D) -> Result<Self> {
-        Ok(Self::wrap(self.inner_or_source().clone().argmax(dim)?))
+        self.inner_or_source().clone().argmax(dim).map(Self::wrap)
     }
 
     pub fn argmin_keepdim<D: Dim>(self, dim: D) -> Result<Self> {
-        Ok(Self::wrap(
-            self.inner_or_source().clone().argmin_keepdim(dim)?,
-        ))
+        self.inner_or_source()
+            .clone()
+            .argmin_keepdim(dim)
+            .map(Self::wrap)
     }
 
     /// Similar to `argmin_keepdim` but the target dimension is squeezed.
     pub fn argmin<D: Dim>(self, dim: D) -> Result<Self> {
-        Ok(Self::wrap(self.inner_or_source().clone().argmin(dim)?))
+        self.inner_or_source().clone().argmin(dim).map(Self::wrap)
     }
 
     pub fn norm(self) -> Result<Self> {
-        Ok(Self::wrap(self.inner_or_source().clone().norm()?))
+        self.inner_or_source().clone().norm().map(Self::wrap)
     }
 
     pub fn flatten<D: Dim>(self, start_dim: D, end_dim: D) -> Result<Self> {
-        Ok(Self::wrap(
-            self.inner_or_source().clone().flatten(start_dim, end_dim)?,
-        ))
+        self.inner_or_source()
+            .clone()
+            .flatten(start_dim, end_dim)
+            .map(Self::wrap)
     }
 
     pub fn flatten_to<D: Dim>(self, end_dim: D) -> Result<Self> {
-        Ok(Self::wrap(
-            self.inner_or_source().clone().flatten_to(end_dim)?,
-        ))
+        self.inner_or_source()
+            .clone()
+            .flatten_to(end_dim)
+            .map(Self::wrap)
     }
 
     pub fn flatten_from<D: Dim>(self, start_dim: D) -> Result<Self> {
-        Ok(Self::wrap(
-            self.inner_or_source().clone().flatten_from(start_dim)?,
-        ))
+        self.inner_or_source()
+            .clone()
+            .flatten_from(start_dim)
+            .map(Self::wrap)
     }
 
     pub fn flatten_all(self) -> Result<Self> {
-        Ok(Self::wrap(self.inner_or_source().clone().flatten_all()?))
+        self.inner_or_source().clone().flatten_all().map(Self::wrap)
     }
 
     /// # Slice
@@ -2992,16 +3039,17 @@ impl Tensor {
     /// Currently very user hostile, but will be improved.
     /// TODO: should allow mixed range types
     pub fn slice<D: std::ops::RangeBounds<usize>>(self, ranges: &[D]) -> Result<Self> {
-        Ok(Self::wrap(self.inner_or_source().clone().slice(ranges)?))
+        self.inner_or_source().clone().slice(ranges).map(Self::wrap)
     }
 
     /// Returns a new tensor that is a narrowed version of the input, the dimension `dim`
     /// ranges from `start` to `start + len`.
     /// This calls `slice` internally.
     pub fn narrow<D: Dim>(self, dim: D, start: usize, len: usize) -> Result<Self> {
-        Ok(Self::wrap(
-            self.inner_or_source().clone().narrow(dim, start, len)?,
-        ))
+        self.inner_or_source()
+            .clone()
+            .narrow(dim, start, len)
+            .map(Self::wrap)
     }
 
     /// # View
@@ -3009,11 +3057,14 @@ impl Tensor {
     /// Creates a new tensor with the same data, but a different shape.
     /// The new shape must have the same number of elements as the original shape.
     pub fn view<S: crate::shape::ShapeWithOneHole>(self, shape: S) -> Result<Self> {
-        Ok(Self::wrap(self.inner_or_source().clone().view(shape)?))
+        self.inner_or_source().clone().view(shape).map(Self::wrap)
     }
 
     pub fn unsqueeze<D: Dim>(self, dim: D) -> Result<Self> {
-        Ok(Self::wrap(self.inner_or_source().clone().unsqueeze(dim)?))
+        self.inner_or_source()
+            .clone()
+            .unsqueeze(dim)
+            .map(Self::wrap)
     }
 
     pub fn unsqueeze_<D: Dim>(self, dim: D) -> Result<Self> {
@@ -3022,7 +3073,7 @@ impl Tensor {
     }
 
     pub fn squeeze<D: Dims>(self, dims: D) -> Result<Self> {
-        Ok(Self::wrap(self.inner_or_source().clone().squeeze(dims)?))
+        self.inner_or_source().clone().squeeze(dims).map(Self::wrap)
     }
 
     pub fn squeeze_<D: Dims>(self, dims: D) -> Result<Self> {
@@ -3031,7 +3082,7 @@ impl Tensor {
     }
 
     pub fn squeeze_all(self) -> Result<Self> {
-        Ok(Self::wrap(self.inner_or_source().clone().squeeze_all()?))
+        self.inner_or_source().clone().squeeze_all().map(Self::wrap)
     }
 
     pub fn cat<D: Dim>(tensors: RVec<Self>, dim: D) -> Result<Self> {
@@ -3039,7 +3090,7 @@ impl Tensor {
             .into_iter()
             .map(|t| t.inner_or_source().clone())
             .collect();
-        Ok(Self::wrap(OpTensor::cat(tensors, dim)?))
+        OpTensor::cat(tensors, dim).map(Self::wrap)
     }
 
     pub fn stack<D: Dim>(tensors: RVec<Self>, dim: D) -> Result<Self> {
@@ -3047,75 +3098,81 @@ impl Tensor {
             .into_iter()
             .map(|t| t.inner_or_source().clone())
             .collect();
-        Ok(Self::wrap(OpTensor::stack(tensors, dim)?))
+        OpTensor::stack(tensors, dim).map(Self::wrap)
     }
 
     pub fn permute<D: Dims>(self, dims: D) -> Result<Self> {
-        Ok(Self::wrap(self.inner_or_source().clone().permute(dims)?))
+        self.inner_or_source().clone().permute(dims).map(Self::wrap)
     }
 
     pub fn transpose<D: Dim>(self, dim0: D, dim1: D) -> Result<Self> {
-        Ok(Self::wrap(
-            self.inner_or_source().clone().transpose(dim0, dim1)?,
-        ))
+        self.inner_or_source()
+            .clone()
+            .transpose(dim0, dim1)
+            .map(Self::wrap)
     }
 
     pub fn t(self) -> Result<Self> {
-        Ok(Self::wrap(self.inner_or_source().clone().t()?))
+        self.inner_or_source().clone().t().map(Self::wrap)
     }
 
     pub fn cache<D: Dim>(self, source: Self, dim: D, offset: usize) -> Result<Self> {
-        Ok(Self::wrap(self.inner_or_source().clone().cache(
-            source.inner_or_source().clone(),
-            dim,
-            offset,
-        )?))
+        self.inner_or_source()
+            .clone()
+            .cache(source.inner_or_source().clone(), dim, offset)
+            .map(Self::wrap)
     }
 
     /// Returns a new tensor duplicating data from the original tensor. New dimensions are inserted
     /// on the left.
     pub fn broadcast_left<S: Into<Shape>>(self, left_shape: S) -> Result<Self> {
-        Ok(Self::wrap(
-            self.inner_or_source().clone().broadcast_left(left_shape)?,
-        ))
+        self.inner_or_source()
+            .clone()
+            .broadcast_left(left_shape)
+            .map(Self::wrap)
     }
 
     pub fn broadcast_to<S: Into<Shape>>(self, shape: S) -> Result<Self> {
-        Ok(Self::wrap(
-            self.inner_or_source().clone().broadcast_to(shape)?,
-        ))
+        self.inner_or_source()
+            .clone()
+            .broadcast_to(shape)
+            .map(Self::wrap)
     }
 
     pub fn index_select<D: Dim>(self, indices: Self, dim: D) -> Result<Self> {
-        Ok(Self::wrap(
-            self.inner_or_source()
-                .clone()
-                .index_select(indices.inner_or_source().clone(), dim)?,
-        ))
+        self.inner_or_source()
+            .clone()
+            .index_select(indices.inner_or_source().clone(), dim)
+            .map(Self::wrap)
     }
 
     // TODO(vinhowe): Make this API more like PyTorch's
     pub fn index_write<D: Dims>(self, src: Self, write_start: D) -> Result<Self> {
-        Ok(Self::wrap(
-            self.inner_or_source()
-                .clone()
-                .index_write(src.inner_or_source().clone(), write_start)?,
-        ))
+        self.inner_or_source()
+            .clone()
+            .index_write(src.inner_or_source().clone(), write_start)
+            .map(Self::wrap)
     }
 
     pub fn where_cond(self, condition: Self, on_false: Self) -> Result<Self> {
-        Ok(Self::wrap(self.inner_or_source().clone().where_cond(
-            condition.inner_or_source().clone(),
-            on_false.inner_or_source().clone(),
-        )?))
+        self.inner_or_source()
+            .clone()
+            .where_cond(
+                condition.inner_or_source().clone(),
+                on_false.inner_or_source().clone(),
+            )
+            .map(Self::wrap)
     }
 
     pub fn scatter_add<D: Dim>(self, indices: Self, source: Self, dim: D) -> Result<Self> {
-        Ok(Self::wrap(self.inner_or_source().clone().scatter_add(
-            indices.inner_or_source().clone(),
-            source.inner_or_source().clone(),
-            dim,
-        )?))
+        self.inner_or_source()
+            .clone()
+            .scatter_add(
+                indices.inner_or_source().clone(),
+                source.inner_or_source().clone(),
+                dim,
+            )
+            .map(Self::wrap)
     }
 
     pub fn scatter_add_<D: Dim>(self, indices: Self, source: Self, dim: D) -> Result<Self> {
@@ -3137,11 +3194,10 @@ impl Tensor {
     }
 
     pub fn gather<D: Dim>(self, indices: Self, dim: D) -> Result<Self> {
-        Ok(Self::wrap(
-            self.inner_or_source()
-                .clone()
-                .gather(indices.inner_or_source().clone(), dim)?,
-        ))
+        self.inner_or_source()
+            .clone()
+            .gather(indices.inner_or_source().clone(), dim)
+            .map(Self::wrap)
     }
 
     pub fn arange<T: TensorDType + PartialOrd + AsPrimitive<f32>>(
@@ -3150,12 +3206,7 @@ impl Tensor {
         device: &Device,
         requires_grad: bool,
     ) -> Result<Self> {
-        Ok(Self::wrap(OpTensor::arange(
-            start,
-            end,
-            device,
-            requires_grad,
-        )?))
+        OpTensor::arange(start, end, device, requires_grad).map(Self::wrap)
     }
 
     /// Creates a new 1D tensor with values from the interval `[start, end)` taken with a common
@@ -3167,13 +3218,7 @@ impl Tensor {
         device: &Device,
         requires_grad: bool,
     ) -> Result<Self> {
-        Ok(Self::wrap(OpTensor::arange_step(
-            start,
-            end,
-            step,
-            device,
-            requires_grad,
-        )?))
+        OpTensor::arange_step(start, end, step, device, requires_grad).map(Self::wrap)
     }
 
     #[cfg(feature = "rand")]
@@ -3187,13 +3232,7 @@ impl Tensor {
         device: Device,
         requires_grad: bool,
     ) -> Result<Self> {
-        Ok(Self::wrap(OpTensor::randint(
-            low,
-            high,
-            shape,
-            device,
-            requires_grad,
-        )?))
+        OpTensor::randint(low, high, shape, device, requires_grad).map(Self::wrap)
     }
 
     #[cfg(feature = "rand")]
@@ -3204,13 +3243,7 @@ impl Tensor {
         device: Device,
         requires_grad: bool,
     ) -> Result<Self> {
-        Ok(Self::wrap(OpTensor::randn(
-            mean,
-            std,
-            shape,
-            device,
-            requires_grad,
-        )?))
+        OpTensor::randn(mean, std, shape, device, requires_grad).map(Self::wrap)
     }
 
     #[cfg(feature = "rand")]
@@ -3221,24 +3254,18 @@ impl Tensor {
         device: Device,
         requires_grad: bool,
     ) -> Result<Self> {
-        Ok(Self::wrap(OpTensor::rand(
-            lo,
-            up,
-            shape,
-            device,
-            requires_grad,
-        )?))
+        OpTensor::rand(lo, up, shape, device, requires_grad).map(Self::wrap)
     }
 
     // TODO(vinhowe): Add inplace
     #[cfg(feature = "rand")]
     pub fn bernoulli(self) -> Result<Self> {
-        Ok(Self::wrap(self.inner_or_source().clone().bernoulli()?))
+        self.inner_or_source().clone().bernoulli().map(Self::wrap)
     }
 
+    #[cfg(feature = "rand")]
     pub fn bernoulli_(self) -> Result<Self> {
-        let inner = self.inner_or_source().clone();
-        Ok(self.wrap_inplace(inner.bernoulli()?))
+        self.inner_or_source().clone().bernoulli().map(Self::wrap)
     }
 
     pub fn zeros<T: TensorDType + num_traits::AsPrimitive<f32>, S: Into<Shape>>(
@@ -3246,11 +3273,7 @@ impl Tensor {
         device: &Device,
         requires_grad: bool,
     ) -> Result<Self> {
-        Ok(Self::wrap(OpTensor::zeros::<T, S>(
-            shape,
-            device,
-            requires_grad,
-        )?))
+        OpTensor::zeros::<T, S>(shape, device, requires_grad).map(Self::wrap)
     }
 
     pub fn zeros_like<T: TensorDType + num_traits::AsPrimitive<f32>>(
@@ -3258,10 +3281,9 @@ impl Tensor {
         device: Option<&Device>,
         requires_grad: bool,
     ) -> Result<Self> {
-        Ok(Self::wrap(
-            self.inner_or_source()
-                .zeros_like::<T>(device, requires_grad)?,
-        ))
+        self.inner_or_source()
+            .zeros_like::<T>(device, requires_grad)
+            .map(Self::wrap)
     }
 
     pub fn ones<T: TensorDType + num_traits::AsPrimitive<f32>, S: Into<Shape>>(
@@ -3269,11 +3291,7 @@ impl Tensor {
         device: &Device,
         requires_grad: bool,
     ) -> Result<Self> {
-        Ok(Self::wrap(OpTensor::ones::<T, S>(
-            shape,
-            device,
-            requires_grad,
-        )?))
+        OpTensor::ones::<T, S>(shape, device, requires_grad).map(Self::wrap)
     }
 
     pub fn ones_like<T: TensorDType + num_traits::AsPrimitive<f32>>(
@@ -3281,10 +3299,9 @@ impl Tensor {
         device: Option<&Device>,
         requires_grad: bool,
     ) -> Result<Self> {
-        Ok(Self::wrap(
-            self.inner_or_source()
-                .ones_like::<T>(device, requires_grad)?,
-        ))
+        self.inner_or_source()
+            .ones_like::<T>(device, requires_grad)
+            .map(Self::wrap)
     }
 
     pub fn zero_(self) -> Result<Self> {
@@ -3293,7 +3310,7 @@ impl Tensor {
     }
 
     pub fn triu(self, k: Option<i32>) -> Result<Self> {
-        Ok(Self::wrap(self.inner_or_source().clone().triu(k)?))
+        self.inner_or_source().clone().triu(k).map(Self::wrap)
     }
 
     pub fn triu_(self, k: Option<i32>) -> Result<Self> {
@@ -3302,7 +3319,7 @@ impl Tensor {
     }
 
     pub fn tril(self, k: Option<i32>) -> Result<Self> {
-        Ok(Self::wrap(self.inner_or_source().clone().tril(k)?))
+        self.inner_or_source().clone().tril(k).map(Self::wrap)
     }
 
     pub fn tril_(self, k: Option<i32>) -> Result<Self> {
@@ -3318,7 +3335,7 @@ impl Tensor {
     /// Returns a tensor that is in row major order. This is the same as the original tensor if it
     /// was already contiguous, otherwise a copy is triggered.
     pub fn contiguous(self) -> Result<Self> {
-        Ok(Self::wrap(self.inner_or_source().clone().contiguous()?))
+        self.inner_or_source().clone().contiguous().map(Self::wrap)
     }
 
     pub fn has_nan<T: TensorDType + num_traits::Float>(&self) -> bool {
@@ -3345,20 +3362,15 @@ impl Tensor {
         device: Device,
         requires_grad: bool,
     ) -> Result<Self> {
-        Ok(Self::wrap(OpTensor::from_bytes(
-            data,
-            dtype,
-            shape,
-            device,
-            requires_grad,
-        )?))
+        OpTensor::from_bytes(data, dtype, shape, device, requires_grad).map(Self::wrap)
     }
 
     /// Create a parameter based on the values currently stored in a tensor. The storage is always
     /// copied.
     pub fn requires_grad_(&self, requires_grad: bool) -> Result<Self> {
-        let inner = self.inner_or_source().clone();
-        Ok(self.wrap_inplace_untracked(inner.requires_grad_(requires_grad)?))
+        self.inner_or_source()
+            .requires_grad_(requires_grad)
+            .map(Self::wrap)
     }
 
     /// Returns a new tensor detached from the current graph, gradient are not propagated through
@@ -3400,9 +3412,7 @@ impl Tensor {
         shape: S,
         device: Device,
     ) -> Result<Self> {
-        Ok(Self::wrap(OpTensor::from_disk::<T, R, S>(
-            reader, shape, device,
-        )?))
+        OpTensor::from_disk::<T, R, S>(reader, shape, device).map(Self::wrap)
     }
 
     #[maybe_async]
@@ -3442,7 +3452,7 @@ impl Tensor {
     #[maybe_async]
     pub async fn to(&self, device: &Device) -> Result<Self, TensorError> {
         let inner_clone = self.inner_or_source().clone();
-        Ok(Self::wrap(inner_clone.to(device).await?))
+        inner_clone.to(device).await.map(Self::wrap)
     }
 
     #[cfg(not(feature = "debug"))]
@@ -3452,9 +3462,9 @@ impl Tensor {
 
     #[cfg(not(feature = "debug"))]
     pub fn get_or_create_debug_tensor(&self) -> Result<Self, TensorError> {
-        Ok(Self::wrap(
-            self.inner_or_source().get_or_create_debug_tensor()?,
-        ))
+        self.inner_or_source()
+            .get_or_create_debug_tensor()
+            .map(Self::wrap)
     }
 
     pub fn grad(&self) -> Option<Self> {
@@ -3538,7 +3548,7 @@ impl std::ops::Add<Tensor> for f32 {
     type Output = Result<Tensor>;
 
     fn add(self, rhs: Tensor) -> Self::Output {
-        Ok(Tensor::wrap((rhs.inner_or_source().clone() + self)?))
+        (rhs.inner_or_source().clone() + self).map(Tensor::wrap)
     }
 }
 
@@ -3546,7 +3556,7 @@ impl std::ops::Mul<Tensor> for f32 {
     type Output = Result<Tensor>;
 
     fn mul(self, rhs: Tensor) -> Self::Output {
-        Ok(Tensor::wrap((rhs.inner_or_source().clone() * self)?))
+        (rhs.inner_or_source().clone() * self).map(Tensor::wrap)
     }
 }
 
