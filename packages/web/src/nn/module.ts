@@ -15,7 +15,7 @@ export class Module<Input = unknown, Output = unknown> {
   training: boolean;
   protected _parameters: Record<string, Parameter>;
   protected _buffers: Record<string, Buffer>;
-  protected _modules: Record<string, Module<unknown, unknown>>;
+  protected _modules: Record<string, Module>;
   protected _nonPersistentBuffersSet: Set<string>;
   protected _forwardPreHooks: Map<
     number,
@@ -299,7 +299,7 @@ export class Module<Input = unknown, Output = unknown> {
       throw new Error('module name can\'t be empty string ""');
     }
 
-    this._modules[name] = module as Module<unknown, unknown>;
+    this._modules[name] = module as Module;
     (module!.scope![module!.scope!.length - 1] as ModuleScopeItem).name = name;
     const thisScope = this.scope || [];
     module?.parameters().forEach((param) => {
@@ -701,11 +701,11 @@ export class ModuleList<Input = unknown, Output = unknown> extends Module<
   Input,
   Output
 > {
-  private _modules_list: Module<Input, Output>[];
+  private _modules_list: Module[];
   private _proxy: ModuleList<Input, Output>;
-  [key: number]: Module<Input, Output>;
+  [key: number]: Module;
 
-  constructor(modules: Module<Input, Output>[] = []) {
+  constructor(modules: Module[] = []) {
     super();
     this._modules_list = [];
 
@@ -770,7 +770,7 @@ export class ModuleList<Input = unknown, Output = unknown> extends Module<
    * @param module - Module to append
    * @returns The ModuleList instance for chaining
    */
-  append(module: Module<Input, Output>): ModuleList<Input, Output> {
+  append(module: Module): ModuleList<Input, Output> {
     const idx = this._modules_list.length;
     this.addModule(idx.toString(), module);
     this._modules_list.push(module);
@@ -783,7 +783,7 @@ export class ModuleList<Input = unknown, Output = unknown> extends Module<
    * @param modules - Iterable of modules to add
    * @returns The ModuleList instance for chaining
    */
-  extend(modules: Iterable<Module<Input, Output>>): ModuleList<Input, Output> {
+  extend(modules: Iterable<Module>): ModuleList<Input, Output> {
     for (const module of modules) {
       this.append(module);
     }
@@ -797,10 +797,7 @@ export class ModuleList<Input = unknown, Output = unknown> extends Module<
    * @param module - Module to insert
    * @returns The ModuleList instance for chaining
    */
-  insert(
-    index: number,
-    module: Module<Input, Output>,
-  ): ModuleList<Input, Output> {
+  insert(index: number, module: Module): ModuleList<Input, Output> {
     if (index < 0) {
       index = Math.max(0, this._modules_list.length + index + 1);
     }
@@ -820,7 +817,7 @@ export class ModuleList<Input = unknown, Output = unknown> extends Module<
    * @param module - Module to remove
    * @returns The ModuleList instance for chaining
    */
-  remove(module: Module<Input, Output>): ModuleList<Input, Output> {
+  remove(module: Module): ModuleList<Input, Output> {
     const index = this._modules_list.indexOf(module);
     if (index !== -1) {
       this._modules_list.splice(index, 1);
@@ -858,7 +855,7 @@ export class ModuleList<Input = unknown, Output = unknown> extends Module<
    * @param index - Index of the module to retrieve
    * @returns The module at the specified index
    */
-  at(index: number): Module<Input, Output> | undefined {
+  at(index: number): Module | undefined {
     if (index < 0) {
       index = this._modules_list.length + index;
     }
@@ -872,7 +869,7 @@ export class ModuleList<Input = unknown, Output = unknown> extends Module<
    * @param module - Module to set at the index
    * @returns The ModuleList instance for chaining
    */
-  set(index: number, module: Module<Input, Output>): ModuleList<Input, Output> {
+  set(index: number, module: Module): ModuleList<Input, Output> {
     if (index < 0) {
       index = this._modules_list.length + index;
     }
@@ -919,14 +916,14 @@ export class ModuleList<Input = unknown, Output = unknown> extends Module<
    * @param index - Index to access
    * @returns The module at the specified index
    */
-  get(index: number): Module<Input, Output> | undefined {
+  get(index: number): Module | undefined {
     return this.at(index);
   }
 
   /**
    * Get the list of modules in the ModuleList
    */
-  get list(): Module<Input, Output>[] {
+  get list(): Module[] {
     return this._modules_list;
   }
 
