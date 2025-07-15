@@ -139,7 +139,7 @@ export function track<Output>(
     index: 0,
   };
   module.modulesIter().forEach((m) => {
-    m.registerTensorHook((tensor) => trackTensor(tensor, { dependency: true }, trackStack));
+    m.registerTensorHook((tensor, options) => trackTensor(tensor, options, trackStack));
   });
   const result = module.forward(...args);
   return [result, trackStack.stack];
@@ -151,7 +151,7 @@ export async function trackOptimizerStep(optimizer: Optimizer) {
     alreadyTracked: new Set<number>(),
     index: 0,
   };
-  optimizer.registerTensorHook((tensor) => trackTensor(tensor, { dependency: true }, trackStack));
+  optimizer.registerTensorHook((tensor, options) => trackTensor(tensor, options, trackStack));
   await optimizer.step();
   return trackStack.stack;
 }
