@@ -2467,7 +2467,7 @@ pub struct Tensor {
 }
 
 impl Tensor {
-    pub fn inner_or_source(&self) -> RwLockWriteGuard<OpTensor> {
+    fn inner_or_source(&self) -> RwLockWriteGuard<OpTensor> {
         let mut inplace_source = self.inplace_source.write();
         let mut inner = self.inner.write();
         if let Some(inplace_source) = inplace_source.take_if(|_| inner.resolved()) {
