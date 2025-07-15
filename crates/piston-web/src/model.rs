@@ -239,6 +239,13 @@ impl Optimizer for OptimizerEnum {
             OptimizerEnum::SGD(opt) => opt.set_learning_rate(lr),
         }
     }
+
+    fn parameters(&self) -> Vec<&Tensor> {
+        match self {
+            OptimizerEnum::AdamW(opt) => opt.parameters(),
+            OptimizerEnum::SGD(opt) => opt.parameters(),
+        }
+    }
 }
 
 #[wasm_bindgen]

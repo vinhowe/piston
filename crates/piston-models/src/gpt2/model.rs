@@ -384,6 +384,7 @@ mod tests {
             loss.backward()?;
 
             // clip_grad_norm(&mut grads, 1.0f32, &device)?;
+            opt.zero_grad(false)?;
 
             opt.step(&device)?;
 
@@ -511,6 +512,8 @@ mod tests {
 
             // This is something of a hack; we add references to all tensors that need to be backpropped
             loss.backward()?;
+
+            opt.zero_grad(false)?;
 
             opt.step(&device)?;
 

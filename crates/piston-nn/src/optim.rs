@@ -15,6 +15,19 @@ pub trait Optimizer: Sized {
 
     fn set_learning_rate(&mut self, lr: f64);
 
+    fn parameters(&self) -> Vec<&Tensor>;
+
+    fn zero_grad(&self, set_to_none: bool) -> anyhow::Result<()> {
+        for var in self.parameters() {
+            if set_to_none {
+                var.set_grad(None);
+            } else {
+                var.set_grad(Some(var.clone().zeros_like::<f32>(None, false)?));
+            }
+        }
+        Ok(())
+    }
+
     fn empty(config: Self::Config) -> anyhow::Result<Self> {
         Self::new(vec![], config)
     }
@@ -73,6 +86,10 @@ impl Optimizer for SGD {
         }
 
         Ok(())
+    }
+
+    fn parameters(&self) -> Vec<&Tensor> {
+        self.vars.iter().collect()
     }
 }
 
@@ -203,6 +220,10 @@ impl Optimizer for AdamW {
         }
 
         Ok(())
+    }
+
+    fn parameters(&self) -> Vec<&Tensor> {
+        self.vars.iter().map(|v| &v.var).collect()
     }
 }
 
