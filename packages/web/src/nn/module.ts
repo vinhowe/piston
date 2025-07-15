@@ -309,7 +309,7 @@ export class Module<Input = unknown, Output = unknown> {
         const submodulePrefix = prefix + (prefix ? "." : "") + name;
 
         // Create a generator from the child module's named members
-        const submodule_gen = module._namedMembers(
+        const submoduleGen = module._namedMembers(
           getMembersFn,
           submodulePrefix,
           recurse,
@@ -318,7 +318,7 @@ export class Module<Input = unknown, Output = unknown> {
         );
 
         // Yield all elements from the submodule generator
-        yield* submodule_gen;
+        yield* submoduleGen;
       }
     }
   }
@@ -348,18 +348,18 @@ export class Module<Input = unknown, Output = unknown> {
    *
    * @param prefix - Prefix to prepend to all parameter names
    * @param recurse - If true, recurses into child modules
-   * @param remove_duplicate - If true, removes duplicate parameters
+   * @param removeDuplicate - If true, removes duplicate parameters
    */
   *namedParametersIter(
     prefix: string = "",
     recurse: boolean = true,
-    remove_duplicate: boolean = true,
+    removeDuplicate: boolean = true,
   ): Generator<[string, Parameter]> {
     const gen = this._namedMembers<unknown, unknown, Parameter>(
       (module) => Object.entries(module._parameters),
       prefix,
       recurse,
-      remove_duplicate,
+      removeDuplicate,
     );
 
     yield* gen;
@@ -405,18 +405,18 @@ export class Module<Input = unknown, Output = unknown> {
    *
    * @param prefix - Prefix to prepend to all buffer names
    * @param recurse - If true, recurses into child modules
-   * @param remove_duplicate - If true, removes duplicate buffers
+   * @param removeDuplicate - If true, removes duplicate buffers
    */
   *namedBuffersIter(
     prefix: string = "",
     recurse: boolean = true,
-    remove_duplicate: boolean = true,
+    removeDuplicate: boolean = true,
   ): Generator<[string, Buffer]> {
     const gen = this._namedMembers<unknown, unknown, Buffer>(
       (module) => Object.entries(module._buffers),
       prefix,
       recurse,
-      remove_duplicate,
+      removeDuplicate,
     );
 
     yield* gen;
