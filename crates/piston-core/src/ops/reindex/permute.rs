@@ -5,7 +5,7 @@ use encase::ShaderType;
 use piston_macros::{IrFields, WgslMetadata};
 
 use crate::{
-    rvec, InvariantError, OpGuards, Operation, OperationError, RVec, StorageView, Stride, OpTensor,
+    rvec, InvariantError, OpGuards, OpTensor, Operation, OperationError, RVec, StorageView, Stride,
 };
 
 #[derive(Debug, derive_new::new, WgslMetadata, ShaderType)]
@@ -74,7 +74,7 @@ impl OpGuards for Permute {
 
 #[cfg(all(test, feature = "pyo3"))]
 mod tests {
-    use crate::{test_util::run_py_prg, Device, DeviceRequest, Permute, Shape, OpTensor};
+    use crate::{test_util::run_py_prg, Device, DeviceRequest, OpTensor, Permute, Shape};
     use proptest::prelude::*;
     use test_strategy::{proptest, Arbitrary};
 

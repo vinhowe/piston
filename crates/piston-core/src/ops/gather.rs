@@ -1,8 +1,8 @@
 use crate::{
     gpu::{dtype::WgslDType, BindGroupLayoutDescriptor},
     rvec, Array, BindingMode, BuiltIn, DType, GPUOperation, Kernel, KernelElement,
-    KernelRenderable, KernelSource, OpGuards, Operation, OperationError, RVec, Scalar, StorageView,
-    OpTensor, Vec2, Vec4, WgslKernelBuilder, WgslPrimitive, WorkgroupSize, Workload,
+    KernelRenderable, KernelSource, OpGuards, OpTensor, Operation, OperationError, RVec, Scalar,
+    StorageView, Vec2, Vec4, WgslKernelBuilder, WgslPrimitive, WorkgroupSize, Workload,
 };
 use derive_new::new;
 use encase::ShaderType;
@@ -292,7 +292,11 @@ def gather(src, ids, dim):
         dim: usize,
     }
 
-    fn ground_truth_backward(src: &OpTensor, ids: &OpTensor, dim: usize) -> anyhow::Result<OpTensor> {
+    fn ground_truth_backward(
+        src: &OpTensor,
+        ids: &OpTensor,
+        dim: usize,
+    ) -> anyhow::Result<OpTensor> {
         let prg = format!(
             r#"
 import torch

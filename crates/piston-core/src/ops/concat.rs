@@ -6,8 +6,8 @@ use piston_macros::IrFields;
 
 use crate::{
     gpu::BindGroupLayoutDescriptor, rvec, Array, BindingMode, BuiltIn, DType, DynKernelMetadata,
-    GPUOperation, Kernel, KernelElement, KernelRenderable, KernelSource, OpGuards, Operation,
-    OperationError, RVec, Scalar, Shape, StorageView, Stride, OpTensor, Vec2, Vec4,
+    GPUOperation, Kernel, KernelElement, KernelRenderable, KernelSource, OpGuards, OpTensor,
+    Operation, OperationError, RVec, Scalar, Shape, StorageView, Stride, Vec2, Vec4,
     WgslKernelBuilder, WgslPrimitive, WorkgroupSize, Workload,
 };
 
@@ -292,7 +292,7 @@ impl GPUOperation for Concat {
 
 #[cfg(all(test, feature = "pyo3"))]
 mod tests {
-    use crate::{test_util::run_py_prg, Device, DeviceRequest, RVec, OpTensor};
+    use crate::{test_util::run_py_prg, Device, DeviceRequest, OpTensor, RVec};
 
     #[derive(Debug)]
     struct ConcatProblem {

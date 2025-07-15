@@ -7,8 +7,8 @@ use piston_macros::{IrFields, WgslMetadata};
 use crate::{
     gpu::{dtype::WgslDType, BindGroupLayoutDescriptor},
     rvec, Array, BindingMode, BuiltIn, DType, GPUOperation, Kernel, KernelElement,
-    KernelRenderable, KernelSource, OpGuards, Operation, OperationError, RVec, Scalar, StorageView,
-    OpTensor, Vec2, Vec4, WgslKernelBuilder, WgslPrimitive, WorkgroupSize, Workload,
+    KernelRenderable, KernelSource, OpGuards, OpTensor, Operation, OperationError, RVec, Scalar,
+    StorageView, Vec2, Vec4, WgslKernelBuilder, WgslPrimitive, WorkgroupSize, Workload,
 };
 
 #[derive(new, Debug, Clone, IrFields)]
