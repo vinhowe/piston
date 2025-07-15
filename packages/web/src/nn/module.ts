@@ -640,6 +640,37 @@ export class Module<Input = unknown, Output = unknown> {
   forward(...input: Input): Output {
     throw new Error("Subclasses must implement the forward method");
   }
+
+  /**
+   * Move the module and all its parameters and buffers to the specified device.
+   *
+   * @param device - The device to move to (e.g., "cpu", "gpu")
+   * @returns The module instance for chaining
+   */
+  async to(device: string): Promise<Module<Input, Output>> {
+    // Move all parameters to the new device
+    for (const [name, param] of Object.entries(this._parameters)) {
+      if (param !== null) {
+        this._parameters[name] = (await param.to(device)) as Parameter;
+      }
+    }
+
+    // Move all buffers to the new device
+    for (const [name, buffer] of Object.entries(this._buffers)) {
+      if (buffer !== null) {
+        this._buffers[name] = (await buffer.to(device)) as Buffer;
+      }
+    }
+
+    // Recursively move all child modules
+    for (const [_name, module] of Object.entries(this._modules)) {
+      if (module !== null) {
+        await module.to(device);
+      }
+    }
+
+    return this;
+  }
 }
 
 /**
