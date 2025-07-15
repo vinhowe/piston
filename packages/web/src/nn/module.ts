@@ -1,6 +1,6 @@
-import { Buffer, Parameter } from "@/parameter";
+import { Buffer, Parameter } from "@/nn/parameter";
+import { RemovableHandle } from "@/nnUtils";
 import { TensorHook } from "@/tensor";
-import { RemovableHandle } from "@/utils";
 
 import { ModuleScopeItem, ScopeItem, withScope } from "./tracking";
 
