@@ -146,6 +146,16 @@ impl JsTensor {
 }
 
 macro_rules! impl_binary_op {
+    ($op:ident) => {
+        paste! {
+            #[wasm_bindgen(js_class = Tensor)]
+            #[js_tensor_operations]
+            impl JsTensor {
+                pub fn $op(&self, other: Tensor) -> JsTensorResult {}
+                pub fn [<$op _>](&self, other: Tensor) -> JsTensorResult {}
+            }
+        }
+    };
     ($op:ident, $op_fn:expr) => {
         #[wasm_bindgen(js_class = Tensor)]
         #[js_tensor_operations]
@@ -176,19 +186,6 @@ macro_rules! impl_binary_op {
                         )))
                     }
                 }
-            }
-        }
-    };
-}
-
-macro_rules! impl_binary_op_tensor {
-    ($op:ident) => {
-        paste! {
-            #[wasm_bindgen(js_class = Tensor)]
-            #[js_tensor_operations]
-            impl JsTensor {
-                pub fn $op(&self, other: Tensor) -> JsTensorResult {}
-                pub fn [<$op _>](&self, other: Tensor) -> JsTensorResult {}
             }
         }
     };
@@ -242,9 +239,8 @@ impl_binary_op!(mul, |tensor: Tensor, other| tensor.affine(other, 0.));
 impl_binary_op!(mul_, |tensor: Tensor, other| tensor.affine_(other, 0.));
 impl_binary_op!(div, |tensor: Tensor, other| tensor.affine(1. / other, 0.));
 impl_binary_op!(div_, |tensor: Tensor, other| tensor.affine_(1. / other, 0.));
-
-impl_binary_op_tensor!(minimum);
-impl_binary_op_tensor!(maximum);
+impl_binary_op!(minimum);
+impl_binary_op!(maximum);
 
 impl_ternary_op!(addcdiv);
 impl_ternary_op!(addcmul);
