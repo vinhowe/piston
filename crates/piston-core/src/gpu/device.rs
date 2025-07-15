@@ -352,6 +352,10 @@ impl WgpuDevice {
         self.lazy_graph_executor.read().inplace_support()
     }
 
+    pub fn set_vram_limit(&self, vram_limit: Option<u64>) {
+        self.buffer_allocator.set_vram_limit(vram_limit);
+    }
+
     pub fn begin_pass(&self, pass_index: u64) {
         self.buffer_allocator.begin_pass(pass_index);
     }

@@ -78,6 +78,7 @@ impl BufferPool {
         desc: &BufferDescriptor,
         device: &WgpuDevice,
         immediate: bool,
+        vram_limit: Option<u64>,
     ) -> PooledGPUBuffer {
         let size = if (desc.size as usize) < MIN_STORAGE_BUFFER_SIZE {
             //All buffers must be minimum 16 bytes
@@ -100,6 +101,16 @@ impl BufferPool {
 
         PooledGPUBuffer(self.inner.get_or_create(&descriptor, |descriptor| {
             let (size, usage, mapped_at_creation) = descriptor.fields();
+            let total_size = self.inner.total_resource_size_in_bytes();
+            if let Some(vram_limit) = vram_limit {
+                if total_size + size > vram_limit {
+                    panic!(
+                        "VRAM limit exceeded: attempted to allocate buffer of size {} bytes, \
+                        which would exceed the VRAM limit of {} bytes (current usage: {} bytes)",
+                        size, vram_limit, total_size
+                    );
+                }
+            }
             let buf = device.create_buffer(&wgpu::BufferDescriptor {
                 label: None,
                 size,

@@ -20,6 +20,7 @@ pub enum AllocatorError {
 
 pub struct BufferAllocator {
     pool: RwLock<BufferPool>,
+    vram_limit: RwLock<Option<u64>>,
 }
 
 impl Default for BufferAllocator {
@@ -32,7 +33,12 @@ impl BufferAllocator {
     pub fn new() -> Self {
         Self {
             pool: BufferPool::new().into(),
+            vram_limit: RwLock::new(None),
         }
+    }
+
+    pub fn set_vram_limit(&self, vram_limit: Option<u64>) {
+        *self.vram_limit.write() = vram_limit;
     }
 
     pub fn begin_pass(&self, pass_index: u64) {
@@ -49,7 +55,9 @@ impl BufferAllocator {
         device: &WgpuDevice,
         immediate: bool,
     ) -> PooledGPUBuffer {
-        self.pool.write().get_or_create(desc, device, immediate)
+        self.pool
+            .write()
+            .get_or_create(desc, device, immediate, *self.vram_limit.read())
     }
 
     pub fn create_buffer_init(
@@ -67,7 +75,10 @@ impl BufferAllocator {
             contents
         };
 
-        let buf = self.pool.write().get_or_create(desc, device, false);
+        let buf = self
+            .pool
+            .write()
+            .get_or_create(desc, device, false, *self.vram_limit.read());
         let mut buffer_view = device.queue().write_buffer_with(
             &buf.inner,
             0,
@@ -93,7 +104,10 @@ impl BufferAllocator {
             false,
         );
 
-        let resource = self.pool.write().get_or_create(&desc, device, false);
+        let resource =
+            self.pool
+                .write()
+                .get_or_create(&desc, device, false, *self.vram_limit.read());
         let mut buffer_view = device.queue().write_buffer_with(
             &resource.inner,
             0,
