@@ -448,16 +448,20 @@ export class Tensor {
   }
 
   // Getter methods for tensor properties
-  id(): number {
-    return this._cloneInner().id();
+  get id(): number {
+    return this._cloneInner().id;
   }
 
-  rank(): number {
-    return this._cloneInner().rank();
+  dim(): number {
+    return this._cloneInner().dim();
   }
 
-  dtype(): DType {
-    return this._cloneInner().dtype();
+  get ndim(): number {
+    return this._cloneInner().ndim;
+  }
+
+  get dtype(): DType {
+    return this._cloneInner().dtype;
   }
 
   size(): number[];
