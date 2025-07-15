@@ -162,21 +162,22 @@ impl KernelRenderable for NormKernels {
         });
 
         kernel_builder.write_main(wgsl! { var threadSum = 'accessor(0.); });
-        if matches!(inner, NormOp::RMSNorm(_)) {
-            kernel_builder.write_main(wgsl! { let mu = 0.; });
-        } else {
+        let X_i = if matches!(inner, NormOp::LayerNorm(_)) {
             Self::compute_mu::<P>(
                 &mut kernel_builder,
                 accessor.clone(),
                 reduction_len,
                 workgroup_size,
             );
+            wgsl! { X[anchor + i] - mu }
+        } else {
+            wgsl! { X[anchor + i] }
         };
 
         kernel_builder.write_main(wgsl! {
             threadSum = 'accessor(0.);
             for (var i: u32 = local_invocation_id.x; i < 'reduction_len; i += 'BLOCK_SIZE) {
-                let val = X[anchor + i] - mu;
+                let val = 'X_i;
                 threadSum = fma(val, val, threadSum);
             }
             workgroupBarrier();
@@ -206,7 +207,7 @@ impl KernelRenderable for NormKernels {
         kernel_builder.write_main(wgsl! {
             let denom = inverseSqrt(sigma + 'accessor(metadata.eps));
             for(var i: u32 = local_invocation_id.x; i < 'reduction_len; i += 'BLOCK_SIZE) {
-                let val = (X[anchor + i] - mu) * denom;
+                let val = ('X_i) * denom;
                 'loop_core
             }
         });
