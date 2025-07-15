@@ -513,6 +513,10 @@ export class Tensor {
     this._cloneInner().backward();
   }
 
+  get nbytes(): number {
+    return this._cloneInner().nbytes;
+  }
+
   private _cloneInner(): Tensor_wasm {
     return this.innerTensor._clone();
   }

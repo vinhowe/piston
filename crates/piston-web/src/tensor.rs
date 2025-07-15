@@ -72,7 +72,10 @@ impl JsTensor {
         }
     }
 
-    // - Skipping num_bytes
+    #[wasm_bindgen(method, getter = nbytes)]
+    pub fn num_bytes(&self) -> usize {
+        self.inner.num_bytes()
+    }
 
     pub fn device(&self) -> String {
         match self.inner.device() {

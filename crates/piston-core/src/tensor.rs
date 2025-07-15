@@ -2597,6 +2597,10 @@ impl Tensor {
         self.inner_or_source().set(&src.inner_or_source());
         self.clone()
     }
+
+    pub fn num_bytes(&self) -> usize {
+        self.inner_or_source().num_bytes()
+    }
 }
 
 macro_rules! impl_binary_op_wrapper {
