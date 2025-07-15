@@ -1,12 +1,7 @@
-import { BinaryOpInput, DimsType, ShapeType } from "@/types";
-import { DType, Tensor_wasm } from "@/wasm";
-
-import {
-  ScopeItem,
-  tensorScopeStack,
-  trackTensor,
-  trackTensors,
-} from "./nn/tracking";
+import { Module } from "./nn/module";
+import { ScopeItem, tensorScopeStack } from "./nn/tracking";
+import { BinaryOpInput, DimsType, ShapeType } from "./types";
+import { DType, Tensor_wasm } from "./wasm";
 
 export type OpDescription = {
   name: string;
@@ -14,11 +9,48 @@ export type OpDescription = {
   fields: Record<string, unknown>;
 };
 
+export type TensorHookOptions = {
+  dependency: boolean;
+};
+
+export type TensorHook = (
+  tensor: Tensor,
+  options: TensorHookOptions,
+) => Tensor | undefined;
+
 export class Tensor {
   scope: ScopeItem[] | undefined;
   nameOnParent: string | undefined;
   constructor(private readonly innerTensor: Tensor_wasm) {
     this.scope = [...tensorScopeStack];
+  }
+
+  // @internal
+  get parentModule(): Module<unknown, unknown> | undefined {
+    return this.scope?.findLast((item) => item.type === "module")?.module;
+  }
+
+  private static runHooks<T extends Tensor | Tensor[]>(
+    tensorOrTensors: T,
+    options?: TensorHookOptions,
+  ): T {
+    options = options ?? { dependency: false };
+    const tensors = Array.isArray(tensorOrTensors)
+      ? tensorOrTensors
+      : [tensorOrTensors];
+    for (let i = 0; i < tensors.length; i++) {
+      const tensor = tensors[i];
+      const hooks = tensor.parentModule?._tensorHooks;
+      if (hooks) {
+        for (const hook of hooks.values()) {
+          const result = hook(tensor, options);
+          if (result) {
+            tensors[i] = result;
+          }
+        }
+      }
+    }
+    return tensors.length === 1 ? tensors[0] : (tensors as T);
   }
 
   // Helper method to access inner tensor for internal use
@@ -40,10 +72,9 @@ export class Tensor {
   }
 
   private wrappedOp(op: (a: Tensor_wasm) => Tensor_wasm): Tensor {
-    trackTensor(this, { dependency: true });
+    Tensor.runHooks(this, { dependency: true });
     const result = Tensor._wrap(op(this._cloneInner()));
-    trackTensor(result);
-    return result;
+    return Tensor.runHooks(result);
   }
 
   // Define binary operations using a constructor
@@ -53,7 +84,7 @@ export class Tensor {
     return (other: BinaryOpInput): Tensor => {
       const otherValue = other instanceof Tensor ? other._cloneInner() : other;
       if (otherValue instanceof Tensor) {
-        trackTensor(otherValue, { dependency: true });
+        Tensor.runHooks(otherValue, { dependency: true });
       }
       return this.wrappedOp((a) =>
         (a[name] as (b: Tensor_wasm) => Tensor_wasm)(otherValue),
@@ -78,7 +109,7 @@ export class Tensor {
     name: keyof Tensor_wasm,
   ): (tensor1: Tensor, tensor2: Tensor, value: number) => Tensor {
     return (tensor1: Tensor, tensor2: Tensor, value: number): Tensor => {
-      trackTensors([tensor1, tensor2], { dependency: true });
+      Tensor.runHooks([tensor1, tensor2], { dependency: true });
       return this.wrappedOp((a) =>
         (a[name] as (b: Tensor_wasm, c: Tensor_wasm, d: number) => Tensor_wasm)(
           tensor1._cloneInner(),
@@ -96,7 +127,7 @@ export class Tensor {
 
   private makeCmpOp(name: keyof Tensor_wasm): (other: Tensor) => Tensor {
     return (other: Tensor): Tensor => {
-      trackTensor(other, { dependency: true });
+      Tensor.runHooks(other, { dependency: true });
       return this.wrappedOp((a) =>
         (a[name] as (b: Tensor_wasm) => Tensor_wasm)(other._cloneInner()),
       );
@@ -171,9 +202,9 @@ export class Tensor {
     bias?: Tensor,
     eps: number = 1e-5,
   ): Tensor {
-    trackTensor(weight, { dependency: true });
+    Tensor.runHooks(weight, { dependency: true });
     if (bias) {
-      trackTensor(bias, { dependency: true });
+      Tensor.runHooks(bias, { dependency: true });
     }
     return this.wrappedOp((a) =>
       a.groupNorm(
@@ -186,9 +217,9 @@ export class Tensor {
   }
 
   layerNorm(weight: Tensor, bias?: Tensor, eps: number = 1e-5): Tensor {
-    trackTensor(weight, { dependency: true });
+    Tensor.runHooks(weight, { dependency: true });
     if (bias) {
-      trackTensor(bias, { dependency: true });
+      Tensor.runHooks(bias, { dependency: true });
     }
     return this.wrappedOp((a) =>
       a.layerNorm(weight?._cloneInner(), bias ? bias._cloneInner() : null, eps),
@@ -196,7 +227,7 @@ export class Tensor {
   }
 
   rmsNorm(weight: Tensor, eps: number = 1e-5): Tensor {
-    trackTensor(weight, { dependency: true });
+    Tensor.runHooks(weight, { dependency: true });
     return this.wrappedOp((a) => a.rmsNorm(weight?._cloneInner(), eps));
   }
 
@@ -206,9 +237,9 @@ export class Tensor {
     stride: number = 1,
     padding: number = 0,
   ): Tensor {
-    trackTensor(weight, { dependency: true });
+    Tensor.runHooks(weight, { dependency: true });
     if (bias) {
-      trackTensor(bias, { dependency: true });
+      Tensor.runHooks(bias, { dependency: true });
     }
     return this.wrappedOp((a) =>
       a.conv1d(
@@ -237,7 +268,7 @@ export class Tensor {
     transLhs: boolean = false,
     transRhs: boolean = false,
   ): Tensor {
-    trackTensor(rhs, { dependency: true });
+    Tensor.runHooks(rhs, { dependency: true });
     return this.wrappedOp((a) =>
       a.matmul(rhs._cloneInner(), transLhs, transRhs),
     );
@@ -250,9 +281,9 @@ export class Tensor {
     transRhs: boolean = false,
     transOut: boolean = false,
   ): Tensor {
-    trackTensor(rhs, { dependency: true });
+    Tensor.runHooks(rhs, { dependency: true });
     if (bias) {
-      trackTensor(bias, { dependency: true });
+      Tensor.runHooks(bias, { dependency: true });
     }
     return this.wrappedOp((a) =>
       a.gemm(
@@ -339,7 +370,7 @@ export class Tensor {
   }
 
   cache(source: Tensor, dim: number, offset: number): Tensor {
-    trackTensor(source, { dependency: true });
+    Tensor.runHooks(source, { dependency: true });
     return this.wrappedOp((a) => a.cache(source._cloneInner(), dim, offset));
   }
 
@@ -352,41 +383,41 @@ export class Tensor {
   }
 
   indexSelect(indices: Tensor, dim: number): Tensor {
-    trackTensor(indices, { dependency: true });
+    Tensor.runHooks(indices, { dependency: true });
     return this.wrappedOp((a) => a.indexSelect(indices._cloneInner(), dim));
   }
 
   indexWrite(src: Tensor, writeStart: DimsType): Tensor {
-    trackTensor(src, { dependency: true });
+    Tensor.runHooks(src, { dependency: true });
     return this.wrappedOp((a) => a.indexWrite(src._cloneInner(), writeStart));
   }
 
   where(condition: Tensor, onFalse: Tensor): Tensor {
-    trackTensor(condition, { dependency: true });
-    trackTensor(onFalse, { dependency: true });
+    Tensor.runHooks(condition, { dependency: true });
+    Tensor.runHooks(onFalse, { dependency: true });
     return this.wrappedOp((a) =>
       a.whereCond(condition._cloneInner(), onFalse._cloneInner()),
     );
   }
 
   scatterAdd(indices: Tensor, source: Tensor, dim: number): Tensor {
-    trackTensor(indices, { dependency: true });
-    trackTensor(source, { dependency: true });
+    Tensor.runHooks(indices, { dependency: true });
+    Tensor.runHooks(source, { dependency: true });
     return this.wrappedOp((a) =>
       a.scatterAdd(indices._cloneInner(), source._cloneInner(), dim),
     );
   }
 
   indexAdd_(indices: Tensor, source: Tensor, dim: number): Tensor {
-    trackTensor(indices, { dependency: true });
-    trackTensor(source, { dependency: true });
+    Tensor.runHooks(indices, { dependency: true });
+    Tensor.runHooks(source, { dependency: true });
     return this.wrappedOp((a) =>
       a.indexAdd_(indices._cloneInner(), source._cloneInner(), dim),
     );
   }
 
   gather(indices: Tensor, dim: number): Tensor {
-    trackTensor(indices, { dependency: true });
+    Tensor.runHooks(indices, { dependency: true });
     return this.wrappedOp((a) => a.gather(indices._cloneInner(), dim));
   }
 

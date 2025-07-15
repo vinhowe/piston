@@ -1,5 +1,5 @@
 import { Parameter } from "@/parameter";
-import { Tensor } from "@/tensor";
+import { TensorHook } from "@/tensor";
 import { RemovableHandle } from "@/utils";
 import { Tensor_wasm } from "@/wasm";
 
@@ -46,6 +46,8 @@ export class Module<Input = unknown, Output = unknown> {
       output: Output,
     ) => Output | undefined
   >;
+  /** @internal Tensor class can access the map on its parent module to execute hooks */
+  _tensorHooks: Map<number, TensorHook>;
   protected _nextHookId: number;
   // Name of the property on the parent module that this module is assigned to
   // Helps us keep track of module scopes
@@ -61,6 +63,7 @@ export class Module<Input = unknown, Output = unknown> {
     this._nextHookId = 0;
     this._forwardPreHooks = new Map();
     this._forwardHooks = new Map();
+    this._tensorHooks = new Map();
     this.scope = [
       {
         type: "module",
@@ -674,6 +677,19 @@ export class Module<Input = unknown, Output = unknown> {
   ): RemovableHandle {
     const handle = new RemovableHandle(this._forwardHooks);
     this._forwardHooks.set(handle.id, hook);
+    return handle;
+  }
+
+  /**
+   * Registers a tensor hook which will be called when a tensor within this module is created.
+   *
+   * @internal
+   * @param hook - Function taking a tensor and returning a transformed tensor
+   * @returns A handle that can be used to remove the hook
+   */
+  registerTensorHook(hook: TensorHook): RemovableHandle {
+    const handle = new RemovableHandle(this._tensorHooks);
+    this._tensorHooks.set(handle.id, hook);
     return handle;
   }
 

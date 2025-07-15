@@ -45,9 +45,9 @@ export const tensorScopeStack: ScopeItem[] = [];
 interface TrackState {
   stack: TrackedTensor[];
   alreadyTracked: Set<number>;
+  index: number;
 }
 
-export const trackStacks: Record<number, TrackState> = {};
 
 export interface TrackedTensor {
   id: number;
@@ -59,44 +59,47 @@ export interface TrackedTensor {
   tensor: Tensor | undefined;
   debugTensor: Tensor | undefined;
   dependency: boolean;
+  index: number;
 }
 
 export interface TensorTrackOptions {
   dependency?: boolean;
 }
 
-export function trackTensor(tensor: Tensor, options?: TensorTrackOptions) {
+function trackTensor(
+  tensor: Tensor,
+  options: TensorTrackOptions,
+  trackStack: TrackState,
+) {
   const { dependency = false } = options ?? {};
 
-  for (const stackId in trackStacks) {
-    const id = tensor.id();
-    if (trackStacks[stackId].alreadyTracked.has(id)) {
-      continue;
-    }
-    trackStacks[stackId].stack.push({
-      id,
-      op: tensor.op(),
-      shape: tensor.shape,
-      srcIds: tensor.srcIds(),
-      nameOnParent: tensor.nameOnParent,
-      scope: tensor.scope,
-      // This presumably breaks any non-explicit inplacing, which makes
-      // observing inplacing storage patterns difficult.
-      tensor: tensor,
-      // tensor: tensor.requiresGrad() ? tensor : undefined,
-      debugTensor: tensor.debugTensor(),
-      dependency,
-    });
-    trackStacks[stackId].alreadyTracked.add(id);
+  const id = tensor.id();
+  const trackedTensor: Omit<TrackedTensor, "index"> = {
+    id,
+    op: tensor.op(),
+    shape: tensor.shape,
+    srcIds: tensor.srcIds(),
+    nameOnParent: tensor.nameOnParent,
+    scope: tensor.scope,
+    // This presumably breaks any non-explicit inplacing, which makes
+    // observing inplacing storage patterns difficult.
+    tensor: tensor,
+    // tensor: tensor.requiresGrad() ? tensor : undefined,
+    debugTensor: tensor.debugTensor(),
+    dependency,
+  };
+
+  if (trackStack.alreadyTracked.has(id)) {
+    return tensor;
   }
+  trackStack.stack.push({
+    ...trackedTensor,
+    index: trackStack.index,
+  });
+  trackStack.index++;
+  trackStack.alreadyTracked.add(id);
+
   return tensor;
-}
-
-export function trackTensors(tensors: Tensor[], options?: TensorTrackOptions) {
-  const { dependency = false } = options ?? {};
-  for (const tensor of tensors) {
-    trackTensor(tensor, { dependency });
-  }
 }
 
 export interface WithScopeOptions {
@@ -139,37 +142,34 @@ export function tensorName(tensor: Tensor) {
   );
 }
 
-let stackCounter = 0;
 
 export function track<Output>(
   module: Module<unknown, Output>,
   ...args: Parameters<typeof module.forward>
 ): [Output, TrackedTensor[]] {
-  const stackId = stackCounter++;
-  const tensors: TrackedTensor[] = [];
-  trackStacks[stackId] = {
-    stack: tensors,
-    alreadyTracked: new Set(),
+  const trackStack = {
+    stack: [],
+    alreadyTracked: new Set<number>(),
+    index: 0,
   };
-  try {
-    const result = module.forward(...args);
-    return [result, tensors];
-  } finally {
-    delete trackStacks[stackId];
-  }
+  module.modulesIter().forEach((m) => {
+    m.registerTensorHook((tensor) =>
+      trackTensor(tensor, { dependency: true }, trackStack),
+    );
+  });
+  const result = module.forward(...args);
+  return [result, trackStack.stack];
 }
 
 export async function trackOptimizerStep(optimizer: Optimizer) {
-  const stackId = stackCounter++;
-  const tensors: TrackedTensor[] = [];
-  trackStacks[stackId] = {
-    stack: tensors,
-    alreadyTracked: new Set(),
+  const trackStack = {
+    stack: [],
+    alreadyTracked: new Set<number>(),
+    index: 0,
   };
-  try {
-    await optimizer.step();
-  } finally {
-    delete trackStacks[stackId];
-  }
-  return tensors;
+  optimizer.registerTensorHook((tensor) =>
+    trackTensor(tensor, { dependency: true }, trackStack),
+  );
+  await optimizer.step();
+  return trackStack.stack;
 }

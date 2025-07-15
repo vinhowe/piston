@@ -1,6 +1,6 @@
 import { ScopeItem, withScope } from "@/nn/tracking";
 import { Parameter } from "@/parameter";
-import { Tensor } from "@/tensor";
+import { Tensor, TensorHook } from "@/tensor";
 import { RemovableHandle } from "@/utils";
 import { Device } from "@/wasm";
 
@@ -63,9 +63,7 @@ export interface StateDict {
  * Subclasses should implement the `step` method which performs the actual
  * parameter updates.
  */
-export class Optimizer<
-  TState extends OptimizerParamState = OptimizerParamState,
-> {
+export class Optimizer<TState extends OptimizerParamState = OptimizerParamState> {
   defaults: Record<string, unknown>;
   device: Device;
   state: Map<Parameter, TState>;
@@ -73,6 +71,8 @@ export class Optimizer<
   scope: ScopeItem[] | undefined;
   private _optimizerStepPreHooks: Map<number, OptimizerPreHook>;
   private _optimizerStepPostHooks: Map<number, OptimizerPostHook>;
+  /** @internal Tensor class can access the map on its parent module to execute hooks */
+  _tensorHooks: Map<number, TensorHook>;
 
   /**
    * Creates a new optimizer
@@ -91,6 +91,7 @@ export class Optimizer<
     this.paramGroups = [];
     this._optimizerStepPreHooks = new Map();
     this._optimizerStepPostHooks = new Map();
+    this._tensorHooks = new Map();
 
     if (params instanceof Parameter) {
       throw new TypeError(
@@ -178,6 +179,19 @@ export class Optimizer<
   registerStepPostHook(hook: OptimizerPostHook): RemovableHandle {
     const handle = new RemovableHandle(this._optimizerStepPostHooks);
     this._optimizerStepPostHooks.set(handle.id, hook);
+    return handle;
+  }
+
+  /**
+   * Register a tensor hook
+   * The hook will be called when a tensor is created
+   *
+   * @param hook - Function to call when a tensor is created
+   * @returns A handle that can be used to remove the hook
+   */
+  registerTensorHook(hook: TensorHook): RemovableHandle {
+    const handle = new RemovableHandle(this._tensorHooks);
+    this._tensorHooks.set(handle.id, hook);
     return handle;
   }
 
