@@ -220,7 +220,7 @@ pub fn js_tensor_operations(item: TokenStream) -> TokenStream {
             input_fn.sig.inputs = syn::punctuated::Punctuated::from_iter(retained_inputs);
 
             let inner_call = if has_self_param {
-                quote! { self.inner.clone().#method_name }
+                quote! { self.inner().clone().#method_name }
             } else {
                 quote! { #underlying_type_ident::#method_name }
             };
@@ -330,7 +330,7 @@ pub fn js_tensor_operations(item: TokenStream) -> TokenStream {
                                 #(#arms)*
                                 _ => return Err(JsValue::from_str("Unsupported dtype")),
                             }) #result_call;
-                            Ok(Self { inner: result })
+                            Ok(Self { inner: Some(result) })
                         }
                     }
                 } else {
@@ -340,7 +340,7 @@ pub fn js_tensor_operations(item: TokenStream) -> TokenStream {
                             #(#prelude_stmts)*
                             let result = #inner_call( #(#call_args),* )
                                 #result_call;
-                            Ok(Self { inner: result })
+                            Ok(Self { inner: Some(result) })
                         }
                     }
                 }
@@ -407,16 +407,7 @@ fn generate_type_and_conversion(
             syn::parse_quote!(JsTensor),
             quote! { #ty },
             ident,
-            Some(quote! { #expr.inner }),
-            false,
-            false,
-        )
-    } else if is_type(ty, "Parameter") {
-        TypeConversion::new(
-            syn::parse_quote!(JsParameter),
-            quote! { #ty },
-            ident,
-            Some(quote! { #expr.inner }),
+            Some(quote! { #expr.inner().clone() }),
             false,
             false,
         )
@@ -491,7 +482,7 @@ fn generate_type_and_conversion(
             quote! { #ty },
             ident,
             if has_self {
-                Some(quote! { #expr.map(|d| d.dtype).unwrap_or(self.inner.dtype()) })
+                Some(quote! { #expr.map(|d| d.dtype).unwrap_or(self.inner().dtype()) })
             } else {
                 Some(quote! { #expr.map(|d| d.dtype).unwrap_or(DType::F32) })
             },

@@ -532,4 +532,8 @@ export class Tensor {
   private _cloneInner(): Tensor_wasm {
     return this.innerTensor._clone();
   }
+
+  invalidate(): void {
+    this.innerTensor.invalidate();
+  }
 }
