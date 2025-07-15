@@ -14,17 +14,17 @@ impl JsDType {
         JsDType { dtype: self.dtype }
     }
 
-    #[wasm_bindgen(js_name = isFloatingPoint)]
+    #[wasm_bindgen(getter, js_name = isFloatingPoint)]
     pub fn is_floating_point(&self) -> bool {
         self.dtype.is_float()
     }
 
-    #[wasm_bindgen(js_name = isSigned)]
+    #[wasm_bindgen(getter, js_name = isSigned)]
     pub fn is_signed(&self) -> bool {
         self.dtype.is_signed()
     }
 
-    #[wasm_bindgen(js_name = itemsize)]
+    #[wasm_bindgen(getter)]
     pub fn itemsize(&self) -> usize {
         self.dtype.size_of()
     }

@@ -34,7 +34,7 @@ export class Linear extends Module {
     const x = input.matmul(w, false, true);
 
     if (this.bias) {
-      return x.add(this.bias.cast(x.dtype()));
+      return x.add(this.bias.cast(x.dtype));
     }
 
     return x;

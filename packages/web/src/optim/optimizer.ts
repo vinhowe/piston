@@ -331,8 +331,8 @@ export class Optimizer<TState extends OptimizerParamState = OptimizerParamState>
   protected _processValue(param: Parameter, value: unknown): unknown {
     if (value instanceof Tensor) {
       // Move tensor to same device and cast to param dtype if floating point
-      if (param.dtype().isFloatingPoint()) {
-        return value.cast(param.dtype());
+      if (param.dtype.isFloatingPoint) {
+        return value.cast(param.dtype);
       }
       return value;
     } else if (Array.isArray(value)) {
@@ -355,7 +355,7 @@ export class Optimizer<TState extends OptimizerParamState = OptimizerParamState>
   zeroGrad(setToNone: boolean = true): void {
     for (const group of this.paramGroups) {
       for (const param of group.params) {
-        const grad = param.grad();
+        const grad = param.grad;
         if (grad) {
           if (setToNone) {
             // TODO: Need to implement proper "set grad to null" logic
