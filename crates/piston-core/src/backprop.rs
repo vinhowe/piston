@@ -20,7 +20,7 @@ pub enum BackpropError {
 // arg has been reduced to node via reduce_dims, expand it back to arg.
 // This has to handle keepdims.
 fn broadcast_back(arg: &OpTensor, node: &OpTensor, reduced_dims: &[usize]) -> Result<OpTensor> {
-    if arg.rank() == node.rank() {
+    if arg.dim() == node.dim() {
         // keepdim = true
         node.clone().broadcast_to(arg.shape().clone())
     } else {
@@ -776,7 +776,7 @@ impl OpTensor {
                     // and it requires many, many backward ops for a single forward op. This should
                     // instead be implemented in a single backward kernel, and its implementation
                     // should be understood by its author (the human, not Gemini 2.5 Pro).
-                    let rank = arg.rank();
+                    let rank = arg.dim();
                     let norm_axis = rank - 1;
                     let d = arg.shape()[norm_axis] as f32;
 

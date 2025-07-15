@@ -115,7 +115,7 @@ impl Kernel for FillConstantKernels {
     }
 
     fn kernel_element(&self, dst: &OpTensor) -> KernelElement {
-        let rank = dst.shape().rank();
+        let rank = dst.shape().dim();
         let N = if rank > 0 { dst.shape()[rank - 1] } else { 1 };
 
         if N % 4 == 0 {

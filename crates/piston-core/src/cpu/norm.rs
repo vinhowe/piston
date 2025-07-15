@@ -105,7 +105,7 @@ where
     T: TensorDType + Float + NumOps + for<'a> Sum<&'a T>,
 {
     let src_shape = input.shape();
-    let rank = input.rank();
+    let rank = input.dim();
     let N = src_shape[rank - 1];
     let norm_shape = N;
 
@@ -200,7 +200,7 @@ where
     T: TensorDType + Float + NumOps + for<'a> Sum<&'a T>,
 {
     let src_shape = input.shape();
-    let rank = input.rank();
+    let rank = input.dim();
     let N = src_shape[rank - 1];
 
     let mut x = input.to_vec::<T>().await?;

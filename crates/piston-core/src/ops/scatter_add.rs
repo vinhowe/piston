@@ -29,7 +29,7 @@ pub struct ScatterAddMeta {
 
 impl OpGuards for ScatterAdd {
     fn check_shapes(&self) {
-        assert!(self.src.rank() >= 1);
+        assert!(self.src.dim() >= 1);
         assert_eq!(self.src.shape().len(), self.ids.shape().len());
         assert_eq!(self.src.shape().len(), self.dst.shape().len());
     }

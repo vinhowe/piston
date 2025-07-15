@@ -69,13 +69,13 @@ impl OpGuards for IndexSelect {
     fn check_shapes(&self) {
         let (input, indices) = (&self.src, &self.indices);
         assert_eq!(
-            input.rank(),
+            input.dim(),
             2,
             "Input must be a 2D tensor, got {:?}",
             input.shape()
         );
         assert_eq!(
-            indices.rank(),
+            indices.dim(),
             1,
             "Indices must be a 1D tensor, got {:?}",
             indices.shape()

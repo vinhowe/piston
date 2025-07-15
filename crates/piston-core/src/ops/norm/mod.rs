@@ -29,7 +29,7 @@ impl OpGuards for NormOp {
             NormOp::LayerNorm(Norm { input, .. }) | NormOp::RMSNorm(Norm { input, .. }) => input,
             NormOp::GroupNorm(GroupNorm { norm, .. }) => &norm.input,
         };
-        assert!(input.rank() >= 2);
+        assert!(input.dim() >= 2);
     }
 
     fn check_dtypes(&self) {
@@ -278,7 +278,7 @@ impl Kernel for NormKernels {
     fn metadata(&self, _: &OpTensor, _: &KernelElement) -> Result<Self::Metadata, OperationError> {
         let NormKernels::Standard(inner) = self;
         let input = inner.srcs()[0];
-        let rank = input.rank();
+        let rank = input.dim();
         let meta = match inner {
             NormOp::RMSNorm(n) | NormOp::LayerNorm(n) => {
                 let M = input.shape()[rank - 2] as u32;
@@ -307,7 +307,7 @@ impl Kernel for NormKernels {
         let NormKernels::Standard(inner) = self;
 
         let input = inner.srcs()[0];
-        let rank = input.rank();
+        let rank = input.dim();
         let stacks = input.shape().slice(0..rank - 2).numel();
 
         let workgroup_count = match inner {
@@ -328,7 +328,7 @@ impl Kernel for NormKernels {
     }
 
     fn kernel_element(&self, dst: &OpTensor) -> KernelElement {
-        let rank = dst.rank();
+        let rank = dst.dim();
         let N = dst.shape()[rank - 1] as u32;
         if N % 4 == 0 {
             KernelElement::Vec4

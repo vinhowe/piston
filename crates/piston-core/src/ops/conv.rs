@@ -138,8 +138,8 @@ pub struct ConvMeta {
 
 impl OpGuards for Conv {
     fn check_shapes(&self) {
-        assert_eq!(self.input.rank(), 3);
-        assert_eq!(self.weight.rank(), 3);
+        assert_eq!(self.input.dim(), 3);
+        assert_eq!(self.weight.dim(), 3);
         let [_, _, KS]: [usize; 3] = self.weight.shape().try_into().unwrap();
         assert_eq!(KS, 3); //only have 3 kernel size for now
     }

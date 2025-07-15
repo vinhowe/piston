@@ -26,8 +26,13 @@ impl JsTensor {
 
     // - Skipping storage_view
 
-    pub fn rank(&self) -> usize {
-        self.inner.rank()
+    pub fn dim(&self) -> usize {
+        self.inner.dim()
+    }
+
+    #[wasm_bindgen(method, getter = ndim)]
+    pub fn ndim(&self) -> usize {
+        self.inner.dim()
     }
 
     pub fn dtype(&self) -> JsDType {

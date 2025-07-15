@@ -356,8 +356,8 @@ impl OpTensor {
         &self.view
     }
 
-    pub fn rank(&self) -> usize {
-        self.view.shape.rank()
+    pub fn dim(&self) -> usize {
+        self.view.shape.dim()
     }
 
     pub fn dtype(&self) -> DType {
@@ -803,7 +803,7 @@ impl OpTensor {
     }
 
     pub fn sum_all(self) -> Result<Self> {
-        let dims: RVec<_> = (0..self.rank()).collect();
+        let dims: RVec<_> = (0..self.dim()).collect();
         self.sum(dims)
     }
 
@@ -824,7 +824,7 @@ impl OpTensor {
     }
 
     pub fn mean_all(self) -> Result<Self> {
-        let dims: RVec<_> = (0..self.rank()).collect();
+        let dims: RVec<_> = (0..self.dim()).collect();
         self.mean_impl(&dims, false)
     }
 
@@ -846,7 +846,7 @@ impl OpTensor {
     }
 
     pub fn var_all(self) -> Result<Self> {
-        let dims: RVec<_> = (0..self.rank()).collect();
+        let dims: RVec<_> = (0..self.dim()).collect();
         self.var(dims)
     }
 
@@ -896,11 +896,11 @@ impl OpTensor {
     }
 
     fn flatten_impl(self, start_dim: Option<usize>, end_dim: Option<usize>) -> Result<Self> {
-        if self.rank() == 0 {
+        if self.dim() == 0 {
             self.view(1)
         } else {
             let start_dim = start_dim.unwrap_or(0);
-            let end_dim = end_dim.unwrap_or(self.rank() - 1);
+            let end_dim = end_dim.unwrap_or(self.dim() - 1);
             if start_dim < end_dim {
                 let dims = self.shape();
                 let mut dst_dims = dims[..start_dim].to_vec();
@@ -1135,16 +1135,16 @@ impl OpTensor {
     pub fn transpose<D: Dim>(self, dim0: D, dim1: D) -> Result<Self> {
         let dim0 = dim0.to_index(self.shape(), "transpose")?;
         let dim1 = dim1.to_index(self.shape(), "transpose")?;
-        let mut dims: RVec<usize> = (0..self.rank()).collect();
+        let mut dims: RVec<usize> = (0..self.dim()).collect();
         dims.swap(dim0, dim1);
         self.permute(dims)
     }
 
     pub fn t(self) -> Result<Self> {
-        if self.rank() > 2 {
+        if self.dim() > 2 {
             anyhow::bail!(
                 "t() can only be applied to tensors with 2 or fewer dimensions, got tensor with {} dimensions",
-                self.rank()
+                self.dim()
             );
         }
         self.transpose(0, 1)
@@ -1274,10 +1274,10 @@ impl OpTensor {
                 rhs: source.shape().clone(),
             })?
         }
-        if indices.rank() != 1 {
+        if indices.dim() != 1 {
             Err(InvariantError::RankMismatch {
                 accepted: 1..=1,
-                actual: indices.rank(),
+                actual: indices.dim(),
             })?
         }
         let indices_len = indices.shape()[0];
@@ -2577,8 +2577,8 @@ impl Tensor {
         self.inner_or_source().id()
     }
 
-    pub fn rank(&self) -> usize {
-        self.inner_or_source().rank()
+    pub fn dim(&self) -> usize {
+        self.inner_or_source().dim()
     }
 
     pub fn dtype(&self) -> DType {

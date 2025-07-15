@@ -28,8 +28,8 @@ pub struct SoftmaxMeta {
 impl OpGuards for Softmax {
     fn check_shapes(&self) {
         let input = &self.input;
-        assert!(input.rank() >= 2);
-        assert!(self.dim < input.rank());
+        assert!(input.dim() >= 2);
+        assert!(self.dim < input.dim());
     }
 
     fn check_dtypes(&self) {

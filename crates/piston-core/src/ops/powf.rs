@@ -168,7 +168,7 @@ impl Kernel for PowfKernels {
 
     fn kernel_element(&self, _dst: &OpTensor) -> KernelElement {
         let PowfKernels::Standard(inner) = self;
-        let a_rank = inner.src.shape().rank();
+        let a_rank = inner.src.shape().dim();
         let N = if a_rank > 0 {
             inner.src.shape()[a_rank - 1]
         } else {

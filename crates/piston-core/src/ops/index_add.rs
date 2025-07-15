@@ -29,8 +29,8 @@ pub struct IndexAddMeta {
 impl OpGuards for IndexAdd {
     fn check_shapes(&self) {
         let (input, indices) = (&self.src, &self.ids);
-        assert_eq!(input.rank(), 2);
-        assert_eq!(indices.rank(), 1);
+        assert_eq!(input.dim(), 2);
+        assert_eq!(indices.dim(), 1);
     }
 
     fn check_dtypes(&self) {

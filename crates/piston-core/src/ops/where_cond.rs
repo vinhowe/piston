@@ -81,7 +81,7 @@ impl Kernel for WhereCondKernels {
 
     fn kernel_element(&self, _dst: &OpTensor) -> KernelElement {
         let WhereCondKernels::Standard(inner) = self;
-        let a_rank = inner.input.shape().rank();
+        let a_rank = inner.input.shape().dim();
         let N = if a_rank > 0 {
             inner.input.shape()[a_rank - 1]
         } else {

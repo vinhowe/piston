@@ -57,7 +57,7 @@ impl Shape {
         self.len() == 0
     }
 
-    pub fn rank(&self) -> usize {
+    pub fn dim(&self) -> usize {
         self.len()
     }
 
@@ -76,7 +76,7 @@ impl Shape {
     pub fn is_vector(&self) -> bool {
         let mut shape = self.clone();
         shape.squeeze(None);
-        shape.rank() <= 1
+        shape.dim() <= 1
     }
 
     #[inline]
@@ -143,12 +143,12 @@ impl Shape {
     }
 
     pub fn multi_broadcast(shapes: &[&Shape]) -> Option<Shape> {
-        let max_rank = shapes.iter().map(|shape| shape.rank()).max()?;
+        let max_rank = shapes.iter().map(|shape| shape.dim()).max()?;
         let mut shape: Shape = shape![];
         for i in 0..max_rank {
             let mut current_dim_size = 1;
             for shape in shapes {
-                let len = shape.rank();
+                let len = shape.dim();
                 let dim = if i < len { &shape[len - i - 1] } else { &1 };
                 if dim != &1 {
                     if current_dim_size != 1 && dim != &current_dim_size {
@@ -179,7 +179,7 @@ impl Shape {
     }
 
     pub fn transpose(&mut self) {
-        let rank = self.rank();
+        let rank = self.dim();
         if rank < 2 {
             return;
         }
@@ -442,7 +442,7 @@ pub trait Dim {
 
 impl Dim for usize {
     fn to_index(&self, shape: &Shape, op: &'static str) -> Result<usize> {
-        let rank = shape.rank();
+        let rank = shape.dim();
         if *self >= rank {
             Err(anyhow::anyhow!("Dimension out of range for op: {}", op))
         } else {
@@ -451,7 +451,7 @@ impl Dim for usize {
     }
 
     fn to_index_plus_one(&self, shape: &Shape, op: &'static str) -> Result<usize> {
-        let rank = shape.rank();
+        let rank = shape.dim();
         if *self > rank {
             Err(anyhow::anyhow!("Dimension out of range for op: {}", op))
         } else {
@@ -481,7 +481,7 @@ impl D {
 
 impl Dim for D {
     fn to_index(&self, shape: &Shape, op: &'static str) -> Result<usize> {
-        let rank = shape.rank();
+        let rank = shape.dim();
         match self {
             Self::Minus1 if rank >= 1 => Ok(rank - 1),
             Self::Minus2 if rank >= 2 => Ok(rank - 2),
@@ -491,7 +491,7 @@ impl Dim for D {
     }
 
     fn to_index_plus_one(&self, shape: &Shape, op: &'static str) -> Result<usize> {
-        let rank = shape.rank();
+        let rank = shape.dim();
         match self {
             Self::Minus1 => Ok(rank),
             Self::Minus2 if rank >= 1 => Ok(rank - 1),
@@ -510,7 +510,7 @@ pub trait Dims: Sized {
             if dims[..i].contains(&dim) {
                 anyhow::bail!("Duplicate dimension index: {}", dim)
             }
-            if dim >= shape.rank() {
+            if dim >= shape.dim() {
                 anyhow::bail!("Dimension out of range: {}", dim)
             }
         }

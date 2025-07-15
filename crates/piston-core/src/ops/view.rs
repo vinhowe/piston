@@ -17,7 +17,7 @@ impl View {
 impl OpGuards for View {
     fn check_shapes(&self) {
         let (src_shape, dst_shape) = (self.src.shape(), &self.shape);
-        assert_eq!(src_shape.rank(), dst_shape.rank());
+        assert_eq!(src_shape.dim(), dst_shape.dim());
         assert_eq!(src_shape.numel(), dst_shape.numel());
     }
 

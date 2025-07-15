@@ -144,7 +144,7 @@ pub fn log_softmax(xs: Tensor, d: usize) -> anyhow::Result<Tensor> {
 
 pub fn cross_entropy(inp: Tensor, target: Tensor) -> anyhow::Result<Tensor> {
     let _scope_guard = ScopePusher::new("loss:cross_entropy");
-    if inp.rank() != 2 {
+    if inp.dim() != 2 {
         anyhow::bail!("cross_entropy expects an input tensor of rank 2")
     }
     let inp = log_softmax(inp, 1)?;

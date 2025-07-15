@@ -358,7 +358,7 @@ impl Kernel for UnaryKernels {
     fn kernel_element(&self, _dst: &OpTensor) -> KernelElement {
         let UnaryKernels::Standard(inner) = self;
 
-        let a_rank = &inner.input.shape().rank();
+        let a_rank = &inner.input.shape().dim();
         let N = &inner.input.shape()[a_rank - 1];
 
         if N % 4 == 0 {

@@ -60,7 +60,7 @@ impl OpGuards for RoPE {
     fn check_shapes(&self) {
         let input = &self.input;
         //TODO: overly restrictive
-        assert!(input.rank() == 4);
+        assert!(input.dim() == 4);
         assert!(input.shape()[3] >= self.dim);
         assert!(self.dim % 8 == 0);
     }

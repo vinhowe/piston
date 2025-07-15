@@ -28,7 +28,7 @@ pub struct GatherMeta {
 
 impl OpGuards for Gather {
     fn check_shapes(&self) {
-        assert!(self.src.rank() >= 1);
+        assert!(self.src.dim() >= 1);
     }
 
     fn check_dtypes(&self) {

@@ -51,7 +51,7 @@ impl Operation for Permute {
         }
 
         let mut output_shape = input_shape.clone();
-        for i in 0..input_shape.rank() {
+        for i in 0..input_shape.dim() {
             output_shape[i] = input_shape[self.dims[i]];
         }
         let stride = Stride::from(&output_shape);
@@ -65,7 +65,7 @@ impl Operation for Permute {
 
 impl OpGuards for Permute {
     fn check_shapes(&self) {
-        assert!(self.src.shape().rank() == self.dims.len());
+        assert!(self.src.shape().dim() == self.dims.len());
         assert!(self.dims.iter().all(|&x| x < 4)); //Only support 4D for now
     }
 

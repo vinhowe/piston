@@ -90,16 +90,16 @@ impl MatmulSpec {
         let lhs_dtype = LHS.dtype();
         let rhs_dtype = RHS.dtype();
 
-        if (lhs_shape.rank() < 2) || (rhs_shape.rank() < 2) {
+        if (lhs_shape.dim() < 2) || (rhs_shape.dim() < 2) {
             panic!("MatMul: inputs must be at least 2D");
         }
 
-        match lhs_shape.rank().cmp(&rhs_shape.rank()) {
+        match lhs_shape.dim().cmp(&rhs_shape.dim()) {
             Ordering::Less => {
-                lhs_shape.left_pad_to(1, rhs_shape.rank());
+                lhs_shape.left_pad_to(1, rhs_shape.dim());
             }
             Ordering::Greater => {
-                rhs_shape.left_pad_to(1, lhs_shape.rank());
+                rhs_shape.left_pad_to(1, lhs_shape.dim());
             }
             _ => {}
         };
@@ -108,7 +108,7 @@ impl MatmulSpec {
             Matmul::compute_dst_shape(&lhs_shape, &rhs_shape, trans_lhs, trans_rhs, trans_dst)
                 .unwrap();
 
-        let stack_dims = dst_shape.rank() - 2;
+        let stack_dims = dst_shape.dim() - 2;
         let stack_shape = dst_shape.slice(0..stack_dims);
 
         let lhs_stack = lhs_shape.drain(0..stack_dims).product();
@@ -121,11 +121,11 @@ impl MatmulSpec {
             assert!(lhs_stack == rhs_stack && rhs_stack == dst_stack);
         }
 
-        if lhs_shape.rank() == 1 {
+        if lhs_shape.dim() == 1 {
             lhs_shape.insert(0, 1);
         }
 
-        if rhs_shape.rank() == 1 {
+        if rhs_shape.dim() == 1 {
             rhs_shape.insert(0, 1);
         }
 
@@ -400,8 +400,8 @@ impl Matmul {
         let mut lhs_shape = lhs_shape.clone();
         let mut rhs_shape = rhs_shape.clone();
 
-        let implicit_m = lhs_shape.rank() < 2;
-        let implicit_n = rhs_shape.rank() < 2;
+        let implicit_m = lhs_shape.dim() < 2;
+        let implicit_n = rhs_shape.dim() < 2;
         if implicit_m {
             lhs_shape.insert(trans_lhs as usize, 1);
         }
@@ -410,15 +410,15 @@ impl Matmul {
         }
 
         let equalize_rank = |shape: &mut Shape, target_rank: usize| {
-            while shape.rank() < target_rank {
+            while shape.dim() < target_rank {
                 shape.insert(0, 1);
             }
         };
-        equalize_rank(&mut lhs_shape, rhs_shape.rank());
-        equalize_rank(&mut rhs_shape, lhs_shape.rank());
+        equalize_rank(&mut lhs_shape, rhs_shape.dim());
+        equalize_rank(&mut rhs_shape, lhs_shape.dim());
 
-        let lhs_rank = lhs_shape.rank();
-        let rhs_rank = rhs_shape.rank();
+        let lhs_rank = lhs_shape.dim();
+        let rhs_rank = rhs_shape.dim();
         let (lhs_prefix, rhs_prefix) = (&lhs_shape[..lhs_rank - 2], &rhs_shape[..rhs_rank - 2]);
         let dst_broadcasted_prefix =
             Shape::multi_broadcast(&[&lhs_prefix.into(), &rhs_prefix.into()]).ok_or_else(|| {

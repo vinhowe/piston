@@ -33,8 +33,8 @@ impl OpGuards for Broadcast {
         let src_shape = self.src.shape();
         let to_shape = &self.to;
 
-        let sr = src_shape.rank();
-        let dr = to_shape.rank();
+        let sr = src_shape.dim();
+        let dr = to_shape.dim();
         if sr > dr {
             panic!(
                 "Source shape cannot have more dimensions than target shape: {} > {}",

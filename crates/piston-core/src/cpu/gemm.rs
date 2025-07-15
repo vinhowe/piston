@@ -72,7 +72,7 @@ pub(crate) fn gemm<T: TensorDType>(
 ) -> Result<Vec<T>, OperationError> {
     let lhs_stride = lhs_stride.to_vec();
     let rhs_stride = rhs_stride.to_vec();
-    let rank = lhs_shape.rank();
+    let rank = lhs_shape.dim();
 
     let lhs_cs = lhs_stride[rank - 1];
     let lhs_rs = lhs_stride[rank - 2];

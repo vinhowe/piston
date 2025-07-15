@@ -117,7 +117,7 @@ pub struct CacheMeta {
 
 impl OpGuards for Cache {
     fn check_shapes(&self) {
-        assert!(self.cache.rank() >= 3);
+        assert!(self.cache.dim() >= 3);
         assert!(self.offset <= self.cache.shape()[self.dim]);
     }
 
@@ -190,7 +190,7 @@ impl Kernel for CacheKernels {
     fn metadata(&self, dst: &OpTensor, _: &KernelElement) -> Result<Self::Metadata, OperationError> {
         let CacheKernels::Standard(inner) = self;
 
-        let original_rank = inner.cache.rank();
+        let original_rank = inner.cache.dim();
         let promotion = 4 - original_rank;
         let promoted_dim = inner.dim + promotion;
 

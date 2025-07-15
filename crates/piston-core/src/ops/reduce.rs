@@ -174,7 +174,7 @@ pub struct ReduceMeta {
 impl OpGuards for Reduce {
     fn check_shapes(&self) {
         let input = &self.input;
-        let rank = input.rank();
+        let rank = input.dim();
         for &dim in self.reduce_dims.iter() {
             assert!(dim < rank);
         }
@@ -253,7 +253,7 @@ impl Kernel for ReduceKernels {
 
     fn kernel_element(&self, _dst: &OpTensor) -> KernelElement {
         // let input = self.srcs()[0];
-        // let rank = input.rank();
+        // let rank = input.dim();
         // let shape = input.shape();
         // let mut min_N = 4;
         // for &dim in self.sum_dims.iter() {

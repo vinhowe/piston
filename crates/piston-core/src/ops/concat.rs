@@ -139,8 +139,8 @@ impl OpGuards for Concat {
         assert!(self
             .inputs
             .iter()
-            .all(|x| x.rank() == first.rank() && x.rank() <= 4));
-        assert!(self.inputs.iter().all(|x| self.dim < x.rank()));
+            .all(|x| x.dim() == first.dim() && x.dim() <= 4));
+        assert!(self.inputs.iter().all(|x| self.dim < x.dim()));
         //All tensors must have same shape, sans the concatenation dimension
         for axis in 0..self.dim {
             assert!(self
@@ -148,7 +148,7 @@ impl OpGuards for Concat {
                 .iter()
                 .all(|x| x.shape()[axis] == first.shape()[axis]));
         }
-        for axis in (self.dim + 1)..first.rank() {
+        for axis in (self.dim + 1)..first.dim() {
             assert!(self
                 .inputs
                 .iter()
@@ -185,10 +185,14 @@ impl Kernel for ConcatKernels {
         }
     }
 
-    fn metadata(&self, dst: &OpTensor, _: &KernelElement) -> Result<Self::Metadata, OperationError> {
+    fn metadata(
+        &self,
+        dst: &OpTensor,
+        _: &KernelElement,
+    ) -> Result<Self::Metadata, OperationError> {
         let ConcatKernels::Standard(inner) = self;
 
-        let original_rank = inner.inputs[0].rank();
+        let original_rank = inner.inputs[0].dim();
         let promotion = 4 - original_rank;
         let input_shapes: Vec<Shape> = inner
             .inputs
