@@ -808,8 +808,10 @@ impl JsTensor {
             .map_err(|e| JsValue::from(e.to_string()))
     }
 
-    pub fn invalidate(&mut self) {
-        self.inner.invalidate();
+    pub fn invalidate(&mut self) -> Result<(), JsValue> {
+        self.inner
+            .invalidate()
+            .map_err(|e| JsValue::from(e.to_string()))
     }
 }
 

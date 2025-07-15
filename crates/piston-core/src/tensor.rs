@@ -43,6 +43,8 @@ pub enum TensorError {
     NoStorage(TensorId),
     #[error(transparent)]
     DeviceError(#[from] crate::DeviceError),
+    #[error("Tensor {0:?} must be resolved before manually invalidating")]
+    InvalidationError(TensorId),
     #[error("Failed to transfer data to host")]
     TransferError,
     #[error(transparent)]
@@ -2125,9 +2127,16 @@ impl OpTensor {
 
     /// Invalidates the tensor by setting its storage to None.
     /// After calling this method, the tensor will no longer be resolved.
-    pub fn invalidate(&self) {
+    pub fn invalidate(&self) -> Result<(), TensorError> {
+        if self.invalidated() {
+            return Ok(());
+        }
+        if !self.resolved() {
+            return Err(TensorError::InvalidationError(self.id()));
+        }
         *self.storage.write() = None;
         *self.invalidated.write() = true;
+        Ok(())
     }
 }
 
@@ -3480,8 +3489,8 @@ impl Tensor {
 
     /// Invalidates the tensor by setting its storage to None.
     /// After calling this method, the tensor will no longer be resolved.
-    pub fn invalidate(&self) {
-        self.inner_or_source().invalidate();
+    pub fn invalidate(&self) -> Result<(), TensorError> {
+        self.inner_or_source().invalidate()
     }
 }
 
