@@ -63,7 +63,9 @@ export interface StateDict {
  * Subclasses should implement the `step` method which performs the actual
  * parameter updates.
  */
-export class Optimizer<TState extends OptimizerParamState = OptimizerParamState> {
+export class Optimizer<
+  TState extends OptimizerParamState = OptimizerParamState,
+> {
   defaults: Record<string, unknown>;
   device: Device;
   state: Map<Parameter, TState>;
