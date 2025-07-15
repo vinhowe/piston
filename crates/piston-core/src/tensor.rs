@@ -1132,6 +1132,22 @@ impl OpTensor {
         Ok(Self::lazy(op, out_view, device, false))
     }
 
+    pub fn transpose<D: Dim>(self, dim0: D, dim1: D) -> Result<Self> {
+        let dim0 = dim0.to_index(self.shape(), "transpose")?;
+        let dim1 = dim1.to_index(self.shape(), "transpose")?;
+        self.permute(rvec![dim0, dim1])
+    }
+
+    pub fn t(self) -> Result<Self> {
+        if self.rank() > 2 {
+            anyhow::bail!(
+                "t() can only be applied to tensors with 2 or fewer dimensions, got tensor with {} dimensions",
+                self.rank()
+            );
+        }
+        self.transpose(0, 1)
+    }
+
     pub fn cache<D: Dim>(self, source: Self, dim: D, offset: usize) -> Result<Self> {
         let dim = dim.to_index(self.shape(), "cache")?;
         let device = self.device.clone();
@@ -3018,6 +3034,16 @@ impl Tensor {
 
     pub fn permute<D: Dims>(self, dims: D) -> Result<Self> {
         Ok(Self::wrap(self.inner_or_source().clone().permute(dims)?))
+    }
+
+    pub fn transpose<D: Dim>(self, dim0: D, dim1: D) -> Result<Self> {
+        Ok(Self::wrap(
+            self.inner_or_source().clone().transpose(dim0, dim1)?,
+        ))
+    }
+
+    pub fn t(self) -> Result<Self> {
+        Ok(Self::wrap(self.inner_or_source().clone().t()?))
     }
 
     pub fn cache<D: Dim>(self, source: Self, dim: D, offset: usize) -> Result<Self> {

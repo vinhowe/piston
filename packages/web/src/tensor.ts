@@ -325,6 +325,14 @@ export class Tensor {
     return this.wrappedOp((a) => a.permute(dims));
   }
 
+  transpose(dim0: number, dim1: number): Tensor {
+    return this.wrappedOp((a) => a.transpose(dim0, dim1));
+  }
+
+  t(): Tensor {
+    return this.wrappedOp((a) => a.t());
+  }
+
   cache(source: Tensor, dim: number, offset: number): Tensor {
     Tensor.runHooks(source, { dependency: true });
     return this.wrappedOp((a) => a.cache(source._cloneInner(), dim, offset));

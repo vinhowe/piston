@@ -465,6 +465,10 @@ impl JsTensor {
 
     pub fn permute(self, dims: Dims) -> JsTensorResult {}
 
+    pub fn transpose(self, dim0: Dim, dim1: Dim) -> JsTensorResult {}
+
+    pub fn t(self) -> JsTensorResult {}
+
     pub fn cache(self, source: Tensor, dim: Dim, offset: usize) -> JsTensorResult {}
 
     /// Returns a new tensor duplicating data from the original tensor. New dimensions are inserted
