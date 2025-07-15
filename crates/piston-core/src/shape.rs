@@ -17,6 +17,11 @@ pub struct Shape(RVec<usize>);
 impl_wrapper!(Shape; using);
 
 impl Shape {
+    pub fn scalar() -> Self {
+        // TODO(vinhowe): Move to an empty scalar shape, once I have time to debug
+        Self(rvec![1])
+    }
+
     pub fn new(shape: RVec<usize>) -> Self {
         Self(shape)
     }
