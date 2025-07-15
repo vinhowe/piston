@@ -1,4 +1,4 @@
-import { Buffer, Parameter } from "@/parameter";
+import { Buffer, Parameter } from "@/nn/parameter";
 import { Tensor } from "@/tensor";
 import { save_wasm } from "@/wasm";
 

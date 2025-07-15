@@ -1,8 +1,8 @@
 import { zerosLike } from "@/globals";
 import { tensorName, withScope } from "@/nn/tracking";
+import { Parameter } from "@/nn/parameter";
 import { Optimizer } from "@/optim/optimizer";
 import { OptimizerParamState, ParamGroup } from "@/optim/optimizer";
-import { Parameter } from "@/parameter";
 import { Tensor } from "@/tensor";
 import { Device } from "@/wasm";
 

@@ -1,4 +1,4 @@
-import { Parameter } from "@/parameter";
+import { Parameter } from "@/nn/parameter";
 import { Tensor } from "@/tensor";
 import {
   FullInitConfig,

@@ -1,6 +1,6 @@
 import { ones, zeros } from "@/globals";
 import { Module } from "@/nn/module";
-import { Parameter } from "@/parameter";
+import { Parameter } from "@/nn/parameter";
 import { Tensor } from "@/tensor";
 
 export class LayerNorm extends Module {

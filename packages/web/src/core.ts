@@ -53,10 +53,10 @@ export {
 export * as nn from "@/nn";
 export * from "@/nn";
 export { debugBufferHook } from "@/nn/moduleUtils";
+export { Buffer, Parameter } from "@/nn/parameter";
 export * as optim from "@/optim";
 export * from "@/optim";
 export { init };
-export { Buffer, Parameter } from "@/parameter";
 export { save } from "@/serialization";
 export { Tensor } from "@/tensor";
 export * from "@/utils";

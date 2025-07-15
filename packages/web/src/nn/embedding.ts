@@ -1,6 +1,6 @@
 import { randn } from "@/core";
 import { Module } from "@/nn/module";
-import { Parameter } from "@/parameter";
+import { Parameter } from "@/nn/parameter";
 import { Tensor } from "@/tensor";
 
 export class Embedding extends Module {

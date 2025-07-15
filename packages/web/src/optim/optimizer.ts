@@ -1,5 +1,5 @@
 import { ScopeItem, withScope } from "@/nn/tracking";
-import { Parameter } from "@/parameter";
+import { Parameter } from "@/nn/parameter";
 import { Tensor, TensorHook } from "@/tensor";
 import { RemovableHandle } from "@/utils";
 import { Device } from "@/wasm";
