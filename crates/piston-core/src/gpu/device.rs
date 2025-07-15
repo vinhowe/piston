@@ -64,8 +64,8 @@ impl WgpuDevice {
         let adapter = Self::select_adapter().await?;
         #[cfg(not(target_arch = "wasm32"))]
         let adapter = Self::select_adapter()?;
-        log::info!("Adapter: {:?}", adapter.get_info());
-        log::info!("Active GPU: {}", adapter.get_info().name);
+        log::debug!("Adapter: {:?}", adapter.get_info());
+        log::debug!("Active GPU: {}", adapter.get_info().name);
 
         #[allow(unused_mut)]
         let mut required_features = wgpu::Features::default();
@@ -93,7 +93,7 @@ impl WgpuDevice {
         } else {
             device_request
         }?;
-        log::info!("Device: {:?}", device.limits());
+        log::debug!("Device: {:?}", device.limits());
 
         let limits = DeviceLimits::from(device.limits());
         let mut features = DeviceFeatures::from(device.features());
@@ -107,7 +107,7 @@ impl WgpuDevice {
             features.SUBGROUP = false;
         }
 
-        log::warn!("Device features: {:?}", features);
+        log::debug!("Device features: {:?}", features);
 
         let buffer_allocator = Arc::new(BufferAllocator::new());
 

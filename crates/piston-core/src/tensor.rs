@@ -96,7 +96,12 @@ macro_rules! ensure_resolved {
 impl OpTensor {
     fn register_with_device(&self) {
         if let Device::GPU(inner) = self.device() {
-            log::trace!("Attempting to register tensor {:?}", self.id());
+            log::trace!(
+                "Attempting to register tensor {:?} with op {:?} requires_grad={}",
+                self.id(),
+                self.op().name(),
+                self.requires_grad()
+            );
             inner.register_tensor(self);
         }
     }
@@ -2080,10 +2085,16 @@ impl OpTensor {
     }
 
     pub fn set_grad(&self, grad: Option<OpTensor>) {
+        log::trace!(
+            "Setting grad for {:?}: {:?}",
+            self.id(),
+            grad.as_ref().map(|_| "Some").unwrap_or("None")
+        );
         *self.grad.write() = grad;
     }
 
     pub fn take_grad(&self) -> Option<OpTensor> {
+        log::trace!("Taking grad for {:?}", self.id());
         self.grad.write().take()
     }
 }

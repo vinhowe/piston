@@ -273,6 +273,9 @@ impl OpTensor {
             already_seen.insert(node.id(), track_grad);
             if track_grad {
                 nodes.push(node);
+                log::trace!("Tracking grad for node {:?}", node.id());
+            } else {
+                log::trace!("Not tracking grad for node {:?}", node.id());
             }
             (track_grad, nodes)
         }
@@ -294,7 +297,7 @@ impl OpTensor {
             if node.requires_grad() {
                 continue;
             }
-            log::debug!("Backwarding: {:?}", node.op().name());
+            log::trace!("Backwarding {:?}", node.id());
             // This just says that we don't track intermediate gradients.
             let grad = node
                 .take_grad()

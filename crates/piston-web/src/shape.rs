@@ -81,10 +81,13 @@ impl ShapeWithOneHole for FromJsVecISize {
                 hole_count += 1;
                 hole_index = Some(i);
                 if hole_count > 1 {
-                    anyhow::bail!("at most one dimension can be -1");
+                    anyhow::bail!("at most one dimension can be -1, got shape {:?}", self.0);
                 }
             } else if dim <= 0 {
-                anyhow::bail!("dimensions must be positive except for at most one -1");
+                anyhow::bail!(
+                    "dimensions must be positive except for at most one -1, got shape {:?}",
+                    self.0
+                );
             } else {
                 product *= dim as usize;
             }
@@ -93,10 +96,16 @@ impl ShapeWithOneHole for FromJsVecISize {
         let mut shape_vec = RVec::with_capacity(self.0.len());
 
         if product == 0 {
-            anyhow::bail!("cannot reshape tensor of {el_count} elements with a product of 0");
+            anyhow::bail!(
+                "cannot reshape tensor of {el_count} elements with a product of 0, got shape {:?}",
+                self.0
+            );
         }
         if el_count % product != 0 {
-            anyhow::bail!("cannot reshape tensor with {el_count} elements to shape with -1");
+            anyhow::bail!(
+                "cannot reshape tensor with {el_count} elements to shape with -1, got shape {:?}",
+                self.0
+            );
         }
         let inferred_dim = el_count / product;
 
