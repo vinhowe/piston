@@ -57,6 +57,7 @@ export let tensor: {
 };
 
 type CreateTensorData =
+  | number
   | number[]
   | NestedNumberList[]
   | Uint8Array
@@ -249,6 +250,7 @@ export async function initGlobals() {
     wrapWithLibTensor(
       (
         data:
+          | number
           | NestedNumberList[]
           | Uint8Array
           | Float32Array
@@ -260,8 +262,8 @@ export async function initGlobals() {
         // Infer shape here, if we're looking at a nested number list
         let shape: ShapeType | undefined = config?.shape;
 
-        let dataShape;
-        if (Array.isArray(data)) {
+        let dataShape: number[];
+        if (Array.isArray(data) || typeof data === "number") {
           // For nested arrays, recursively determine shape
           dataShape = inferShapeFromNestedArray(data);
         } else {
@@ -287,6 +289,8 @@ export async function initGlobals() {
         let castData;
         if (Array.isArray(data)) {
           data = data.flat();
+        } else if (typeof data === "number") {
+          data = [data];
         }
         if (config?.dtype) {
           if (config.dtype === float32) {
