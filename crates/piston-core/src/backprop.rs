@@ -849,6 +849,71 @@ impl OpTensor {
 
                     ctx.add(arg, grad_x)?;
                 }
+                LazyOp::Norm(NormOp::RMSNorm(Norm {
+                    input: arg,
+                    scale,
+                    eps,
+                    ..
+                })) => {
+                    // Root Mean Square Layer Normalization (RMSNorm) backward pass.
+                    // See https://arxiv.org/abs/1910.07467 for formulation.
+                    // Forward: y = scale * (x * inv_std) where
+                    // inv_std = 1 / sqrt(mean(x^2) + eps)
+                    //
+                    // Derivatives:
+                    //   d_scale = sum(dy * x * inv_std)
+                    //   d_x = inv_std * dY * scale - (x * inv_std^3) * mean(dY * scale * x) / d
+                    // where d is the size of the normalization dimension.
+
+                    let rank = arg.dim();
+                    let norm_axis = rank - 1;
+                    let d = arg.shape()[norm_axis] as f32;
+
+                    // Axes to reduce over when computing d_scale (all except norm_axis)
+                    let mut sum_axes: Vec<usize> = (0..rank).collect();
+                    sum_axes.remove(norm_axis);
+
+                    // Recompute statistics needed for backward.
+                    let var = arg
+                        .clone()
+                        .square()? // x^2
+                        .sum_keepdim(norm_axis)? // sum over norm axis
+                        .affine(1.0 / d, 0.0)?; // mean of squares
+                    let inv_std = (var.clone() + *eps)?.sqrt()?.recip()?; // 1 / sqrt(mean(x^2) + eps)
+
+                    // x_hat = x * inv_std
+                    let x_normed = arg.clone().mul(inv_std.clone())?;
+
+                    // Gradient w.r.t. scale (gamma)
+                    let grad_gamma = x_normed
+                        .clone()
+                        .mul(grad.clone())?
+                        .sum_keepdim(sum_axes.as_slice())?;
+                    ctx.add(scale, grad_gamma.squeeze_all()?)?;
+
+                    // Intermediate: dY * scale
+                    let grad_scaled = grad.clone().mul(scale.clone())?;
+
+                    // Projection term: sum(dY * scale * x) over norm_axis (keepdim)
+                    let proj = grad_scaled
+                        .clone()
+                        .mul(arg.clone())?
+                        .sum_keepdim(norm_axis)?;
+
+                    // inv_std^3
+                    let inv_std_cubed = inv_std.clone().pow(3.0)?;
+
+                    // Compute dX
+                    let term1 = grad_scaled.mul(inv_std.clone())?; // inv_std * dY * scale
+                    let term2 = arg
+                        .clone()
+                        .mul(inv_std_cubed)?
+                        .mul(proj)?
+                        .affine(1.0 / d, 0.0)?; // (x * inv_std^3) * proj / d
+                    let grad_x = term1.sub(term2)?;
+
+                    ctx.add(arg, grad_x)?;
+                }
                 LazyOp::Affine(Affine { src: arg, mul, .. }) => {
                     let arg_grad = grad.affine(*mul, 0.)?;
                     ctx.add(arg, arg_grad)?;
