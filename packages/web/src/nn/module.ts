@@ -967,6 +967,9 @@ export class ModuleDict<T extends Record<string, Module>> extends Module {
     if (typeof key !== "string") {
       throw new TypeError(`Key must be a string, got ${typeof key}`);
     }
+    if (module == undefined) {
+      return this;
+    }
 
     // Register module with the Module system
     this.addModule(key, module);
