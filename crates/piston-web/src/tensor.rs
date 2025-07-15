@@ -20,6 +20,7 @@ type JsTensorResult = Result<JsTensor, JsValue>;
 
 #[wasm_bindgen(js_class = Tensor)]
 impl JsTensor {
+    #[wasm_bindgen(getter)]
     pub fn id(&self) -> usize {
         self.inner.id().0
     }
@@ -35,6 +36,7 @@ impl JsTensor {
         self.inner.dim()
     }
 
+    #[wasm_bindgen(getter)]
     pub fn dtype(&self) -> JsDType {
         JsDType {
             dtype: self.inner.dtype(),
