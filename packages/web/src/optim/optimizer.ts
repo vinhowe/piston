@@ -63,9 +63,7 @@ export interface StateDict {
  * Subclasses should implement the `step` method which performs the actual
  * parameter updates.
  */
-export class Optimizer<
-  TState extends OptimizerParamState = OptimizerParamState,
-> {
+export class Optimizer<TState extends OptimizerParamState = OptimizerParamState> {
   defaults: Record<string, unknown>;
   device: Device;
   state: Map<Parameter, TState>;
@@ -120,11 +118,7 @@ export class Optimizer<
 
     // Return a proxy to intercept method calls like 'step'
     return new Proxy(this, {
-      get: (
-        target: Optimizer<TState>,
-        prop: string | symbol,
-        receiver: unknown,
-      ): unknown => {
+      get: (target: Optimizer<TState>, prop: string | symbol, receiver: unknown): unknown => {
         // Intercept the 'step' method
         if (prop === "step" && typeof target.step === "function") {
           const originalStep = Reflect.get(target, prop, receiver) as (
@@ -132,9 +126,7 @@ export class Optimizer<
           ) => Promise<number | undefined>;
 
           // Return a wrapped async function
-          return async function (
-            ...args: unknown[]
-          ): Promise<number | undefined> {
+          return async function (...args: unknown[]): Promise<number | undefined> {
             return withScope(
               [
                 {
@@ -228,9 +220,7 @@ export class Optimizer<
       // Check if parameter is already in another group
       for (const existingGroup of this.paramGroups) {
         if (existingGroup.params.includes(param)) {
-          throw new Error(
-            "Some parameters appear in more than one parameter group",
-          );
+          throw new Error("Some parameters appear in more than one parameter group");
         }
       }
 
@@ -291,9 +281,7 @@ export class Optimizer<
     const savedGroups = stateDict.paramGroups;
 
     if (groups.length !== savedGroups.length) {
-      throw new Error(
-        "Loaded state dict has a different number of parameter groups",
-      );
+      throw new Error("Loaded state dict has a different number of parameter groups");
     }
 
     const paramLens = groups.map((g) => g.params.length);

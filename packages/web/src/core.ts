@@ -18,9 +18,7 @@ async function init(): Promise<void> {
     console.error("Failed to initialize piston WASM module:", error);
     console.error("Error details:", {
       message: error.message,
-      cause: error.cause
-        ? (error.cause as unknown as { message: string }).message
-        : "unknown",
+      cause: error.cause ? (error.cause as unknown as { message: string }).message : "unknown",
       stack: error.stack,
     });
     throw error;

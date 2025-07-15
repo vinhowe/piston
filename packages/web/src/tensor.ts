@@ -13,10 +13,7 @@ export type TensorHookOptions = {
   dependency: boolean;
 };
 
-export type TensorHook = (
-  tensor: Tensor,
-  options: TensorHookOptions,
-) => Tensor | undefined;
+export type TensorHook = (tensor: Tensor, options: TensorHookOptions) => Tensor | undefined;
 
 export class Tensor {
   scope: ScopeItem[] | undefined;
@@ -35,9 +32,7 @@ export class Tensor {
     options?: TensorHookOptions,
   ): T {
     options = options ?? { dependency: false };
-    const tensors = Array.isArray(tensorOrTensors)
-      ? tensorOrTensors
-      : [tensorOrTensors];
+    const tensors = Array.isArray(tensorOrTensors) ? tensorOrTensors : [tensorOrTensors];
     for (let i = 0; i < tensors.length; i++) {
       const tensor = tensors[i];
       const hooks = tensor.parentModule?._tensorHooks;
@@ -66,9 +61,7 @@ export class Tensor {
 
   // Create a scalar tensor (empty shape) with the given value
   static scalar(value: number, dtype?: DType): Tensor {
-    return Tensor._wrap(
-      Tensor_wasm.full([], value, dtype || null, null, false),
-    );
+    return Tensor._wrap(Tensor_wasm.full([], value, dtype || null, null, false));
   }
 
   private wrappedOp(op: (a: Tensor_wasm) => Tensor_wasm): Tensor {
@@ -78,17 +71,13 @@ export class Tensor {
   }
 
   // Define binary operations using a constructor
-  private makeBinaryOp(
-    name: keyof Tensor_wasm,
-  ): (other: BinaryOpInput) => Tensor {
+  private makeBinaryOp(name: keyof Tensor_wasm): (other: BinaryOpInput) => Tensor {
     return (other: BinaryOpInput): Tensor => {
       const otherValue = other instanceof Tensor ? other._cloneInner() : other;
       if (otherValue instanceof Tensor) {
         Tensor.runHooks(otherValue, { dependency: true });
       }
-      return this.wrappedOp((a) =>
-        (a[name] as (b: Tensor_wasm) => Tensor_wasm)(otherValue),
-      );
+      return this.wrappedOp((a) => (a[name] as (b: Tensor_wasm) => Tensor_wasm)(otherValue));
     };
   }
 
@@ -148,8 +137,7 @@ export class Tensor {
   le_ = this.makeCmpOp("le_");
 
   private makeUnaryOp(name: keyof Tensor_wasm): () => Tensor {
-    return (): Tensor =>
-      this.wrappedOp((a) => (a[name] as () => Tensor_wasm)());
+    return (): Tensor => this.wrappedOp((a) => (a[name] as () => Tensor_wasm)());
   }
 
   gelu = this.makeUnaryOp("gelu");
@@ -196,23 +184,13 @@ export class Tensor {
     return this.wrappedOp((a) => a.cast(dstDtype?._clone()));
   }
 
-  groupNorm(
-    numGroups: number,
-    weight: Tensor,
-    bias?: Tensor,
-    eps: number = 1e-5,
-  ): Tensor {
+  groupNorm(numGroups: number, weight: Tensor, bias?: Tensor, eps: number = 1e-5): Tensor {
     Tensor.runHooks(weight, { dependency: true });
     if (bias) {
       Tensor.runHooks(bias, { dependency: true });
     }
     return this.wrappedOp((a) =>
-      a.groupNorm(
-        numGroups,
-        weight?._cloneInner(),
-        bias ? bias._cloneInner() : null,
-        eps,
-      ),
+      a.groupNorm(numGroups, weight?._cloneInner(), bias ? bias._cloneInner() : null, eps),
     );
   }
 
@@ -231,23 +209,13 @@ export class Tensor {
     return this.wrappedOp((a) => a.rmsNorm(weight?._cloneInner(), eps));
   }
 
-  conv1d(
-    weight: Tensor,
-    bias?: Tensor,
-    stride: number = 1,
-    padding: number = 0,
-  ): Tensor {
+  conv1d(weight: Tensor, bias?: Tensor, stride: number = 1, padding: number = 0): Tensor {
     Tensor.runHooks(weight, { dependency: true });
     if (bias) {
       Tensor.runHooks(bias, { dependency: true });
     }
     return this.wrappedOp((a) =>
-      a.conv1d(
-        weight?._cloneInner(),
-        bias ? bias._cloneInner() : null,
-        stride,
-        padding,
-      ),
+      a.conv1d(weight?._cloneInner(), bias ? bias._cloneInner() : null, stride, padding),
     );
   }
 
@@ -263,15 +231,9 @@ export class Tensor {
     return this.wrappedOp((a) => a.alibi(maxBias));
   }
 
-  matmul(
-    rhs: Tensor,
-    transLhs: boolean = false,
-    transRhs: boolean = false,
-  ): Tensor {
+  matmul(rhs: Tensor, transLhs: boolean = false, transRhs: boolean = false): Tensor {
     Tensor.runHooks(rhs, { dependency: true });
-    return this.wrappedOp((a) =>
-      a.matmul(rhs._cloneInner(), transLhs, transRhs),
-    );
+    return this.wrappedOp((a) => a.matmul(rhs._cloneInner(), transLhs, transRhs));
   }
 
   gemm(
@@ -286,13 +248,7 @@ export class Tensor {
       Tensor.runHooks(bias, { dependency: true });
     }
     return this.wrappedOp((a) =>
-      a.gemm(
-        rhs._cloneInner(),
-        bias ? bias._cloneInner() : null,
-        transLhs,
-        transRhs,
-        transOut,
-      ),
+      a.gemm(rhs._cloneInner(), bias ? bias._cloneInner() : null, transLhs, transRhs, transOut),
     );
   }
 
@@ -395,25 +351,19 @@ export class Tensor {
   where(condition: Tensor, onFalse: Tensor): Tensor {
     Tensor.runHooks(condition, { dependency: true });
     Tensor.runHooks(onFalse, { dependency: true });
-    return this.wrappedOp((a) =>
-      a.whereCond(condition._cloneInner(), onFalse._cloneInner()),
-    );
+    return this.wrappedOp((a) => a.whereCond(condition._cloneInner(), onFalse._cloneInner()));
   }
 
   scatterAdd(indices: Tensor, source: Tensor, dim: number): Tensor {
     Tensor.runHooks(indices, { dependency: true });
     Tensor.runHooks(source, { dependency: true });
-    return this.wrappedOp((a) =>
-      a.scatterAdd(indices._cloneInner(), source._cloneInner(), dim),
-    );
+    return this.wrappedOp((a) => a.scatterAdd(indices._cloneInner(), source._cloneInner(), dim));
   }
 
   indexAdd_(indices: Tensor, source: Tensor, dim: number): Tensor {
     Tensor.runHooks(indices, { dependency: true });
     Tensor.runHooks(source, { dependency: true });
-    return this.wrappedOp((a) =>
-      a.indexAdd_(indices._cloneInner(), source._cloneInner(), dim),
-    );
+    return this.wrappedOp((a) => a.indexAdd_(indices._cloneInner(), source._cloneInner(), dim));
   }
 
   gather(indices: Tensor, dim: number): Tensor {

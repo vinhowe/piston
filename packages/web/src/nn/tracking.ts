@@ -4,11 +4,7 @@ import { Parameter } from "@/parameter";
 import { OpDescription, Tensor } from "@/tensor";
 
 export interface BaseScopeItem {
-  type:
-    | "module"
-    | "optimizer"
-    | "optimizer-param-group"
-    | "optimizer-param-update";
+  type: "module" | "optimizer" | "optimizer-param-group" | "optimizer-param-update";
   name: string | undefined;
 }
 
@@ -66,11 +62,7 @@ export interface TensorTrackOptions {
   dependency?: boolean;
 }
 
-function trackTensor(
-  tensor: Tensor,
-  options: TensorTrackOptions,
-  trackStack: TrackState,
-) {
+function trackTensor(tensor: Tensor, options: TensorTrackOptions, trackStack: TrackState) {
   const { dependency = false } = options ?? {};
 
   const id = tensor.id();
@@ -113,8 +105,7 @@ export function withScope<T>(
 ): T {
   const { replace = false } = options;
   const originalScope = [...tensorScopeStack];
-  const newScope =
-    typeof scope === "function" ? scope(tensorScopeStack) : scope;
+  const newScope = typeof scope === "function" ? scope(tensorScopeStack) : scope;
   if (replace) {
     tensorScopeStack.length = 0;
   }
@@ -129,17 +120,12 @@ export function withScope<T>(
 
 export function nameFromScope(scope: ScopeItem[]) {
   return (
-    scope
-      .map((item) => (item.name?.includes(".") ? `[${item.name}]` : item.name))
-      .join(".") ?? "."
+    scope.map((item) => (item.name?.includes(".") ? `[${item.name}]` : item.name)).join(".") ?? "."
   );
 }
 
 export function tensorName(tensor: Tensor) {
-  return (
-    nameFromScope(tensor.scope ?? []) +
-    (tensor.nameOnParent ? `.${tensor.nameOnParent}` : "")
-  );
+  return nameFromScope(tensor.scope ?? []) + (tensor.nameOnParent ? `.${tensor.nameOnParent}` : "");
 }
 
 
@@ -153,9 +139,7 @@ export function track<Output>(
     index: 0,
   };
   module.modulesIter().forEach((m) => {
-    m.registerTensorHook((tensor) =>
-      trackTensor(tensor, { dependency: true }, trackStack),
-    );
+    m.registerTensorHook((tensor) => trackTensor(tensor, { dependency: true }, trackStack));
   });
   const result = module.forward(...args);
   return [result, trackStack.stack];
@@ -167,9 +151,7 @@ export async function trackOptimizerStep(optimizer: Optimizer) {
     alreadyTracked: new Set<number>(),
     index: 0,
   };
-  optimizer.registerTensorHook((tensor) =>
-    trackTensor(tensor, { dependency: true }, trackStack),
-  );
+  optimizer.registerTensorHook((tensor) => trackTensor(tensor, { dependency: true }, trackStack));
   await optimizer.step();
   return trackStack.stack;
 }

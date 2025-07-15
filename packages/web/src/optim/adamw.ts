@@ -49,11 +49,7 @@ export class AdamW extends Optimizer<AdamWParamState> {
    *  - `weightDecay` (number): Weight decay coefficient (default: 1e-2)
    *  - `amsgrad` (boolean): Whether to use the AMSGrad variant (default: false)
    */
-  constructor(
-    params: Parameter[] | ParamGroup[],
-    device: Device,
-    config?: Partial<AdamWConfig>,
-  ) {
+  constructor(params: Parameter[] | ParamGroup[], device: Device, config?: Partial<AdamWConfig>) {
     const {
       lr = 1e-3,
       betas = [0.9, 0.999],
@@ -170,9 +166,7 @@ export class AdamW extends Optimizer<AdamWParamState> {
 
                 const expAvg = state.expAvg as Tensor;
                 const expAvgSq = state.expAvgSq as Tensor;
-                const maxExpAvgSq = amsgrad
-                  ? (state.maxExpAvgSq as Tensor)
-                  : null;
+                const maxExpAvgSq = amsgrad ? (state.maxExpAvgSq as Tensor) : null;
 
                 // Increment step counter
                 state.step++;
@@ -191,15 +185,9 @@ export class AdamW extends Optimizer<AdamWParamState> {
                   // Update max exponential moving average of squared gradient
                   maxExpAvgSq!.maximum_(expAvgSq);
                   // Use the max for normalization
-                  denom = maxExpAvgSq!
-                    .sqrt()
-                    .div(Math.sqrt(biasCorrection2))
-                    .add(eps);
+                  denom = maxExpAvgSq!.sqrt().div(Math.sqrt(biasCorrection2)).add(eps);
                 } else {
-                  denom = expAvgSq
-                    .sqrt()
-                    .div(Math.sqrt(biasCorrection2))
-                    .add(eps);
+                  denom = expAvgSq.sqrt().div(Math.sqrt(biasCorrection2)).add(eps);
                 }
 
                 // Compute step size

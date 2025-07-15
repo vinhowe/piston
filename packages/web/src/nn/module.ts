@@ -23,11 +23,7 @@ export class Module<Input = unknown, Output = unknown> {
   >;
   protected _forwardHooks: Map<
     number,
-    (
-      module: Module<Input, Output>,
-      inputs: Input,
-      output: Output,
-    ) => Output | undefined
+    (module: Module<Input, Output>, inputs: Input, output: Output) => Output | undefined
   >;
   /** @internal Tensor class can access the map on its parent module to execute hooks */
   _tensorHooks: Map<number, TensorHook>;
@@ -57,15 +53,10 @@ export class Module<Input = unknown, Output = unknown> {
 
     // Use Proxy to intercept property assignments and access
     return new Proxy(this, {
-      set: (
-        target: Module<Input, Output>,
-        prop: string | symbol,
-        value: unknown,
-      ): boolean => {
+      set: (target: Module<Input, Output>, prop: string | symbol, value: unknown): boolean => {
         // Allow direct setting of internal properties
         if (typeof prop === "symbol" || prop.toString().startsWith("_")) {
-          (target as unknown as Record<string, unknown>)[prop as string] =
-            value;
+          (target as unknown as Record<string, unknown>)[prop as string] = value;
           return true;
         }
 
@@ -73,11 +64,7 @@ export class Module<Input = unknown, Output = unknown> {
         return target._setAttr(prop.toString(), value);
       },
 
-      get: (
-        target: Module<Input, Output>,
-        prop: string | symbol,
-        receiver: unknown,
-      ): unknown => {
+      get: (target: Module<Input, Output>, prop: string | symbol, receiver: unknown): unknown => {
         // Handle hooks
         if (prop === "forward" && typeof target.forward === "function") {
           return function (...args: unknown[]) {
@@ -110,11 +97,7 @@ export class Module<Input = unknown, Output = unknown> {
         }
 
         // Return methods and internal properties directly
-        if (
-          prop in target ||
-          typeof prop === "symbol" ||
-          prop.toString().startsWith("_")
-        ) {
+        if (prop in target || typeof prop === "symbol" || prop.toString().startsWith("_")) {
           return (target as unknown as Record<string, unknown>)[prop as string];
         }
 
@@ -146,16 +129,9 @@ export class Module<Input = unknown, Output = unknown> {
     // Handle Parameter assignment
     if (Parameter._unwrap(value as Parameter) instanceof Tensor_wasm) {
       if (!this._parameters) {
-        throw new Error(
-          "Cannot assign parameters before Module constructor call",
-        );
+        throw new Error("Cannot assign parameters before Module constructor call");
       }
-      removeFrom(
-        this,
-        this._buffers,
-        this._modules,
-        this._nonPersistentBuffersSet,
-      );
+      removeFrom(this, this._buffers, this._modules, this._nonPersistentBuffersSet);
       this.registerParameter(name, value as Parameter);
     }
     // Handle existing Parameter being replaced
@@ -173,12 +149,7 @@ export class Module<Input = unknown, Output = unknown> {
       if (!this._modules) {
         throw new Error("Cannot assign module before Module constructor call");
       }
-      removeFrom(
-        this,
-        this._parameters,
-        this._buffers,
-        this._nonPersistentBuffersSet,
-      );
+      removeFrom(this, this._parameters, this._buffers, this._nonPersistentBuffersSet);
       this.addModule(name, value);
     }
     // Handle existing Module being replaced
@@ -192,10 +163,7 @@ export class Module<Input = unknown, Output = unknown> {
       this.addModule(name, value);
     }
     // Handle Buffer or existing Buffer being replaced
-    else if (
-      value instanceof Buffer ||
-      (this._buffers && name in this._buffers)
-    ) {
+    else if (value instanceof Buffer || (this._buffers && name in this._buffers)) {
       if (value !== null && !(value instanceof Buffer)) {
         throw new TypeError(
           `Cannot assign '${value?.constructor?.name || typeof value}' as buffer '${name}' ` +
@@ -203,9 +171,7 @@ export class Module<Input = unknown, Output = unknown> {
         );
       }
       const persistent =
-        value instanceof Buffer
-          ? value.persistent
-          : !this._nonPersistentBuffersSet.has(name);
+        value instanceof Buffer ? value.persistent : !this._nonPersistentBuffersSet.has(name);
       this.registerBuffer(name, value, persistent);
     }
     // Handle regular attribute
@@ -216,10 +182,7 @@ export class Module<Input = unknown, Output = unknown> {
     return true;
   }
 
-  registerParameter(
-    name: string,
-    param: Parameter | null,
-  ): Module<Input, Output> {
+  registerParameter(name: string, param: Parameter | null): Module<Input, Output> {
     if (param !== null && !(Parameter._unwrap(param) instanceof Tensor_wasm)) {
       throw new TypeError(
         `Cannot assign '${(param as unknown)?.constructor?.name || typeof param}' as parameter '${name}'`,
@@ -286,9 +249,7 @@ export class Module<Input = unknown, Output = unknown> {
     module: Module<SubmoduleInput, SubmoduleOutput> | null,
   ): Module<Input, Output> {
     if (module !== null && !(module instanceof Module)) {
-      throw new Error(
-        `${(module as unknown)?.constructor?.name || typeof module} is not a Module`,
-      );
+      throw new Error(`${(module as unknown)?.constructor?.name || typeof module} is not a Module`);
     } else if (typeof name !== "string") {
       throw new Error(`module name should be a string. Got ${typeof name}`);
     } else if (name in this && !(name in this._modules)) {
@@ -309,10 +270,7 @@ export class Module<Input = unknown, Output = unknown> {
       (buf as Buffer).scope = [...thisScope, ...(buf.scope ?? [])];
     });
     module?.modules().forEach((mod) => {
-      (mod as Module<unknown, unknown>).scope = [
-        ...thisScope,
-        ...(mod.scope ?? []),
-      ];
+      (mod as Module<unknown, unknown>).scope = [...thisScope, ...(mod.scope ?? [])];
     });
     return this;
   }
@@ -420,9 +378,7 @@ export class Module<Input = unknown, Output = unknown> {
     recurse: boolean = true,
     remove_duplicate: boolean = true,
   ): Array<[string, Parameter]> {
-    return Array.from(
-      this.namedParametersIter(prefix, recurse, remove_duplicate),
-    );
+    return Array.from(this.namedParametersIter(prefix, recurse, remove_duplicate));
   }
 
   /**
@@ -652,11 +608,7 @@ export class Module<Input = unknown, Output = unknown> {
    * @returns A handle that can be used to remove the hook
    */
   registerForwardHook(
-    hook: (
-      module: Module<Input, Output>,
-      inputs: Input,
-      output: Output,
-    ) => Output | undefined,
+    hook: (module: Module<Input, Output>, inputs: Input, output: Output) => Output | undefined,
   ): RemovableHandle {
     const handle = new RemovableHandle(this._forwardHooks);
     this._forwardHooks.set(handle.id, hook);
@@ -697,10 +649,7 @@ export class Module<Input = unknown, Output = unknown> {
  * ModuleList can be indexed like an array to access contained modules.
  * This is similar to torch.nn.ModuleList in PyTorch.
  */
-export class ModuleList<Input = unknown, Output = unknown> extends Module<
-  Input,
-  Output
-> {
+export class ModuleList<Input = unknown, Output = unknown> extends Module<Input, Output> {
   private _modules_list: Module[];
   private _proxy: ModuleList<Input, Output>;
   [key: number]: Module;
@@ -718,10 +667,7 @@ export class ModuleList<Input = unknown, Output = unknown> extends Module<
 
     // Create a proxy to allow array-like indexing
     this._proxy = new Proxy(this, {
-      get: (
-        target: ModuleList<Input, Output>,
-        prop: string | symbol,
-      ): unknown => {
+      get: (target: ModuleList<Input, Output>, prop: string | symbol): unknown => {
         // Forward numeric indices and string numeric indices to at()
         if (typeof prop === "string" && /^\d+$/.test(prop)) {
           return target.at(parseInt(prop, 10));
@@ -732,17 +678,9 @@ export class ModuleList<Input = unknown, Output = unknown> extends Module<
         // Forward everything else to the target
         return Reflect.get(target, prop);
       },
-      set: (
-        target: ModuleList<Input, Output>,
-        prop: string | symbol,
-        value: unknown,
-      ): boolean => {
+      set: (target: ModuleList<Input, Output>, prop: string | symbol, value: unknown): boolean => {
         // Handle numeric indices and string numeric indices
-        if (
-          typeof prop === "string" &&
-          /^\d+$/.test(prop) &&
-          value instanceof Module
-        ) {
+        if (typeof prop === "string" && /^\d+$/.test(prop) && value instanceof Module) {
           const index = parseInt(prop, 10);
           if (index >= 0 && index < target.length) {
             // Set using the set method
@@ -968,17 +906,9 @@ export class ModuleDict<T extends Record<string, Module>> extends Module {
         // Forward everything else to the target
         return Reflect.get(target, prop);
       },
-      set: (
-        target: ModuleDict<T>,
-        prop: string | symbol,
-        value: unknown,
-      ): boolean => {
+      set: (target: ModuleDict<T>, prop: string | symbol, value: unknown): boolean => {
         // Handle string properties as modules
-        if (
-          typeof prop === "string" &&
-          !prop.startsWith("_") &&
-          value instanceof Module
-        ) {
+        if (typeof prop === "string" && !prop.startsWith("_") && value instanceof Module) {
           target.set(prop, value);
           return true;
         }

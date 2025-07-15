@@ -53,9 +53,7 @@ export class CrossEntropyLoss extends Module {
     }
 
     if (targetShape.length !== 1) {
-      throw new Error(
-        `CrossEntropyLoss: target must be [batch_size], got ${targetShape}`,
-      );
+      throw new Error(`CrossEntropyLoss: target must be [batch_size], got ${targetShape}`);
     }
 
     const [batchSize, vocabSize] = inputShape;

@@ -50,13 +50,7 @@ export class SGD extends Optimizer<SGDParamState> {
     device: Device,
     config: Partial<SGDConfig> & Pick<SGDConfig, "lr">,
   ) {
-    const {
-      lr,
-      momentum = 0,
-      dampening = 0,
-      weightDecay = 0,
-      nesterov = false,
-    } = config;
+    const { lr, momentum = 0, dampening = 0, weightDecay = 0, nesterov = false } = config;
 
     // Validate parameters
     if (!(lr >= 0)) {
@@ -69,9 +63,7 @@ export class SGD extends Optimizer<SGDParamState> {
       throw new Error(`Invalid weight_decay value: ${weightDecay}`);
     }
     if (nesterov && (momentum <= 0 || dampening !== 0)) {
-      throw new Error(
-        "Nesterov momentum requires a momentum and zero dampening",
-      );
+      throw new Error("Nesterov momentum requires a momentum and zero dampening");
     }
 
     // Initialize with default options

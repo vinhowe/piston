@@ -40,19 +40,11 @@ export let seed: (seed: number) => void;
 export let full: TensorCreationFunction<[shape: ShapeType, value: number]>;
 export let cat: (tensors: Tensor[], dim: number) => Tensor;
 export let stack: (tensors: Tensor[], dim: number) => Tensor;
-export let arange: TensorCreationFunction<
-  [start: number, end?: number, step?: number]
->;
-export let randint: TensorCreationFunction<
-  [low: number, high: number, shape: ShapeType]
->;
+export let arange: TensorCreationFunction<[start: number, end?: number, step?: number]>;
+export let randint: TensorCreationFunction<[low: number, high: number, shape: ShapeType]>;
 export let randn: TensorCreationFunction<[shape: ShapeType]>;
-export let randnMeanStd: TensorCreationFunction<
-  [mean: number, std: number, shape: ShapeType]
->;
-export let rand: TensorCreationFunction<
-  [lo: number, up: number, shape: ShapeType]
->;
+export let randnMeanStd: TensorCreationFunction<[mean: number, std: number, shape: ShapeType]>;
+export let rand: TensorCreationFunction<[lo: number, up: number, shape: ShapeType]>;
 // This just calls .bernoulli() on the tensor
 export let bernoulli: (t: Tensor) => Tensor;
 export let zeros: TensorCreationFunction<[shape: ShapeType]>;
@@ -61,14 +53,8 @@ export let ones: TensorCreationFunction<[shape: ShapeType]>;
 export let onesLike: TensorCreationFunction<[t: Tensor]>;
 
 export let tensor: {
-  (
-    data: CreateTensorData,
-    config: RequiresGradConfig & OptionalShapeConfig,
-  ): Parameter;
-  (
-    data: CreateTensorData,
-    config?: FullInitConfig & OptionalShapeConfig,
-  ): Tensor;
+  (data: CreateTensorData, config: RequiresGradConfig & OptionalShapeConfig): Parameter;
+  (data: CreateTensorData, config?: FullInitConfig & OptionalShapeConfig): Tensor;
 };
 
 type CreateTensorData =
@@ -111,11 +97,7 @@ function parseDType(dtype?: DType | string | undefined): DType {
 }
 
 function tensorCreationArgs(config?: FullInitConfig): [DType, Device, boolean] {
-  return [
-    parseDType(config?.dtype),
-    parseDevice(config?.device),
-    config?.requiresGrad ?? false,
-  ];
+  return [parseDType(config?.dtype), parseDevice(config?.device), config?.requiresGrad ?? false];
 }
 
 function unwrapFullConfigArgs<Args extends unknown[]>(
@@ -126,18 +108,9 @@ function unwrapFullConfigArgs<Args extends unknown[]>(
     let restArgs;
     if (
       (configArg &&
-        Object.prototype.hasOwnProperty.call(
-          configArg as Record<string, unknown>,
-          "device",
-        )) ||
-      Object.prototype.hasOwnProperty.call(
-        configArg as Record<string, unknown>,
-        "dtype",
-      ) ||
-      Object.prototype.hasOwnProperty.call(
-        configArg as Record<string, unknown>,
-        "requiresGrad",
-      )
+        Object.prototype.hasOwnProperty.call(configArg as Record<string, unknown>, "device")) ||
+      Object.prototype.hasOwnProperty.call(configArg as Record<string, unknown>, "dtype") ||
+      Object.prototype.hasOwnProperty.call(configArg as Record<string, unknown>, "requiresGrad")
     ) {
       // We have a config argument, so we need to remove it from the rest of the
       // arguments
@@ -193,9 +166,7 @@ export async function initGlobals() {
     seed_wasm(typeof seed === "bigint" ? seed : BigInt(seed));
   };
 
-  full = wrapWithParam(
-    wrapWithLibTensor(unwrapFullConfigArgs(Tensor_wasm.full)),
-  );
+  full = wrapWithParam(wrapWithLibTensor(unwrapFullConfigArgs(Tensor_wasm.full)));
   cat = wrapWithLibTensor((tensors: Tensor[], dim: number) => {
     return Tensor_wasm.cat(
       tensors.map((t) => Tensor._unwrap(t)),
@@ -209,56 +180,34 @@ export async function initGlobals() {
     );
   });
   arange = wrapWithParam(
-    wrapWithLibTensor(
-      (start: number, end?: number, step?: number, config?: FullInitConfig) => {
-        if (end === undefined) {
-          end = start;
-          start = 0;
-        }
-        if (step === undefined) {
-          step = 1;
-        }
-        return Tensor_wasm.arangeStep(
-          start,
-          end,
-          step,
-          ...tensorCreationArgs(config),
-        );
-      },
-    ),
+    wrapWithLibTensor((start: number, end?: number, step?: number, config?: FullInitConfig) => {
+      if (end === undefined) {
+        end = start;
+        start = 0;
+      }
+      if (step === undefined) {
+        step = 1;
+      }
+      return Tensor_wasm.arangeStep(start, end, step, ...tensorCreationArgs(config));
+    }),
   );
-  randint = wrapWithParam(
-    wrapWithLibTensor(unwrapFullConfigArgs(Tensor_wasm.randint)),
-  );
+  randint = wrapWithParam(wrapWithLibTensor(unwrapFullConfigArgs(Tensor_wasm.randint)));
   // This puts us in line with the PyTorch API
   randn = wrapWithParam(
     wrapWithLibTensor((shape?: ShapeType, config?: FullInitConfig) => {
-      return Tensor_wasm.randn(
-        0,
-        1,
-        shape as Uint32Array,
-        ...tensorCreationArgs(config),
-      );
+      return Tensor_wasm.randn(0, 1, shape as Uint32Array, ...tensorCreationArgs(config));
     }),
   );
-  randnMeanStd = wrapWithParam(
-    wrapWithLibTensor(unwrapFullConfigArgs(Tensor_wasm.randn)),
-  );
-  rand = wrapWithParam(
-    wrapWithLibTensor(unwrapFullConfigArgs(Tensor_wasm.rand)),
-  );
+  randnMeanStd = wrapWithParam(wrapWithLibTensor(unwrapFullConfigArgs(Tensor_wasm.randn)));
+  rand = wrapWithParam(wrapWithLibTensor(unwrapFullConfigArgs(Tensor_wasm.rand)));
   bernoulli = wrapWithLibTensor((t: Tensor) => Tensor._unwrap(t).bernoulli());
-  zeros = wrapWithParam(
-    wrapWithLibTensor(unwrapFullConfigArgs(Tensor_wasm.zeros)),
-  );
+  zeros = wrapWithParam(wrapWithLibTensor(unwrapFullConfigArgs(Tensor_wasm.zeros)));
   zerosLike = wrapWithParam(
     wrapWithLibTensor((t: Tensor, config?: FullInitConfig) => {
       return Tensor._unwrap(t).zerosLike(...tensorCreationArgs(config));
     }),
   );
-  ones = wrapWithParam(
-    wrapWithLibTensor(unwrapFullConfigArgs(Tensor_wasm.ones)),
-  );
+  ones = wrapWithParam(wrapWithLibTensor(unwrapFullConfigArgs(Tensor_wasm.ones)));
   onesLike = wrapWithParam(
     wrapWithLibTensor((t: Tensor, config?: FullInitConfig) => {
       return Tensor._unwrap(t).onesLike(...tensorCreationArgs(config));
@@ -294,9 +243,7 @@ export async function initGlobals() {
           shape = dataShape;
         } else {
           // Verify that data shape and shape are correct
-          const providedShapeArray = Array.isArray(shape)
-            ? shape
-            : Array.from(shape);
+          const providedShapeArray = Array.isArray(shape) ? shape : Array.from(shape);
           const shapeNumel = providedShapeArray.reduce((a, b) => a * b, 1);
           if (shapeNumel !== dataNumel) {
             throw Error(
@@ -320,9 +267,7 @@ export async function initGlobals() {
             castData = new Uint32Array(data as number[]);
           }
         } else {
-          castData = Array.isArray(data)
-            ? new Float32Array(data as number[])
-            : data;
+          castData = Array.isArray(data) ? new Float32Array(data as number[]) : data;
         }
 
         return Tensor_wasm.fromData(
