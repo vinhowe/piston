@@ -1,4 +1,5 @@
 export { LogSoftmax } from "./activation";
+export { AlibiEmbedding } from "./alibi";
 export { Dropout } from "./dropout";
 export { Embedding } from "./embedding";
 export { Linear } from "./linear";
