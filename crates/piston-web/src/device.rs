@@ -39,6 +39,11 @@ impl JsDevice {
             Device::GPU(_) => "webgpu".to_string(),
         }
     }
+
+    #[wasm_bindgen(js_name = usageBytes)]
+    pub fn usage_bytes(&self) -> u64 {
+        self.inner.try_gpu().unwrap().usage_bytes()
+    }
 }
 
 thread_local! {
