@@ -213,9 +213,9 @@ impl Kernel for FillRandnKernels {
 mod tests {
     use test_strategy::{proptest, Arbitrary};
 
-    use crate::{test_util::run_py_prg, DType, Device, DeviceRequest, OpTensor};
+    use crate::{test_util::run_py_prg, DType, Device, DeviceRequest, Tensor};
 
-    fn normal_parameters(output: &OpTensor) -> anyhow::Result<OpTensor> {
+    fn normal_parameters(output: &Tensor) -> anyhow::Result<Tensor> {
         let prg = r#"
 import numpy as np
 
@@ -232,7 +232,7 @@ def check_normal(output):
     fn run_fill_randn_trial(problem: FillRandnProblem, device: Device) {
         let FillRandnProblem { B, M, N } = problem;
 
-        let a = OpTensor::randn::<f32, _>(0f32, 1f32, (B, M, N), device.clone(), false)
+        let a = Tensor::randn::<f32, _>(0f32, 1f32, (B, M, N), device.clone(), false)
             .unwrap()
             .to(&Device::CPU)
             .unwrap();

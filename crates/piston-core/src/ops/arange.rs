@@ -228,13 +228,13 @@ mod tests {
     use pyo3::ToPyObject;
     use test_strategy::{proptest, Arbitrary};
 
-    use crate::{test_util::run_py_prg, DType, Device, DeviceRequest, OpTensor, TensorDType};
+    use crate::{test_util::run_py_prg, DType, Device, DeviceRequest, Tensor, TensorDType};
 
     fn ground_truth(
         start: &dyn ToPyObject,
         stop: &dyn ToPyObject,
         step: &dyn ToPyObject,
-    ) -> anyhow::Result<OpTensor> {
+    ) -> anyhow::Result<Tensor> {
         let prg = r#"
 import torch
 def arange(start, stop, step):
@@ -263,7 +263,7 @@ def arange(start, stop, step):
         // Determine correct sign for step based on start/stop relationship
         let step = if stop >= start { abs(step) } else { -abs(step) };
 
-        let a = OpTensor::arange_step(start, stop, step, device, false)
+        let a = Tensor::arange_step(start, stop, step, device, false)
             .unwrap()
             .cast(DType::F32)
             .unwrap();

@@ -756,18 +756,18 @@ mod tests {
 
     use crate::test_util::run_py_prg;
 
-    use crate::{quantize, Device, DeviceRequest};
+    use crate::{quantize, Device, DeviceRequest, Tensor};
 
     use super::*;
 
     fn ground_truth(
-        a: &OpTensor,
-        b: &OpTensor,
-        bias: Option<&OpTensor>,
+        a: &Tensor,
+        b: &Tensor,
+        bias: Option<&Tensor>,
         trans_lhs: bool,
         trans_rhs: bool,
         trans_dst: bool,
-    ) -> anyhow::Result<OpTensor> {
+    ) -> anyhow::Result<Tensor> {
         let a_op = if trans_lhs {
             "torch.permute(torch.from_numpy(a), [0, 2, 1])"
         } else {
@@ -904,7 +904,7 @@ def matmul(a, b{}):
         let rhs_shape = if trans_rhs { (B, N, K) } else { (B, K, N) };
 
         let bias = if has_bias {
-            Some(OpTensor::randn::<f32, _>(
+            Some(Tensor::randn::<f32, _>(
                 0.0,
                 1.0,
                 N,
@@ -919,8 +919,8 @@ def matmul(a, b{}):
         println!("RHS shape: {rhs_shape:?}");
         println!("Bias: {:?}", bias.as_ref().map(|b| b.shape()));
 
-        let a = OpTensor::randn::<f32, _>(0.0, 1.0, lhs_shape, cpu_device.clone(), false)?;
-        let b = OpTensor::randn::<f32, _>(0.0, 1.0, rhs_shape, cpu_device.clone(), false)?;
+        let a = Tensor::randn::<f32, _>(0.0, 1.0, lhs_shape, cpu_device.clone(), false)?;
+        let b = Tensor::randn::<f32, _>(0.0, 1.0, rhs_shape, cpu_device.clone(), false)?;
         let ground = ground_truth(&a, &b, bias.as_ref(), trans_lhs, trans_rhs, trans_dst)?;
         println!("Ground shape: {:?}", ground.shape());
 
@@ -941,8 +941,8 @@ def matmul(a, b{}):
     fn test_qgemm() -> anyhow::Result<()> {
         let device = Device::request_device(DeviceRequest::GPU).unwrap();
         let cpu_device = Device::request_device(DeviceRequest::CPU)?;
-        let a = OpTensor::randn::<f32, _>(0.0, 1.0, (6, 1500, 64), cpu_device.clone(), false)?;
-        let b = OpTensor::randn::<f32, _>(0.0, 1.0, (6, 64, 1500), cpu_device.clone(), false)?;
+        let a = Tensor::randn::<f32, _>(0.0, 1.0, (6, 1500, 64), cpu_device.clone(), false)?;
+        let b = Tensor::randn::<f32, _>(0.0, 1.0, (6, 64, 1500), cpu_device.clone(), false)?;
         let ground = ground_truth(&a, &b, None, false, false, false)?;
 
         let aq = quantize::<Q8_0F>(&a);
@@ -965,9 +965,9 @@ def matmul(a, b{}):
 
         let device = Device::request_device(DeviceRequest::GPU).unwrap();
         let cpu_device = Device::request_device(DeviceRequest::CPU)?;
-        let a = OpTensor::randn::<f32, _>(0.0, 1.0, (2, 175, 240), cpu_device.clone(), false)?;
-        let b = OpTensor::randn::<f32, _>(0.0, 1.0, (2, 240, 182), cpu_device.clone(), false)?;
-        let bias = Some(OpTensor::randn::<f32, _>(
+        let a = Tensor::randn::<f32, _>(0.0, 1.0, (2, 175, 240), cpu_device.clone(), false)?;
+        let b = Tensor::randn::<f32, _>(0.0, 1.0, (2, 240, 182), cpu_device.clone(), false)?;
+        let bias = Some(Tensor::randn::<f32, _>(
             0.0,
             1.0,
             182,
@@ -994,8 +994,14 @@ def matmul(a, b{}):
         let c_gpu = a_gpu.gemm(b_gpu, bias_gpu, TRANS_LHS, TRANS_RHS, TRANS_DST)?;
         let ours = c_gpu.to(&Device::CPU)?;
 
-        println!("PISTON\n{:?}\n", ours.to_ndarray_view::<f32>());
-        println!("PYTORCH:\n{:?}", ground.to_ndarray_view::<f32>());
+        println!(
+            "PISTON\n{:?}\n",
+            ours.inner().read().to_ndarray_view::<f32>()
+        );
+        println!(
+            "PYTORCH:\n{:?}",
+            ground.inner().read().to_ndarray_view::<f32>()
+        );
 
         ground.all_close(&ours, 1e-3, 1e-3)?;
         Ok(())
@@ -1008,8 +1014,8 @@ def matmul(a, b{}):
 
         let device = Device::request_device(DeviceRequest::GPU).unwrap();
         let cpu_device = Device::request_device(DeviceRequest::CPU)?;
-        let a = OpTensor::randn::<f32, _>(0.0, 1.0, (1, 51865, 384), cpu_device.clone(), false)?;
-        let b = OpTensor::randn::<f32, _>(0.0, 1.0, (1, 1, 384), cpu_device.clone(), false)?;
+        let a = Tensor::randn::<f32, _>(0.0, 1.0, (1, 51865, 384), cpu_device.clone(), false)?;
+        let b = Tensor::randn::<f32, _>(0.0, 1.0, (1, 1, 384), cpu_device.clone(), false)?;
 
         let TRANS_LHS = false;
         let TRANS_RHS = true;
@@ -1029,8 +1035,14 @@ def matmul(a, b{}):
         let c_gpu = a_gpu.gemm(b_gpu, None, TRANS_LHS, TRANS_RHS, TRANS_DST)?;
         let ours = c_gpu.to(&Device::CPU)?;
 
-        println!("PISTON\n{:?}\n", ours.to_ndarray_view::<f32>());
-        println!("PYTORCH:\n{:?}", ground.to_ndarray_view::<f32>());
+        println!(
+            "PISTON\n{:?}\n",
+            ours.inner().read().to_ndarray_view::<f32>()
+        );
+        println!(
+            "PYTORCH:\n{:?}",
+            ground.inner().read().to_ndarray_view::<f32>()
+        );
 
         ground.all_close(&ours, 1e-3, 1e-3)?;
         Ok(())

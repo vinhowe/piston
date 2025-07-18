@@ -295,15 +295,15 @@ mod tests {
     use test_strategy::{proptest, Arbitrary};
 
     use crate::test_util::run_py_prg;
-    use crate::{Device, DeviceRequest, OpTensor};
+    use crate::{Device, DeviceRequest, Tensor};
 
     fn ground_truth(
-        input: &OpTensor,
-        filters: &OpTensor,
-        bias: &OpTensor,
+        input: &Tensor,
+        filters: &Tensor,
+        bias: &Tensor,
         stride: usize,
         padding: usize,
-    ) -> anyhow::Result<OpTensor> {
+    ) -> anyhow::Result<Tensor> {
         let prg = r#"
 import torch
 import torch.nn.functional as F
@@ -328,9 +328,9 @@ def conv(input, filters, bias, stride, padding):
             Cout,
             stride,
         } = problem;
-        let input = OpTensor::randn::<f32, _>(0., 1., (1, Cin, Lin), Device::CPU, false).unwrap();
-        let weight = OpTensor::randn::<f32, _>(0., 1., (Cout, Cin, 3), Device::CPU, false).unwrap();
-        let bias = OpTensor::randn::<f32, _>(0., 1., Cout, Device::CPU, false).unwrap();
+        let input = Tensor::randn::<f32, _>(0., 1., (1, Cin, Lin), Device::CPU, false).unwrap();
+        let weight = Tensor::randn::<f32, _>(0., 1., (Cout, Cin, 3), Device::CPU, false).unwrap();
+        let bias = Tensor::randn::<f32, _>(0., 1., Cout, Device::CPU, false).unwrap();
         let ground = ground_truth(&input, &weight, &bias, stride, 1).unwrap();
 
         let input = input.to(device).unwrap();

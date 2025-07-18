@@ -286,7 +286,7 @@ impl Kernel for LerpKernels {
 
 #[cfg(all(test, feature = "pyo3"))]
 mod tests {
-    use crate::{test_util::run_py_prg, Device, DeviceRequest, OpTensor, Shape};
+    use crate::{test_util::run_py_prg, Device, DeviceRequest, Shape, Tensor};
     use proptest::arbitrary::any;
     use test_strategy::{proptest, Arbitrary};
 
@@ -305,10 +305,10 @@ mod tests {
     }
 
     fn ground_truth_tensor(
-        input: &OpTensor,
-        end: &OpTensor,
-        weight: &OpTensor,
-    ) -> anyhow::Result<OpTensor> {
+        input: &Tensor,
+        end: &Tensor,
+        weight: &Tensor,
+    ) -> anyhow::Result<Tensor> {
         let prg = r#"
 import torch
 def lerp(input, end, weight):
@@ -317,11 +317,7 @@ def lerp(input, end, weight):
         run_py_prg(prg.to_string(), &[input, end, weight], &[], input.dtype())
     }
 
-    fn ground_truth_scalar(
-        input: &OpTensor,
-        end: &OpTensor,
-        weight: f32,
-    ) -> anyhow::Result<OpTensor> {
+    fn ground_truth_scalar(input: &Tensor, end: &Tensor, weight: f32) -> anyhow::Result<Tensor> {
         let prg = r#"
 import torch
 def lerp(input, end, weight):
@@ -333,9 +329,9 @@ def lerp(input, end, weight):
     fn run_lerp_tensor_trial(prob: LerpProblem, device: Device) -> anyhow::Result<()> {
         let cpu_device = Device::request_device(DeviceRequest::CPU)?;
         let LerpProblem { shape } = prob;
-        let input = OpTensor::randn::<f32, _>(0., 1., shape.clone(), cpu_device.clone(), false)?;
-        let end = OpTensor::randn::<f32, _>(0., 1., shape.clone(), cpu_device.clone(), false)?;
-        let weight = OpTensor::randn::<f32, _>(0., 1., shape, cpu_device.clone(), false)?;
+        let input = Tensor::randn::<f32, _>(0., 1., shape.clone(), cpu_device.clone(), false)?;
+        let end = Tensor::randn::<f32, _>(0., 1., shape.clone(), cpu_device.clone(), false)?;
+        let weight = Tensor::randn::<f32, _>(0., 1., shape, cpu_device.clone(), false)?;
         let ground = ground_truth_tensor(&input, &end, &weight)?;
 
         let input = input.to(&device)?;
@@ -351,8 +347,8 @@ def lerp(input, end, weight):
     fn run_lerp_scalar_trial(prob: LerpScalarProblem, device: Device) -> anyhow::Result<()> {
         let cpu_device = Device::request_device(DeviceRequest::CPU)?;
         let LerpScalarProblem { shape, weight } = prob;
-        let input = OpTensor::randn::<f32, _>(0., 1., shape.clone(), cpu_device.clone(), false)?;
-        let end = OpTensor::randn::<f32, _>(0., 1., shape, cpu_device.clone(), false)?;
+        let input = Tensor::randn::<f32, _>(0., 1., shape.clone(), cpu_device.clone(), false)?;
+        let end = Tensor::randn::<f32, _>(0., 1., shape, cpu_device.clone(), false)?;
         let ground = ground_truth_scalar(&input, &end, weight)?;
 
         let input = input.to(&device)?;

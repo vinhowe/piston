@@ -228,7 +228,7 @@ impl Kernel for TriluKernels {
 
 #[cfg(all(test, feature = "pyo3"))]
 mod tests {
-    use crate::{shape, test_util::run_py_prg, DType, Device, DeviceRequest, OpTensor};
+    use crate::{shape, test_util::run_py_prg, DType, Device, DeviceRequest, Tensor};
     use proptest::prelude::any;
     use test_strategy::{proptest, Arbitrary};
 
@@ -244,7 +244,7 @@ mod tests {
     /// # Returns
     ///
     /// A `Tensor` containing the ground truth data.
-    fn ground_truth(shape: &[usize], upper: bool, k: Option<i32>) -> anyhow::Result<OpTensor> {
+    fn ground_truth(shape: &[usize], upper: bool, k: Option<i32>) -> anyhow::Result<Tensor> {
         let prg = r#"
 import numpy as np
 def trilu(shape, upper, k):
@@ -313,7 +313,7 @@ def trilu(shape, upper, k):
         // Define the shape of the tensor.
         let shape = shape![B, M, N];
 
-        let src = OpTensor::ones::<f32, _>(shape.clone(), &device, false).unwrap();
+        let src = Tensor::ones::<f32, _>(shape.clone(), &device, false).unwrap();
 
         // Generate the ground truth using NumPy.
         let ground = ground_truth(&shape, upper, Some(k))

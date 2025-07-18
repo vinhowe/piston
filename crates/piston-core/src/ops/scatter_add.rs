@@ -218,14 +218,14 @@ mod tests {
     use test_strategy::{proptest, Arbitrary};
 
     use crate::test_util::run_py_prg;
-    use crate::{shape, Device, DeviceRequest, OpTensor};
+    use crate::{shape, Device, DeviceRequest, Tensor};
 
     fn ground_truth(
-        dst: &OpTensor,
-        src: &OpTensor,
-        ids: &OpTensor,
+        dst: &Tensor,
+        src: &Tensor,
+        ids: &Tensor,
         dim: usize,
-    ) -> anyhow::Result<OpTensor> {
+    ) -> anyhow::Result<Tensor> {
         let prg = format!(
             r#"
 import torch
@@ -247,11 +247,11 @@ def scatter_add(dst, src, ids):
         let mut src_shape = vec![B, M, N];
         src_shape[dim] = max(M.min(N) / 2, 1); // Make src dimension smaller than dst
 
-        let dst = OpTensor::zeros::<f32, _>(&dst_shape, &Device::CPU, false).unwrap();
-        let src = OpTensor::ones::<f32, _>(src_shape, &Device::CPU, false).unwrap();
+        let dst = Tensor::zeros::<f32, _>(&dst_shape, &Device::CPU, false).unwrap();
+        let src = Tensor::ones::<f32, _>(src_shape, &Device::CPU, false).unwrap();
 
         // Create ids tensor with the same shape as src, but with values in range [0, dst_shape[dim])
-        let ids = OpTensor::randint(
+        let ids = Tensor::randint(
             0,
             dst_shape[dim] as i32,
             src.shape().clone(),
