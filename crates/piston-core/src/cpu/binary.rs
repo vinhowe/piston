@@ -7,7 +7,6 @@ use core::marker::PhantomData;
 use half::{bf16, f16};
 use maybe_async::maybe_async;
 use num_traits::NumOps;
-use num_traits::Pow;
 
 // Helper function to cast f32 scalar to the target type T
 fn cast_scalar_to_type<T: TensorDType>(scalar: f32) -> T {
