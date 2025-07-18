@@ -1,10 +1,11 @@
 use crate::error::IntoJsError;
 use half::f16;
 use paste::paste;
-use piston::{DType, Device, Dim, IrScalarValue, IrValue, LazyOp, RVec, Shape, Tensor};
+use piston::{DType, Device, Dim, IrScalarValue, IrValue, LazyOp, NormOrd, RVec, Shape, Tensor};
 use piston::{TensorTypeOrScalar, TensorTypeOrScalarEnum};
 use piston_macros::js_tensor_operations;
 use std::collections::HashMap;
+use std::str::FromStr;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsError;
 
@@ -398,7 +399,16 @@ impl JsTensor {
         Ok(JsTensor { inner: tensor })
     }
 
-    pub fn norm(self) -> JsTensorResult {}
+    pub fn norm(self, ord: JsValue, dim: Option<Dims>) -> JsTensorResult {
+        let norm_ord = js_value_to_norm_ord(ord)?;
+        let tensor = if let Some(dim) = dim {
+            self.inner.norm_ord_dim(norm_ord, dim)
+        } else {
+            self.inner.norm_ord(norm_ord)
+        }
+        .map_err(|e| e.into_js_error())?;
+        Ok(JsTensor { inner: tensor })
+    }
 
     pub fn flatten(self, start_dim: Option<Dim>, end_dim: Option<Dim>) -> JsTensorResult {
         let start_dim = start_dim.unwrap_or(FromJsDim(0));
@@ -826,6 +836,31 @@ impl TensorTypeOrScalar<Tensor> for JsTensorOrScalar {
                 .ok_or_else(|| anyhow::anyhow!("Failed to convert JsValue to f32"))?;
             Ok(TensorTypeOrScalarEnum::Scalar(other))
         }
+    }
+}
+
+fn js_value_to_norm_ord(value: JsValue) -> Result<NormOrd, JsError> {
+    if let Some(num) = value.as_f64() {
+        // Handle special numeric cases
+        if num == 0.0 {
+            Ok(NormOrd::Zero)
+        } else if num == 1.0 {
+            Ok(NormOrd::One)
+        } else if num == -1.0 {
+            Ok(NormOrd::NegOne)
+        } else if num == f64::INFINITY {
+            Ok(NormOrd::Inf)
+        } else if num == f64::NEG_INFINITY {
+            Ok(NormOrd::NegInf)
+        } else {
+            // For other numbers, use P norm
+            Ok(NormOrd::P(num as f32))
+        }
+    } else if let Some(string) = value.as_string() {
+        // Handle string values using from_str
+        NormOrd::from_str(&string).map_err(|e| JsError::new(&format!("Invalid norm order: {}", e)))
+    } else {
+        Err(JsError::new("Norm order must be a number or string"))
     }
 }
 

@@ -253,7 +253,7 @@ impl OpTensor {
                     | LazyOp::Unary(Unary { input: node, .. })
                     | LazyOp::Reduce(Reduce {
                         input: node,
-                        op: ReduceOp::Min | ReduceOp::Sum | ReduceOp::Max,
+                        op: ReduceOp::Min | ReduceOp::Sum | ReduceOp::Max | ReduceOp::Norm2,
                         ..
                     })
                     | LazyOp::Reindex(Reindex::Permute(Permute { src: node, .. }))
@@ -626,6 +626,26 @@ impl OpTensor {
                 }) => {
                     let grad = broadcast_back(arg, &grad, reduced_shape.inner())?;
                     ctx.add(arg, grad)?;
+                }
+                LazyOp::Reduce(Reduce {
+                    input: arg,
+                    reduced_shape,
+                    op: ReduceOp::Norm2,
+                    ..
+                }) => {
+                    // For L2 norm, gradient is: 2 * x / ||x||_2
+                    // But we need to be careful about the chain rule with the broadcast
+                    let norm_result = broadcast_back(arg, node, reduced_shape.inner())?;
+                    let input_broadcasted = broadcast_back(arg, arg, reduced_shape.inner())?;
+                    let grad_broadcasted = broadcast_back(arg, &grad, reduced_shape.inner())?;
+
+                    // Compute 2 * x / ||x||_2 * grad
+                    let grad_input = input_broadcasted
+                        .mul(2.0)?
+                        .div(norm_result)?
+                        .mul(grad_broadcasted)?;
+
+                    ctx.add(arg, grad_input)?;
                 }
                 LazyOp::Reduce(Reduce {
                     input: arg,

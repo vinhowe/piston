@@ -20,6 +20,7 @@ use std::io::{BufRead, Seek};
 use std::mem::ManuallyDrop;
 use std::ops::Bound;
 use std::path::Path;
+use std::str::FromStr;
 use std::sync::Arc;
 
 #[cfg(feature = "rand")]
@@ -795,9 +796,9 @@ impl OpTensor {
         Ok(Self::lazy(LazyOp::Affine(affine), new_view, device, false))
     }
 
-    fn reduce_impl(self, dim: usize, keepdim: bool, op: ReduceOp) -> Result<Self> {
+    fn reduce_impl(self, dims: RVec<usize>, keepdim: bool, op: ReduceOp) -> Result<Self> {
         let device = self.device.clone();
-        let reduce = Reduce::new(self, op, rvec![dim], keepdim);
+        let reduce = Reduce::new(self, op, dims, keepdim);
         let new_view = reduce.compute_view()?;
         Ok(Self::lazy(LazyOp::Reduce(reduce), new_view, device, false))
     }
@@ -809,8 +810,8 @@ impl OpTensor {
         Ok(Self::lazy(LazyOp::Reduce(sum), new_view, device, false))
     }
 
-    pub fn sum_keepdim<D: Dims>(self, sum_dims: D) -> Result<Self> {
-        let sum_dims = sum_dims.to_indexes(self.shape(), "sum_keepdim")?;
+    pub fn sum_keepdim<D: Dims>(self, dim: D) -> Result<Self> {
+        let sum_dims = dim.to_indexes(self.shape(), "sum_keepdim")?;
         self.sum_impl(&sum_dims, true)
     }
 
@@ -831,13 +832,13 @@ impl OpTensor {
     }
 
     pub fn mean_keepdim<D: Dims>(self, dim: D) -> Result<Self> {
-        let dim = dim.to_indexes(self.shape(), "mean_keepdim")?;
-        self.mean_impl(&dim, true)
+        let mean_dims = dim.to_indexes(self.shape(), "mean_keepdim")?;
+        self.mean_impl(&mean_dims, true)
     }
 
     pub fn mean<D: Dims>(self, dim: D) -> Result<Self> {
-        let dim = dim.to_indexes(self.shape(), "mean")?;
-        self.mean_impl(&dim, false)
+        let mean_dims = dim.to_indexes(self.shape(), "mean")?;
+        self.mean_impl(&mean_dims, false)
     }
 
     pub fn mean_all(self) -> Result<Self> {
@@ -853,13 +854,13 @@ impl OpTensor {
     }
 
     pub fn var_keepdim<D: Dims>(self, dim: D) -> Result<Self> {
-        let dim = dim.to_indexes(self.shape(), "var_keepdim")?;
-        self.var_impl(&dim, true)
+        let var_dims = dim.to_indexes(self.shape(), "var_keepdim")?;
+        self.var_impl(&var_dims, true)
     }
 
     pub fn var<D: Dims>(self, dim: D) -> Result<Self> {
-        let dim = dim.to_indexes(self.shape(), "var")?;
-        self.var_impl(&dim, false)
+        let var_dims = dim.to_indexes(self.shape(), "var")?;
+        self.var_impl(&var_dims, false)
     }
 
     pub fn var_all(self) -> Result<Self> {
@@ -867,49 +868,79 @@ impl OpTensor {
         self.var(dims)
     }
 
-    pub fn max_keepdim<D: Dim>(self, dim: D) -> Result<Self> {
-        let dim = dim.to_index(self.shape(), "max_keepdim")?;
-        self.reduce_impl(dim, true, ReduceOp::Max)
+    fn max_impl(self, max_dims: &[usize], keepdim: bool) -> Result<Self> {
+        self.reduce_impl(max_dims.into(), keepdim, ReduceOp::Max)
     }
 
-    pub fn max<D: Dim>(self, dim: D) -> Result<Self> {
-        let dim = dim.to_index(self.shape(), "max")?;
-        self.reduce_impl(dim, false, ReduceOp::Max)
+    pub fn max_keepdim<D: Dims>(self, dim: D) -> Result<Self> {
+        let max_dims = dim.to_indexes(self.shape(), "max_keepdim")?;
+        self.max_impl(&max_dims, true)
     }
 
-    pub fn min_keepdim<D: Dim>(self, dim: D) -> Result<Self> {
-        let dim = dim.to_index(self.shape(), "min_keepdim")?;
-        self.reduce_impl(dim, true, ReduceOp::Min)
+    pub fn max<D: Dims>(self, dim: D) -> Result<Self> {
+        let max_dims = dim.to_indexes(self.shape(), "max")?;
+        self.max_impl(&max_dims, false)
     }
 
-    pub fn min<D: Dim>(self, dim: D) -> Result<Self> {
-        let dim = dim.to_index(self.shape(), "min")?;
-        self.reduce_impl(dim, false, ReduceOp::Min)
+    fn min_impl(self, min_dims: &[usize], keepdim: bool) -> Result<Self> {
+        self.reduce_impl(min_dims.into(), keepdim, ReduceOp::Min)
     }
 
-    pub fn argmax_keepdim<D: Dim>(self, dim: D) -> Result<Self> {
-        let dim = dim.to_index(self.shape(), "argmax_keepdim")?;
-        self.reduce_impl(dim, true, ReduceOp::ArgMax)
+    pub fn min_keepdim<D: Dims>(self, dim: D) -> Result<Self> {
+        let min_dims = dim.to_indexes(self.shape(), "min_keepdim")?;
+        self.min_impl(&min_dims, true)
     }
 
-    pub fn argmax<D: Dim>(self, dim: D) -> Result<Self> {
-        let dim = dim.to_index(self.shape(), "argmax")?;
-        self.reduce_impl(dim, false, ReduceOp::ArgMax)
+    pub fn min<D: Dims>(self, dim: D) -> Result<Self> {
+        let min_dims = dim.to_indexes(self.shape(), "min")?;
+        self.min_impl(&min_dims, false)
     }
 
-    pub fn argmin_keepdim<D: Dim>(self, dim: D) -> Result<Self> {
-        let dim = dim.to_index(self.shape(), "argmin_keepdim")?;
-        self.reduce_impl(dim, true, ReduceOp::ArgMin)
+    pub fn argmax_keepdim<D: Dims>(self, dim: D) -> Result<Self> {
+        let dims = dim.to_indexes(self.shape(), "argmax_keepdim")?;
+        self.reduce_impl(dims, true, ReduceOp::ArgMax)
+    }
+
+    pub fn argmax<D: Dims>(self, dim: D) -> Result<Self> {
+        let dims = dim.to_indexes(self.shape(), "argmax")?;
+        self.reduce_impl(dims, false, ReduceOp::ArgMax)
+    }
+
+    pub fn argmin_keepdim<D: Dims>(self, dim: D) -> Result<Self> {
+        let dims = dim.to_indexes(self.shape(), "argmin_keepdim")?;
+        self.reduce_impl(dims, true, ReduceOp::ArgMin)
     }
 
     /// Similar to `argmin_keepdim` but the target dimension is squeezed.
-    pub fn argmin<D: Dim>(self, dim: D) -> Result<Self> {
-        let dim = dim.to_index(self.shape(), "argmin")?;
-        self.reduce_impl(dim, false, ReduceOp::ArgMin)
+    pub fn argmin<D: Dims>(self, dim: D) -> Result<Self> {
+        let dims = dim.to_indexes(self.shape(), "argmin")?;
+        self.reduce_impl(dims, false, ReduceOp::ArgMin)
     }
 
     pub fn norm(self) -> Result<Self> {
-        self.square()?.sum_all()?.sqrt()
+        // Default: Frobenius norm over all dimensions
+        let dims: RVec<_> = (0..self.dim()).collect();
+        self.norm_impl(None, Some(&dims), false)
+    }
+
+    pub fn norm_keepdim<D: Dims>(self, dim: D) -> Result<Self> {
+        let dim = dim.to_indexes(self.shape(), "norm_keepdim")?;
+        self.norm_impl(None, Some(&dim), true)
+    }
+
+    pub fn norm_ord(self, ord: NormOrd) -> Result<Self> {
+        let dims: RVec<_> = (0..self.dim()).collect();
+        self.norm_impl(Some(ord), Some(&dims), false)
+    }
+
+    pub fn norm_ord_keepdim<D: Dims>(self, ord: NormOrd, dim: D) -> Result<Self> {
+        let dim = dim.to_indexes(self.shape(), "norm_ord_keepdim")?;
+        self.norm_impl(Some(ord), Some(&dim), true)
+    }
+
+    pub fn norm_ord_dim<D: Dims>(self, ord: NormOrd, dim: D) -> Result<Self> {
+        let dim = dim.to_indexes(self.shape(), "norm_ord_dim")?;
+        self.norm_impl(Some(ord), Some(&dim), false)
     }
 
     fn flatten_impl(self, start_dim: Option<usize>, end_dim: Option<usize>) -> Result<Self> {
@@ -2176,6 +2207,202 @@ impl OpTensor {
     }
 }
 
+#[derive(Debug, Clone, Default)]
+pub enum NormOrd {
+    /// Frobenius norm (default for matrices, same as 2-norm)
+    #[default]
+    Frobenius,
+    /// Infinity norm (max of absolute values)
+    Inf,
+    /// Negative infinity norm (min of absolute values)
+    NegInf,
+    /// 0-norm (count non-zero elements, for vectors only)
+    Zero,
+    /// 1-norm (sum of absolute values)
+    One,
+    /// -1-norm (harmonic mean norm)
+    NegOne,
+    /// p-norm for arbitrary p (for vectors only)
+    P(f32),
+}
+
+impl FromStr for NormOrd {
+    type Err = anyhow::Error;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "fro" => Ok(Self::Frobenius),
+            "inf" => Ok(Self::Inf),
+            "-inf" => Ok(Self::NegInf),
+            "0" => Ok(Self::Zero),
+            "1" => Ok(Self::One),
+            "-1" => Ok(Self::NegOne),
+            _ => Ok(Self::P(s.parse::<f32>()?)),
+        }
+    }
+}
+
+impl OpTensor {
+    fn norm_impl(self, ord: Option<NormOrd>, dim: Option<&[usize]>, keepdim: bool) -> Result<Self> {
+        let device = self.device.clone();
+
+        // Default ord is Frobenius/2-norm
+        let ord = ord.unwrap_or_default();
+
+        // Default dim is all dimensions (flatten)
+        let dim = match dim {
+            Some(d) => d.to_indexes(self.shape(), "norm_impl")?,
+            None => (0..self.dim()).collect(),
+        };
+
+        match ord {
+            NormOrd::Frobenius | NormOrd::P(2.0) => {
+                // Use existing Norm2 reduce operation (sqrt(sum of squares))
+                let reduce = Reduce::new(self, ReduceOp::Norm2, dim.clone(), keepdim);
+                let new_view = reduce.compute_view()?;
+                Ok(Self::lazy(LazyOp::Reduce(reduce), new_view, device, false))
+            }
+            NormOrd::Inf => {
+                // Vector ∞-norm : max(|x|)
+                // Matrix ∞-norm : max(row_sums(|A|))
+                let abs_tensor = self.abs()?;
+                let result = if dim.len() == 1 {
+                    // Vector case
+                    if keepdim {
+                        abs_tensor.max_keepdim(dim.clone())?
+                    } else {
+                        abs_tensor.max(dim.clone())?
+                    }
+                } else if dim.len() == 2 {
+                    // Matrix case – rows are dim[0], columns are dim[1]
+                    let row_dim = dim[0];
+                    let col_dim = dim[1];
+                    let row_sums = if keepdim {
+                        abs_tensor.sum_keepdim(col_dim)?
+                    } else {
+                        abs_tensor.sum(col_dim)?
+                    };
+                    let row_dim_adj = if !keepdim && col_dim < row_dim {
+                        row_dim - 1
+                    } else {
+                        row_dim
+                    };
+                    if keepdim {
+                        row_sums.max_keepdim(row_dim_adj)?
+                    } else {
+                        row_sums.max(row_dim_adj)?
+                    }
+                } else {
+                    // Fallback – reduce max over all specified dims.
+                    abs_tensor.reduce_impl(dim.clone(), keepdim, ReduceOp::Max)?
+                };
+                Ok(result)
+            }
+            NormOrd::NegInf => {
+                // Vector −∞-norm : min(|x|)
+                // Matrix −∞-norm : min(row_sums(|A|))
+                let abs_tensor = self.abs()?;
+                let result = if dim.len() == 1 {
+                    if keepdim {
+                        abs_tensor.min_keepdim(dim.clone())?
+                    } else {
+                        abs_tensor.min(dim.clone())?
+                    }
+                } else if dim.len() == 2 {
+                    let row_dim = dim[0];
+                    let col_dim = dim[1];
+                    let row_sums = abs_tensor.sum_impl(&[col_dim], keepdim)?;
+                    let row_dim_adj = if !keepdim && col_dim < row_dim {
+                        row_dim - 1
+                    } else {
+                        row_dim
+                    };
+                    row_sums.min_impl(&[row_dim_adj], keepdim)?
+                } else {
+                    abs_tensor.reduce_impl(dim.clone(), keepdim, ReduceOp::Min)?
+                };
+                Ok(result)
+            }
+            NormOrd::Zero => {
+                // 0-norm : number of non-zero elements (vector only)
+                if dim.len() != 1 {
+                    anyhow::bail!("0-norm is only defined for 1-D tensors");
+                }
+                self.ne(0.0f32)?.sum_impl(&dim, keepdim)
+            }
+            NormOrd::One => {
+                // Vector 1-norm : sum(|x|)
+                // Matrix 1-norm : max(column_sums(|A|))
+                let abs_tensor = self.abs()?;
+                let result = if dim.len() == 1 {
+                    abs_tensor.sum_impl(&dim, keepdim)?
+                } else if dim.len() == 2 {
+                    let row_dim = dim[0];
+                    let col_dim = dim[1];
+                    let col_sums = if keepdim {
+                        abs_tensor.sum_keepdim(row_dim)?
+                    } else {
+                        abs_tensor.sum(row_dim)?
+                    };
+                    let col_dim_adj = if !keepdim && row_dim < col_dim {
+                        col_dim - 1
+                    } else {
+                        col_dim
+                    };
+                    if keepdim {
+                        col_sums.max_keepdim(col_dim_adj)?
+                    } else {
+                        col_sums.max(col_dim_adj)?
+                    }
+                } else {
+                    anyhow::bail!("1-norm for tensors with more than 2 dims is not supported");
+                };
+                Ok(result)
+            }
+            NormOrd::NegOne => {
+                // Vector (−1)-norm : harmonic mean norm
+                // Matrix (−1)-norm : min(column_sums(|A|))
+                let abs_tensor = self.abs()?;
+                let result = if dim.len() == 1 {
+                    let count = abs_tensor.shape()[dim[0]] as f32;
+                    let sum_recip = abs_tensor.recip()?.sum_impl(&dim, keepdim)?;
+                    // count / sum(1/|x|)
+                    (sum_recip.recip()? * count)?
+                } else if dim.len() == 2 {
+                    let row_dim = dim[0];
+                    let col_dim = dim[1];
+                    let col_sums = if keepdim {
+                        abs_tensor.sum_keepdim(row_dim)?
+                    } else {
+                        abs_tensor.sum(row_dim)?
+                    };
+                    let col_dim_adj = if !keepdim && row_dim < col_dim {
+                        col_dim - 1
+                    } else {
+                        col_dim
+                    };
+                    if keepdim {
+                        col_sums.min_keepdim(col_dim_adj)?
+                    } else {
+                        col_sums.min(col_dim_adj)?
+                    }
+                } else {
+                    anyhow::bail!("-1 norm for tensors with more than 2 dims is not supported");
+                };
+                Ok(result)
+            }
+            NormOrd::P(p) => {
+                if dim.len() != 1 {
+                    anyhow::bail!("p-norm is only defined for 1-D tensors");
+                }
+                // General p-norm ‑ (sum(|x|^p))^(1/p)
+                let powered = self.abs()?.pow(p)?;
+                let summed = powered.sum_impl(&dim, keepdim)?;
+                summed.pow(1.0 / p)
+            }
+        }
+    }
+}
+
 pub fn compile_gpu_for_op(
     op: &LazyOp,
     gpu_compile_key: &ComputeCompileKey,
@@ -3065,6 +3292,31 @@ impl Tensor {
 
     pub fn norm(self) -> Result<Self> {
         self.inner_or_source().clone().norm().map(Self::wrap)
+    }
+
+    pub fn norm_keepdim<D: Dims>(self, dim: D) -> Result<Self> {
+        self.inner_or_source()
+            .clone()
+            .norm_keepdim(dim)
+            .map(Self::wrap)
+    }
+
+    pub fn norm_ord(self, ord: NormOrd) -> Result<Self> {
+        self.inner_or_source().clone().norm_ord(ord).map(Self::wrap)
+    }
+
+    pub fn norm_ord_keepdim<D: Dims>(self, ord: NormOrd, dim: D) -> Result<Self> {
+        self.inner_or_source()
+            .clone()
+            .norm_ord_keepdim(ord, dim)
+            .map(Self::wrap)
+    }
+
+    pub fn norm_ord_dim<D: Dims>(self, ord: NormOrd, dim: D) -> Result<Self> {
+        self.inner_or_source()
+            .clone()
+            .norm_ord_dim(ord, dim)
+            .map(Self::wrap)
     }
 
     pub fn flatten<D: Dim>(self, start_dim: D, end_dim: D) -> Result<Self> {

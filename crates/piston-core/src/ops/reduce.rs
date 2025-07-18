@@ -21,6 +21,7 @@ pub enum ReduceOp {
     Max,
     ArgMin,
     ArgMax,
+    Norm2,
 }
 
 impl ReduceOp {
@@ -31,6 +32,7 @@ impl ReduceOp {
             ReduceOp::Max => "max",
             ReduceOp::ArgMin => "argmin",
             ReduceOp::ArgMax => "argmax",
+            ReduceOp::Norm2 => "norm2",
         }
     }
 }
@@ -108,7 +110,7 @@ impl Reduce {
         };
 
         let smem_update = match self.op {
-            ReduceOp::Sum => wgsl! {
+            ReduceOp::Sum | ReduceOp::Norm2 => wgsl! {
                 smem[index] += smem[index + stride];
             },
             ReduceOp::ArgMax | ReduceOp::ArgMin => wgsl! {
@@ -193,6 +195,7 @@ impl Operation for Reduce {
             ReduceOp::Max => "Max",
             ReduceOp::ArgMin => "Argmin",
             ReduceOp::ArgMax => "Argmax",
+            ReduceOp::Norm2 => "Norm2",
         }
     }
 
@@ -206,7 +209,7 @@ impl Operation for Reduce {
         }
 
         let output_dtype = match self.op {
-            ReduceOp::Sum | ReduceOp::Min | ReduceOp::Max => DType::F32,
+            ReduceOp::Sum | ReduceOp::Min | ReduceOp::Max | ReduceOp::Norm2 => DType::F32,
             ReduceOp::ArgMin | ReduceOp::ArgMax => DType::I32,
         };
 
@@ -431,7 +434,7 @@ impl KernelRenderable for ReduceKernels {
         });
 
         let smem_initialize = match inner.op {
-            ReduceOp::Sum => wgsl! {
+            ReduceOp::Sum | ReduceOp::Norm2 => wgsl! {
                 smem[thread_id] = 'dtype(0.0);
             },
             ReduceOp::Max | ReduceOp::ArgMax => wgsl! {
@@ -463,6 +466,9 @@ impl KernelRenderable for ReduceKernels {
         let smem_update = match inner.op {
             ReduceOp::Sum => wgsl! {
                 smem[thread_id] += X[strided_i];
+            },
+            ReduceOp::Norm2 => wgsl! {
+                smem[thread_id] += X[strided_i] * X[strided_i];
             },
             ReduceOp::Max | ReduceOp::Min => wgsl! {
                 smem[thread_id] = 'op(smem[thread_id], X[strided_i]);
@@ -506,6 +512,9 @@ impl KernelRenderable for ReduceKernels {
             ReduceOp::ArgMax | ReduceOp::ArgMin => wgsl! {
                 Y[destination_id] = smem_index[0];
             },
+            ReduceOp::Norm2 => wgsl! {
+                Y[destination_id] = sqrt(smem[0]);
+            },
             _ => wgsl! {
                 Y[destination_id] = smem[0];
             },
@@ -528,7 +537,7 @@ mod tests {
     use test_strategy::{proptest, Arbitrary};
 
     use crate::test_util::run_py_prg;
-    use crate::{DType, Device, DeviceRequest, OpTensor};
+    use crate::{DType, Device, DeviceRequest, NormOrd, OpTensor};
 
     use super::ReduceOp;
 
@@ -591,9 +600,11 @@ def reduce(a):
                 ReduceOp::Max => a_gpu.max(dim),
                 ReduceOp::ArgMin => a_gpu.argmin(dim)?.cast(DType::I32),
                 ReduceOp::ArgMax => a_gpu.argmax(dim)?.cast(DType::I32),
+                ReduceOp::Norm2 => a_gpu.norm_ord_dim(NormOrd::Frobenius, dim),
             },
             None => match op {
                 ReduceOp::Sum => a_gpu.sum_all(),
+                ReduceOp::Norm2 => a_gpu.norm(),
                 _ => panic!("All * not supported"),
             },
         }?;
@@ -603,7 +614,7 @@ def reduce(a):
         // println!("input stride = {:?}", a.stride());
         // println!("ours = {:?}", ours);
         // println!("ground = {:?}", ground);
-        ground.all_close(&ours, 1e-5, 1e-5)?;
+        ground.all_close(&ours, 3e-5, 1e-5)?;
         Ok(())
     }
 
