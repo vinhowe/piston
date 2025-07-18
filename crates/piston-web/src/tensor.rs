@@ -482,6 +482,10 @@ impl JsTensor {
 
     pub fn tril_(self, k: Option<i32>) -> JsTensorResult {}
 
+    pub fn lerp(&self, end: Tensor, weight: TensorOrScalar) -> JsTensorResult {}
+
+    pub fn lerp_(&self, end: Tensor, weight: TensorOrScalar) -> JsTensorResult {}
+
     #[dtype_generic(f32, f16)]
     pub fn arange(
         start: f32,

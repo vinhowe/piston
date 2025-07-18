@@ -8,8 +8,8 @@ mod unary;
 mod utils;
 
 use crate::{
-    dequantize, Cast, Concat, DType, IndexSelect, InvariantError, LazyOp, Operation,
-    OperationError, RVec, Shape, OpTensor, TensorDType,
+    dequantize, Cast, Concat, DType, IndexSelect, InvariantError, LazyOp, OpTensor, Operation,
+    OperationError, RVec, Shape, TensorDType,
 };
 use anyhow::anyhow;
 use half::{bf16, f16};
@@ -33,6 +33,7 @@ pub async fn apply_operation(op: LazyOp, dst: OpTensor) -> Result<OpTensor, Oper
         LazyOp::Concat(c) => cpu_concat(c, dst).await,
         LazyOp::Norm(n) => n.apply_cpu(dst).await,
         LazyOp::Affine(_a) => todo!(),
+        LazyOp::Lerp(_l) => todo!(),
         LazyOp::Cmp(_c) => todo!(),
         LazyOp::Powf(_p) => todo!(),
         LazyOp::Conv(_c) => todo!(),

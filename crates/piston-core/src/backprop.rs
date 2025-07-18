@@ -210,6 +210,19 @@ impl OpTensor {
                             nodes
                         }
                     }
+                    LazyOp::Lerp(crate::ops::Lerp { input, end, weight }) => {
+                        let (tg, nodes) = walk(input, nodes, already_seen);
+                        track_grad |= tg;
+                        let (tg, nodes) = walk(end, nodes, already_seen);
+                        track_grad |= tg;
+                        if let TensorTypeOrScalarEnum::Tensor(weight) = weight {
+                            let (tg, nodes) = walk(weight, nodes, already_seen);
+                            track_grad |= tg;
+                            nodes
+                        } else {
+                            nodes
+                        }
+                    }
                     LazyOp::Concat(Concat { inputs, .. }) => {
                         inputs.iter().fold(nodes, |nodes, input| {
                             let (tg, nodes) = walk(input, nodes, already_seen);
@@ -464,6 +477,32 @@ impl OpTensor {
                     // Gradient for tensor2 is grad * value * tensor1
                     let tensor2_grad = grad.mul(tensor1.clone())?.affine(*value, 0.)?;
                     ctx.add(tensor2, tensor2_grad)?;
+                }
+                LazyOp::Lerp(crate::ops::Lerp { input, end, weight }) => {
+                    // lerp: output = input + weight * (end - input)
+                    // dL/dinput  = grad * (1 - weight)
+                    // dL/dend    = grad * weight
+                    // dL/dweight = grad * (end - input)   (only when weight is a tensor)
+
+                    // Compute the gradients that are common to both scalar and tensor `weight`.
+                    let (input_grad, end_grad) = match weight {
+                        TensorTypeOrScalarEnum::Tensor(weight_tensor) => {
+                            let input_grad = grad.clone().mul((1.0 - weight_tensor.clone())?)?;
+                            let end_grad = grad.clone().mul(weight_tensor.clone())?;
+                            // Gradient w.r.t. the weight tensor itself.
+                            let weight_grad = grad.clone().mul(end.clone().sub(input.clone())?)?;
+                            ctx.add(weight_tensor, weight_grad)?;
+                            (input_grad, end_grad)
+                        }
+                        TensorTypeOrScalarEnum::Scalar(weight_scalar) => {
+                            let input_grad = grad.clone().mul(1.0 - weight_scalar)?;
+                            let end_grad = grad.mul(*weight_scalar)?;
+                            (input_grad, end_grad)
+                        }
+                    };
+
+                    ctx.add(input, input_grad)?;
+                    ctx.add(end, end_grad)?;
                 }
                 LazyOp::WhereCond(WhereCond {
                     condition,

@@ -633,6 +633,14 @@ impl OpTensor {
     impl_ternary_op!(addcdiv, TernaryOp::Addcdiv);
     impl_ternary_op!(addcmul, TernaryOp::Addcmul);
 
+    pub fn lerp<T: TensorTypeOrScalar<OpTensor>>(self, end: OpTensor, weight: T) -> Result<Self> {
+        let device = self.device.clone();
+        let weight = weight.tensor_or_scalar()?;
+        let lerp = Lerp::new(self, end, weight);
+        let new_view = lerp.compute_view()?;
+        Ok(Self::lazy(LazyOp::Lerp(lerp), new_view, device, false))
+    }
+
     impl_cmp_op!(eq, CmpOp::Eq);
     impl_cmp_op!(ne, CmpOp::Ne);
     impl_cmp_op!(le, CmpOp::Le);
@@ -1871,6 +1879,7 @@ impl OpTensor {
         match op {
             LazyOp::Binary(b) => b.create_gpu_compile_key(self, can_inplace, uniform).ok(),
             LazyOp::Ternary(t) => t.create_gpu_compile_key(self, can_inplace, uniform).ok(),
+            LazyOp::Lerp(l) => l.create_gpu_compile_key(self, can_inplace, uniform).ok(),
             LazyOp::Cast(c) => c.create_gpu_compile_key(self, can_inplace, uniform).ok(),
             LazyOp::Matmul(m) => m.create_gpu_compile_key(self, can_inplace, uniform).ok(),
             LazyOp::Softmax(s) => s.create_gpu_compile_key(self, can_inplace, uniform).ok(),
@@ -2151,6 +2160,7 @@ pub fn compile_gpu_for_op(
     match op {
         LazyOp::Binary(b) => b.compile_gpu(gpu_compile_key, gpu_device, debug).ok(),
         LazyOp::Ternary(t) => t.compile_gpu(gpu_compile_key, gpu_device, debug).ok(),
+        LazyOp::Lerp(l) => l.compile_gpu(gpu_compile_key, gpu_device, debug).ok(),
         LazyOp::Cast(c) => c.compile_gpu(gpu_compile_key, gpu_device, debug).ok(),
         LazyOp::Matmul(m) => m.compile_gpu(gpu_compile_key, gpu_device, debug).ok(),
         LazyOp::Softmax(s) => s.compile_gpu(gpu_compile_key, gpu_device, debug).ok(),
@@ -2758,6 +2768,20 @@ impl Tensor {
 
     impl_ternary_op_wrapper!(addcdiv, TernaryOp::Addcdiv);
     impl_ternary_op_wrapper!(addcmul, TernaryOp::Addcmul);
+
+    pub fn lerp<T: TensorTypeOrScalar<Tensor>>(self, end: Self, weight: T) -> Result<Self> {
+        let inner = self.inner_or_source().clone();
+        let end = end.inner_or_source().clone();
+        let weight = weight.map_tensor(|t| t.inner_or_source().clone())?;
+        Ok(Self::wrap(inner.lerp(end, weight)?))
+    }
+
+    pub fn lerp_<T: TensorTypeOrScalar<Tensor>>(self, end: Self, weight: T) -> Result<Self> {
+        let inner = self.inner_or_source().clone();
+        let end = end.inner_or_source().clone();
+        let weight = weight.map_tensor(|t| t.inner_or_source().clone())?;
+        Ok(self.wrap_inplace(inner.lerp(end, weight)?))
+    }
 
     impl_cmp_op_wrapper!(eq, CmpOp::Eq);
     impl_cmp_op_wrapper!(ne, CmpOp::Ne);
