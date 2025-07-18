@@ -1167,6 +1167,31 @@ impl OpTensor {
         self.transpose(0, 1)
     }
 
+    /// Returns a tensor with the last two dimensions transposed.
+    /// For 2D tensors, equivalent to transpose(0, 1).
+    /// For tensors with any other number of dimensions, throws an error.
+    pub fn T(self) -> Result<Self> {
+        match self.dim() {
+            2 => self.transpose(0, 1),
+            _ => anyhow::bail!(
+                "T() can only be applied to 2D tensors, got tensor with {} dimensions",
+                self.dim()
+            ),
+        }
+    }
+
+    /// Matrix transpose. Returns a tensor with the last two dimensions transposed.
+    /// For tensors with fewer than 2 dimensions, returns the tensor unchanged.
+    pub fn mT(self) -> Result<Self> {
+        match self.dim() {
+            0 | 1 => Ok(self),
+            _ => {
+                let dim = self.dim();
+                self.transpose(dim - 2, dim - 1)
+            }
+        }
+    }
+
     pub fn cache<D: Dim>(self, source: Self, dim: D, offset: usize) -> Result<Self> {
         let dim = dim.to_index(self.shape(), "cache")?;
         let device = self.device.clone();
@@ -3148,6 +3173,19 @@ impl Tensor {
 
     pub fn t(self) -> Result<Self> {
         self.inner_or_source().clone().t().map(Self::wrap)
+    }
+
+    /// Returns a tensor with the last two dimensions transposed.
+    /// For 2D tensors, equivalent to transpose(0, 1).
+    /// For tensors with any other number of dimensions, throws an error.
+    pub fn T(self) -> Result<Self> {
+        self.inner_or_source().clone().T().map(Self::wrap)
+    }
+
+    /// Matrix transpose. Returns a tensor with the last two dimensions transposed.
+    /// For tensors with fewer than 2 dimensions, returns the tensor unchanged.
+    pub fn mT(self) -> Result<Self> {
+        self.inner_or_source().clone().mT().map(Self::wrap)
     }
 
     pub fn cache<D: Dim>(self, source: Self, dim: D, offset: usize) -> Result<Self> {

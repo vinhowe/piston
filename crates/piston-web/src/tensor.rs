@@ -454,6 +454,10 @@ impl JsTensor {
 
     pub fn t(self) -> JsTensorResult {}
 
+    #[allow(non_snake_case)]
+    #[wasm_bindgen(getter)]
+    pub fn mT(self) -> JsTensorResult {}
+
     pub fn cache(self, source: Tensor, dim: Dim, offset: usize) -> JsTensorResult {}
 
     /// Returns a new tensor duplicating data from the original tensor. New dimensions are inserted
@@ -736,6 +740,15 @@ impl JsTensor {
             DType::U32 => Ok(JsValue::from_f64(self.inner.item::<u32>().await.into())),
             _ => panic!("Unsupported dtype"),
         }
+    }
+
+    #[wasm_bindgen(getter, js_name = T)]
+    #[allow(non_snake_case)]
+    pub fn T_upper(self) -> JsTensorResult {
+        // We can't generate this one automatically because wasm bindgen lowercases all function
+        // names internally, so t() and T conflict
+        let inner = self.inner.T().map_err(|e| e.into_js_error())?;
+        Ok(JsTensor { inner })
     }
 
     pub async fn to(&self, device: String) -> Result<JsTensor, JsError> {
