@@ -282,9 +282,9 @@ mod tests {
     use test_strategy::{proptest, Arbitrary};
 
     use crate::test_util::run_py_prg;
-    use crate::{Device, DeviceRequest, OpTensor};
+    use crate::{Device, DeviceRequest, Tensor};
 
-    fn ground_truth(a: &OpTensor, e: f32) -> anyhow::Result<OpTensor> {
+    fn ground_truth(a: &Tensor, e: f32) -> anyhow::Result<Tensor> {
         let func_prg = r#"
 import torch
 def powf(a, e):
@@ -299,7 +299,7 @@ def powf(a, e):
         run_py_prg(prg.to_string(), &[a], &[&e], a.dtype())
     }
 
-    fn ground_truth_tensor(a: &OpTensor, e: &OpTensor) -> anyhow::Result<OpTensor> {
+    fn ground_truth_tensor(a: &Tensor, e: &Tensor) -> anyhow::Result<Tensor> {
         let func_prg = r#"
 import torch
 def powf(a, e):
@@ -317,7 +317,7 @@ def powf(a, e):
 
     fn run_powf_trial(problem: PowfProblem, device: Device) {
         let PowfProblem { B, M, N, e } = problem;
-        let a = OpTensor::randn::<f32, _>(0., 1., (B, M, N), Device::CPU, false).unwrap();
+        let a = Tensor::randn::<f32, _>(0., 1., (B, M, N), Device::CPU, false).unwrap();
         let ground = ground_truth(&a, e).unwrap();
 
         let a_gpu = a.to(&device).unwrap();
@@ -352,8 +352,8 @@ def powf(a, e):
 
     fn run_powf_tensor_trial(problem: PowfTensorProblem, device: Device) {
         let PowfTensorProblem { B, M, N } = problem;
-        let a = OpTensor::randn::<f32, _>(0., 1., (B, M, N), Device::CPU, false).unwrap();
-        let e = OpTensor::randn::<f32, _>(0.1, 2.0, (B, M, N), Device::CPU, false).unwrap();
+        let a = Tensor::randn::<f32, _>(0., 1., (B, M, N), Device::CPU, false).unwrap();
+        let e = Tensor::randn::<f32, _>(0.1, 2.0, (B, M, N), Device::CPU, false).unwrap();
         let ground = ground_truth_tensor(&a, &e).unwrap();
 
         let a_gpu = a.to(&device).unwrap();

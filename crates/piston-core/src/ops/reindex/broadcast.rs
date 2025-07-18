@@ -88,7 +88,7 @@ mod tests {
     };
     use test_strategy::proptest;
 
-    use crate::{shape, test_util::run_py_prg, Broadcast, Device, DeviceRequest, OpTensor, Shape};
+    use crate::{shape, test_util::run_py_prg, Broadcast, Device, DeviceRequest, Shape, Tensor};
 
     impl Arbitrary for BroadcastProblem {
         type Parameters = ();
@@ -115,8 +115,10 @@ mod tests {
                 })
                 .prop_map(|(original_shape, to)| BroadcastProblem {
                     op: Broadcast::new(
-                        OpTensor::randn::<f32, _>(0., 1., original_shape, Device::CPU, false)
-                            .unwrap(),
+                        Tensor::randn::<f32, _>(0., 1., original_shape, Device::CPU, false)
+                            .unwrap()
+                            .inner_or_source()
+                            .clone(),
                         to,
                     ),
                 })
@@ -129,7 +131,7 @@ mod tests {
         op: Broadcast,
     }
 
-    fn ground_truth(a: &OpTensor, args: &str) -> anyhow::Result<OpTensor> {
+    fn ground_truth(a: &Tensor, args: &str) -> anyhow::Result<Tensor> {
         let prg = format!(
             r#"
 import torch
@@ -145,7 +147,7 @@ def slice(a):
     fn run_reindex_trial(prob: BroadcastProblem, device: Device) -> anyhow::Result<()> {
         println!("\n\nBroadcast problem: {prob:?}");
         let BroadcastProblem { op } = prob;
-        let a = op.src.clone();
+        let a = op.src.wrap();
 
         let a_gpu = a.to(&device)?;
         let ground = ground_truth(&a, &op.to.as_torch())?;
@@ -172,7 +174,10 @@ def slice(a):
         let device = Device::request_device(DeviceRequest::GPU).unwrap();
         let prob = BroadcastProblem {
             op: Broadcast::new(
-                OpTensor::randn::<f32, _>(0., 1., 1, Device::CPU, false).unwrap(),
+                Tensor::randn::<f32, _>(0., 1., 1, Device::CPU, false)
+                    .unwrap()
+                    .inner_or_source()
+                    .clone(),
                 shape![4, 32, 128, 128],
             ),
         };

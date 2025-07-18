@@ -303,7 +303,7 @@ impl Kernel for TernaryKernels {
 #[cfg(all(test, feature = "pyo3"))]
 #[cfg(test)]
 mod tests {
-    use crate::{test_util::run_py_prg, Device, DeviceRequest, OpTensor, Shape, TernaryOp};
+    use crate::{test_util::run_py_prg, Device, DeviceRequest, Shape, Tensor, TernaryOp};
     use test_strategy::{proptest, Arbitrary};
 
     #[derive(Arbitrary, Debug)]
@@ -314,12 +314,12 @@ mod tests {
     }
 
     fn ground_truth(
-        input: &OpTensor,
-        tensor1: &OpTensor,
-        tensor2: &OpTensor,
+        input: &Tensor,
+        tensor1: &Tensor,
+        tensor2: &Tensor,
         value: f32,
         op: &TernaryOp,
-    ) -> anyhow::Result<OpTensor> {
+    ) -> anyhow::Result<Tensor> {
         let kn = op.kernel_name();
         let prg = match op {
             TernaryOp::Addcdiv => format!(
@@ -348,9 +348,9 @@ def {kn}(input, tensor1, tensor2):
     fn run_ternary_trial(prob: TernaryProblem, device: Device) -> anyhow::Result<()> {
         let cpu_device = Device::request_device(DeviceRequest::CPU)?;
         let TernaryProblem { op, shape } = prob;
-        let input = OpTensor::randn::<f32, _>(0., 1., shape.clone(), cpu_device.clone(), false)?;
-        let tensor1 = OpTensor::randn::<f32, _>(0., 1., shape.clone(), cpu_device.clone(), false)?;
-        let tensor2 = OpTensor::randn::<f32, _>(0., 1., shape, cpu_device.clone(), false)?;
+        let input = Tensor::randn::<f32, _>(0., 1., shape.clone(), cpu_device.clone(), false)?;
+        let tensor1 = Tensor::randn::<f32, _>(0., 1., shape.clone(), cpu_device.clone(), false)?;
+        let tensor2 = Tensor::randn::<f32, _>(0., 1., shape, cpu_device.clone(), false)?;
         let value = 0.5;
         let ground = ground_truth(&input, &tensor1, &tensor2, value, &op)?;
 

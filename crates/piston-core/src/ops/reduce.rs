@@ -535,15 +535,15 @@ mod tests {
     use test_strategy::{proptest, Arbitrary};
 
     use crate::test_util::run_py_prg;
-    use crate::{DType, Device, DeviceRequest, NormOrd, OpTensor};
+    use crate::{DType, Device, DeviceRequest, NormOrd, Tensor};
 
     use super::ReduceOp;
 
     fn ground_truth_forward(
-        a: &OpTensor,
+        a: &Tensor,
         op: &ReduceOp,
         dim: Option<usize>,
-    ) -> anyhow::Result<OpTensor> {
+    ) -> anyhow::Result<Tensor> {
         let dim_str = match dim {
             Some(d) => format!(", dim={d}"),
             None => "".to_string(),
@@ -583,7 +583,7 @@ def reduce(a):
         dim: Option<usize>,
         device: Device,
     ) -> anyhow::Result<()> {
-        let a = OpTensor::randn::<f32, _>(0., 1., (B, M, N), Device::CPU, false)?;
+        let a = Tensor::randn::<f32, _>(0., 1., (B, M, N), Device::CPU, false)?;
         let mut ground = ground_truth_forward(&a, op, dim)?;
 
         if dim.is_none() {
@@ -678,7 +678,7 @@ def reduce(a):
         N: usize,
     }
 
-    fn ground_truth_backward(a: &OpTensor) -> anyhow::Result<OpTensor> {
+    fn ground_truth_backward(a: &Tensor) -> anyhow::Result<Tensor> {
         let prg = r#"
 import torch
 def reduce_backward(a):
@@ -697,7 +697,7 @@ def reduce_backward(a):
     ) -> anyhow::Result<()> {
         let ReduceBackwardProblem { B, M, N } = problem;
         let gpu_device = device.try_gpu()?;
-        let a = OpTensor::randn::<f32, _>(0., 1., (B, M, N), Device::CPU, false)?;
+        let a = Tensor::randn::<f32, _>(0., 1., (B, M, N), Device::CPU, false)?;
         let ground = ground_truth_backward(&a)?;
 
         let a_gpu = a.to(&device)?.requires_grad_(true)?;

@@ -311,9 +311,9 @@ mod tests {
     use test_strategy::{proptest, Arbitrary};
 
     use crate::test_util::run_py_prg;
-    use crate::{Device, DeviceRequest, OpTensor};
+    use crate::{Device, DeviceRequest, Tensor};
 
-    fn ground_truth(a: &OpTensor) -> anyhow::Result<OpTensor> {
+    fn ground_truth(a: &Tensor) -> anyhow::Result<Tensor> {
         let prg = r#"
 import torch
 import torch.nn.functional as F
@@ -325,7 +325,7 @@ def softmax(a):
 
     fn run_softmax_trial(problem: SoftmaxProblem, device: Device) {
         let SoftmaxProblem { B, M, N } = problem;
-        let a = OpTensor::randn::<f32, _>(0., 1., (B, M, N), Device::CPU, false).unwrap();
+        let a = Tensor::randn::<f32, _>(0., 1., (B, M, N), Device::CPU, false).unwrap();
         let ground = ground_truth(&a).unwrap();
 
         let a_gpu = a.to(&device).unwrap();

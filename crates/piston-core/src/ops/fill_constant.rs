@@ -202,9 +202,9 @@ impl Kernel for FillConstantKernels {
 mod tests {
     use test_strategy::{proptest, Arbitrary};
 
-    use crate::{test_util::run_py_prg, DType, Device, DeviceRequest, OpTensor};
+    use crate::{test_util::run_py_prg, DType, Device, DeviceRequest, Tensor};
 
-    fn ground_truth(shape: &[usize], value: f32) -> anyhow::Result<OpTensor> {
+    fn ground_truth(shape: &[usize], value: f32) -> anyhow::Result<Tensor> {
         let prg = r#"
 import torch
 def fill_constant(shape, value):
@@ -217,7 +217,7 @@ def fill_constant(shape, value):
     fn run_fill_constant_trial(problem: FillConstantProblem, device: Device) {
         let FillConstantProblem { B, M, N, value } = problem;
 
-        let a = OpTensor::full((B, M, N), value, &device, false).unwrap();
+        let a = Tensor::full((B, M, N), value, &device, false).unwrap();
         let ground = ground_truth(&[B, M, N], value).unwrap();
 
         let a_gpu = a.to(&device).unwrap();

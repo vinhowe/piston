@@ -72,7 +72,7 @@ impl Operation for Slice {
 mod tests {
     use std::ops::Range;
 
-    use crate::{test_util::run_py_prg, Device, DeviceRequest, OpTensor};
+    use crate::{test_util::run_py_prg, Device, DeviceRequest, Tensor};
     use crate::{Shape, Slice};
     use proptest::prelude::*;
     use test_strategy::proptest;
@@ -134,14 +134,10 @@ mod tests {
                         let indices = sub_slices.into_iter().map(|sub| sub.0).collect();
                         SliceProblem {
                             op: Slice::new(
-                                OpTensor::randn::<f32, _>(
-                                    0.,
-                                    1.,
-                                    shape.clone(),
-                                    Device::CPU,
-                                    false,
-                                )
-                                .unwrap(),
+                                Tensor::randn::<f32, _>(0., 1., shape.clone(), Device::CPU, false)
+                                    .unwrap()
+                                    .inner_or_source()
+                                    .clone(),
                                 indices,
                             ),
                         }
@@ -151,7 +147,7 @@ mod tests {
         }
     }
 
-    fn ground_truth(a: &OpTensor, args: &str) -> anyhow::Result<OpTensor> {
+    fn ground_truth(a: &Tensor, args: &str) -> anyhow::Result<Tensor> {
         let prg = format!(
             r#"
 import torch
@@ -167,7 +163,7 @@ def slice(a):
     fn run_reindex_trial(prob: SliceProblem, device: Device) -> anyhow::Result<()> {
         let SliceProblem { op } = prob;
         println!("SLICE PROBLEM: {op:?}");
-        let a = op.src.clone();
+        let a = op.src.clone().wrap();
 
         let a_gpu = a.to(&device)?;
         let ground = ground_truth(&a, &op.as_torch())?;

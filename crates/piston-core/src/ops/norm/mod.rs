@@ -421,14 +421,14 @@ mod tests {
     use test_strategy::{proptest, Arbitrary};
 
     use crate::test_util::run_py_prg;
-    use crate::{rvec, Device, DeviceRequest, OpTensor};
+    use crate::{rvec, Device, DeviceRequest, Tensor};
 
     fn ground_truth(
         var: NormVariant,
-        input: &OpTensor,
-        scale: Option<&OpTensor>,
-        bias: Option<&OpTensor>,
-    ) -> anyhow::Result<OpTensor> {
+        input: &Tensor,
+        scale: Option<&Tensor>,
+        bias: Option<&Tensor>,
+    ) -> anyhow::Result<Tensor> {
         let ln_prg = r#"
 import torch
 import torch.nn.functional as F
@@ -463,13 +463,11 @@ def manual_rms_norm(input, scale):
 
     fn run_norm_trial(device: &Device, problem: NormProblem) -> anyhow::Result<()> {
         let NormProblem { var, B, M, N } = problem;
-        let input = OpTensor::randn::<f32, _>(0., 1., (B, M, N), Device::CPU, false)?;
-        let scale = OpTensor::randn::<f32, _>(0., 1., N, Device::CPU, false)?;
+        let input = Tensor::randn::<f32, _>(0., 1., (B, M, N), Device::CPU, false)?;
+        let scale = Tensor::randn::<f32, _>(0., 1., N, Device::CPU, false)?;
 
         let bias = match var {
-            NormVariant::LayerNorm => {
-                Some(OpTensor::randn::<f32, _>(0., 1., N, Device::CPU, false)?)
-            }
+            NormVariant::LayerNorm => Some(Tensor::randn::<f32, _>(0., 1., N, Device::CPU, false)?),
             NormVariant::RMSNorm => None,
         };
 

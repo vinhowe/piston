@@ -311,7 +311,7 @@ mod tests {
     use test_strategy::proptest;
 
     use crate::test_util::run_py_prg;
-    use crate::{quantize, rvec, shape, Device, DeviceRequest, OpTensor, Shape, Q8_0F};
+    use crate::{quantize, rvec, shape, Device, DeviceRequest, Shape, Tensor, Q8_0F};
 
     impl Arbitrary for IndexSelectProblem {
         type Parameters = ();
@@ -321,14 +321,9 @@ mod tests {
             Shape::arbitrary_with(vec![1..=512usize, 1..=16usize])
                 .prop_flat_map(|input_shape| (Just(input_shape), 1..64usize))
                 .prop_map(|(input_shape, num_indices)| {
-                    let indices = OpTensor::randint(
-                        0,
-                        input_shape[0] as i32,
-                        num_indices,
-                        Device::CPU,
-                        false,
-                    )
-                    .unwrap();
+                    let indices =
+                        Tensor::randint(0, input_shape[0] as i32, num_indices, Device::CPU, false)
+                            .unwrap();
                     IndexSelectProblem {
                         input_shape,
                         indices,
@@ -338,7 +333,7 @@ mod tests {
         }
     }
 
-    fn ground_truth(input: &OpTensor, indices: &OpTensor, dim: usize) -> anyhow::Result<OpTensor> {
+    fn ground_truth(input: &Tensor, indices: &Tensor, dim: usize) -> anyhow::Result<Tensor> {
         let prg = format!(
             r#"
 import torch
@@ -354,7 +349,7 @@ def index_select(input, indices):
             input_shape,
             indices,
         } = problem;
-        let mut input = OpTensor::randn::<f32, _>(0., 1., input_shape, Device::CPU, false).unwrap();
+        let mut input = Tensor::randn::<f32, _>(0., 1., input_shape, Device::CPU, false).unwrap();
 
         let ground_truth = ground_truth(&input, &indices, 0).unwrap();
         if quant {
@@ -375,7 +370,7 @@ def index_select(input, indices):
     fn test_qindex_select() {
         let prob = IndexSelectProblem {
             input_shape: shape![256, 32],
-            indices: OpTensor::from_data(vec![64, 192, 255], 3, Device::CPU, false),
+            indices: Tensor::from_data(vec![64, 192, 255], 3, Device::CPU, false),
         };
         let device = Device::request_device(DeviceRequest::GPU).unwrap();
         run_index_select_trial(prob.clone(), device, true);
@@ -387,7 +382,7 @@ def index_select(input, indices):
     #[derive(Debug, Clone)]
     struct IndexSelectProblem {
         input_shape: Shape,
-        indices: OpTensor,
+        indices: Tensor,
     }
 
     #[proptest(cases = 16)]

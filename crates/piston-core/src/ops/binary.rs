@@ -347,7 +347,7 @@ impl Kernel for BinaryKernels {
 
 #[cfg(all(test, feature = "pyo3"))]
 mod tests {
-    use crate::{test_util::run_py_prg, BinaryOp, Device, DeviceRequest, OpTensor, Shape};
+    use crate::{test_util::run_py_prg, BinaryOp, Device, DeviceRequest, Shape, Tensor};
     use test_strategy::{proptest, Arbitrary};
 
     #[derive(Arbitrary, Debug)]
@@ -357,7 +357,7 @@ mod tests {
         shape: Shape,
     }
 
-    fn ground_truth(a: &OpTensor, b: &OpTensor, op: &BinaryOp) -> anyhow::Result<OpTensor> {
+    fn ground_truth(a: &Tensor, b: &Tensor, op: &BinaryOp) -> anyhow::Result<Tensor> {
         let kn = op.kernel_name();
         let prg = if matches!(op, BinaryOp::Pow) {
             format!(
@@ -389,8 +389,8 @@ def {kn}(a, b):
         }
         let cpu_device = Device::request_device(DeviceRequest::CPU)?;
         let BinaryProblem { op, shape } = prob;
-        let a = OpTensor::randn::<f32, _>(0., 1., shape.clone(), cpu_device.clone(), false)?;
-        let b = OpTensor::randn::<f32, _>(0.1, 2.0, shape, cpu_device.clone(), false)?;
+        let a = Tensor::randn::<f32, _>(0., 1., shape.clone(), cpu_device.clone(), false)?;
+        let b = Tensor::randn::<f32, _>(0.1, 2.0, shape, cpu_device.clone(), false)?;
         let ground = ground_truth(&a, &b, &op)?;
 
         let a = a.to(&device)?;

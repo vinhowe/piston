@@ -423,7 +423,7 @@ impl Kernel for UnaryKernels {
 mod tests {
     use test_strategy::{proptest, Arbitrary};
 
-    use crate::{test_util::run_py_prg, Device, DeviceRequest, OpTensor, UnaryOp};
+    use crate::{test_util::run_py_prg, Device, DeviceRequest, Tensor, UnaryOp};
 
     #[derive(Arbitrary, Debug)]
     struct UnaryProblem {
@@ -434,7 +434,7 @@ mod tests {
         M: usize,
     }
 
-    fn ground_truth(a: &OpTensor, op: &UnaryOp, args: &str) -> anyhow::Result<OpTensor> {
+    fn ground_truth(a: &Tensor, op: &UnaryOp, args: &str) -> anyhow::Result<Tensor> {
         let kn = op.kernel_name();
         let func_prg = format!(
             r#"
@@ -463,7 +463,7 @@ def {kn}(a):
 
     fn run_unary_trial(prob: UnaryProblem, device: Device) -> anyhow::Result<()> {
         let UnaryProblem { op, B, M } = prob;
-        let a = OpTensor::randn::<f32, _>(0., 1., (B, M), Device::CPU, false)?;
+        let a = Tensor::randn::<f32, _>(0., 1., (B, M), Device::CPU, false)?;
 
         let args = match op {
             UnaryOp::Gelu => "approximate=\"tanh\"",

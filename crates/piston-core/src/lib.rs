@@ -104,7 +104,7 @@ pub mod prelude {
 
 #[cfg(feature = "pyo3")]
 pub mod test_util {
-    use crate::{DType, OpTensor};
+    use crate::{DType, OpTensor, Tensor};
     use half::f16;
     use regex::Regex;
     use {
@@ -115,10 +115,10 @@ pub mod test_util {
     /// It's a bit of a hack, but it's useful for testing.
     pub fn run_py_prg(
         prg: String,
-        tensors: &[&OpTensor],
+        tensors: &[&Tensor],
         args: &[&dyn ToPyObject],
         dst_dtype: DType,
-    ) -> anyhow::Result<OpTensor> {
+    ) -> anyhow::Result<Tensor> {
         let re = Regex::new(r"def\s+(\w+)\s*\(").unwrap();
         let func = match re.captures(&prg) {
             Some(caps) => caps.get(1).map(|m| m.as_str()).unwrap(),
@@ -128,9 +128,9 @@ pub mod test_util {
         Python::with_gil(|py| {
             let prg = PyModule::from_code(py, &prg, "x.py", "x")?;
             let py_tensors = tensors.iter().map(|t| match t.dtype() {
-                DType::F32 => t.to_py::<f32>(&py).to_object(py),
-                DType::I32 => t.to_py::<i32>(&py).to_object(py),
-                DType::F16 => t.to_py::<f16>(&py).to_object(py),
+                DType::F32 => t.inner_or_source().to_py::<f32>(&py).to_object(py),
+                DType::I32 => t.inner_or_source().to_py::<i32>(&py).to_object(py),
+                DType::F16 => t.inner_or_source().to_py::<f16>(&py).to_object(py),
                 _ => unimplemented!(),
             });
             let py_args = py_tensors
@@ -145,7 +145,7 @@ pub mod test_util {
                 DType::U32 => py_result.extract::<&PyArrayDyn<u32>>()?.into(),
                 _ => unimplemented!(),
             };
-            Ok(result)
+            Ok(result.wrap())
         })
     }
 

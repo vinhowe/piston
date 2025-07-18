@@ -292,15 +292,15 @@ impl GPUOperation for Concat {
 
 #[cfg(all(test, feature = "pyo3"))]
 mod tests {
-    use crate::{test_util::run_py_prg, Device, DeviceRequest, OpTensor, RVec};
+    use crate::{test_util::run_py_prg, Device, DeviceRequest, RVec, Tensor};
 
     #[derive(Debug)]
     struct ConcatProblem {
-        tensors: Vec<OpTensor>,
+        tensors: Vec<Tensor>,
         dim: usize,
     }
 
-    fn ground_truth(to_cat: &[&OpTensor], args: &str) -> anyhow::Result<OpTensor> {
+    fn ground_truth(to_cat: &[&Tensor], args: &str) -> anyhow::Result<Tensor> {
         let prg = format!(
             r#"
 import torch
@@ -320,7 +320,7 @@ def permute(*tensors):
 
         let arg_str = format!("{dim}");
         let ground = ground_truth(
-            tensors.iter().collect::<Vec<&OpTensor>>().as_slice(),
+            tensors.iter().collect::<Vec<&Tensor>>().as_slice(),
             arg_str.as_str(),
         )?;
 
@@ -328,7 +328,7 @@ def permute(*tensors):
             t.to(&device)?;
         }
         let t_rvec = RVec::from(tensors);
-        let ours = OpTensor::cat(t_rvec, dim)?;
+        let ours = Tensor::cat(t_rvec, dim)?;
         let result = ours.to(&Device::CPU)?;
         println!("Ground: {ground:?}");
         println!("Ours: {result:?}");
@@ -338,11 +338,11 @@ def permute(*tensors):
 
     #[test]
     fn test_concat_gpu() {
-        let t0 = OpTensor::randn::<f32, _>(0., 1., (4, 2, 50, 128), Device::CPU, false).unwrap();
-        let t1 = OpTensor::randn::<f32, _>(0., 1., (4, 2, 13, 128), Device::CPU, false).unwrap();
-        let t2 = OpTensor::randn::<f32, _>(0., 1., (4, 2, 77, 128), Device::CPU, false).unwrap();
-        let t3 = OpTensor::randn::<f32, _>(0., 1., (4, 2, 55, 128), Device::CPU, false).unwrap();
-        let t4 = OpTensor::randn::<f32, _>(0., 1., (4, 2, 11, 128), Device::CPU, false).unwrap();
+        let t0 = Tensor::randn::<f32, _>(0., 1., (4, 2, 50, 128), Device::CPU, false).unwrap();
+        let t1 = Tensor::randn::<f32, _>(0., 1., (4, 2, 13, 128), Device::CPU, false).unwrap();
+        let t2 = Tensor::randn::<f32, _>(0., 1., (4, 2, 77, 128), Device::CPU, false).unwrap();
+        let t3 = Tensor::randn::<f32, _>(0., 1., (4, 2, 55, 128), Device::CPU, false).unwrap();
+        let t4 = Tensor::randn::<f32, _>(0., 1., (4, 2, 11, 128), Device::CPU, false).unwrap();
 
         let dim = 2;
         let device = Device::request_device(DeviceRequest::GPU).unwrap();
@@ -358,11 +358,11 @@ def permute(*tensors):
 
     #[test]
     fn test_concat_cpu() {
-        let t0 = OpTensor::randn::<f32, _>(0., 1., (4, 2, 50, 128), Device::CPU, false).unwrap();
-        let t1 = OpTensor::randn::<f32, _>(0., 1., (4, 2, 13, 128), Device::CPU, false).unwrap();
-        let t2 = OpTensor::randn::<f32, _>(0., 1., (4, 2, 77, 128), Device::CPU, false).unwrap();
-        let t3 = OpTensor::randn::<f32, _>(0., 1., (4, 2, 55, 128), Device::CPU, false).unwrap();
-        let t4 = OpTensor::randn::<f32, _>(0., 1., (4, 2, 11, 128), Device::CPU, false).unwrap();
+        let t0 = Tensor::randn::<f32, _>(0., 1., (4, 2, 50, 128), Device::CPU, false).unwrap();
+        let t1 = Tensor::randn::<f32, _>(0., 1., (4, 2, 13, 128), Device::CPU, false).unwrap();
+        let t2 = Tensor::randn::<f32, _>(0., 1., (4, 2, 77, 128), Device::CPU, false).unwrap();
+        let t3 = Tensor::randn::<f32, _>(0., 1., (4, 2, 55, 128), Device::CPU, false).unwrap();
+        let t4 = Tensor::randn::<f32, _>(0., 1., (4, 2, 11, 128), Device::CPU, false).unwrap();
 
         let dim = 2;
         let device = Device::request_device(DeviceRequest::CPU).unwrap();

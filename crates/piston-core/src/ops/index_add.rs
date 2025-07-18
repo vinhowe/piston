@@ -216,7 +216,7 @@ mod tests {
     use test_strategy::proptest;
 
     use crate::test_util::run_py_prg;
-    use crate::{Device, DeviceRequest, OpTensor, Shape};
+    use crate::{Device, DeviceRequest, Shape, Tensor};
 
     impl Arbitrary for IndexAddProblem {
         type Parameters = ();
@@ -226,14 +226,9 @@ mod tests {
             Shape::arbitrary_with(vec![1..=512usize, 1..=16usize])
                 .prop_flat_map(|input_shape| (Just(input_shape), 1..64usize))
                 .prop_map(|(input_shape, num_indices)| {
-                    let indices = OpTensor::randint(
-                        0,
-                        input_shape[0] as i32,
-                        num_indices,
-                        Device::CPU,
-                        false,
-                    )
-                    .unwrap();
+                    let indices =
+                        Tensor::randint(0, input_shape[0] as i32, num_indices, Device::CPU, false)
+                            .unwrap();
                     IndexAddProblem {
                         input_shape,
                         indices,
@@ -244,11 +239,11 @@ mod tests {
     }
 
     fn ground_truth(
-        input: &OpTensor,
-        source: &OpTensor,
-        indices: &OpTensor,
+        input: &Tensor,
+        source: &Tensor,
+        indices: &Tensor,
         dim: usize,
-    ) -> anyhow::Result<OpTensor> {
+    ) -> anyhow::Result<Tensor> {
         let prg = format!(
             r#"
 import torch
@@ -272,12 +267,12 @@ def index_add(input, source, indices):
         let mut source_shape = input_shape.clone();
         source_shape[0] = indices.shape()[0];
 
-        let input = OpTensor::randn::<f32, _>(0., 1., input_shape.clone(), device.clone(), false)
+        let input = Tensor::randn::<f32, _>(0., 1., input_shape.clone(), device.clone(), false)
             .unwrap()
             .to(&Device::CPU)
             .unwrap();
 
-        let source = OpTensor::randn::<f32, _>(0., 1., source_shape.clone(), device.clone(), false)
+        let source = Tensor::randn::<f32, _>(0., 1., source_shape.clone(), device.clone(), false)
             .unwrap()
             .to(&Device::CPU)
             .unwrap();
@@ -300,7 +295,9 @@ def index_add(input, source, indices):
         let indices = indices.to(&device).unwrap();
         let source = source.to(&device).unwrap();
 
-        let result = input.index_add(indices.clone(), source.clone(), 0).unwrap();
+        let result = input
+            .index_add_(indices.clone(), source.clone(), 0)
+            .unwrap();
         let x = result.to(&Device::CPU).unwrap();
 
         log::debug!("x = {x:?}");
@@ -311,7 +308,7 @@ def index_add(input, source, indices):
     #[derive(Debug, Clone)]
     struct IndexAddProblem {
         input_shape: Shape,
-        indices: OpTensor,
+        indices: Tensor,
     }
 
     #[proptest(cases = 16)]

@@ -237,7 +237,7 @@ mod tests {
     use half::f16;
     use test_strategy::{proptest, Arbitrary};
 
-    use crate::{test_util::run_py_prg, DType, Device, DeviceRequest, OpTensor};
+    use crate::{test_util::run_py_prg, DType, Device, DeviceRequest, Tensor};
 
     #[derive(Arbitrary, Debug)]
     struct CastProblem {
@@ -250,7 +250,7 @@ mod tests {
         N: usize,
     }
 
-    fn ground_truth(input: &OpTensor, dst_dtype: DType) -> anyhow::Result<OpTensor> {
+    fn ground_truth(input: &Tensor, dst_dtype: DType) -> anyhow::Result<Tensor> {
         let prg = format!(
             r#"
 import torch
@@ -269,7 +269,7 @@ def cast(a):
             return Ok(());
         }
         let CastProblem { dst_dtype, B, M, N } = prob;
-        let input = OpTensor::randn::<f32, _>(0., 1., (B, M, N), Device::CPU, false)?;
+        let input = Tensor::randn::<f32, _>(0., 1., (B, M, N), Device::CPU, false)?;
         let ground = ground_truth(&input, dst_dtype)?;
 
         let input = input.to(&device)?;

@@ -218,9 +218,9 @@ mod tests {
     use test_strategy::{proptest, Arbitrary};
 
     use crate::test_util::run_py_prg;
-    use crate::{rvec, DType, Device, DeviceRequest, OpTensor};
+    use crate::{rvec, DType, Device, DeviceRequest, Tensor};
 
-    fn ground_truth(src: &OpTensor, ids: &OpTensor, dim: usize) -> anyhow::Result<OpTensor> {
+    fn ground_truth(src: &Tensor, ids: &Tensor, dim: usize) -> anyhow::Result<Tensor> {
         let prg = format!(
             r#"
 import torch
@@ -234,13 +234,13 @@ def gather(src, ids, dim):
     fn run_gather_trial(problem: GatherProblem, device: Device) {
         let GatherProblem { B, M, N, dim } = problem;
 
-        let src = OpTensor::randn::<f32, _>(0., 1., (B, M, N), Device::CPU, false).unwrap();
+        let src = Tensor::randn::<f32, _>(0., 1., (B, M, N), Device::CPU, false).unwrap();
 
         // Create the shape for ids tensor
         let mut ids_shape = rvec![B, M, N];
         ids_shape[dim] = 1;
         let ids =
-            OpTensor::randint::<i32, _>(0, src.shape()[dim] as i32, ids_shape, Device::CPU, false)
+            Tensor::randint::<i32, _>(0, src.shape()[dim] as i32, ids_shape, Device::CPU, false)
                 .unwrap();
 
         let ground = ground_truth(&src, &ids, dim).unwrap();
@@ -291,11 +291,7 @@ def gather(src, ids, dim):
         dim: usize,
     }
 
-    fn ground_truth_backward(
-        src: &OpTensor,
-        ids: &OpTensor,
-        dim: usize,
-    ) -> anyhow::Result<OpTensor> {
+    fn ground_truth_backward(src: &Tensor, ids: &Tensor, dim: usize) -> anyhow::Result<Tensor> {
         let prg = format!(
             r#"
 import torch
@@ -313,13 +309,13 @@ def gather_backward(src, ids):
     fn run_gather_backward_trial(problem: GatherBackwardProblem) -> anyhow::Result<()> {
         let device = Device::request_device(DeviceRequest::GPU).unwrap();
         let GatherBackwardProblem { B, M, N, dim } = problem;
-        let src = OpTensor::randn::<f32, _>(0., 1., (B, M, N), Device::CPU, false)?;
+        let src = Tensor::randn::<f32, _>(0., 1., (B, M, N), Device::CPU, false)?;
 
         // Create the shape for ids tensor
         let mut ids_shape = rvec![B, M, N];
         ids_shape[dim] = 1;
         let ids =
-            OpTensor::randint::<i32, _>(0, src.shape()[dim] as i32, ids_shape, Device::CPU, false)?;
+            Tensor::randint::<i32, _>(0, src.shape()[dim] as i32, ids_shape, Device::CPU, false)?;
 
         let ground = ground_truth_backward(&src, &ids, dim)?;
 

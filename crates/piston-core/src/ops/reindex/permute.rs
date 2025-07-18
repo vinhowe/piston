@@ -74,7 +74,7 @@ impl OpGuards for Permute {
 
 #[cfg(all(test, feature = "pyo3"))]
 mod tests {
-    use crate::{test_util::run_py_prg, Device, DeviceRequest, OpTensor, Permute, Shape};
+    use crate::{test_util::run_py_prg, Device, DeviceRequest, Permute, Shape, Tensor};
     use proptest::prelude::*;
     use test_strategy::{proptest, Arbitrary};
 
@@ -88,7 +88,10 @@ mod tests {
                 .prop_flat_map(|shape| (Just(shape.clone()), Just(vec![0, 1, 2, 3]).prop_shuffle()))
                 .prop_map(|(shape, perm)| {
                     Permute::new(
-                        OpTensor::randn::<f32, _>(0., 1., shape, Device::CPU, false).unwrap(),
+                        Tensor::randn::<f32, _>(0., 1., shape, Device::CPU, false)
+                            .unwrap()
+                            .inner_or_source()
+                            .clone(),
                         perm.into(),
                     )
                 })
@@ -101,7 +104,7 @@ mod tests {
         op: Permute,
     }
 
-    fn ground_truth(a: &OpTensor, args: &str) -> anyhow::Result<OpTensor> {
+    fn ground_truth(a: &Tensor, args: &str) -> anyhow::Result<Tensor> {
         let prg = format!(
             r#"
 import torch
@@ -115,7 +118,7 @@ def permute(a):
 
     fn run_reindex_trial(prob: PermuteProblem, device: Device) -> anyhow::Result<()> {
         let PermuteProblem { op } = prob;
-        let a = op.src.clone();
+        let a = op.src.wrap();
 
         let a_gpu = a.to(&device)?;
         let ground = ground_truth(&a, format!("{:?}", op.dims).as_str())?;

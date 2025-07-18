@@ -387,9 +387,9 @@ mod tests {
     use test_strategy::{proptest, Arbitrary};
 
     use crate::test_util::run_py_prg;
-    use crate::{Device, DeviceRequest, OpTensor};
+    use crate::{Device, DeviceRequest, Tensor};
 
-    fn ground_truth(a: &OpTensor, b: &OpTensor, c: &OpTensor) -> anyhow::Result<OpTensor> {
+    fn ground_truth(a: &Tensor, b: &Tensor, c: &Tensor) -> anyhow::Result<Tensor> {
         let prg = r#"
 import torch
 def where_cond(a, b, c):
@@ -398,7 +398,7 @@ def where_cond(a, b, c):
         run_py_prg(prg.to_string(), &[a, b, c], &[], b.dtype())
     }
 
-    fn ground_truth_scalar(a: &OpTensor, b: &OpTensor, scalar: f32) -> anyhow::Result<OpTensor> {
+    fn ground_truth_scalar(a: &Tensor, b: &Tensor, scalar: f32) -> anyhow::Result<Tensor> {
         let prg = r#"
 import torch
 def where_cond_scalar(a, b, scalar):
@@ -410,12 +410,12 @@ def where_cond_scalar(a, b, scalar):
     fn run_where_cond_trial(problem: WhereCondProblem, device: Device) {
         let WhereCondProblem { B, M, N } = problem;
         // Put through a ReLU so some of its entries are 0
-        let a = OpTensor::randn::<f32, _>(0., 1., (B, M, N), Device::CPU, false)
+        let a = Tensor::randn::<f32, _>(0., 1., (B, M, N), Device::CPU, false)
             .unwrap()
             .relu()
             .unwrap();
-        let b = OpTensor::randn::<f32, _>(0., 1., (B, M, N), Device::CPU, false).unwrap();
-        let c = OpTensor::randn::<f32, _>(0., 1., (B, M, N), Device::CPU, false).unwrap();
+        let b = Tensor::randn::<f32, _>(0., 1., (B, M, N), Device::CPU, false).unwrap();
+        let c = Tensor::randn::<f32, _>(0., 1., (B, M, N), Device::CPU, false).unwrap();
         let ground = ground_truth(&b, &a, &c).unwrap();
 
         let a_gpu = a.to(&device).unwrap();
@@ -434,11 +434,11 @@ def where_cond_scalar(a, b, scalar):
     fn run_where_cond_scalar_trial(problem: WhereCondScalarProblem, device: Device) {
         let WhereCondScalarProblem { B, M, N, scalar } = problem;
         // Put through a ReLU so some of its entries are 0
-        let a = OpTensor::randn::<f32, _>(0., 1., (B, M, N), Device::CPU, false)
+        let a = Tensor::randn::<f32, _>(0., 1., (B, M, N), Device::CPU, false)
             .unwrap()
             .relu()
             .unwrap();
-        let b = OpTensor::randn::<f32, _>(0., 1., (B, M, N), Device::CPU, false).unwrap();
+        let b = Tensor::randn::<f32, _>(0., 1., (B, M, N), Device::CPU, false).unwrap();
         let ground = ground_truth_scalar(&b, &a, scalar).unwrap();
 
         let a_gpu = a.to(&device).unwrap();

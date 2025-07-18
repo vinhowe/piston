@@ -333,7 +333,7 @@ impl Kernel for CmpKernels {
 
 #[cfg(all(test, feature = "pyo3"))]
 mod tests {
-    use crate::{test_util::run_py_prg, CmpOp, DType, Device, DeviceRequest, OpTensor, Shape};
+    use crate::{test_util::run_py_prg, CmpOp, DType, Device, DeviceRequest, Shape, Tensor};
     use proptest::arbitrary::any;
     use test_strategy::{proptest, Arbitrary};
 
@@ -353,7 +353,7 @@ mod tests {
         scalar: f32,
     }
 
-    fn ground_truth(a: &OpTensor, b: &OpTensor, op: &CmpOp) -> anyhow::Result<OpTensor> {
+    fn ground_truth(a: &Tensor, b: &Tensor, op: &CmpOp) -> anyhow::Result<Tensor> {
         let kn = op.kernel_name();
         let prg = format!(
             r#"
@@ -366,7 +366,7 @@ def {kn}(a, b):
         run_py_prg(prg.to_string(), &[a, b], &[], DType::I32)
     }
 
-    fn ground_truth_scalar(a: &OpTensor, scalar: f32, op: &CmpOp) -> anyhow::Result<OpTensor> {
+    fn ground_truth_scalar(a: &Tensor, scalar: f32, op: &CmpOp) -> anyhow::Result<Tensor> {
         let kn = op.kernel_name();
         let prg = format!(
             r#"
@@ -382,8 +382,8 @@ def {kn}(a, scalar):
     fn run_cmp_trial(prob: BinaryProblem, device: Device) -> anyhow::Result<()> {
         let cpu_device = Device::request_device(DeviceRequest::CPU)?;
         let BinaryProblem { op, shape } = prob;
-        let a = OpTensor::randn::<f32, _>(0., 1., shape.clone(), cpu_device.clone(), false)?;
-        let b = OpTensor::randn::<f32, _>(0., 1., shape, cpu_device.clone(), false)?;
+        let a = Tensor::randn::<f32, _>(0., 1., shape.clone(), cpu_device.clone(), false)?;
+        let b = Tensor::randn::<f32, _>(0., 1., shape, cpu_device.clone(), false)?;
         let ground = ground_truth(&a, &b, &op)?.cast(DType::F32)?;
 
         let a_gpu = a.to(&device)?;
@@ -405,7 +405,7 @@ def {kn}(a, scalar):
     fn run_cmp_scalar_trial(prob: CmpScalarProblem, device: Device) -> anyhow::Result<()> {
         let cpu_device = Device::request_device(DeviceRequest::CPU)?;
         let CmpScalarProblem { op, shape, scalar } = prob;
-        let a = OpTensor::randn::<f32, _>(0., 1., shape, cpu_device.clone(), false)?;
+        let a = Tensor::randn::<f32, _>(0., 1., shape, cpu_device.clone(), false)?;
         let ground = ground_truth_scalar(&a, scalar, &op)?.cast(DType::F32)?;
 
         let a_gpu = a.to(&device)?;
