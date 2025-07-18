@@ -86,7 +86,7 @@ impl WgpuDevice {
         };
         let device_request = adapter.request_device(&device_descriptor, None).await;
         let (device, queue) = if let Err(e) = device_request {
-            log::error!("Failed to acq. device, trying with reduced limits: {:?}", e);
+            log::error!("Failed to acq. device, trying with reduced limits: {e:?}");
             device_descriptor.required_limits = adapter.limits();
             device_descriptor.required_features = adapter.features();
             adapter.request_device(&device_descriptor, None).await
@@ -107,7 +107,7 @@ impl WgpuDevice {
             features.SUBGROUP = false;
         }
 
-        log::debug!("Device features: {:?}", features);
+        log::debug!("Device features: {features:?}");
 
         let buffer_allocator = Arc::new(BufferAllocator::new());
 
