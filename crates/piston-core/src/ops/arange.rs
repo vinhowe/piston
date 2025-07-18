@@ -5,7 +5,7 @@ use piston_macros::IrFields;
 use crate::{
     gpu::BindGroupLayoutDescriptor, rvec, shape, wgc, wgs, Array, BindingMode, BuiltIn, DType,
     DynKernelMetadata, GPUOperation, Kernel, KernelElement, KernelRenderable, KernelSource,
-    OpGuards, Operation, OperationError, RVec, Scalar, StorageView, Stride, OpTensor,
+    OpGuards, OpTensor, Operation, OperationError, RVec, Scalar, StorageView, Stride,
     WgslKernelBuilder, WgslPrimitive, WorkgroupCount, WorkgroupSize, Workload,
 };
 
@@ -178,7 +178,11 @@ impl Kernel for ArangeKernels {
         Ok(BindGroupLayoutDescriptor::unary_inplace())
     }
 
-    fn metadata(&self, dst: &OpTensor, _: &KernelElement) -> Result<Self::Metadata, OperationError> {
+    fn metadata(
+        &self,
+        dst: &OpTensor,
+        _: &KernelElement,
+    ) -> Result<Self::Metadata, OperationError> {
         let ArangeKernels::Standard(op) = self;
         let mut dyn_meta = DynKernelMetadata::new();
         if dst.dtype().is_float() {
@@ -268,8 +272,8 @@ def arange(start, stop, step):
         let a_gpu = a.to(device).unwrap();
         let ours = a_gpu.to(&Device::CPU).unwrap();
 
-        println!("ours = {:?}", ours);
-        println!("ground = {:?}", ground);
+        println!("ours = {ours:?}");
+        println!("ground = {ground:?}");
 
         // Compare our result with ground truth
         ground.all_close(&ours, 1e-6, 1e-6).unwrap();
@@ -288,7 +292,7 @@ def arange(start, stop, step):
     #[proptest(cases = 8)]
     fn test_arange_f32(prob: ArangeProblemF32) {
         let ArangeProblemF32 { start, stop, step } = prob;
-        println!("start = {}, stop = {}, step = {}", start, stop, step);
+        println!("start = {start}, stop = {stop}, step = {step}");
         let device = Device::request_device(DeviceRequest::GPU).unwrap();
         run_arange_trial::<f32>(start as f32, stop as f32, step as f32, &device);
     }
@@ -306,7 +310,7 @@ def arange(start, stop, step):
     #[proptest(cases = 8)]
     fn test_arange_i32(prob: ArangeProblemI32) {
         let ArangeProblemI32 { start, stop, step } = prob;
-        println!("start = {}, stop = {}, step = {}", start, stop, step);
+        println!("start = {start}, stop = {stop}, step = {step}");
         let device = Device::request_device(DeviceRequest::GPU).unwrap();
         run_arange_trial::<i32>(start, stop, step, &device);
     }

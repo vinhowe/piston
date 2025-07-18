@@ -538,7 +538,7 @@ mod tests {
         dim: Option<usize>,
     ) -> anyhow::Result<OpTensor> {
         let dim_str = match dim {
-            Some(d) => format!(", dim={}", d),
+            Some(d) => format!(", dim={d}"),
             None => "".to_string(),
         };
         let prg = match op {
@@ -660,7 +660,7 @@ def reduce(a):
     #[proptest(cases = 16)]
     fn test_sum_all(prob: SumAllProblem) {
         let SumAllProblem { B, M, N } = prob;
-        println!("B = {}, M = {}, N = {}", B, M, N);
+        println!("B = {B}, M = {M}, N = {N}");
         let device = Device::request_device(DeviceRequest::GPU).unwrap();
         run_reduce_forward_trial(B, M, N, &ReduceOp::Sum, None, device).unwrap();
     }
@@ -705,8 +705,8 @@ def reduce_backward(a):
         let a_grad = a_gpu.grad().unwrap().clone();
 
         let ours = a_grad.to(&Device::CPU)?;
-        println!("ours = {:?}", ours);
-        println!("ground = {:?}", ground);
+        println!("ours = {ours:?}");
+        println!("ground = {ground:?}");
         ground.all_close(&ours, 1e-5, 1e-5)?;
         Ok(())
     }
@@ -714,7 +714,7 @@ def reduce_backward(a):
     #[proptest(cases = 8)]
     fn test_reduce_backward(prob: ReduceBackwardProblem) {
         let ReduceBackwardProblem { B, M, N } = prob;
-        println!("B = {}, M = {}, N = {}", B, M, N);
+        println!("B = {B}, M = {M}, N = {N}");
         let device = Device::request_device(DeviceRequest::GPU).unwrap();
         run_sum_backward_trial(prob, device).unwrap();
     }

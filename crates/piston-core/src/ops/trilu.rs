@@ -328,8 +328,8 @@ def trilu(shape, upper, k):
         .to(&Device::CPU)
         .unwrap();
 
-        println!("Ours: {:?}", ours);
-        println!("Ground: {:?}", ground);
+        println!("Ours: {ours:?}");
+        println!("Ground: {ground:?}");
 
         // Compare the GPU result with the ground truth.
         ground

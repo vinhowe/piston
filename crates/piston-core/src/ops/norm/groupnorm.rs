@@ -71,7 +71,7 @@ def manual_group_norm(input, scale, bias, num_groups):
         #[strategy(1..=1usize)]
         B: usize,
         #[strategy(2..=4usize)]
-        #[filter(#C % 2 != 0)]
+        #[filter(!#C.is_multiple_of(2))]
         C: usize,
         #[strategy(1..=1usize)]
         N: usize,
@@ -80,7 +80,7 @@ def manual_group_norm(input, scale, bias, num_groups):
     #[proptest(cases = 64)]
     fn test_groupnorm(prob: GroupNormProblem) {
         let device = Device::request_device(DeviceRequest::GPU).unwrap();
-        println!("prob = {:#?}", prob);
+        println!("prob = {prob:#?}");
         run_norm_trial(&device, prob).unwrap();
     }
 }

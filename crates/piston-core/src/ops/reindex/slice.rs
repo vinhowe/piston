@@ -134,8 +134,14 @@ mod tests {
                         let indices = sub_slices.into_iter().map(|sub| sub.0).collect();
                         SliceProblem {
                             op: Slice::new(
-                                OpTensor::randn::<f32, _>(0., 1., shape.clone(), Device::CPU, false)
-                                    .unwrap(),
+                                OpTensor::randn::<f32, _>(
+                                    0.,
+                                    1.,
+                                    shape.clone(),
+                                    Device::CPU,
+                                    false,
+                                )
+                                .unwrap(),
                                 indices,
                             ),
                         }
@@ -152,16 +158,15 @@ import torch
 import numpy as np
 def slice(a):
     torch_a = torch.from_numpy(a)
-    return np.ascontiguousarray(torch_a{})
+    return np.ascontiguousarray(torch_a{args}).numpy()
 "#,
-            args
         );
         run_py_prg(prg.to_string(), &[a], &[], a.dtype())
     }
 
     fn run_reindex_trial(prob: SliceProblem, device: Device) -> anyhow::Result<()> {
         let SliceProblem { op } = prob;
-        println!("SLICE PROBLEM: {:?}", op);
+        println!("SLICE PROBLEM: {op:?}");
         let a = op.src.clone();
 
         let a_gpu = a.to(&device)?;

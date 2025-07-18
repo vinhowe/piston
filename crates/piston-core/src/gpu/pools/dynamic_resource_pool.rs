@@ -159,7 +159,7 @@ where
                     continue;
                 };
                 update_stats(&desc);
-                log::debug!("Dropping resource {:?}", desc);
+                log::debug!("Dropping resource {desc:?}");
                 destructor(&removed_resource);
             }
         }

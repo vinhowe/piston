@@ -77,7 +77,7 @@ impl WorkgroupCount {
 
     /// Divide a number by the indicated dividend, then round up to the next multiple of the dividend if there is a rest.
     pub fn div_ceil(num: usize, div: usize) -> usize {
-        num / div + (num % div != 0) as usize
+        num / div + !num.is_multiple_of(div) as usize
     }
 }
 

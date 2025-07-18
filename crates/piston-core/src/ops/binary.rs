@@ -296,9 +296,9 @@ impl Kernel for BinaryKernels {
     fn kernel_element(&self, dst: &OpTensor) -> KernelElement {
         let numel = dst.shape().numel();
 
-        if numel % 4 == 0 {
+        if numel.is_multiple_of(4) {
             KernelElement::Vec4
-        } else if numel % 2 == 0 {
+        } else if numel.is_multiple_of(2) {
             KernelElement::Vec2
         } else {
             KernelElement::Scalar
@@ -363,22 +363,20 @@ mod tests {
             format!(
                 r#"
 import torch
-def {}(a, b):
+def {kn}(a, b):
     a_tensor = torch.from_numpy(a)
     b_tensor = torch.from_numpy(b)
     sign = torch.sign(a_tensor)
     return (torch.pow(torch.abs(a_tensor), b_tensor) * sign).numpy()
 "#,
-                kn
             )
         } else {
             format!(
                 r#"
 import torch
-def {}(a, b):
-    return torch.{}(torch.from_numpy(a), torch.from_numpy(b)).numpy()
+def {kn}(a, b):
+    return torch.{kn}(torch.from_numpy(a), torch.from_numpy(b)).numpy()
 "#,
-                kn, kn
             )
         };
         run_py_prg(prg.to_string(), &[a, b], &[], a.dtype())

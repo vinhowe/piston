@@ -106,10 +106,10 @@ impl KVCache {
 
     pub fn mask(&mut self, t: usize) -> Result<Tensor> {
         if let Some(mask) = self.masks.get(&t) {
-            log::debug!("Using existing mask for {:?}", t);
+            log::debug!("Using existing mask for {t:?}");
             Ok(mask.clone())
         } else {
-            log::debug!("Creating mask for {:?}", t);
+            log::debug!("Creating mask for {t:?}");
             let ones = Tensor::ones::<f32, _>((t, t), &self.device, false)?;
             let mask = ones.tril(None)?;
             self.masks.insert(t, mask.clone());

@@ -240,9 +240,9 @@ impl Kernel for CmpKernels {
     fn kernel_element(&self, dst: &OpTensor) -> KernelElement {
         let numel = dst.shape().numel();
 
-        if numel % 4 == 0 {
+        if numel.is_multiple_of(4) {
             KernelElement::Vec4
-        } else if numel % 2 == 0 {
+        } else if numel.is_multiple_of(2) {
             KernelElement::Vec2
         } else {
             KernelElement::Scalar
@@ -359,10 +359,9 @@ mod tests {
             r#"
 import torch
 import numpy as np
-def {}(a, b):
-    return torch.{}(torch.from_numpy(a), torch.from_numpy(b)).numpy().astype(np.int32)
+def {kn}(a, b):
+    return torch.{kn}(torch.from_numpy(a), torch.from_numpy(b)).numpy().astype(np.int32)
 "#,
-            kn, kn
         );
         run_py_prg(prg.to_string(), &[a, b], &[], DType::I32)
     }
@@ -373,10 +372,9 @@ def {}(a, b):
             r#"
 import torch
 import numpy as np
-def {}(a, scalar):
-    return torch.{}(torch.from_numpy(a), scalar).numpy().astype(np.int32)
+def {kn}(a, scalar):
+    return torch.{kn}(torch.from_numpy(a), scalar).numpy().astype(np.int32)
 "#,
-            kn, kn
         );
         run_py_prg(prg.to_string(), &[a], &[&scalar], DType::I32)
     }

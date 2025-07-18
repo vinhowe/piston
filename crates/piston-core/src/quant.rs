@@ -1,5 +1,6 @@
 use crate::{
-    dtype::Quantized, gpu::STORAGE_BUFFER_ALIGN, DType, Device, OpTensor, Q4_KF, Q4_KH, Q8_0F, Q8_0H,
+    dtype::Quantized, gpu::STORAGE_BUFFER_ALIGN, DType, Device, OpTensor, Q4_KF, Q4_KH, Q8_0F,
+    Q8_0H,
 };
 use maybe_async::maybe_async;
 use num::integer::div_floor;
@@ -9,7 +10,7 @@ use num_traits::{AsPrimitive, Float, FromPrimitive, Zero};
 fn storage_align<T>(n: usize) -> usize {
     let size_t = core::mem::size_of::<T>();
     let nbytes = n * size_t;
-    let aligned = if nbytes % STORAGE_BUFFER_ALIGN != 0 {
+    let aligned = if !nbytes.is_multiple_of(STORAGE_BUFFER_ALIGN) {
         nbytes + STORAGE_BUFFER_ALIGN - nbytes % STORAGE_BUFFER_ALIGN
     } else {
         nbytes
@@ -29,7 +30,7 @@ pub fn quantize_inner<Q: Quantized>(matrix: &[Q::FP], elements: usize) -> Vec<u3
     let mut d = Q::FP::zero();
 
     for i in (0..elements).step_by(Q::PACK_SIZE) {
-        if i % Q::GROUP_SIZE == 0 {
+        if i.is_multiple_of(Q::GROUP_SIZE) {
             d = matrix[i..i + Q::GROUP_SIZE]
                 .iter()
                 .fold(Q::FP::zero(), |acc, &x| acc.max(x.abs()))
@@ -180,7 +181,7 @@ pub fn dequantize(quantized: OpTensor) -> OpTensor {
 
 #[cfg(test)]
 mod tests {
-    use crate::{dequantize, quantize, Device, Quantized, OpTensor, Q4_KF, Q4_KH, Q8_0F, Q8_0H};
+    use crate::{dequantize, quantize, Device, OpTensor, Quantized, Q4_KF, Q4_KH, Q8_0F, Q8_0H};
     use half::f16;
     use num_traits::{One, Zero};
 

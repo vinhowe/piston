@@ -128,7 +128,7 @@ pub fn process_js_tensor_operations(mut item_impl: ItemImpl) -> TokenStream2 {
                             }
                             if is_optional(&pat_type.ty) {
                                 unchecked_param_type =
-                                    format!("{} | null | undefined", unchecked_param_type);
+                                    format!("{unchecked_param_type} | null | undefined");
                             }
                             pat_type
                                 .attrs

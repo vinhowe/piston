@@ -101,7 +101,7 @@ impl ShapeWithOneHole for FromJsVecISize {
                 self.0
             );
         }
-        if el_count % product != 0 {
+        if !el_count.is_multiple_of(product) {
             anyhow::bail!(
                 "cannot reshape tensor with {el_count} elements to shape with -1, got shape {:?}",
                 self.0

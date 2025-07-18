@@ -87,7 +87,7 @@ pub async fn save(data: JsValue) -> anyhow::Result<String, JsValue> {
 
     // Serialize to safetensors format
     let serialized = safetensors::tensor::serialize(data_ref.iter().map(|(k, v)| (k, v)), &None)
-        .map_err(|e| JsValue::from_str(&format!("Failed to serialize tensors: {}", e)))?;
+        .map_err(|e| JsValue::from_str(&format!("Failed to serialize tensors: {e}")))?;
 
     // Create a Uint8Array from the serialized data
     let uint8_array = js_sys::Uint8Array::from(&serialized[..]);

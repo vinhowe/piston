@@ -107,9 +107,8 @@ mod tests {
 import torch
 import numpy as np
 def permute(a):
-    return np.ascontiguousarray(torch.permute(torch.from_numpy(a), {}).numpy())
+    return np.ascontiguousarray(torch.permute(torch.from_numpy(a), {args}).numpy())
 "#,
-            args
         );
         run_py_prg(prg.to_string(), &[a], &[], a.dtype())
     }

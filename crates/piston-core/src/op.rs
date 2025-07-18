@@ -442,7 +442,7 @@ fn hash_ir_value<H: Hasher>(
         // to be true...
         IrValue::Vec(vec) => {
             for (i, value) in vec.iter().enumerate() {
-                hash_key(&format!("{}", i), state);
+                hash_key(&format!("{i}"), state);
                 hash_ir_value(value, state, tensor_hashes, compile_key);
             }
         }
@@ -765,8 +765,8 @@ pub trait GPUOperation: Operation {
         let metadata = kernel.metadata(dst, &kernel_element)?;
         let offset = metadata.write(uniform)?;
 
-        log::debug!("Kernel key: {}", key);
-        log::debug!("Can inplace: {}", can_inplace);
+        log::debug!("Kernel key: {key}");
+        log::debug!("Can inplace: {can_inplace}");
 
         Ok(ComputeCompileKey {
             dst,

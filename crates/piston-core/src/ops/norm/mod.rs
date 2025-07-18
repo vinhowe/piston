@@ -141,7 +141,7 @@ impl KernelRenderable for NormKernels {
             1 => "metadata.N",
             2 => "metadata.ND2",
             4 => "metadata.ND4",
-            v => panic!("Invalid reduction length: {}", v),
+            v => panic!("Invalid reduction length: {v}"),
         };
 
         let dtype = P::T::DT;
@@ -341,9 +341,9 @@ impl Kernel for NormKernels {
     fn kernel_element(&self, dst: &OpTensor) -> KernelElement {
         let rank = dst.dim();
         let N = dst.shape()[rank - 1] as u32;
-        if N % 4 == 0 {
+        if N.is_multiple_of(4) {
             KernelElement::Vec4
-        } else if N % 2 == 0 {
+        } else if N.is_multiple_of(2) {
             KernelElement::Vec2
         } else {
             KernelElement::Scalar
@@ -518,7 +518,7 @@ def manual_rms_norm(input, scale):
             M: 57,
             N: 1001,
         };
-        println!("prob = {:#?}", prob);
+        println!("prob = {prob:#?}");
         run_norm_trial(&device, prob).unwrap();
     }
 

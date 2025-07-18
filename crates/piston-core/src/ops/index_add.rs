@@ -253,9 +253,8 @@ mod tests {
             r#"
 import torch
 def index_add(input, source, indices):
-    return torch.index_add(torch.from_numpy(input),{},torch.from_numpy(indices),torch.from_numpy(source)).numpy()
-"#,
-            dim
+    return torch.index_add(torch.from_numpy(input),{dim},torch.from_numpy(indices),torch.from_numpy(source)).numpy()
+"#
         );
         run_py_prg(
             prg.to_string(),
@@ -292,10 +291,10 @@ def index_add(input, source, indices):
 
         let ground_truth = ground_truth(&input, &source, &indices, 0).unwrap();
 
-        log::debug!("input = {:?}", input);
-        log::debug!("source = {:?}", source);
-        log::debug!("ground_truth = {:?}", ground_truth);
-        log::debug!("indices = {:?}", indices);
+        log::debug!("input = {input:?}");
+        log::debug!("source = {source:?}");
+        log::debug!("ground_truth = {ground_truth:?}");
+        log::debug!("indices = {indices:?}");
 
         let input = input.to(&device).unwrap();
         let indices = indices.to(&device).unwrap();
@@ -304,7 +303,7 @@ def index_add(input, source, indices):
         let result = input.index_add(indices.clone(), source.clone(), 0).unwrap();
         let x = result.to(&Device::CPU).unwrap();
 
-        log::debug!("x = {:?}", x);
+        log::debug!("x = {x:?}");
 
         ground_truth.all_close(&x, 1e-1, 1e-1).unwrap();
     }

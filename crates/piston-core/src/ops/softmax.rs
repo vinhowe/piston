@@ -214,9 +214,9 @@ impl Kernel for SoftmaxKernels {
         };
         let input = &inner.input;
         let N = input.shape()[inner.dim] as u32;
-        if N % 4 == 0 {
+        if N.is_multiple_of(4) {
             KernelElement::Vec4
-        } else if N % 2 == 0 {
+        } else if N.is_multiple_of(2) {
             KernelElement::Vec2
         } else {
             KernelElement::Scalar

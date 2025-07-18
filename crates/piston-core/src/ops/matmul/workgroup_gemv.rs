@@ -5,7 +5,7 @@ use piston_macros::WgslMetadata;
 use crate::{
     gpu::dtype::WgslDType, rvec, wgc, wgs, Array, BindGroupLayoutDescriptor, BindingMode, BuiltIn,
     DType, InvariantError, Kernel, KernelElement, KernelKey, KernelRenderable, KernelSource,
-    Matmul, MatmulSpec, OperationError, Scalar, Stride, OpTensor, Vec4, WgslKernelBuilder,
+    Matmul, MatmulSpec, OpTensor, OperationError, Scalar, Stride, Vec4, WgslKernelBuilder,
     WgslPrimitive, WorkgroupCount, WorkgroupSize, Workload,
 };
 use glam::IVec3;
@@ -256,7 +256,7 @@ impl KernelRenderable for WorkgroupGEMV {
         });
 
         let (TILE_X, _) = self.spec.heuristic.as_workgroup_size();
-        let A_FIT = self.spec.lhs_shape()[1] % TILE_X == 0;
+        let A_FIT = self.spec.lhs_shape()[1].is_multiple_of(TILE_X);
 
         let readA = match (A_FIT, self.lhs.dtype()) {
             (true, DType::F32) | (true, DType::F16) => {

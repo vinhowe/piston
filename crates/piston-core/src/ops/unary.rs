@@ -11,8 +11,8 @@ use strum_macros::EnumIter;
 use crate::{
     gpu::{dtype::WgslDType, BindGroupLayoutDescriptor},
     rvec, Array, BindingMode, BuiltIn, DType, GPUOperation, Kernel, KernelElement,
-    KernelRenderable, KernelSource, OpGuards, Operation, OperationError, RVec, Scalar, StorageView,
-    OpTensor, Vec2, Vec4, WgslKernelBuilder, WgslPrimitive, WorkgroupSize, Workload,
+    KernelRenderable, KernelSource, OpGuards, OpTensor, Operation, OperationError, RVec, Scalar,
+    StorageView, Vec2, Vec4, WgslKernelBuilder, WgslPrimitive, WorkgroupSize, Workload,
 };
 
 #[cfg(test)]
@@ -361,9 +361,9 @@ impl Kernel for UnaryKernels {
         let a_rank = &inner.input.shape().dim();
         let N = &inner.input.shape()[a_rank - 1];
 
-        if N % 4 == 0 {
+        if N.is_multiple_of(4) {
             KernelElement::Vec4
-        } else if N % 2 == 0 {
+        } else if N.is_multiple_of(2) {
             KernelElement::Vec2
         } else {
             KernelElement::Scalar
@@ -408,7 +408,11 @@ impl Kernel for UnaryKernels {
         }
     }
 
-    fn metadata(&self, dst: &OpTensor, _: &KernelElement) -> Result<Self::Metadata, OperationError> {
+    fn metadata(
+        &self,
+        dst: &OpTensor,
+        _: &KernelElement,
+    ) -> Result<Self::Metadata, OperationError> {
         Ok(UnaryMeta {
             numel: dst.shape().numel() as u32,
         })
@@ -436,19 +440,17 @@ mod tests {
             r#"
 import torch
 import torch.nn.functional as F
-def {}(a):
-    return F.{}(torch.from_numpy(a), {}).numpy()
+def {kn}(a):
+    return F.{kn}(torch.from_numpy(a), {args}).numpy()
 "#,
-            kn, kn, args,
         );
 
         let imp_prg = format!(
             r#"
 import torch
-def {}(a):
-    return torch.{}(torch.from_numpy(a), {}).numpy()
+def {kn}(a):
+    return torch.{kn}(torch.from_numpy(a), {args}).numpy()
 "#,
-            kn, kn, args,
         );
 
         let prg = match op {

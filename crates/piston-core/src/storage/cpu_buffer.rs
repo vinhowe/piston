@@ -183,7 +183,7 @@ impl DeviceStorage for CPUBuffer {
         fn dump_inner<T: TensorDType>(data: &[T], full: bool) -> String {
             let length = if data.len() < 64 { data.len() } else { 64 };
             if full {
-                format!("{:?}", data)
+                format!("{data:?}")
             } else {
                 format!(
                     "{:?} ... {:?}",
@@ -197,7 +197,7 @@ impl DeviceStorage for CPUBuffer {
             DType::I32 => dump_inner(bytemuck::cast_slice::<u8, i32>(bytes), full),
             DType::U32 => dump_inner(bytemuck::cast_slice::<u8, u32>(bytes), full),
             DType::F16 => dump_inner(bytemuck::cast_slice::<u8, f16>(bytes), full),
-            dtype => format!("[{:?} dump not yet supported]", dtype),
+            dtype => format!("[{dtype:?} dump not yet supported]"),
         }
     }
 }

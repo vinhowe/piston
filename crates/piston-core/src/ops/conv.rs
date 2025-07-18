@@ -7,8 +7,8 @@ use piston_macros::{IrFields, WgslMetadata};
 use crate::{
     gpu::{dtype::WgslDType, BindGroupLayoutDescriptor, WorkgroupCount},
     rvec, shape, wgc, wgs, Array, BindingMode, BuiltIn, DType, GPUOperation, Kernel, KernelElement,
-    KernelRenderable, KernelSource, OpGuards, Operation, OperationError, RVec, Scalar, StorageView,
-    Stride, OpTensor, Vec2, Vec4, WgslKernelBuilder, WgslPrimitive, WorkgroupSize, Workload,
+    KernelRenderable, KernelSource, OpGuards, OpTensor, Operation, OperationError, RVec, Scalar,
+    StorageView, Stride, Vec2, Vec4, WgslKernelBuilder, WgslPrimitive, WorkgroupSize, Workload,
 };
 use inline_wgsl::wgsl;
 
@@ -203,7 +203,11 @@ impl Kernel for ConvKernels {
         }
     }
 
-    fn metadata(&self, dst: &OpTensor, _: &KernelElement) -> Result<Self::Metadata, OperationError> {
+    fn metadata(
+        &self,
+        dst: &OpTensor,
+        _: &KernelElement,
+    ) -> Result<Self::Metadata, OperationError> {
         let ConvKernels::Threebythree(inner) = self;
         let [_N, Cin, Lin]: [usize; 3] = inner.input.shape().try_into()?;
         let [_Cout, _, KS]: [usize; 3] = inner.weight.shape().try_into()?;
@@ -335,8 +339,8 @@ def conv(input, filters, bias, stride, padding):
         let ours = input.conv1d(weight, Some(bias), stride, 1).unwrap();
         let ours = ours.to(&Device::CPU).unwrap();
 
-        println!("ours = {:?}", ours);
-        println!("ground = {:?}", ground);
+        println!("ours = {ours:?}");
+        println!("ground = {ground:?}");
         ground.all_close(&ours, 5e-3, 5e-3).unwrap();
     }
 
@@ -345,7 +349,7 @@ def conv(input, filters, bias, stride, padding):
         #[strategy(16..=1024usize)]
         Cin: usize,
         #[strategy(16..=1024usize)]
-        #[filter(#Lin % 3 == 0)]
+        #[filter(#Lin.is_multiple_of(3))]
         Lin: usize,
         #[strategy(16..=1024usize)]
         Cout: usize,
@@ -362,10 +366,7 @@ def conv(input, filters, bias, stride, padding):
             Cout,
             stride,
         } = prob;
-        println!(
-            "Cin = {}, Lin = {}, Cout = {}, stride = {}",
-            Cin, Lin, Cout, stride
-        );
+        println!("Cin = {Cin}, Lin = {Lin}, Cout = {Cout}, stride = {stride}");
         run_conv_trial(&device, prob);
     }
 }

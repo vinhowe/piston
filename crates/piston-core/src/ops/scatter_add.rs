@@ -6,8 +6,8 @@ use piston_macros::{IrFields, WgslMetadata};
 
 use crate::{
     gpu::BindGroupLayoutDescriptor, rvec, Array, BindingMode, BuiltIn, DType, GPUOperation, Kernel,
-    KernelElement, KernelRenderable, KernelSource, OpGuards, Operation, OperationError, RVec,
-    Scalar, StorageView, OpTensor, Vec2, Vec4, WgslKernelBuilder, WgslPrimitive, WorkgroupSize,
+    KernelElement, KernelRenderable, KernelSource, OpGuards, OpTensor, Operation, OperationError,
+    RVec, Scalar, StorageView, Vec2, Vec4, WgslKernelBuilder, WgslPrimitive, WorkgroupSize,
     Workload,
 };
 
@@ -233,10 +233,9 @@ def scatter_add(dst, src, ids):
     dst_tensor = torch.from_numpy(dst)
     src_tensor = torch.from_numpy(src)
     ids_tensor = torch.from_numpy(ids).to(torch.long)
-    result = dst_tensor.scatter_add({}, ids_tensor, src_tensor)
+    result = dst_tensor.scatter_add({dim}, ids_tensor, src_tensor)
     return result.numpy()
 "#,
-            dim
         );
         run_py_prg(prg.to_string(), &[dst, src, ids], &[], src.dtype())
     }

@@ -184,9 +184,9 @@ impl Kernel for AffineKernels {
             1
         };
 
-        if N % 4 == 0 {
+        if N.is_multiple_of(4) {
             KernelElement::Vec4
-        } else if N % 2 == 0 {
+        } else if N.is_multiple_of(2) {
             KernelElement::Vec2
         } else {
             KernelElement::Scalar
@@ -256,8 +256,8 @@ def affine(a, mul, add):
         let b = a_gpu.affine(mul, add).unwrap();
 
         let ours = b.to(&Device::CPU).unwrap();
-        println!("ours = {:?}", ours);
-        println!("ground = {:?}", ground);
+        println!("ours = {ours:?}");
+        println!("ground = {ground:?}");
         ground.all_close(&ours, 1e-4, 1e-4).unwrap();
     }
 
@@ -278,10 +278,7 @@ def affine(a, mul, add):
     #[proptest(cases = 8)]
     fn test_affine(prob: AffineProblem) {
         let AffineProblem { B, M, N, mul, add } = prob;
-        println!(
-            "B = {}, M = {}, N = {}, mul = {}, add = {}",
-            B, M, N, mul, add
-        );
+        println!("B = {B}, M = {M}, N = {N}, mul = {mul}, add = {add}");
         let device = Device::request_device(DeviceRequest::GPU).unwrap();
         run_affine_trial(prob, device);
     }

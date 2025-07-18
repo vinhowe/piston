@@ -5,7 +5,7 @@ use piston_macros::WgslMetadata;
 use crate::{
     gpu::dtype::WgslDType, rvec, wgc, wgs, Array, BindGroupLayoutDescriptor as BGLD, BindingMode,
     BuiltIn, DType, InvariantError, Kernel, KernelElement, KernelKey, KernelRenderable,
-    KernelSource, Matmul, MatmulSpec, OperationError, Scalar, Stride, OpTensor, Vec2, Vec4,
+    KernelSource, Matmul, MatmulSpec, OpTensor, OperationError, Scalar, Stride, Vec2, Vec4,
     WgslFragment, WgslKernelBuilder, WgslPrimitive, WorkgroupCount, WorkgroupSize, Workload,
 };
 use glam::IVec3;
@@ -694,7 +694,7 @@ impl GEMM {
         let mut outer_body = WgslFragment::new(128);
         let mut inner_body = WgslFragment::new(128);
         for c in 0..W {
-            let bIdent = format!("BCached{}", c);
+            let bIdent = format!("BCached{c}");
             inner_body.write(wgsl! {
                 acc[i] += 'fp32_accessor('accessor(ACached['c]) * 'bIdent);
             });

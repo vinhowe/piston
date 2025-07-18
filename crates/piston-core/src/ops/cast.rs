@@ -6,9 +6,9 @@ use piston_macros::{IrFields, WgslMetadata};
 
 use crate::{
     gpu::BindGroupLayoutDescriptor, rvec, Array, BindingMode, BuiltIn, DType, GPUOperation, Kernel,
-    KernelElement, KernelRenderable, KernelSource, OpGuards, Operation, OperationError, RVec,
-    Scalar, StorageView, Stride, OpTensor, Vec2, Vec4, WgslKernelBuilder, WgslPrimitive,
-    WorkgroupSize, Workload,
+    KernelElement, KernelRenderable, KernelSource, OpGuards, OpTensor, Operation, OperationError,
+    RVec, Scalar, StorageView, Stride, Vec2, Vec4, WgslKernelBuilder, WgslPrimitive, WorkgroupSize,
+    Workload,
 };
 
 #[derive(new, Debug, Clone, IrFields)]
@@ -46,7 +46,7 @@ impl KernelRenderable for CastKernels {
             builder.register_storage_raw(
                 "Y",
                 BindingMode::ReadWrite,
-                format!("array<{}>", dst_accessor),
+                format!("array<{dst_accessor}>"),
             )
         };
         builder.register_uniform();
@@ -163,7 +163,11 @@ impl Kernel for CastKernels {
         }
     }
 
-    fn metadata(&self, dst: &OpTensor, _: &KernelElement) -> Result<Self::Metadata, OperationError> {
+    fn metadata(
+        &self,
+        dst: &OpTensor,
+        _: &KernelElement,
+    ) -> Result<Self::Metadata, OperationError> {
         let numel = dst.shape().numel() as u32;
         Ok(CastMeta { numel })
     }
@@ -174,9 +178,9 @@ impl Kernel for CastKernels {
 
     fn kernel_element(&self, dst: &OpTensor) -> KernelElement {
         let numel = dst.shape().numel();
-        if numel % 4 == 0 {
+        if numel.is_multiple_of(4) {
             KernelElement::Vec4
-        } else if numel % 2 == 0 {
+        } else if numel.is_multiple_of(2) {
             KernelElement::Vec2
         } else {
             KernelElement::Scalar

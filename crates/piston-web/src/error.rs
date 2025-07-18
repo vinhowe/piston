@@ -14,7 +14,7 @@ impl IntoJsError for anyhow::Error {
         // Add the error chain if available
         let mut current = self.source();
         while let Some(err) = current {
-            message.push_str(&format!("\nCaused by: {}", err));
+            message.push_str(&format!("\nCaused by: {err}"));
             current = err.source();
         }
 

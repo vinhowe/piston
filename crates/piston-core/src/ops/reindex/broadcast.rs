@@ -2,7 +2,9 @@ use derive_new::new;
 use encase::ShaderType;
 use piston_macros::WgslMetadata;
 
-use crate::{rvec, OpGuards, Operation, OperationError, RVec, Shape, StorageView, Stride, OpTensor};
+use crate::{
+    rvec, OpGuards, OpTensor, Operation, OperationError, RVec, Shape, StorageView, Stride,
+};
 use piston_macros::IrFields;
 
 #[derive(Debug, WgslMetadata, ShaderType, derive_new::new)]
@@ -36,10 +38,7 @@ impl OpGuards for Broadcast {
         let sr = src_shape.dim();
         let dr = to_shape.dim();
         if sr > dr {
-            panic!(
-                "Source shape cannot have more dimensions than target shape: {} > {}",
-                sr, dr
-            );
+            panic!("Source shape cannot have more dimensions than target shape: {sr} > {dr}");
         }
 
         let src_iter = src_shape.iter().rev();
@@ -48,8 +47,7 @@ impl OpGuards for Broadcast {
         for (src_dim, to_dim) in src_iter.zip(to_iter) {
             if *src_dim != 1 && *src_dim != *to_dim {
                 panic!(
-                    "Invalid broadcast: source dimension {} cannot be broadcast to {}",
-                    src_dim, to_dim
+                    "Invalid broadcast: source dimension {src_dim} cannot be broadcast to {to_dim}"
                 );
             }
         }
@@ -90,7 +88,7 @@ mod tests {
     };
     use test_strategy::proptest;
 
-    use crate::{shape, test_util::run_py_prg, Broadcast, Device, DeviceRequest, Shape, OpTensor};
+    use crate::{shape, test_util::run_py_prg, Broadcast, Device, DeviceRequest, OpTensor, Shape};
 
     impl Arbitrary for BroadcastProblem {
         type Parameters = ();
@@ -138,15 +136,14 @@ import torch
 import numpy as np
 def slice(a):
     torch_a = torch.from_numpy(a)
-    return np.ascontiguousarray(torch_a.broadcast_to({}).numpy())
+    return np.ascontiguousarray(torch_a.broadcast_to({args}).numpy())
 "#,
-            args
         );
         run_py_prg(prg.to_string(), &[a], &[], a.dtype())
     }
 
     fn run_reindex_trial(prob: BroadcastProblem, device: Device) -> anyhow::Result<()> {
-        println!("\n\nBroadcast problem: {:?}", prob);
+        println!("\n\nBroadcast problem: {prob:?}");
         let BroadcastProblem { op } = prob;
         let a = op.src.clone();
 

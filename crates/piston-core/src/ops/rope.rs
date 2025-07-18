@@ -62,7 +62,7 @@ impl OpGuards for RoPE {
         //TODO: overly restrictive
         assert!(input.dim() == 4);
         assert!(input.shape()[3] >= self.dim);
-        assert!(self.dim % 8 == 0);
+        assert!(self.dim.is_multiple_of(8));
     }
 
     fn check_dtypes(&self) {
@@ -383,10 +383,10 @@ def mlx_rope(input, dim, offset):
         #[strategy(1..=256usize)]
         SL: usize,
         #[strategy(32..=128usize)]
-        #[filter(#HD % 16 == 0)]
+        #[filter(#HD.is_multiple_of(16))]
         HD: usize,
         #[strategy(32..=#HD)]
-        #[filter(#dim % 32 == 0)]
+        #[filter(#dim.is_multiple_of(32))]
         dim: usize,
         #[strategy(0..=#SL)]
         offset: usize,
@@ -402,10 +402,7 @@ def mlx_rope(input, dim, offset):
             dim,
             offset,
         } = prob;
-        println!(
-            "BS = {}, NH = {}, SL = {}, HD = {}, rope_dim = {}, offset = {}",
-            BS, NH, SL, HD, dim, offset
-        );
+        println!("BS = {BS}, NH = {NH}, SL = {SL}, HD = {HD}, rope_dim = {dim}, offset = {offset}");
 
         let device = Device::request_device(DeviceRequest::GPU).unwrap();
         run_rope_trial(prob, device);
@@ -421,10 +418,7 @@ def mlx_rope(input, dim, offset):
             dim,
             offset,
         } = prob;
-        println!(
-            "BS = {}, NH = {}, SL = {}, HD = {}, rope_dim = {}, offset = {}",
-            BS, NH, SL, HD, dim, offset
-        );
+        println!("BS = {BS}, NH = {NH}, SL = {SL}, HD = {HD}, rope_dim = {dim}, offset = {offset}");
 
         let device = Device::request_device(DeviceRequest::CPU).unwrap();
         run_rope_trial(prob, device);

@@ -6,8 +6,8 @@ use piston_macros::{IrFields, WgslMetadata};
 use crate::{
     gpu::{BindGroupLayoutDescriptor, WorkgroupCount},
     rvec, wgc, wgs, Array, BindingMode, BuiltIn, DType, GPUOperation, Kernel, KernelElement,
-    KernelRenderable, KernelSource, OpGuards, Operation, OperationError, RVec, Scalar, StorageView,
-    OpTensor, WgslKernelBuilder, WgslPrimitive, WorkgroupSize, Workload,
+    KernelRenderable, KernelSource, OpGuards, OpTensor, Operation, OperationError, RVec, Scalar,
+    StorageView, WgslKernelBuilder, WgslPrimitive, WorkgroupSize, Workload,
 };
 
 /// Implements "alibi" (Attention Linear Bias)
@@ -24,8 +24,7 @@ impl OpGuards for Alibi {
         let shape = self.input.shape();
         assert!(
             shape.len() == 3,
-            "Alibi expects a 3D shape [B, n_head, seq], got shape={:?}",
-            shape
+            "Alibi expects a 3D shape [B, n_head, seq], got shape={shape:?}"
         );
     }
 
@@ -353,7 +352,7 @@ def alibi(input, max_bias):
 
         let out_cpu = out_gpu.to(&Device::CPU).unwrap();
 
-        println!("Problem: {:?}", problem);
+        println!("Problem: {problem:?}");
         println!("Ground truth shape: {:?}", ground.shape());
         println!("Output shape: {:?}", out_cpu.shape());
         println!("Ground truth: {:?}", ground.to_ndarray_view::<f32>());

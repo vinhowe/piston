@@ -251,9 +251,9 @@ impl Kernel for TernaryKernels {
     fn kernel_element(&self, dst: &OpTensor) -> KernelElement {
         let numel = dst.shape().numel();
 
-        if numel % 4 == 0 {
+        if numel.is_multiple_of(4) {
             KernelElement::Vec4
-        } else if numel % 2 == 0 {
+        } else if numel.is_multiple_of(2) {
             KernelElement::Vec2
         } else {
             KernelElement::Scalar
@@ -325,18 +325,16 @@ mod tests {
             TernaryOp::Addcdiv => format!(
                 r#"
 import torch
-def {}(input, tensor1, tensor2):
-    return torch.addcdiv(torch.from_numpy(input), torch.from_numpy(tensor1), torch.from_numpy(tensor2), value={}).numpy()
+def {kn}(input, tensor1, tensor2):
+    return torch.addcdiv(torch.from_numpy(input), torch.from_numpy(tensor1), torch.from_numpy(tensor2), value={value}).numpy()
 "#,
-                kn, value
             ),
             TernaryOp::Addcmul => format!(
                 r#"
 import torch
-def {}(input, tensor1, tensor2):
-    return torch.addcmul(torch.from_numpy(input), torch.from_numpy(tensor1), torch.from_numpy(tensor2), value={}).numpy()
+def {kn}(input, tensor1, tensor2):
+    return torch.addcmul(torch.from_numpy(input), torch.from_numpy(tensor1), torch.from_numpy(tensor2), value={value}).numpy()
 "#,
-                kn, value
             ),
         };
         run_py_prg(

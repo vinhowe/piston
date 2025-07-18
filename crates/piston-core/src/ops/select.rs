@@ -6,8 +6,8 @@ use piston_macros::{IrFields, WgslMetadata};
 use crate::{
     gpu::{BindGroupLayoutDescriptor, WorkgroupCount},
     rvec, wgc, wgs, Array, BindingMode, BuiltIn, DType, GPUOperation, Kernel, KernelElement,
-    KernelRenderable, KernelSource, OpGuards, Operation, OperationError, RVec, Scalar, StorageView,
-    Stride, OpTensor, Vec2, Vec4, WgslKernelBuilder, WgslPrimitive, WorkgroupSize, Workload,
+    KernelRenderable, KernelSource, OpGuards, OpTensor, Operation, OperationError, RVec, Scalar,
+    StorageView, Stride, Vec2, Vec4, WgslKernelBuilder, WgslPrimitive, WorkgroupSize, Workload,
 };
 use inline_wgsl::wgsl;
 
@@ -221,7 +221,11 @@ impl Kernel for IndexSelectKernels {
         }
     }
 
-    fn metadata(&self, dst: &OpTensor, _: &KernelElement) -> Result<Self::Metadata, OperationError> {
+    fn metadata(
+        &self,
+        dst: &OpTensor,
+        _: &KernelElement,
+    ) -> Result<Self::Metadata, OperationError> {
         let IndexSelectKernels::Standard(inner) = self;
 
         let dst_numel = dst.shape().numel() as u32;
@@ -307,7 +311,7 @@ mod tests {
     use test_strategy::proptest;
 
     use crate::test_util::run_py_prg;
-    use crate::{quantize, rvec, shape, Device, DeviceRequest, Shape, OpTensor, Q8_0F};
+    use crate::{quantize, rvec, shape, Device, DeviceRequest, OpTensor, Shape, Q8_0F};
 
     impl Arbitrary for IndexSelectProblem {
         type Parameters = ();
@@ -317,9 +321,14 @@ mod tests {
             Shape::arbitrary_with(vec![1..=512usize, 1..=16usize])
                 .prop_flat_map(|input_shape| (Just(input_shape), 1..64usize))
                 .prop_map(|(input_shape, num_indices)| {
-                    let indices =
-                        OpTensor::randint(0, input_shape[0] as i32, num_indices, Device::CPU, false)
-                            .unwrap();
+                    let indices = OpTensor::randint(
+                        0,
+                        input_shape[0] as i32,
+                        num_indices,
+                        Device::CPU,
+                        false,
+                    )
+                    .unwrap();
                     IndexSelectProblem {
                         input_shape,
                         indices,
@@ -334,9 +343,8 @@ mod tests {
             r#"
 import torch
 def index_select(input, indices):
-    return torch.index_select(torch.from_numpy(input),{},torch.from_numpy(indices)).numpy()
-"#,
-            dim
+    return torch.index_select(torch.from_numpy(input),{dim},torch.from_numpy(indices)).numpy()
+"#
         );
         run_py_prg(prg.to_string(), &[input, indices], &[], input.dtype())
     }
@@ -358,8 +366,8 @@ def index_select(input, indices):
 
         let result = input.index_select(indices, 0).unwrap();
         let x = result.to(&Device::CPU).unwrap();
-        println!("X: {:?}", x);
-        println!("Ground Truth: {:?}", ground_truth);
+        println!("X: {x:?}");
+        println!("Ground Truth: {ground_truth:?}");
         ground_truth.all_close(&x, 1e-1, 1e-1).unwrap();
     }
 

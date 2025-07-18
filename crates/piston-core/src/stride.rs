@@ -39,9 +39,9 @@ impl std::fmt::Debug for Stride {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut shape = format!("[{}", self.0.first().unwrap_or(&0));
         for dim in self.0.iter().skip(1) {
-            shape.push_str(&format!("x{}", dim));
+            shape.push_str(&format!("x{dim}"));
         }
-        write!(f, "{}]", shape)
+        write!(f, "{shape}]")
     }
 }
 

@@ -144,7 +144,7 @@ impl TensorCopy {
         )))
     }
 
-    pub fn create_gpu_compile_key(&self) -> CopyCompileKey {
+    pub fn create_gpu_compile_key(&self) -> CopyCompileKey<'_> {
         CopyCompileKey {
             src: &self.src,
             dst: &self.dst,

@@ -131,9 +131,9 @@ impl Kernel for WhereCondKernels {
             1
         };
 
-        if N % 4 == 0 {
+        if N.is_multiple_of(4) {
             KernelElement::Vec4
-        } else if N % 2 == 0 {
+        } else if N.is_multiple_of(2) {
             KernelElement::Vec2
         } else {
             KernelElement::Scalar
@@ -344,7 +344,7 @@ impl KernelRenderable for WhereCondKernels {
                     KernelElement::Vec2 => format!("{}<{}>", kernel_element.as_str(), dtype),
                     KernelElement::Vec4 => format!("{}<{}>", kernel_element.as_str(), dtype),
                 };
-                format!("{}(metadata.on_true_value)", casted_scalar_dtype)
+                format!("{casted_scalar_dtype}(metadata.on_true_value)")
             }
         };
 
@@ -356,7 +356,7 @@ impl KernelRenderable for WhereCondKernels {
                     KernelElement::Vec2 => format!("{}<{}>", kernel_element.as_str(), dtype),
                     KernelElement::Vec4 => format!("{}<{}>", kernel_element.as_str(), dtype),
                 };
-                format!("{}(metadata.on_false_value)", casted_scalar_dtype)
+                format!("{casted_scalar_dtype}(metadata.on_false_value)")
             }
         };
 
@@ -417,8 +417,8 @@ def where_cond_scalar(a, b, scalar):
 
         let ours = b.to(&Device::CPU).unwrap();
 
-        log::debug!("ours = {:?}", ours);
-        log::debug!("ground = {:?}", ground);
+        log::debug!("ours = {ours:?}");
+        log::debug!("ground = {ground:?}");
 
         ground.all_close(&ours, 1e-6, 1e-6).unwrap();
     }
@@ -439,8 +439,8 @@ def where_cond_scalar(a, b, scalar):
 
         let ours = result.to(&Device::CPU).unwrap();
 
-        log::debug!("ours = {:?}", ours);
-        log::debug!("ground = {:?}", ground);
+        log::debug!("ours = {ours:?}");
+        log::debug!("ground = {ground:?}");
 
         ground.all_close(&ours, 1e-6, 1e-6).unwrap();
     }

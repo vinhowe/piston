@@ -86,7 +86,7 @@ impl BufferPool {
         } else {
             //Round all buffers to 4 bytes, as any buffer may be read back to the CPU, which
             //requires a copy
-            if desc.size % wgpu::COPY_BUFFER_ALIGNMENT == 0 {
+            if desc.size.is_multiple_of(wgpu::COPY_BUFFER_ALIGNMENT) {
                 desc.size
             } else {
                 desc.size + wgpu::COPY_BUFFER_ALIGNMENT - (desc.size % wgpu::COPY_BUFFER_ALIGNMENT)
@@ -105,9 +105,8 @@ impl BufferPool {
             if let Some(vram_limit) = vram_limit {
                 if total_size + size > vram_limit {
                     panic!(
-                        "VRAM limit exceeded: attempted to allocate buffer of size {} bytes, \
-                        which would exceed the VRAM limit of {} bytes (current usage: {} bytes)",
-                        size, vram_limit, total_size
+                        "VRAM limit exceeded: attempted to allocate buffer of size {size} bytes, \
+                        which would exceed the VRAM limit of {vram_limit} bytes (current usage: {total_size} bytes)"
                     );
                 }
             }

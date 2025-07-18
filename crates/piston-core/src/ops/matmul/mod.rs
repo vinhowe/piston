@@ -14,8 +14,8 @@ use std::{cmp::Ordering, mem};
 use crate::{
     gpu::{BindGroupLayoutDescriptor, CpuUniform},
     rvec, DType, Device, GPUOperation, Kernel, KernelElement, KernelKey, KernelMetadata,
-    KernelRenderable, KernelSource, OpGuards, Operation, OperationError, RVec, Shape, StorageView,
-    Stride, OpTensor, WorkgroupSize, Workload, Q4_KF, Q4_KH, Q8_0F, Q8_0H,
+    KernelRenderable, KernelSource, OpGuards, OpTensor, Operation, OperationError, RVec, Shape,
+    StorageView, Stride, WorkgroupSize, Workload, Q4_KF, Q4_KH, Q8_0F, Q8_0H,
 };
 
 //https://link.springer.com/chapter/10.1007/978-3-642-29737-3_42
@@ -201,7 +201,7 @@ impl MatmulSpec {
             self.dst_shape.numel(),
         ];
 
-        if checks.iter().all(|&x| x % 4 == 0) {
+        if checks.iter().all(|&x| x.is_multiple_of(4)) {
             KernelElement::Vec4
         } else {
             KernelElement::Scalar
@@ -372,9 +372,9 @@ impl MatmulSpec {
         let dim_rhs_outer = self.dim_rhs_outer();
         let dim_inner = self.dim_inner();
 
-        let lhs_fit = dim_lhs_outer % Self::TILE_DIM == 0;
-        let rhs_fit = dim_rhs_outer % Self::TILE_DIM == 0;
-        let dst_fit = dim_inner % Self::TILE_DIM == 0;
+        let lhs_fit = dim_lhs_outer.is_multiple_of(Self::TILE_DIM);
+        let rhs_fit = dim_rhs_outer.is_multiple_of(Self::TILE_DIM);
+        let dst_fit = dim_inner.is_multiple_of(Self::TILE_DIM);
         (lhs_fit, rhs_fit, dst_fit)
     }
 }
@@ -781,21 +781,15 @@ mod tests {
         };
 
         let inner = if bias.is_some() {
-            format!(
-                "torch.add(torch.matmul({}, {}), torch.from_numpy(bias))",
-                a_op, b_op
-            )
+            format!("torch.add(torch.matmul({a_op}, {b_op}), torch.from_numpy(bias))")
         } else {
-            format!("torch.matmul({}, {})", a_op, b_op)
+            format!("torch.matmul({a_op}, {b_op})")
         };
 
         let result_op = if trans_dst {
-            format!(
-                "np.ascontiguousarray(torch.permute({}, [0, 2, 1]).numpy())",
-                inner
-            )
+            format!("np.ascontiguousarray(torch.permute({inner}, [0, 2, 1]).numpy())")
         } else {
-            format!("{}.numpy()", inner)
+            format!("{inner}.numpy()")
         };
 
         let prg = format!(
@@ -866,8 +860,7 @@ def matmul(a, b{}):
             ref transpose,
         } = prob;
         println!(
-            "Running sgemm: B={} M={} N={} K={} has_bias={} transpose={:?}",
-            B, M, N, K, has_bias, transpose
+            "Running sgemm: B={B} M={M} N={N} K={K} has_bias={has_bias} transpose={transpose:?}"
         );
         run_matmul_trial(&device, prob).unwrap();
     }
@@ -884,8 +877,7 @@ def matmul(a, b{}):
             ref transpose,
         } = prob;
         println!(
-            "Running sgemm: B={} M={} N={} K={} has_bias={} transpose={:?}",
-            B, M, N, K, has_bias, transpose
+            "Running sgemm: B={B} M={M} N={N} K={K} has_bias={has_bias} transpose={transpose:?}"
         );
         run_matmul_trial(&device, prob).unwrap();
     }
@@ -923,8 +915,8 @@ def matmul(a, b{}):
             None
         };
 
-        println!("LHS shape: {:?}", lhs_shape);
-        println!("RHS shape: {:?}", rhs_shape);
+        println!("LHS shape: {lhs_shape:?}");
+        println!("RHS shape: {rhs_shape:?}");
         println!("Bias: {:?}", bias.as_ref().map(|b| b.shape()));
 
         let a = OpTensor::randn::<f32, _>(0.0, 1.0, lhs_shape, cpu_device.clone(), false)?;
@@ -938,8 +930,8 @@ def matmul(a, b{}):
         let c_gpu = a_gpu.gemm(b_gpu, bias_gpu, trans_lhs, trans_rhs, trans_dst)?;
 
         let d_gpu = c_gpu.to(&Device::CPU)?;
-        println!("PISTON SGEMM\n{:?}\n", d_gpu);
-        println!("PYTORCH FP32:\n{:?}", ground);
+        println!("PISTON SGEMM\n{d_gpu:?}\n");
+        println!("PYTORCH FP32:\n{ground:?}");
 
         ground.all_close(&d_gpu, 1e-4, 1e-4)?;
         Ok(())
@@ -959,8 +951,8 @@ def matmul(a, b{}):
         let c_gpu = a_gpu.matmul(b_gpu, false, false)?;
         let ours = c_gpu.to(&Device::CPU)?;
 
-        println!("PISTON QUANT\n{:?}\n", ours);
-        println!("PYTORCH FP32:\n{:?}", ground);
+        println!("PISTON QUANT\n{ours:?}\n");
+        println!("PYTORCH FP32:\n{ground:?}");
 
         ground.all_close(&ours, 1e1, 1e-1)?;
 

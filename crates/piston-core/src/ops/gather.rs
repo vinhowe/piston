@@ -225,9 +225,8 @@ mod tests {
             r#"
 import torch
 def gather(src, ids, dim):
-    return torch.gather(torch.from_numpy(src), {}, torch.from_numpy(ids).long()).numpy()
+    return torch.gather(torch.from_numpy(src), {dim}, torch.from_numpy(ids).long()).numpy()
 "#,
-            dim
         );
         run_py_prg(prg.to_string(), &[src, ids], &[&dim], src.dtype())
     }
@@ -252,10 +251,10 @@ def gather(src, ids, dim):
         let result = src_gpu.gather(ids_gpu, dim).unwrap();
 
         let ours = result.to(&Device::CPU).unwrap();
-        log::debug!("src = {:?}", src);
-        log::debug!("ids = {:?}", ids);
-        log::debug!("ours = {:?}", ours);
-        log::debug!("ground = {:?}", ground);
+        log::debug!("src = {src:?}");
+        log::debug!("ids = {ids:?}");
+        log::debug!("ours = {ours:?}");
+        log::debug!("ground = {ground:?}");
         ground.all_close(&ours, 1e-5, 1e-5).unwrap();
     }
 
@@ -275,7 +274,7 @@ def gather(src, ids, dim):
     fn test_gather(prob: GatherProblem) {
         let _ = env_logger::builder().is_test(true).try_init();
         let GatherProblem { B, M, N, dim } = prob;
-        log::info!("B = {}, M = {}, N = {}, dim = {}", B, M, N, dim);
+        log::info!("B = {B}, M = {M}, N = {N}, dim = {dim}");
         let device = Device::request_device(DeviceRequest::GPU).unwrap();
         run_gather_trial(prob, device);
     }
@@ -303,11 +302,10 @@ import torch
 def gather_backward(src, ids):
     src_tensor = torch.tensor(torch.from_numpy(src), requires_grad=True)
     ids_tensor = torch.from_numpy(ids).long()
-    result = torch.gather(src_tensor, {}, ids_tensor)
+    result = torch.gather(src_tensor, {dim}, ids_tensor)
     result.backward(torch.ones_like(result))
     return src_tensor.grad.numpy()
-"#,
-            dim
+"#
         );
         run_py_prg(prg.to_string(), &[src, ids], &[], DType::F32)
     }
@@ -339,10 +337,10 @@ def gather_backward(src, ids):
         let src_cpu = src.to(&Device::CPU)?;
         let ids_cpu = ids.to(&Device::CPU)?;
 
-        println!("src = {:?}", src_cpu);
-        println!("ids = {:?}", ids_cpu);
-        println!("ours = {:?}", ours);
-        println!("ground = {:?}", ground);
+        println!("src = {src_cpu:?}");
+        println!("ids = {ids_cpu:?}");
+        println!("ours = {ours:?}");
+        println!("ground = {ground:?}");
         ground.all_close(&ours, 1e-5, 1e-5)?;
         Ok(())
     }
@@ -351,7 +349,7 @@ def gather_backward(src, ids):
     fn test_gather_backward(prob: GatherBackwardProblem) {
         let _ = env_logger::builder().is_test(true).try_init();
         let GatherBackwardProblem { B, M, N, dim } = prob;
-        println!("B = {}, M = {}, N = {}, dim = {}", B, M, N, dim);
+        println!("B = {B}, M = {M}, N = {N}, dim = {dim}");
         run_gather_backward_trial(prob).unwrap();
     }
 }

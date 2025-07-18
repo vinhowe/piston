@@ -433,7 +433,7 @@ impl OpTensor {
         &self.device
     }
 
-    pub fn storage(&self) -> RwLockReadGuard<Option<Storage>> {
+    pub fn storage(&'_ self) -> RwLockReadGuard<'_, Option<Storage>> {
         self.inner.storage.read()
     }
 
@@ -1845,8 +1845,7 @@ impl OpTensor {
                 stack.push((cur_t, cur_src + 1));
             } else if pending[precursor_id] {
                 panic!(
-                    "Cycle detected whilst computing topological order: {:?}. Try plotting with feature `plotting`.",
-                    precursor_id
+                    "Cycle detected whilst computing topological order: {precursor_id:?}. Try plotting with feature `plotting`."
                 );
             } else {
                 pending.set(precursor_id, true);
@@ -1907,7 +1906,7 @@ impl OpTensor {
         &self,
         can_inplace: bool,
         uniform: &mut CpuUniform,
-    ) -> Option<GpuCompileKey> {
+    ) -> Option<GpuCompileKey<'_>> {
         match self.op() {
             LazyOp::Copy(c) => Some(GpuCompileKey::Copy(c.create_gpu_compile_key())),
             _ => self
@@ -2301,7 +2300,7 @@ impl OpTensor {
         self.to_ndarray_view().into_owned()
     }
 
-    pub fn to_ndarray_view<T: TensorDType>(&self) -> ArrayViewD<T> {
+    pub fn to_ndarray_view<T: TensorDType>(&self) -> ArrayViewD<'_, T> {
         ensure_resolved_sync!(self);
         assert!(self.device().is_cpu());
         assert!(self.dtype() == T::dtype());
@@ -2511,7 +2510,7 @@ pub struct Tensor {
 }
 
 impl Tensor {
-    fn inner_or_source(&self) -> RwLockWriteGuard<OpTensor> {
+    fn inner_or_source(&self) -> RwLockWriteGuard<'_, OpTensor> {
         let mut inplace_source = self.inplace_source.write();
         let mut inner = self.inner.write();
         if let Some(inplace_source) = inplace_source.take_if(|_| inner.resolved()) {
@@ -3672,7 +3671,7 @@ mod tests {
         let bingo = OpTensor::cat(rvec![rand, nans], 2).unwrap();
 
         let result = bingo.to(&Device::CPU).unwrap();
-        println!("RESULT: {:?}", result);
+        println!("RESULT: {result:?}");
         assert!(result.has_nan::<f32>());
     }
 }

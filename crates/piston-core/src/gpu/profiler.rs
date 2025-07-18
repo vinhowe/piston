@@ -176,7 +176,7 @@ impl Profiler {
         #[cfg(feature = "gpu-profiling")] id: usize,
         #[cfg(not(feature = "gpu-profiling"))] id: TensorId,
         name: &str,
-    ) -> wgpu::ComputePassTimestampWrites {
+    ) -> wgpu::ComputePassTimestampWrites<'_> {
         let beginning_index = self.query_index;
         self.query_index += 1;
         let end_index = self.query_index;

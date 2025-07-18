@@ -6,8 +6,8 @@ use piston_macros::{IrFields, WgslMetadata};
 
 use crate::{
     gpu::BindGroupLayoutDescriptor, rvec, Array, BindingMode, BuiltIn, DType, GPUOperation, Kernel,
-    KernelElement, KernelRenderable, KernelSource, OpGuards, Operation, OperationError, RVec,
-    Scalar, Shape, StorageView, Stride, OpTensor, Vec2, Vec4, WgslKernelBuilder, WgslPrimitive,
+    KernelElement, KernelRenderable, KernelSource, OpGuards, OpTensor, Operation, OperationError,
+    RVec, Scalar, Shape, StorageView, Stride, Vec2, Vec4, WgslKernelBuilder, WgslPrimitive,
     WorkgroupSize, Workload,
 };
 
@@ -252,10 +252,7 @@ def check_normal(output):
         // Check if the distribution is approximately normal
         // We use a tolerance of 0.1 for both mean and standard deviation
         if (mean - 0.0).abs() < 0.1 && (std - 1.0).abs() < 0.1 {
-            println!(
-                "\x1b[1;32mDistribution approximately normal\x1b[0m - mean={} std={}",
-                mean, std
-            );
+            println!("\x1b[1;32mDistribution approximately normal\x1b[0m - mean={mean} std={std}");
         } else {
             (|| -> anyhow::Result<()> {
                 {
@@ -283,7 +280,7 @@ def check_normal(output):
     #[proptest(cases = 8)]
     fn test_fill_randn(prob: FillRandnProblem) {
         let FillRandnProblem { B, M, N } = prob;
-        println!("B = {}, M = {}, N = {}", B, M, N);
+        println!("B = {B}, M = {M}, N = {N}");
         let device = Device::request_device(DeviceRequest::GPU).unwrap();
         run_fill_randn_trial(prob, device);
     }

@@ -119,7 +119,7 @@ impl Device {
     }
 
     pub fn label(&self) -> String {
-        format!("{:?}", self)
+        format!("{self:?}")
     }
 
     pub fn try_gpu(&self) -> Result<&WgpuDevice, DeviceError> {

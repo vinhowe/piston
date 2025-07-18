@@ -42,7 +42,7 @@ impl KernelRenderable for ConcatKernels {
         let ConcatKernels::Standard(inner) = self;
 
         for i in 0..inner.inputs.len() {
-            builder.register_storage(format!("X{}", i).as_str(), BindingMode::ReadOnly, arr);
+            builder.register_storage(format!("X{i}").as_str(), BindingMode::ReadOnly, arr);
         }
         builder.register_storage("Y", BindingMode::ReadWrite, arr);
         builder.register_uniform();
@@ -93,9 +93,9 @@ impl KernelRenderable for ConcatKernels {
 
         for i in 1..inner.inputs.len() {
             let prevcum = format!("metadata.cum{}", i - 1);
-            let cum = format!("metadata.cum{}", i);
-            let stride = format!("metadata.x{}_stride", i);
-            let src = format!("X{}", i);
+            let cum = format!("metadata.cum{i}");
+            let stride = format!("metadata.x{i}_stride");
+            let src = format!("X{i}");
 
             kernel_builder.write_main(wgsl! {
                 if(dst_index[dim] < 'cum) {
@@ -216,14 +216,14 @@ impl Kernel for ConcatKernels {
             .collect::<Vec<u32>>();
 
         for (si, stride) in input_stride.iter().enumerate() {
-            dyn_meta.add_field(format!("x{}_stride", si), UVec4::from(stride));
+            dyn_meta.add_field(format!("x{si}_stride"), UVec4::from(stride));
         }
 
         dyn_meta.add_field("dst_stride", UVec4::from(&dst_stride));
         dyn_meta.add_field("dst_numel", dst_shape.numel() as u32);
 
         for (ci, c) in cumsum.iter().enumerate() {
-            dyn_meta.add_field(format!("cum{}", ci), *c);
+            dyn_meta.add_field(format!("cum{ci}"), *c);
         }
 
         dyn_meta.add_field("dim", promoted_dim as u32);
@@ -309,9 +309,8 @@ def permute(*tensors):
     numpy_tensors = []
     for t in tensors:
         numpy_tensors.append(torch.from_numpy(t))
-    return np.ascontiguousarray(torch.cat(numpy_tensors, dim={}).numpy())
+    return np.ascontiguousarray(torch.cat(numpy_tensors, dim={args}).numpy())
 "#,
-            args
         );
         run_py_prg(prg.to_string(), to_cat, &[], to_cat[0].dtype())
     }
@@ -319,7 +318,7 @@ def permute(*tensors):
     fn run_concat_trial(prob: ConcatProblem, device: Device) -> anyhow::Result<()> {
         let ConcatProblem { tensors, dim } = prob;
 
-        let arg_str = format!("{}", dim);
+        let arg_str = format!("{dim}");
         let ground = ground_truth(
             tensors.iter().collect::<Vec<&OpTensor>>().as_slice(),
             arg_str.as_str(),
@@ -331,8 +330,8 @@ def permute(*tensors):
         let t_rvec = RVec::from(tensors);
         let ours = OpTensor::cat(t_rvec, dim)?;
         let result = ours.to(&Device::CPU)?;
-        println!("Ground: {:?}\n", ground);
-        println!("Ours: {:?}", result);
+        println!("Ground: {ground:?}");
+        println!("Ours: {result:?}");
         ground.all_close(&result, 1e-5, 1e-5)?;
         Ok(())
     }

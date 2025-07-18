@@ -203,9 +203,9 @@ impl std::fmt::Debug for Shape {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut shape = format!("[{}", self.0.first().unwrap_or(&0));
         for dim in self.0.iter().skip(1) {
-            shape.push_str(&format!("x{}", dim));
+            shape.push_str(&format!("x{dim}"));
         }
-        write!(f, "{}]", shape)
+        write!(f, "{shape}]")
     }
 }
 
@@ -432,7 +432,7 @@ mod tests {
         pub fn as_torch(&self) -> String {
             let mut shape = format!("({}", self[0]);
             for dim in self.iter().skip(1) {
-                shape.push_str(&format!(", {}", dim));
+                shape.push_str(&format!(", {dim}"));
             }
             shape.push(')');
             shape
@@ -653,7 +653,7 @@ pub fn hole_size(el_count: usize, prod_d: usize, s: &dyn std::fmt::Debug) -> Res
     if prod_d == 0 {
         anyhow::bail!("cannot reshape tensor of {el_count} elements to {s:?}")
     }
-    if el_count % prod_d != 0 {
+    if !el_count.is_multiple_of(prod_d) {
         anyhow::bail!("cannot reshape tensor with {el_count} elements to {s:?}")
     }
     Ok(el_count / prod_d)

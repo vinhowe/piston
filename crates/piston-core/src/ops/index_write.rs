@@ -6,8 +6,8 @@ use piston_macros::{IrFields, WgslMetadata};
 
 use crate::{
     gpu::BindGroupLayoutDescriptor, rvec, Array, BindingMode, BuiltIn, DType, GPUOperation, Kernel,
-    KernelElement, KernelRenderable, KernelSource, OpGuards, Operation, OperationError, RVec,
-    Scalar, Shape, StorageView, Stride, OpTensor, Vec2, Vec4, WgslKernelBuilder, WgslPrimitive,
+    KernelElement, KernelRenderable, KernelSource, OpGuards, OpTensor, Operation, OperationError,
+    RVec, Scalar, Shape, StorageView, Stride, Vec2, Vec4, WgslKernelBuilder, WgslPrimitive,
     WorkgroupSize, Workload,
 };
 
@@ -131,7 +131,11 @@ impl Kernel for IndexWriteKernels {
         }
     }
 
-    fn metadata(&self, dst: &OpTensor, _: &KernelElement) -> Result<Self::Metadata, OperationError> {
+    fn metadata(
+        &self,
+        dst: &OpTensor,
+        _: &KernelElement,
+    ) -> Result<Self::Metadata, OperationError> {
         let IndexWriteKernels::Standard(inner) = self;
         let padder = |mut shape: Shape| {
             shape.left_pad_to(1, 4);
@@ -219,8 +223,8 @@ mod tests {
 
         let ground_truth =
             OpTensor::from_data(vec![1., 2., 3., 4., 7., 8.], (3, 2), Device::CPU, false);
-        println!("result: {:?}", result);
-        println!("ground_truth: {:?}", ground_truth);
+        println!("result: {result:?}");
+        println!("ground_truth: {ground_truth:?}");
         ground_truth.all_close(&result, 1e-8, 1e-8).unwrap();
     }
 }

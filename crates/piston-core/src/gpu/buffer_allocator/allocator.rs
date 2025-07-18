@@ -173,7 +173,7 @@ impl BufferAllocator {
     ) -> &'a OpTensor {
         let old_source_id = source.id();
         let mut candidate = source;
-        log::trace!("Determining source for {:?}", old_source_id);
+        log::trace!("Determining source for {old_source_id:?}");
 
         // If we start on a view, we need to iterate unconditionally
         // until we find a non-view operation

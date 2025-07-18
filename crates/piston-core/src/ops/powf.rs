@@ -232,9 +232,9 @@ impl Kernel for PowfKernels {
             1
         };
 
-        if N % 4 == 0 {
+        if N.is_multiple_of(4) {
             KernelElement::Vec4
-        } else if N % 2 == 0 {
+        } else if N.is_multiple_of(2) {
             KernelElement::Vec2
         } else {
             KernelElement::Scalar
@@ -368,7 +368,7 @@ def powf(a, e):
     #[proptest(cases = 16)]
     fn test_powf_scalar(prob: PowfProblem) {
         let PowfProblem { B, M, N, e } = prob;
-        println!("B = {}, M = {}, N = {}, e = {}", B, M, N, e);
+        println!("B = {B}, M = {M}, N = {N}, e = {e}");
         let device = Device::request_device(DeviceRequest::GPU).unwrap();
         run_powf_trial(prob, device);
     }
@@ -376,7 +376,7 @@ def powf(a, e):
     #[proptest(cases = 8)]
     fn test_powf_tensor(prob: PowfTensorProblem) {
         let PowfTensorProblem { B, M, N } = prob;
-        println!("B = {}, M = {}, N = {}", B, M, N);
+        println!("B = {B}, M = {M}, N = {N}");
         let device = Device::request_device(DeviceRequest::GPU).unwrap();
         run_powf_tensor_trial(prob, device);
     }
