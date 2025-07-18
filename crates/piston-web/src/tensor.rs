@@ -401,10 +401,16 @@ impl JsTensor {
         Ok(JsTensor { inner: tensor })
     }
 
-    pub fn norm(self, ord: JsValue, dim: Option<Dims>) -> JsTensorResult {
+    pub fn norm(self, ord: JsValue, dim: Option<Dims>, keepdim: bool) -> JsTensorResult {
         let norm_ord = js_value_to_norm_ord(ord)?;
         let tensor = if let Some(dim) = dim {
-            self.inner.norm_ord_dim(norm_ord, dim)
+            if keepdim {
+                self.inner.norm_ord_dim_keepdim(norm_ord, dim)
+            } else {
+                self.inner.norm_ord_dim(norm_ord, dim)
+            }
+        } else if keepdim {
+            self.inner.norm_ord_keepdim(norm_ord)
         } else {
             self.inner.norm_ord(norm_ord)
         }
