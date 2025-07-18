@@ -987,7 +987,7 @@ impl OpTensor {
         self.flatten_impl(None::<usize>, None::<usize>)
     }
 
-    /// # Slice
+    /// # Slice
     ///
     /// Current slice implementation requires specification of all dimensions.
     /// Currently very user hostile, but will be improved.
@@ -1827,7 +1827,7 @@ impl OpTensor {
         buffer.to_slice::<T>(self.shape())[0]
     }
 
-    /// # Bindings
+    /// # Bindings
     ///
     /// Only applicable to GPU tensors.
     /// Generates the bind group entries required to bind the tensor to a kernel.
