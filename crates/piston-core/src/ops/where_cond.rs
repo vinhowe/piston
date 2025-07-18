@@ -223,7 +223,15 @@ impl Kernel for WhereCondKernels {
     ) -> Result<KernelSource, OperationError> {
         let kernel_element = self.kernel_element(dst);
         let WhereCondKernels::Standard(inner) = self;
-        match (inner.condition.dtype(), &kernel_element) {
+        let tensor_dtype = inner
+            .on_true
+            .map_tensor(|t| t.dtype())
+            .or_else(|_| inner.on_false.map_tensor(|t| t.dtype()))?;
+        let dtype = match tensor_dtype {
+            TensorTypeOrScalarEnum::Tensor(t) => t,
+            TensorTypeOrScalarEnum::Scalar(_) => DType::F32,
+        };
+        match (dtype, &kernel_element) {
             (DType::F32, KernelElement::Scalar) => {
                 self.render::<Scalar<f32>>(inplace, dst, workgroup_size)
             }
