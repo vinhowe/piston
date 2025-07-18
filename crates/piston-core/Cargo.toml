@@ -14,7 +14,7 @@ debug = []                                      #dump every node
 
 [dependencies]
 piston-macros = { path = "../piston-macros" }
-inline-wgsl = { git = "https://github.com/FL33TW00D/inline-wgsl.git", branch = "master" }
+inline-wgsl = { git = "https://github.com/vinhowe/inline-wgsl.git", branch = "master" }
 wgpu = { workspace = true }
 bytemuck = { workspace = true }
 half = { workspace = true }
