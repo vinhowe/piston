@@ -840,7 +840,10 @@ impl TensorTypeOrScalar<Tensor> for JsTensorOrScalar {
 }
 
 fn js_value_to_norm_ord(value: JsValue) -> Result<NormOrd, JsError> {
-    if let Some(num) = value.as_f64() {
+    if value.is_undefined() || value.is_null() {
+        // Handle undefined or null values
+        Ok(NormOrd::Frobenius)
+    } else if let Some(num) = value.as_f64() {
         // Handle special numeric cases
         if num == 0.0 {
             Ok(NormOrd::Zero)
