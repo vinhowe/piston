@@ -18,6 +18,19 @@ pub struct WhereCond {
     pub on_false: TensorTypeOrScalarEnum<OpTensor>,
 }
 
+impl WhereCond {
+    pub fn dtype(&self) -> Result<DType, OperationError> {
+        let tensor_dtype = self
+            .on_true
+            .map_tensor(|t| t.dtype())
+            .or_else(|_| self.on_false.map_tensor(|t| t.dtype()))?;
+        match tensor_dtype {
+            TensorTypeOrScalarEnum::Tensor(t) => Ok(t),
+            TensorTypeOrScalarEnum::Scalar(_) => Ok(DType::F32),
+        }
+    }
+}
+
 impl OpGuards for WhereCond {
     fn check_shapes(&self) {
         let (a, b, c) = (&self.condition, &self.on_true, &self.on_false);
@@ -70,11 +83,7 @@ impl Operation for WhereCond {
         }
         let broadcasted = broadcasted.unwrap();
         let ostride = Stride::from(&broadcasted);
-        Ok(StorageView::new(
-            broadcasted,
-            self.condition.dtype(),
-            ostride,
-        ))
+        Ok(StorageView::new(broadcasted, self.dtype()?, ostride))
     }
 
     #[inline]
@@ -223,14 +232,7 @@ impl Kernel for WhereCondKernels {
     ) -> Result<KernelSource, OperationError> {
         let kernel_element = self.kernel_element(dst);
         let WhereCondKernels::Standard(inner) = self;
-        let tensor_dtype = inner
-            .on_true
-            .map_tensor(|t| t.dtype())
-            .or_else(|_| inner.on_false.map_tensor(|t| t.dtype()))?;
-        let dtype = match tensor_dtype {
-            TensorTypeOrScalarEnum::Tensor(t) => t,
-            TensorTypeOrScalarEnum::Scalar(_) => DType::F32,
-        };
+        let dtype = inner.dtype()?;
         match (dtype, &kernel_element) {
             (DType::F32, KernelElement::Scalar) => {
                 self.render::<Scalar<f32>>(inplace, dst, workgroup_size)
@@ -260,9 +262,7 @@ impl Kernel for WhereCondKernels {
                 self.render::<Vec4<i32>>(inplace, dst, workgroup_size)
             }
             _ => Err(OperationError::CompileError(format!(
-                "Unsupported dtype {:?} or kernel element {:?}",
-                inner.condition.dtype(),
-                kernel_element
+                "Unsupported dtype {dtype:?} or kernel element {kernel_element:?}"
             ))),
         }
     }
