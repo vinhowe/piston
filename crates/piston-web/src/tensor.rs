@@ -220,6 +220,8 @@ impl_binary_op!(pow);
 impl_binary_op!(pow_);
 impl_binary_op_tensor_only!(minimum);
 impl_binary_op_tensor_only!(maximum);
+impl_binary_op_tensor_only!(minimum_);
+impl_binary_op_tensor_only!(maximum_);
 
 impl_ternary_op!(addcdiv);
 impl_ternary_op!(addcmul);
