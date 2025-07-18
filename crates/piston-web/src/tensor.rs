@@ -869,7 +869,7 @@ fn js_value_to_norm_ord(value: JsValue) -> Result<NormOrd, JsError> {
         }
     } else if let Some(string) = value.as_string() {
         // Handle string values using from_str
-        NormOrd::from_str(&string).map_err(|e| JsError::new(&format!("Invalid norm order: {}", e)))
+        NormOrd::from_str(&string).map_err(|e| JsError::new(&format!("Invalid norm order: {e}")))
     } else {
         Err(JsError::new("Norm order must be a number or string"))
     }
