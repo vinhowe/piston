@@ -67,6 +67,7 @@ export abstract class LRScheduler<T> {
   protected baseLrs: number[];
   protected lastLr: number[];
   protected stepCount: number = 0;
+  private _initialized: boolean = false;
 
   /**
    * Creates a new learning rate scheduler
@@ -93,14 +94,17 @@ export abstract class LRScheduler<T> {
     }
 
     this.lastLr = this.baseLrs.slice();
-    this.initialStep();
   }
 
   /**
-   * Initialize step counts and perform initial step
+   * Ensure the scheduler is initialized before first use
    */
-  protected initialStep(): void {
+  private ensureInitialized(): void {
+    if (this._initialized) return;
+
     this.stepCount = 0;
+    // Doing this here prevents infinite recursion
+    this._initialized = true;
     this.step();
   }
 
@@ -133,6 +137,7 @@ export abstract class LRScheduler<T> {
    * Return last computed learning rate by current scheduler
    */
   getLastLr(): number[] {
+    this.ensureInitialized();
     return this.lastLr.slice();
   }
 
@@ -145,6 +150,7 @@ export abstract class LRScheduler<T> {
    * Perform a scheduler step
    */
   step(): void {
+    this.ensureInitialized();
     this.stepCount += 1;
     this.lastEpoch += 1;
     const values = this.getLr();
@@ -161,6 +167,7 @@ export abstract class LRScheduler<T> {
    * Get current learning rate (alias for getLr for compatibility)
    */
   getCurrentLr(): number[] {
+    this.ensureInitialized();
     return this.getLr();
   }
 }
@@ -194,14 +201,14 @@ export class ConstantLR extends LRScheduler<ConstantConfig> {
 
   getLr(): number[] {
     if (this.lastEpoch === 0) {
-      return this.baseLrs.map((lr) => lr * this.factor);
+      return this.getLastLr().map((lr) => lr * this.factor);
     }
 
     if (this.lastEpoch !== this.totalIters) {
-      return this.baseLrs.slice();
+      return this.getLastLr().slice();
     }
 
-    return this.baseLrs.map((lr) => lr * (1 / this.factor));
+    return this.getLastLr().map((lr) => lr * (1 / this.factor));
   }
 }
 
@@ -230,7 +237,6 @@ export class LinearLR extends LRScheduler<LinearConfig> {
     totalIters: number = 5,
     lastEpoch: number = -1,
   ) {
-    super(optimizer, lastEpoch);
     if (startFactor > 1.0 || startFactor <= 0) {
       throw new Error(
         "Starting multiplicative factor expected to be greater than 0 and less or equal to 1.",
@@ -240,6 +246,8 @@ export class LinearLR extends LRScheduler<LinearConfig> {
     if (endFactor > 1.0 || endFactor < 0) {
       throw new Error("Ending multiplicative factor expected to be between 0 and 1.");
     }
+
+    super(optimizer, lastEpoch);
     this.startFactor = startFactor;
     this.endFactor = endFactor;
     this.totalIters = totalIters;
@@ -247,11 +255,17 @@ export class LinearLR extends LRScheduler<LinearConfig> {
 
   getLr(): number[] {
     if (this.lastEpoch === 0) {
-      return this.baseLrs.map((lr) => lr * this.startFactor);
+      console.log(
+        "startFactor",
+        this.startFactor,
+        this.getLastLr(),
+        this.getLastLr().map((lr) => lr * this.startFactor),
+      );
+      return this.getLastLr().map((lr) => lr * this.startFactor);
     }
 
     if (this.lastEpoch > this.totalIters) {
-      return this.baseLrs.map((lr) => lr);
+      return this.getLastLr().map((lr) => lr);
     }
 
     const factor =
@@ -259,7 +273,7 @@ export class LinearLR extends LRScheduler<LinearConfig> {
       (this.endFactor - this.startFactor) /
         (this.totalIters * this.startFactor +
           (this.lastEpoch - 1) * (this.endFactor - this.startFactor));
-    return this.baseLrs.map((lr) => lr * factor);
+    return this.getLastLr().map((lr) => lr * factor);
   }
 }
 
@@ -344,7 +358,7 @@ export class ExponentialLR extends LRScheduler<ExponentialConfig> {
 
   getLr(): number[] {
     if (this.lastEpoch === 0) {
-      return this.baseLrs.slice();
+      return this.getLastLr().slice();
     }
     return this.getLastLr().map((lr) => lr * this.gamma);
   }
@@ -373,12 +387,13 @@ export class CosineAnnealingLR extends LRScheduler<CosineAnnealingConfig> {
 
   getLr(): number[] {
     if (this.lastEpoch === 0) {
-      return this.baseLrs.slice();
+      return this.getLastLr().slice();
     } else if (this.lastEpoch === this.tMax) {
-      return this.baseLrs.map(() => this.etaMin);
+      return this.getLastLr().map(() => this.etaMin);
     } else if ((this.lastEpoch - 1 - this.tMax) % (2 * this.tMax) === 0) {
-      return this.getLastLr().map(
-        (lr, i) => lr + ((this.baseLrs[i] - this.etaMin) * (1 - Math.cos(Math.PI / this.tMax))) / 2,
+      const lastLr = this.getLastLr();
+      return lastLr.map(
+        (lr, i) => lr + ((lastLr[i] - this.etaMin) * (1 - Math.cos(Math.PI / this.tMax))) / 2,
       );
     }
 
