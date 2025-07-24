@@ -1,13 +1,13 @@
 #[cfg(all(test, feature = "pyo3"))]
 mod tests {
-    use piston::{test_util::run_py_prg, Device, DeviceRequest, OpTensor};
+    use piston::{test_util::run_py_prg, Device, DeviceRequest, Tensor};
 
     #[derive(Debug, derive_new::new)]
     struct AttentionTest {
-        input: OpTensor,
-        qw: OpTensor,
-        kw: OpTensor,
-        vw: OpTensor,
+        input: Tensor,
+        qw: Tensor,
+        kw: Tensor,
+        vw: Tensor,
         n_heads: Option<usize>,
     }
 
@@ -23,7 +23,7 @@ mod tests {
         }
     }
 
-    fn sdpa_ground(case: &AttentionTest) -> anyhow::Result<OpTensor> {
+    fn sdpa_ground(case: &AttentionTest) -> anyhow::Result<Tensor> {
         let prg = r#"
 import torch
 import math
@@ -46,7 +46,7 @@ def scaled_dot_product_attention(input, qw, kw, vw) -> torch.Tensor:
         )
     }
 
-    fn sdpa_cfg(case: &AttentionTest, device: Device) -> anyhow::Result<OpTensor> {
+    fn sdpa_cfg(case: &AttentionTest, device: Device) -> anyhow::Result<Tensor> {
         let (input, qw, kw, vw) = (
             case.input.clone(),
             case.qw.clone(),
@@ -58,7 +58,7 @@ def scaled_dot_product_attention(input, qw, kw, vw) -> torch.Tensor:
         let v_proj = input.matmul(vw, false, false)?;
 
         let scale_factor = 1f64 / (q_proj.shape()[2] as f64).sqrt();
-        let scale_factor = OpTensor::from_data([scale_factor as f32], 1, device, false);
+        let scale_factor = Tensor::from_data([scale_factor as f32], 1, device, false);
         let kt = k_proj.permute((0, 2, 1))?;
 
         let logits = q_proj.matmul(kt, false, false)?.mul(scale_factor)?;
@@ -68,10 +68,10 @@ def scaled_dot_product_attention(input, qw, kw, vw) -> torch.Tensor:
     #[test]
     pub fn test_sdpa() -> anyhow::Result<()> {
         let _ = env_logger::builder().is_test(true).try_init();
-        let input = OpTensor::randn::<f32, _>(0., 1., (1, 128, 256), Device::CPU, false)?;
-        let qw = OpTensor::randn::<f32, _>(0., 1., (256, 256), Device::CPU, false)?;
-        let kw = OpTensor::randn::<f32, _>(0., 1., (256, 256), Device::CPU, false)?;
-        let vw = OpTensor::randn::<f32, _>(0., 1., (256, 256), Device::CPU, false)?;
+        let input = Tensor::randn::<f32, _>(0., 1., (1, 128, 256), Device::CPU, false)?;
+        let qw = Tensor::randn::<f32, _>(0., 1., (256, 256), Device::CPU, false)?;
+        let kw = Tensor::randn::<f32, _>(0., 1., (256, 256), Device::CPU, false)?;
+        let vw = Tensor::randn::<f32, _>(0., 1., (256, 256), Device::CPU, false)?;
         let cpu_test_case = AttentionTest::new(input, qw, kw, vw, None);
         let ground = sdpa_ground(&cpu_test_case)?;
 
@@ -87,7 +87,7 @@ def scaled_dot_product_attention(input, qw, kw, vw) -> torch.Tensor:
         Ok(())
     }
 
-    fn mha_ground(case: &AttentionTest) -> anyhow::Result<OpTensor> {
+    fn mha_ground(case: &AttentionTest) -> anyhow::Result<Tensor> {
         let prg = r#"
 import torch
 import torch.nn.functional as F
@@ -119,7 +119,7 @@ def qkv_attention(input, qw, kw, vw, n_heads):
         )
     }
 
-    fn mha_cfg(case: &AttentionTest, device: Device) -> anyhow::Result<OpTensor> {
+    fn mha_cfg(case: &AttentionTest, device: Device) -> anyhow::Result<Tensor> {
         let (input, qw, kw, vw) = (
             case.input.clone(),
             case.qw.clone(),
@@ -133,7 +133,7 @@ def qkv_attention(input, qw, kw, vw, n_heads):
         let n_heads = case.n_heads.unwrap();
         let qdim = q_proj.shape()[2];
         let scale = ((qdim / n_heads) as f32).powf(-0.25);
-        let scale = OpTensor::from_data([scale], 1, device, false);
+        let scale = Tensor::from_data([scale], 1, device, false);
 
         let hdim = qdim / n_heads;
         let q = q_proj
@@ -158,10 +158,10 @@ def qkv_attention(input, qw, kw, vw, n_heads):
     #[test]
     pub fn test_mha() -> anyhow::Result<()> {
         let _ = env_logger::builder().is_test(true).try_init();
-        let input = OpTensor::randn::<f32, _>(0., 1., (1, 64, 384), Device::CPU, false)?;
-        let qw = OpTensor::randn::<f32, _>(0., 1., (1, 384, 384), Device::CPU, false)?;
-        let kw = OpTensor::randn::<f32, _>(0., 1., (1, 384, 384), Device::CPU, false)?;
-        let vw = OpTensor::randn::<f32, _>(0., 1., (1, 384, 384), Device::CPU, false)?;
+        let input = Tensor::randn::<f32, _>(0., 1., (1, 64, 384), Device::CPU, false)?;
+        let qw = Tensor::randn::<f32, _>(0., 1., (1, 384, 384), Device::CPU, false)?;
+        let kw = Tensor::randn::<f32, _>(0., 1., (1, 384, 384), Device::CPU, false)?;
+        let vw = Tensor::randn::<f32, _>(0., 1., (1, 384, 384), Device::CPU, false)?;
         let cpu_test_case = AttentionTest::new(input, qw, kw, vw, Some(6));
         let ground = mha_ground(&cpu_test_case)?;
 
