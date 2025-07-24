@@ -608,10 +608,10 @@ def reduce(a):
         }?;
 
         let ours = b_gpu.cast(DType::F32)?.to(&Device::CPU)?;
-        // println!("input = {:?}", a);
+        // println!("input = {a:?}");
         // println!("input stride = {:?}", a.stride());
-        // println!("ours = {:?}", ours);
-        // println!("ground = {:?}", ground);
+        // println!("ours = {ours:?}");
+        // println!("ground = {ground:?}");
         ground.all_close(&ours, 3e-5, 1e-5)?;
         Ok(())
     }
