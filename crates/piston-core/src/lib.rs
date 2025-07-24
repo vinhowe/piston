@@ -3,6 +3,7 @@ mod backprop;
 mod compiled_op;
 mod cpu;
 mod device;
+mod dispatch;
 mod dtype;
 mod enforcer;
 mod executable;
