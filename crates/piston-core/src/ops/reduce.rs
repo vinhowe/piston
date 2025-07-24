@@ -618,6 +618,8 @@ def reduce(a):
 
     #[derive(Arbitrary, Debug)]
     struct ReduceProblem {
+        #[strategy(0..=2usize)]
+        dim: usize,
         op: ReduceOp,
         #[strategy(1..=3usize)]
         B: usize,
@@ -625,8 +627,6 @@ def reduce(a):
         M: usize,
         #[strategy(1..=256usize)]
         N: usize,
-        #[strategy(0..=2usize)]
-        dim: usize,
     }
 
     #[proptest(cases = 256)]
