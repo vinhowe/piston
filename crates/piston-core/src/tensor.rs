@@ -4050,7 +4050,7 @@ impl<T: Clone> TensorTypeOrScalar<T> for TensorTypeOrScalarEnum<T> {
 
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod tests {
-    use crate::{rvec, Device, OpTensor, Tensor};
+    use crate::{rvec, Device, Tensor};
 
     #[test]
     fn has_nan_works() {
