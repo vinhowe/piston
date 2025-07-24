@@ -548,24 +548,24 @@ mod tests {
             Some(d) => format!(", dim={d}"),
             None => "".to_string(),
         };
+        let kernel_name = match op {
+            ReduceOp::Norm2 => "norm",
+            _ => op.kernel_name(),
+        };
         let prg = match op {
             ReduceOp::Max | ReduceOp::Min => format!(
                 r#"
 import torch
 def reduce(a):
-    return torch.{}(torch.from_numpy(a){}).values.float().numpy()
+    return torch.{kernel_name}(torch.from_numpy(a){dim_str}).values.float().numpy()
 "#,
-                op.kernel_name(),
-                dim_str
             ),
             _ => format!(
                 r#"
 import torch
 def reduce(a):
-    return torch.{}(torch.from_numpy(a){}).float().numpy()
+    return torch.{kernel_name}(torch.from_numpy(a){dim_str}).float().numpy()
 "#,
-                op.kernel_name(),
-                dim_str
             ),
         };
         // let out_dtype = match op {
