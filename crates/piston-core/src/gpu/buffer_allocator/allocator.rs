@@ -358,7 +358,7 @@ impl BufferAllocator {
     ///
     /// Simple greedy algorithm
     /// 1. Iterate over all tensors in reverse order (leaf -> root)
-    /// 2. For each tensor, loop through it's input values.
+    /// 2. For each tensor, loop through its input values.
     ///     a. Assign a buffer for each input value, if it is not already assigned
     ///     b. If the input value is an inplace operation, traverse upwards until we find
     ///        the "true" buffer source (i.e the first non-inplace operation).
