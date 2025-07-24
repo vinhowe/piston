@@ -1,3 +1,8 @@
+use crate::dispatch::Value;
+use crate::dispatch::{
+    dispatch_operator, BoxedKernel, DispatchKeySet, KernelFunction, OperatorHandle,
+    OperatorHandlerRegistration, OperatorRegistration, StackValue,
+};
 use crate::gpu::{BindGroupEntry, CpuUniform, WgpuDevice};
 use crate::{
     cpu, get_current_scope, ops::*, rvec, BufferSegment, CPUBuffer, Compiled, CompiledOp,
@@ -3272,9 +3277,59 @@ impl Tensor {
     }
 }
 
+struct CastBackendOp;
+impl BoxedKernel for CastBackendOp {
+    fn handle(
+        &self,
+        _op: &OperatorHandle,
+        _keys: DispatchKeySet,
+        args: &mut RVec<Value>,
+    ) -> anyhow::Result<()> {
+        let (tensor, dtype) = (Tensor::pop(args), DType::pop(args));
+        let result = cast(tensor, dtype).map(Tensor::wrap)?;
+        result.push(args);
+        Ok(())
+    }
+}
+
+// SAFETY: `CastBackendOp` is stateless and thus thread-safe.
+unsafe impl Sync for CastBackendOp {}
+
+inventory::submit! {
+    OperatorRegistration {
+        name: "cast",
+        handle: &OperatorHandle {
+            name: "cast",
+            call_fn: |name, stack| {
+                // TODO: Evaluate if this is what we want to do here
+                let (tensor, dtype) = (Tensor::pop(stack), DType::pop(stack));
+                let result = crate::dispatch::dispatch_operator::<(Tensor, DType), Tensor>(name, (tensor, dtype))?;
+                result.push(stack);
+                Ok(())
+            },
+        },
+    }
+}
+
+inventory::submit! {
+    OperatorHandlerRegistration {
+        name: "cast",
+        key: DispatchKeySet::BACKEND,
+        handler: &KernelFunction {
+            unboxed: Some(|_op, _keys, args| {
+                let (tensor, dtype) = (Tensor::pop(args), DType::pop(args));
+                let result = cast(tensor, dtype).map(Tensor::wrap)?;
+                result.push(args);
+                Ok(())
+            }),
+            boxed: None,
+        },
+    }
+}
+
 impl Tensor {
     pub fn cast(self, dst_dtype: DType) -> Result<Self> {
-        cast(self, dst_dtype).map(Self::wrap)
+        dispatch_operator("cast", (self, dst_dtype))
     }
 
     /// Cast a tensor to full precision (IEEE 754 32-bit floating point).
