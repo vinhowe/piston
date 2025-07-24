@@ -532,8 +532,6 @@ impl KernelRenderable for ReduceKernels {
 
 #[cfg(all(test, feature = "pyo3"))]
 mod tests {
-    use proptest::prelude::Just;
-    use proptest::prop_oneof;
     use test_strategy::{proptest, Arbitrary};
 
     use crate::test_util::run_py_prg;
@@ -598,8 +596,8 @@ def reduce(a):
                 ReduceOp::Sum => a_gpu.sum(dim),
                 ReduceOp::Min => a_gpu.min(dim),
                 ReduceOp::Max => a_gpu.max(dim),
-                ReduceOp::ArgMin => a_gpu.argmin(dim)?.cast(DType::I32),
-                ReduceOp::ArgMax => a_gpu.argmax(dim)?.cast(DType::I32),
+                ReduceOp::ArgMin => a_gpu.argmin(dim),
+                ReduceOp::ArgMax => a_gpu.argmax(dim),
                 ReduceOp::Norm2 => a_gpu.norm_ord_dim(NormOrd::Frobenius, dim),
             },
             None => match op {
@@ -609,7 +607,7 @@ def reduce(a):
             },
         }?;
 
-        let ours = b_gpu.to(&Device::CPU)?.cast(DType::F32)?;
+        let ours = b_gpu.cast(DType::F32)?.to(&Device::CPU)?;
         // println!("input = {:?}", a);
         // println!("input stride = {:?}", a.stride());
         // println!("ours = {:?}", ours);
@@ -620,12 +618,6 @@ def reduce(a):
 
     #[derive(Arbitrary, Debug)]
     struct ReduceProblem {
-        // argmin and argmax don't seem to work right now, and the reason why is probably subtle
-        #[strategy(prop_oneof![
-            Just(ReduceOp::Sum),
-            Just(ReduceOp::Min),
-            Just(ReduceOp::Max)
-        ])]
         op: ReduceOp,
         #[strategy(1..=3usize)]
         B: usize,
