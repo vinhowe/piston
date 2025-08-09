@@ -1,5 +1,5 @@
 use anyhow::Result;
-use piston::{RVec, Tensor};
+use piston::{RVec, Tensor, stack};
 
 pub struct Batcher<I> {
     inner: I,
@@ -86,7 +86,7 @@ impl<I: Iterator<Item = Tensor>> Iterator for Batcher<Iter1<I>> {
                 }
             }
         }
-        Some(Tensor::stack(items, 0))
+        Some(stack(items, 0))
     }
 }
 
@@ -110,8 +110,8 @@ impl<I: Iterator<Item = (Tensor, Tensor)>> Iterator for Batcher<Iter2<I>> {
                 }
             }
         }
-        let xs = Tensor::stack(xs, 0);
-        let ys = Tensor::stack(ys, 0);
+        let xs = stack(xs, 0);
+        let ys = stack(ys, 0);
         Some(xs.and_then(|xs| ys.map(|ys| (xs, ys))))
     }
 }
@@ -136,7 +136,7 @@ impl<I: Iterator<Item = Result<Tensor>>> Iterator for Batcher<IterResult1<I>> {
             }
         }
         let items = items.into_iter().collect::<Result<RVec<Tensor>>>();
-        Some(items.and_then(|items| Tensor::stack(items, 0)))
+        Some(items.and_then(|items| stack(items, 0)))
     }
 }
 
@@ -165,8 +165,8 @@ impl<I: Iterator<Item = Result<(Tensor, Tensor)>>> Iterator for Batcher<IterResu
         if !errs.is_empty() {
             return Some(Err(errs.swap_remove(0)));
         }
-        let xs = Tensor::stack(xs, 0);
-        let ys = Tensor::stack(ys, 0);
+        let xs = stack(xs, 0);
+        let ys = stack(ys, 0);
         Some(xs.and_then(|xs| ys.map(|ys| (xs, ys))))
     }
 }

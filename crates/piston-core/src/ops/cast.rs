@@ -5,10 +5,10 @@ use inline_wgsl::wgsl;
 use piston_macros::{IrFields, WgslMetadata};
 
 use crate::{
-    gpu::BindGroupLayoutDescriptor, rvec, Array, BindingMode, BuiltIn, DType, GPUOperation, Kernel,
-    KernelElement, KernelRenderable, KernelSource, OpGuards, OpTensor, Operation, OperationError,
-    RVec, Scalar, StorageView, Stride, Vec2, Vec4, WgslKernelBuilder, WgslPrimitive, WorkgroupSize,
-    Workload,
+    Array, BindingMode, BuiltIn, DType, GPUOperation, Kernel, KernelElement, KernelRenderable,
+    KernelSource, OpGuards, OpTensor, Operation, OperationError, RVec, Scalar, StorageView, Stride,
+    Vec2, Vec4, WgslKernelBuilder, WgslPrimitive, WorkgroupSize, Workload,
+    gpu::BindGroupLayoutDescriptor, rvec,
 };
 
 #[derive(new, Debug, Clone, IrFields)]
@@ -235,9 +235,9 @@ impl Kernel for CastKernels {
 #[cfg(all(test, feature = "pyo3"))]
 mod tests {
     use half::f16;
-    use test_strategy::{proptest, Arbitrary};
+    use test_strategy::{Arbitrary, proptest};
 
-    use crate::{test_util::run_py_prg, DType, Device, DeviceRequest, Tensor};
+    use crate::{DType, Device, DeviceRequest, Tensor, randn, test_util::run_py_prg};
 
     #[derive(Arbitrary, Debug)]
     struct CastProblem {
@@ -269,7 +269,7 @@ def cast(a):
             return Ok(());
         }
         let CastProblem { dst_dtype, B, M, N } = prob;
-        let input = Tensor::randn::<f32, _>(0., 1., (B, M, N), Device::CPU, false)?;
+        let input = randn((B, M, N), None, None, Default::default())?;
         let ground = ground_truth(&input, dst_dtype)?;
 
         let input = input.to(&device)?;

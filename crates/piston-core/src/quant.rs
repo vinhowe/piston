@@ -1,5 +1,5 @@
 use crate::{
-    dtype::Quantized, gpu::STORAGE_BUFFER_ALIGN, DType, Device, Tensor, Q4_KF, Q4_KH, Q8_0F, Q8_0H,
+    DType, Device, Q4_KF, Q4_KH, Q8_0F, Q8_0H, Tensor, dtype::Quantized, gpu::STORAGE_BUFFER_ALIGN,
 };
 use maybe_async::maybe_async;
 use num::integer::div_floor;
@@ -180,18 +180,17 @@ pub fn dequantize(quantized: Tensor) -> Tensor {
 
 #[cfg(test)]
 mod tests {
-    use crate::{dequantize, quantize, Device, Quantized, Tensor, Q4_KF, Q4_KH, Q8_0F, Q8_0H};
+    use crate::{
+        Q4_KF, Q4_KH, Q8_0F, Q8_0H, Quantized, TensorOptions, dequantize, quantize, randn,
+    };
     use half::f16;
-    use num_traits::{One, Zero};
 
     // Verify that quantize -> dequantize is a (lossy) identity operation
     fn check_qd_reflexive<Q: Quantized>(atol: Q::FP, rtol: Q::FP)
     where
         Q::FP: std::fmt::Display + num_traits::Float + Default,
     {
-        let ground =
-            Tensor::randn::<Q::FP, _>(Q::FP::zero(), Q::FP::one(), (4, 64), Device::CPU, false)
-                .unwrap();
+        let ground = randn((4, 64), None, None, TensorOptions::new().dtype(Q::dtype())).unwrap();
         let q = quantize::<Q>(&ground);
         let dq = dequantize(q);
         ground.all_close(&dq, atol, rtol).unwrap();

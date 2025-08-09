@@ -3,8 +3,8 @@
 //! for training, e.g. using `VarBuilder::from_varmap`.
 use crate::VarMap;
 use async_trait::async_trait;
-use piston::HashMap;
-use piston::{DType, Device, OperationError, Shape, Tensor};
+use piston::{DType, Device, OperationError, Shape, Tensor, zeros};
+use piston::{HashMap, TensorOptions};
 use std::sync::Arc;
 
 use maybe_async::maybe_async;
@@ -265,7 +265,7 @@ impl SimpleBackend for Zeros {
         _: crate::Init,
         dev: Device,
     ) -> anyhow::Result<Tensor, VarBuilderError> {
-        Ok(Tensor::zeros::<f32, _>(s, &dev, false)?)
+        Ok(zeros(s, TensorOptions::new().device(dev.clone()))?)
     }
 
     fn contains_tensor(&self, _name: &str) -> bool {

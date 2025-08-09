@@ -1,15 +1,15 @@
 #[cfg(feature = "debug")]
+use crate::MIN_STORAGE_BUFFER_SIZE;
+#[cfg(feature = "debug")]
 use crate::gpu::BufferUsagesExt;
 use crate::gpu::{
     BindGroupLayoutDescriptor, ComputePipelineDescriptor, CpuUniform, PipelineLayoutDescriptor,
     PoolError, WgpuDevice,
 };
-#[cfg(feature = "debug")]
-use crate::MIN_STORAGE_BUFFER_SIZE;
 use crate::{
-    ops::*, rvec, CompiledOp, DType, HashMap, InvariantError, Kernel, KernelBuildError,
-    KernelMetadata, KernelModuleDesc, OpTensor, RVec, Shape, StorageView, TensorId,
-    TensorTypeOrScalarEnum, WgslFragment, WorkgroupSize, Workload,
+    CompiledOp, DType, HashMap, InvariantError, Kernel, KernelBuildError, KernelMetadata,
+    KernelModuleDesc, OpTensor, RVec, Shape, StorageView, TensorId, TensorTypeOrScalarEnum,
+    WgslFragment, WorkgroupSize, Workload, ops::*, rvec,
 };
 #[cfg(feature = "debug")]
 use slotmap::Key;
@@ -860,7 +860,8 @@ pub trait GPUOperation: Operation {
                 {
                     if bind_group_entry.handle == other_bind_group_entry.handle {
                         assert_eq!(
-                            layout_entry.read_only, other_layout_entry.read_only,
+                            layout_entry.read_only,
+                            other_layout_entry.read_only,
                             "Found conflicting read_only values for the same buffer handle: {:?} at index {} has read_only={} but {:?} at index {} has read_only={} ({:?})",
                             bind_group_entry.handle,
                             i,
@@ -868,7 +869,12 @@ pub trait GPUOperation: Operation {
                             other_bind_group_entry.handle,
                             j,
                             other_layout_entry.read_only,
-                            storage_bind_group.descriptor().entries.iter().map(|e| e.handle.data()).collect::<RVec<_>>()
+                            storage_bind_group
+                                .descriptor()
+                                .entries
+                                .iter()
+                                .map(|e| e.handle.data())
+                                .collect::<RVec<_>>()
                         );
                     }
                 }

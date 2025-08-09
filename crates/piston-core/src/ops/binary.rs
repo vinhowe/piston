@@ -4,11 +4,12 @@ use inline_wgsl::wgsl;
 use piston_macros::IrFields;
 
 use crate::{
-    gpu::{dtype::WgslDType, BindGroupLayoutDescriptor},
-    rvec, Array, BindingMode, BuiltIn, DType, DynKernelMetadata, GPUOperation, InvariantError,
-    Kernel, KernelElement, KernelRenderable, KernelSource, OpGuards, OpTensor, Operation,
-    OperationError, RVec, Scalar, Shape, StorageView, Stride, TensorTypeOrScalarEnum, Vec2, Vec4,
+    Array, BindingMode, BuiltIn, DType, DynKernelMetadata, GPUOperation, InvariantError, Kernel,
+    KernelElement, KernelRenderable, KernelSource, OpGuards, OpTensor, Operation, OperationError,
+    RVec, Scalar, Shape, StorageView, Stride, TensorTypeOrScalarEnum, Vec2, Vec4,
     WgslKernelBuilder, WgslPrimitive, WorkgroupSize, Workload,
+    gpu::{BindGroupLayoutDescriptor, dtype::WgslDType},
+    rvec,
 };
 #[cfg(test)]
 use test_strategy::Arbitrary;
@@ -347,8 +348,8 @@ impl Kernel for BinaryKernels {
 
 #[cfg(all(test, feature = "pyo3"))]
 mod tests {
-    use crate::{test_util::run_py_prg, BinaryOp, Device, DeviceRequest, Shape, Tensor};
-    use test_strategy::{proptest, Arbitrary};
+    use crate::{BinaryOp, Device, DeviceRequest, Shape, Tensor, randn, test_util::run_py_prg};
+    use test_strategy::{Arbitrary, proptest};
 
     #[derive(Arbitrary, Debug)]
     struct BinaryProblem {
@@ -387,10 +388,9 @@ def {kn}(a, b):
             // Fail silently for now
             return Ok(());
         }
-        let cpu_device = Device::request_device(DeviceRequest::CPU)?;
         let BinaryProblem { op, shape } = prob;
-        let a = Tensor::randn::<f32, _>(0., 1., shape.clone(), cpu_device.clone(), false)?;
-        let b = Tensor::randn::<f32, _>(0.1, 2.0, shape, cpu_device.clone(), false)?;
+        let a = randn(shape.clone(), None, None, Default::default())?;
+        let b = randn(shape, None, None, Default::default())?;
         let ground = ground_truth(&a, &b, &op)?;
 
         let a = a.to(&device)?;

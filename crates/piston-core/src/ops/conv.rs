@@ -5,10 +5,11 @@ use half::f16;
 use piston_macros::{IrFields, WgslMetadata};
 
 use crate::{
-    gpu::{dtype::WgslDType, BindGroupLayoutDescriptor, WorkgroupCount},
-    rvec, shape, wgc, wgs, Array, BindingMode, BuiltIn, DType, GPUOperation, Kernel, KernelElement,
-    KernelRenderable, KernelSource, OpGuards, OpTensor, Operation, OperationError, RVec, Scalar,
-    StorageView, Stride, Vec2, Vec4, WgslKernelBuilder, WgslPrimitive, WorkgroupSize, Workload,
+    Array, BindingMode, BuiltIn, DType, GPUOperation, Kernel, KernelElement, KernelRenderable,
+    KernelSource, OpGuards, OpTensor, Operation, OperationError, RVec, Scalar, StorageView, Stride,
+    Vec2, Vec4, WgslKernelBuilder, WgslPrimitive, WorkgroupSize, Workload,
+    gpu::{BindGroupLayoutDescriptor, WorkgroupCount, dtype::WgslDType},
+    rvec, shape, wgc, wgs,
 };
 use inline_wgsl::wgsl;
 
@@ -147,11 +148,12 @@ impl OpGuards for Conv {
     fn check_dtypes(&self) {
         assert!(self.input.dtype().is_float());
         assert!(self.weight.dtype().is_float());
-        assert!(self
-            .bias
-            .as_ref()
-            .map(|t| t.dtype().is_float())
-            .unwrap_or(true));
+        assert!(
+            self.bias
+                .as_ref()
+                .map(|t| t.dtype().is_float())
+                .unwrap_or(true)
+        );
     }
 }
 
@@ -292,10 +294,10 @@ impl GPUOperation for Conv {
 
 #[cfg(all(test, feature = "pyo3"))]
 mod tests {
-    use test_strategy::{proptest, Arbitrary};
+    use test_strategy::{Arbitrary, proptest};
 
     use crate::test_util::run_py_prg;
-    use crate::{Device, DeviceRequest, Tensor};
+    use crate::{Device, DeviceRequest, Tensor, randn};
 
     fn ground_truth(
         input: &Tensor,
@@ -328,9 +330,9 @@ def conv(input, filters, bias, stride, padding):
             Cout,
             stride,
         } = problem;
-        let input = Tensor::randn::<f32, _>(0., 1., (1, Cin, Lin), Device::CPU, false).unwrap();
-        let weight = Tensor::randn::<f32, _>(0., 1., (Cout, Cin, 3), Device::CPU, false).unwrap();
-        let bias = Tensor::randn::<f32, _>(0., 1., Cout, Device::CPU, false).unwrap();
+        let input = randn((1, Cin, Lin), None, None, Default::default()).unwrap();
+        let weight = randn((Cout, Cin, 3), None, None, Default::default()).unwrap();
+        let bias = randn(Cout, None, None, Default::default()).unwrap();
         let ground = ground_truth(&input, &weight, &bias, stride, 1).unwrap();
 
         let input = input.to(device).unwrap();

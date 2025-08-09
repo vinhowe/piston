@@ -1,8 +1,9 @@
 use crate::{
-    gpu::{dtype::WgslDType, BindGroupLayoutDescriptor},
-    rvec, Array, BindingMode, BuiltIn, DType, GPUOperation, Kernel, KernelElement,
-    KernelRenderable, KernelSource, OpGuards, OpTensor, Operation, OperationError, RVec, Scalar,
-    StorageView, Vec2, Vec4, WgslKernelBuilder, WgslPrimitive, WorkgroupSize, Workload,
+    Array, BindingMode, BuiltIn, DType, GPUOperation, Kernel, KernelElement, KernelRenderable,
+    KernelSource, OpGuards, OpTensor, Operation, OperationError, RVec, Scalar, StorageView, Vec2,
+    Vec4, WgslKernelBuilder, WgslPrimitive, WorkgroupSize, Workload,
+    gpu::{BindGroupLayoutDescriptor, dtype::WgslDType},
+    rvec,
 };
 use derive_new::new;
 use encase::ShaderType;
@@ -215,10 +216,10 @@ impl Kernel for GatherKernels {
 
 #[cfg(all(test, feature = "pyo3"))]
 mod tests {
-    use test_strategy::{proptest, Arbitrary};
+    use test_strategy::{Arbitrary, proptest};
 
     use crate::test_util::run_py_prg;
-    use crate::{rvec, DType, Device, DeviceRequest, Tensor};
+    use crate::{DType, Device, DeviceRequest, Tensor, randint, randn, rvec};
 
     fn ground_truth(src: &Tensor, ids: &Tensor, dim: usize) -> anyhow::Result<Tensor> {
         let prg = format!(
@@ -234,14 +235,12 @@ def gather(src, ids, dim):
     fn run_gather_trial(problem: GatherProblem, device: Device) {
         let GatherProblem { B, M, N, dim } = problem;
 
-        let src = Tensor::randn::<f32, _>(0., 1., (B, M, N), Device::CPU, false).unwrap();
+        let src = randn((B, M, N), None, None, Default::default()).unwrap();
 
         // Create the shape for ids tensor
         let mut ids_shape = rvec![B, M, N];
         ids_shape[dim] = 1;
-        let ids =
-            Tensor::randint::<i32, _>(0, src.shape()[dim] as i32, ids_shape, Device::CPU, false)
-                .unwrap();
+        let ids = randint(0, src.shape()[dim] as i32, ids_shape, Default::default()).unwrap();
 
         let ground = ground_truth(&src, &ids, dim).unwrap();
 
@@ -309,13 +308,12 @@ def gather_backward(src, ids):
     fn run_gather_backward_trial(problem: GatherBackwardProblem) -> anyhow::Result<()> {
         let device = Device::request_device(DeviceRequest::GPU).unwrap();
         let GatherBackwardProblem { B, M, N, dim } = problem;
-        let src = Tensor::randn::<f32, _>(0., 1., (B, M, N), Device::CPU, false)?;
+        let src = randn((B, M, N), None, None, Default::default())?;
 
         // Create the shape for ids tensor
         let mut ids_shape = rvec![B, M, N];
         ids_shape[dim] = 1;
-        let ids =
-            Tensor::randint::<i32, _>(0, src.shape()[dim] as i32, ids_shape, Device::CPU, false)?;
+        let ids = randint(0, src.shape()[dim] as i32, ids_shape, Default::default())?;
 
         let ground = ground_truth_backward(&src, &ids, dim)?;
 

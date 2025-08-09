@@ -11,10 +11,10 @@ pub struct GroupNorm {
 
 #[cfg(all(test, feature = "pyo3"))]
 mod tests {
-    use test_strategy::{proptest, Arbitrary};
+    use test_strategy::{Arbitrary, proptest};
 
     use crate::test_util::run_py_prg;
-    use crate::{rvec, Device, DeviceRequest, Tensor};
+    use crate::{Device, DeviceRequest, Tensor, randn, rvec};
 
     fn ground_truth(
         input: &Tensor,
@@ -46,9 +46,9 @@ def manual_group_norm(input, scale, bias, num_groups):
             N,
         } = problem;
 
-        let input = Tensor::randn::<f32, _>(0., 1., (B, C, N), Device::CPU, false)?;
-        let scale = Tensor::randn::<f32, _>(0., 1., C, Device::CPU, false)?;
-        let bias = Some(Tensor::randn::<f32, _>(0., 1., C, Device::CPU, false)?);
+        let input = randn((B, C, N), None, None, Default::default())?;
+        let scale = randn(C, None, None, Default::default())?;
+        let bias = Some(randn(C, None, None, Default::default())?);
 
         let ground = ground_truth(&input, &scale, bias.as_ref(), num_groups)?;
 

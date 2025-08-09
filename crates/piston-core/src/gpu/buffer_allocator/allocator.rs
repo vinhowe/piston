@@ -1,10 +1,10 @@
 use super::TensorUsageRecord;
 use crate::{
+    DeviceError, GpuCompileKey, OpTensor, TensorId,
     gpu::{
         BufferDescriptor, BufferPool, BufferUsagesExt, CpuUniform, GpuBufferHandle,
-        PooledGPUBuffer, TensorUsageRecords, WgpuDevice, UNIFORM_ALIGN,
+        PooledGPUBuffer, TensorUsageRecords, UNIFORM_ALIGN, WgpuDevice,
     },
-    DeviceError, GpuCompileKey, OpTensor, TensorId,
 };
 use crate::{HashMap, LazyOp};
 use parking_lot::RwLock;
@@ -339,10 +339,10 @@ impl BufferAllocator {
             }
             for source in t.op().srcs() {
                 let true_source = Self::determine_tensor_source(source, gpu_compile_keys);
-                if true_source.id() != source.id() {
-                    if let Some(buf) = assignments.get(&true_source.id()) {
-                        assignments.insert(source.id(), buf.clone());
-                    }
+                if true_source.id() != source.id()
+                    && let Some(buf) = assignments.get(&true_source.id())
+                {
+                    assignments.insert(source.id(), buf.clone());
                 }
             }
         }

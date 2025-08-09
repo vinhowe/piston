@@ -12,10 +12,11 @@ pub use workgroup_gemv::*;
 use std::{cmp::Ordering, mem};
 
 use crate::{
+    DType, Device, GPUOperation, Kernel, KernelElement, KernelKey, KernelMetadata,
+    KernelRenderable, KernelSource, OpGuards, OpTensor, Operation, OperationError, Q4_KF, Q4_KH,
+    Q8_0F, Q8_0H, RVec, Shape, StorageView, Stride, WorkgroupSize, Workload,
     gpu::{BindGroupLayoutDescriptor, CpuUniform},
-    rvec, DType, Device, GPUOperation, Kernel, KernelElement, KernelKey, KernelMetadata,
-    KernelRenderable, KernelSource, OpGuards, OpTensor, Operation, OperationError, RVec, Shape,
-    StorageView, Stride, WorkgroupSize, Workload, Q4_KF, Q4_KH, Q8_0F, Q8_0H,
+    rvec,
 };
 
 //https://link.springer.com/chapter/10.1007/978-3-642-29737-3_42
@@ -535,14 +536,14 @@ impl OpGuards for Matmul {
             );
         }
 
-        if let Some(bias) = &self.bias {
-            if bias.dtype() != self.rhs.dtype() {
-                panic!(
-                    "DType mismatch: bias: {:?}, rhs: {:?}",
-                    bias.dtype(),
-                    self.rhs.dtype()
-                );
-            }
+        if let Some(bias) = &self.bias
+            && bias.dtype() != self.rhs.dtype()
+        {
+            panic!(
+                "DType mismatch: bias: {:?}, rhs: {:?}",
+                bias.dtype(),
+                self.rhs.dtype()
+            );
         }
     }
 }
@@ -752,11 +753,11 @@ impl GPUOperation for Matmul {
 
 #[cfg(all(test, feature = "pyo3"))]
 mod tests {
-    use test_strategy::{proptest, Arbitrary};
+    use test_strategy::{Arbitrary, proptest};
 
     use crate::test_util::run_py_prg;
 
-    use crate::{quantize, Device, DeviceRequest, Tensor};
+    use crate::{Device, DeviceRequest, Tensor, quantize, randn};
 
     use super::*;
 
@@ -883,7 +884,6 @@ def matmul(a, b{}):
     }
 
     fn run_matmul_trial(device: &Device, prob: SGEMMProblem) -> anyhow::Result<()> {
-        let cpu_device = Device::request_device(DeviceRequest::CPU)?;
         let SGEMMProblem {
             B,
             M,
@@ -904,13 +904,7 @@ def matmul(a, b{}):
         let rhs_shape = if trans_rhs { (B, N, K) } else { (B, K, N) };
 
         let bias = if has_bias {
-            Some(Tensor::randn::<f32, _>(
-                0.0,
-                1.0,
-                N,
-                cpu_device.clone(),
-                false,
-            )?)
+            Some(randn(N, None, None, Default::default())?)
         } else {
             None
         };
@@ -919,8 +913,8 @@ def matmul(a, b{}):
         println!("RHS shape: {rhs_shape:?}");
         println!("Bias: {:?}", bias.as_ref().map(|b| b.shape()));
 
-        let a = Tensor::randn::<f32, _>(0.0, 1.0, lhs_shape, cpu_device.clone(), false)?;
-        let b = Tensor::randn::<f32, _>(0.0, 1.0, rhs_shape, cpu_device.clone(), false)?;
+        let a = randn(lhs_shape, None, None, Default::default())?;
+        let b = randn(rhs_shape, None, None, Default::default())?;
         let ground = ground_truth(&a, &b, bias.as_ref(), trans_lhs, trans_rhs, trans_dst)?;
         println!("Ground shape: {:?}", ground.shape());
 
@@ -940,9 +934,8 @@ def matmul(a, b{}):
     #[test]
     fn test_qgemm() -> anyhow::Result<()> {
         let device = Device::request_device(DeviceRequest::GPU).unwrap();
-        let cpu_device = Device::request_device(DeviceRequest::CPU)?;
-        let a = Tensor::randn::<f32, _>(0.0, 1.0, (6, 1500, 64), cpu_device.clone(), false)?;
-        let b = Tensor::randn::<f32, _>(0.0, 1.0, (6, 64, 1500), cpu_device.clone(), false)?;
+        let a = randn((6, 1500, 64), None, None, Default::default())?;
+        let b = randn((6, 64, 1500), None, None, Default::default())?;
         let ground = ground_truth(&a, &b, None, false, false, false)?;
 
         let aq = quantize::<Q8_0F>(&a);
@@ -964,16 +957,9 @@ def matmul(a, b{}):
         let _ = env_logger::builder().is_test(true).try_init();
 
         let device = Device::request_device(DeviceRequest::GPU).unwrap();
-        let cpu_device = Device::request_device(DeviceRequest::CPU)?;
-        let a = Tensor::randn::<f32, _>(0.0, 1.0, (2, 175, 240), cpu_device.clone(), false)?;
-        let b = Tensor::randn::<f32, _>(0.0, 1.0, (2, 240, 182), cpu_device.clone(), false)?;
-        let bias = Some(Tensor::randn::<f32, _>(
-            0.0,
-            1.0,
-            182,
-            cpu_device.clone(),
-            false,
-        )?);
+        let a = randn((2, 175, 240), None, None, Default::default())?;
+        let b = randn((2, 240, 182), None, None, Default::default())?;
+        let bias = Some(randn(182, None, None, Default::default())?);
 
         let TRANS_LHS = false;
         let TRANS_RHS = false;
@@ -1013,9 +999,8 @@ def matmul(a, b{}):
         let _ = env_logger::builder().is_test(true).try_init();
 
         let device = Device::request_device(DeviceRequest::GPU).unwrap();
-        let cpu_device = Device::request_device(DeviceRequest::CPU)?;
-        let a = Tensor::randn::<f32, _>(0.0, 1.0, (1, 51865, 384), cpu_device.clone(), false)?;
-        let b = Tensor::randn::<f32, _>(0.0, 1.0, (1, 1, 384), cpu_device.clone(), false)?;
+        let a = randn((1, 51865, 384), None, None, Default::default())?;
+        let b = randn((1, 1, 384), None, None, Default::default())?;
 
         let TRANS_LHS = false;
         let TRANS_RHS = true;

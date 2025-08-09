@@ -1,4 +1,4 @@
-use piston::{Dim, Dims, RVec, Shape, ShapeWithOneHole, D};
+use piston::{D, Dim, Dims, RVec, Shape, ShapeWithOneHole};
 use wasm_bindgen::{JsCast, JsError, JsValue};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -103,7 +103,7 @@ impl ShapeWithOneHole for FromJsVecISize {
         }
         if !el_count.is_multiple_of(product) {
             anyhow::bail!(
-                "cannot reshape tensor with {el_count} elements to shape with -1, got shape {:?}",
+                "ShapeWithOneHole.into_shape: cannot reshape tensor with {el_count} elements to shape with -1, got shape {:?}",
                 self.0
             );
         }

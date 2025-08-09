@@ -6,10 +6,11 @@ use half::f16;
 use piston_macros::WgslMetadata;
 
 use crate::{
-    gpu::{dtype::WgslDType, BindGroupLayoutDescriptor},
-    rvec, wgc, wgs, Array, BindingMode, BuiltIn, DType, GPUOperation, Kernel, KernelElement,
-    KernelRenderable, KernelSource, OpGuards, OpTensor, Operation, OperationError, RVec, Scalar,
-    StorageView, Vec2, Vec4, WgslKernelBuilder, WgslPrimitive, WorkgroupSize, Workload,
+    Array, BindingMode, BuiltIn, DType, GPUOperation, Kernel, KernelElement, KernelRenderable,
+    KernelSource, OpGuards, OpTensor, Operation, OperationError, RVec, Scalar, StorageView, Vec2,
+    Vec4, WgslKernelBuilder, WgslPrimitive, WorkgroupSize, Workload,
+    gpu::{BindGroupLayoutDescriptor, dtype::WgslDType},
+    rvec, wgc, wgs,
 };
 use derive_new::new;
 use inline_wgsl::wgsl;
@@ -418,10 +419,10 @@ impl GPUOperation for NormOp {
 
 #[cfg(all(test, feature = "pyo3"))]
 mod tests {
-    use test_strategy::{proptest, Arbitrary};
+    use test_strategy::{Arbitrary, proptest};
 
     use crate::test_util::run_py_prg;
-    use crate::{rvec, Device, DeviceRequest, Tensor};
+    use crate::{Device, DeviceRequest, Tensor, randn, rvec};
 
     fn ground_truth(
         var: NormVariant,
@@ -463,11 +464,11 @@ def manual_rms_norm(input, scale):
 
     fn run_norm_trial(device: &Device, problem: NormProblem) -> anyhow::Result<()> {
         let NormProblem { var, B, M, N } = problem;
-        let input = Tensor::randn::<f32, _>(0., 1., (B, M, N), Device::CPU, false)?;
-        let scale = Tensor::randn::<f32, _>(0., 1., N, Device::CPU, false)?;
+        let input = randn((B, M, N), None, None, Default::default())?;
+        let scale = randn(N, None, None, Default::default())?;
 
         let bias = match var {
-            NormVariant::LayerNorm => Some(Tensor::randn::<f32, _>(0., 1., N, Device::CPU, false)?),
+            NormVariant::LayerNorm => Some(randn(N, None, None, Default::default())?),
             NormVariant::RMSNorm => None,
         };
 

@@ -1,6 +1,5 @@
-use half::{bf16, f16};
 use maybe_async::maybe_async;
-use piston::{DType, Device, ScopePusher, Tensor};
+use piston::{DType, Device, ScopePusher, Tensor, TensorOptions, zeros};
 
 #[maybe_async(AFIT)]
 #[cfg_attr(target_arch = "wasm32", async_trait::async_trait)]
@@ -22,7 +21,10 @@ pub trait Optimizer: Sized {
             if set_to_none {
                 var.set_grad(None);
             } else {
-                var.set_grad(Some(var.clone().zeros_like::<f32>(None, false)?));
+                var.set_grad(Some(
+                    var.clone()
+                        .zeros_like(TensorOptions::new().device(var.device()))?,
+                ));
             }
         }
         Ok(())
@@ -143,16 +145,16 @@ impl Optimizer for AdamW {
                 let device = var.device();
                 let (first_moment, second_moment) = match dtype {
                     DType::F32 => (
-                        Tensor::zeros::<f32, _>(&shape, &device, false)?,
-                        Tensor::zeros::<f32, _>(&shape, &device, false)?,
+                        zeros(shape.clone(), TensorOptions::new().device(device.clone()))?,
+                        zeros(shape, TensorOptions::new().device(device.clone()))?,
                     ),
                     DType::F16 => (
-                        Tensor::zeros::<f16, _>(&shape, &device, false)?,
-                        Tensor::zeros::<f16, _>(&shape, &device, false)?,
+                        zeros(shape.clone(), TensorOptions::new().device(device.clone()))?,
+                        zeros(shape, TensorOptions::new().device(device.clone()))?,
                     ),
                     DType::BF16 => (
-                        Tensor::zeros::<bf16, _>(&shape, &device, false)?,
-                        Tensor::zeros::<bf16, _>(&shape, &device, false)?,
+                        zeros(shape.clone(), TensorOptions::new().device(device.clone()))?,
+                        zeros(shape, TensorOptions::new().device(device))?,
                     ),
                     _ => return Err(anyhow::anyhow!("Unsupported dtype for AdamW: {:?}", dtype)),
                 };

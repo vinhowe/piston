@@ -1,8 +1,8 @@
 use crate::{
-    gpu::BindGroupLayoutDescriptor, rvec, Array, BindingMode, BuiltIn, DType, GPUOperation, Kernel,
-    KernelElement, KernelRenderable, KernelSource, OpGuards, OpTensor, Operation, OperationError,
-    RVec, Scalar, StorageView, Vec2, Vec4, WgslKernelBuilder, WgslPrimitive, WorkgroupSize,
-    Workload,
+    Array, BindingMode, BuiltIn, DType, GPUOperation, Kernel, KernelElement, KernelRenderable,
+    KernelSource, OpGuards, OpTensor, Operation, OperationError, RVec, Scalar, StorageView, Vec2,
+    Vec4, WgslKernelBuilder, WgslPrimitive, WorkgroupSize, Workload,
+    gpu::BindGroupLayoutDescriptor, rvec,
 };
 use derive_new::new;
 use encase::ShaderType;
@@ -216,7 +216,7 @@ mod tests {
     use test_strategy::proptest;
 
     use crate::test_util::run_py_prg;
-    use crate::{Device, DeviceRequest, Shape, Tensor};
+    use crate::{Device, DeviceRequest, Shape, Tensor, randint, randn};
 
     impl Arbitrary for IndexAddProblem {
         type Parameters = ();
@@ -227,8 +227,7 @@ mod tests {
                 .prop_flat_map(|input_shape| (Just(input_shape), 1..64usize))
                 .prop_map(|(input_shape, num_indices)| {
                     let indices =
-                        Tensor::randint(0, input_shape[0] as i32, num_indices, Device::CPU, false)
-                            .unwrap();
+                        randint(0, input_shape[0] as i32, num_indices, Default::default()).unwrap();
                     IndexAddProblem {
                         input_shape,
                         indices,
@@ -267,12 +266,12 @@ def index_add(input, source, indices):
         let mut source_shape = input_shape.clone();
         source_shape[0] = indices.shape()[0];
 
-        let input = Tensor::randn::<f32, _>(0., 1., input_shape.clone(), device.clone(), false)
+        let input = randn(input_shape.clone(), None, None, Default::default())
             .unwrap()
             .to(&Device::CPU)
             .unwrap();
 
-        let source = Tensor::randn::<f32, _>(0., 1., source_shape.clone(), device.clone(), false)
+        let source = randn(source_shape.clone(), None, None, Default::default())
             .unwrap()
             .to(&Device::CPU)
             .unwrap();

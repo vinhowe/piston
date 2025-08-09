@@ -4,11 +4,12 @@ use inline_wgsl::wgsl;
 use piston_macros::IrFields;
 
 use crate::{
-    gpu::{dtype::WgslDType, BindGroupLayoutDescriptor},
-    rvec, Array, BindingMode, BuiltIn, DType, DynKernelMetadata, GPUOperation, InvariantError,
-    Kernel, KernelElement, KernelRenderable, KernelSource, OpGuards, OpTensor, Operation,
-    OperationError, RVec, Scalar, Shape, StorageView, Stride, TensorTypeOrScalarEnum, Vec2, Vec4,
+    Array, BindingMode, BuiltIn, DType, DynKernelMetadata, GPUOperation, InvariantError, Kernel,
+    KernelElement, KernelRenderable, KernelSource, OpGuards, OpTensor, Operation, OperationError,
+    RVec, Scalar, Shape, StorageView, Stride, TensorTypeOrScalarEnum, Vec2, Vec4,
     WgslKernelBuilder, WgslPrimitive, WorkgroupSize, Workload,
+    gpu::{BindGroupLayoutDescriptor, dtype::WgslDType},
+    rvec,
 };
 #[cfg(test)]
 use test_strategy::Arbitrary;
@@ -333,9 +334,9 @@ impl Kernel for CmpKernels {
 
 #[cfg(all(test, feature = "pyo3"))]
 mod tests {
-    use crate::{test_util::run_py_prg, CmpOp, DType, Device, DeviceRequest, Shape, Tensor};
+    use crate::{CmpOp, DType, Device, DeviceRequest, Shape, Tensor, randn, test_util::run_py_prg};
     use proptest::arbitrary::any;
-    use test_strategy::{proptest, Arbitrary};
+    use test_strategy::{Arbitrary, proptest};
 
     #[derive(Arbitrary, Debug)]
     struct BinaryProblem {
@@ -380,10 +381,9 @@ def {kn}(a, scalar):
     }
 
     fn run_cmp_trial(prob: BinaryProblem, device: Device) -> anyhow::Result<()> {
-        let cpu_device = Device::request_device(DeviceRequest::CPU)?;
         let BinaryProblem { op, shape } = prob;
-        let a = Tensor::randn::<f32, _>(0., 1., shape.clone(), cpu_device.clone(), false)?;
-        let b = Tensor::randn::<f32, _>(0., 1., shape, cpu_device.clone(), false)?;
+        let a = randn(shape.clone(), None, None, Default::default())?;
+        let b = randn(shape, None, None, Default::default())?;
         let ground = ground_truth(&a, &b, &op)?.cast(DType::F32)?;
 
         let a_gpu = a.to(&device)?;
@@ -403,9 +403,8 @@ def {kn}(a, scalar):
     }
 
     fn run_cmp_scalar_trial(prob: CmpScalarProblem, device: Device) -> anyhow::Result<()> {
-        let cpu_device = Device::request_device(DeviceRequest::CPU)?;
         let CmpScalarProblem { op, shape, scalar } = prob;
-        let a = Tensor::randn::<f32, _>(0., 1., shape, cpu_device.clone(), false)?;
+        let a = randn(shape, None, None, Default::default())?;
         let ground = ground_truth_scalar(&a, scalar, &op)?.cast(DType::F32)?;
 
         let a_gpu = a.to(&device)?;

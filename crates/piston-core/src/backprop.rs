@@ -3,10 +3,10 @@
 /// Methods for backpropagation of gradients.
 use crate::ops::{BinaryOp, TernaryOp, UnaryOp};
 use crate::{
-    rvec, Affine, Alibi, Binary, Broadcast, Cast, Cmp, Concat, Conv, DType, Gather, GroupNorm,
-    IndexAdd, IndexSelect, LazyOp, Matmul, Norm, NormOp, OpTensor, Permute, Powf, Reduce, ReduceOp,
-    Reindex, RoPE, ScatterAdd, ScopePusher, Slice, Softmax, Tensor, TensorId, TensorTypeOrScalar,
-    TensorTypeOrScalarEnum, Ternary, Unary, View, WhereCond,
+    Affine, Alibi, Binary, Broadcast, Cast, Cmp, Concat, Conv, DType, Gather, GroupNorm, IndexAdd,
+    IndexSelect, LazyOp, Matmul, Norm, NormOp, OpTensor, Permute, Powf, Reduce, ReduceOp, Reindex,
+    RoPE, ScatterAdd, ScopePusher, Slice, Softmax, Tensor, TensorId, TensorOptions,
+    TensorTypeOrScalar, TensorTypeOrScalarEnum, Ternary, Unary, View, WhereCond, cat, rvec, zeros,
 };
 use crate::{HashMap, HashSet, Trilu};
 use anyhow::Result;
@@ -37,7 +37,7 @@ fn or_insert(tensor: &Tensor) -> Result<Tensor> {
     let grad = match tensor.grad() {
         Some(grad) => grad,
         None => {
-            let grad = tensor.clone().zeros_like::<f32>(None, false)?;
+            let grad = tensor.clone().zeros_like(Default::default())?;
             tensor.set_grad(Some(grad.clone()));
             grad
         }
@@ -330,7 +330,9 @@ impl Tensor {
         // Create gradient context for tracked tensors
         let ctx = GradAccumContext::new(&sorted_nodes);
 
-        self.set_grad(Some(self.ones_like::<f32>(None, false)?.contiguous()?));
+        self.set_grad(Some(
+            self.clone().ones_like(Default::default())?.contiguous()?,
+        ));
         for node in sorted_nodes.iter() {
             let node = node.clone().wrap();
             let _op_scope_guard = ScopePusher::new(&format!("for:{}", node.op().name()));
@@ -537,7 +539,7 @@ impl Tensor {
                     let condition = condition.wrap();
                     let on_true = on_true.map_tensor(|t| t.wrap())?;
                     let on_false = on_false.map_tensor(|t| t.wrap())?;
-                    let zeros = grad.clone().zeros_like::<f32>(None, false)?;
+                    let zeros = grad.clone().zeros_like(Default::default())?;
                     if let TensorTypeOrScalarEnum::Tensor(on_true) = on_true {
                         let t_grad = grad.clone().where_cond(condition.clone(), zeros.clone())?;
                         ctx.add(&on_true, t_grad)?;
@@ -571,7 +573,7 @@ impl Tensor {
 
                     // Calculate the gradient with respect to the bias term
                     if let Some(bias) = bias {
-                        let bias_grad = grad.sum_keepdim(1)?; // Assuming bias is summed over the appropriate axis
+                        let bias_grad = grad.sum(1, true)?; // Assuming bias is summed over the appropriate axis
                         ctx.add(&bias, bias_grad)?;
                     }
                 }
@@ -594,9 +596,9 @@ impl Tensor {
                         }
                     }
 
-                    let mut arg_grad = grad.sum_keepdim(sum_dims.as_slice())?;
+                    let mut arg_grad = grad.sum(sum_dims.as_slice(), true)?;
                     for _i in 0..left_dims {
-                        arg_grad = arg_grad.squeeze_all()?;
+                        arg_grad = arg_grad.squeeze(())?;
                     }
                     ctx.add(&src, arg_grad.broadcast_to(src.shape().clone())?)?;
                 }
@@ -619,7 +621,7 @@ impl Tensor {
                     } else {
                         let mut dims = arg_dims.clone();
                         dims[first_different_index] = indices[first_different_index].start;
-                        Some(Tensor::zeros::<f32, _>(dims, &arg.device(), false)?)
+                        Some(zeros(dims, TensorOptions::new().device(arg.device()))?)
                     };
 
                     let right_pad =
@@ -629,19 +631,19 @@ impl Tensor {
                             let mut dims = arg_dims.clone();
                             dims[first_different_index] = arg_dims[first_different_index]
                                 - indices[first_different_index].end;
-                            Some(Tensor::zeros::<f32, _>(dims, &arg.device(), false)?)
+                            Some(zeros(dims, TensorOptions::new().device(arg.device()))?)
                         };
 
                     let arg_grad = match (left_pad, right_pad) {
                         (None, None) => grad.clone(),
                         (Some(left_pad), None) => {
-                            Tensor::cat(rvec![left_pad, grad], first_different_index)?
+                            cat(rvec![left_pad, grad], first_different_index)?
                         }
                         (None, Some(right_pad)) => {
-                            Tensor::cat(rvec![grad, right_pad], first_different_index)?
+                            cat(rvec![grad, right_pad], first_different_index)?
                         }
                         (Some(left_pad), Some(right_pad)) => {
-                            Tensor::cat(rvec![left_pad, grad, right_pad], first_different_index)?
+                            cat(rvec![left_pad, grad, right_pad], first_different_index)?
                         }
                     };
 
@@ -749,10 +751,10 @@ impl Tensor {
                     op: UnaryOp::Abs,
                 }) => {
                     let arg = arg.wrap();
-                    let ones = arg.ones_like::<f32>(None, false)?;
+                    let ones = arg.clone().ones_like(Default::default())?;
                     let abs_grad = arg
                         .clone()
-                        .ge(arg.clone().zeros_like::<f32>(None, false)?)?
+                        .ge(arg.clone().zeros_like(Default::default())?)?
                         .where_cond(ones.clone(), ones.neg()?)?;
                     let arg_grad = (grad * abs_grad)?;
                     ctx.add(&arg, arg_grad)?;
@@ -805,7 +807,7 @@ impl Tensor {
                     let arg = arg.wrap();
                     let relu_grad = arg
                         .clone()
-                        .ge(arg.clone().zeros_like::<f32>(None, false)?)?
+                        .ge(arg.clone().zeros_like(Default::default())?)?
                         .cast(arg.dtype())?;
                     let arg_grad = grad.mul(relu_grad)?;
                     ctx.add(&arg, arg_grad)?;
@@ -817,7 +819,7 @@ impl Tensor {
                     let arg = arg.wrap();
                     let relu_grad = arg.clone().affine(2.0, 0.0)?.mul(
                         arg.clone()
-                            .ge(arg.clone().zeros_like::<f32>(None, false)?)?
+                            .ge(arg.clone().zeros_like(Default::default())?)?
                             .cast(arg.dtype())?,
                     )?;
                     let arg_grad = grad.mul(relu_grad)?;
@@ -929,7 +931,7 @@ impl Tensor {
                     let softmax_output = node.clone();
 
                     // Compute the sum of the gradients
-                    let sum_grad = grad.clone().sum_keepdim(dim)?;
+                    let sum_grad = grad.clone().sum(dim, true)?;
 
                     // Compute the gradient with respect to the softmax input
                     let input_grad = softmax_output
@@ -966,13 +968,13 @@ impl Tensor {
                     let mean = arg
                         .clone()
                         // Keepdim for broadcasting
-                        .sum_keepdim(norm_axis)?
+                        .sum(norm_axis, true)?
                         .affine(1. / d, 0.)?;
                     let var = arg
                         .clone()
                         .sub(mean.clone())?
                         .square()?
-                        .sum_keepdim(norm_axis)?
+                        .sum(norm_axis, true)?
                         .affine(1. / d, 0.)?; // Keepdim for broadcasting
 
                     let std = (var.clone() + eps)?.sqrt()?;
@@ -982,14 +984,14 @@ impl Tensor {
                     let grad_gamma = x_normed
                         .clone()
                         .mul(grad.clone())?
-                        .sum_keepdim(sum_axes.as_slice())?;
+                        .sum(sum_axes.as_slice(), true)?;
                     if let Some(scale) = scale.as_ref() {
-                        ctx.add(&scale.clone(), grad_gamma.squeeze_all()?)?;
+                        ctx.add(&scale.clone(), grad_gamma.squeeze(())?)?;
                     }
 
                     if let Some(bias) = bias {
-                        let grad_beta = grad.clone().sum_keepdim(sum_axes.as_slice())?;
-                        ctx.add(&bias, grad_beta.squeeze_all()?)?;
+                        let grad_beta = grad.clone().sum(sum_axes.as_slice(), true)?;
+                        ctx.add(&bias, grad_beta.squeeze(())?)?;
                     }
 
                     // Compute gradient w.r.t normalized input
@@ -1002,7 +1004,7 @@ impl Tensor {
                     // dL/dmu = sum(dL/dx_normed * (-1/std)) over norm_axis
                     let grad_mean = grad_x_normed
                         .clone()
-                        .sum_keepdim(norm_axis)?
+                        .sum(norm_axis, true)?
                         .neg()?
                         .div(std.clone())?;
 
@@ -1010,7 +1012,7 @@ impl Tensor {
                     let grad_var = grad_x_normed
                         .clone()
                         .mul(x_normed.clone())?
-                        .sum_keepdim(norm_axis)?
+                        .sum(norm_axis, true)?
                         .neg()?
                         .div(var.clone().affine(1., eps)?)? // std^2 = var + eps
                         .affine(0.5, 0.)?;
@@ -1061,7 +1063,7 @@ impl Tensor {
                     let var = arg
                         .clone()
                         .square()? // x^2
-                        .sum_keepdim(norm_axis)? // sum over norm axis
+                        .sum(norm_axis, true)? // sum over norm axis
                         .affine(1.0 / d, 0.0)?; // mean of squares
                     let inv_std = (var.clone() + eps)?.sqrt()?.recip()?; // 1 / sqrt(mean(x^2) + eps)
 
@@ -1072,9 +1074,9 @@ impl Tensor {
                     let grad_gamma = x_normed
                         .clone()
                         .mul(grad.clone())?
-                        .sum_keepdim(sum_axes.as_slice())?;
+                        .sum(sum_axes.as_slice(), true)?;
                     if let Some(scale) = scale.as_ref() {
-                        ctx.add(&scale.clone(), grad_gamma.squeeze_all()?)?;
+                        ctx.add(&scale.clone(), grad_gamma.squeeze(())?)?;
                     }
 
                     // Intermediate: dY * scale (or identity if no scale)
@@ -1084,10 +1086,7 @@ impl Tensor {
                     };
 
                     // Projection term: sum(dY * scale * x) over norm_axis (keepdim)
-                    let proj = grad_scaled
-                        .clone()
-                        .mul(arg.clone())?
-                        .sum_keepdim(norm_axis)?;
+                    let proj = grad_scaled.clone().mul(arg.clone())?.sum(norm_axis, true)?;
 
                     // inv_std^3
                     let inv_std_cubed = inv_std.clone().pow(3.0)?;
@@ -1112,7 +1111,7 @@ impl Tensor {
                     let src = src.wrap();
                     let ids = ids.wrap();
                     // We can't use or_insert here because we need to scatter into a zero tensor.
-                    let sum_grad = src.zeros_like::<f32>(None, false)?;
+                    let sum_grad = src.clone().zeros_like(Default::default())?;
                     let src_grad = sum_grad.scatter_add(ids.clone(), grad.clone(), dim)?;
                     ctx.add(&src, src_grad)?;
                 }
@@ -1153,7 +1152,7 @@ impl Tensor {
                     ..
                 }) => {
                     let arg = arg.wrap();
-                    let arg_grad = grad.rope_backward(dim, base, offset)?;
+                    let arg_grad = grad.rope_backward_(dim, base, offset)?;
                     ctx.add(&arg, arg_grad)?;
                 }
                 LazyOp::Conv(_) => todo!(),

@@ -1,25 +1,26 @@
-use crate::dispatch::Value;
 use crate::dispatch::{
-    dispatch_operator, BoxedKernel, DispatchKeySet, KernelFunction, OperatorHandle,
-    OperatorHandlerRegistration, OperatorRegistration, StackValue,
+    DispatchKeySet, KernelFunction, OperatorHandle, OperatorHandlerRegistration,
+    OperatorRegistration, StackValue,
 };
 use crate::gpu::{BindGroupEntry, CpuUniform, WgpuDevice};
-use crate::{
-    cpu, get_current_scope, ops::*, rvec, BufferSegment, CPUBuffer, Compiled, CompiledOp,
-    ComputeCompileKey, DType, Device, DeviceStorage, Dim, Dims, GPUOperation, GpuCompileKey,
-    InvariantError, LazyGraphExecutorError, LazyOp, Operation, OperationError, RVec, RawCPUBuffer,
-    ScopePusher, Shape, Storage, Stride, TensorDType, TensorId,
-};
 #[cfg(not(feature = "debug"))]
 use crate::{BufferDescriptor, BufferUsagesExt, GPUBuffer};
+use crate::{
+    BufferSegment, CPUBuffer, Compiled, CompiledOp, ComputeCompileKey, DType, Device,
+    DeviceStorage, Dim, Dims, GPUOperation, GpuCompileKey, InvariantError, LazyGraphExecutorError,
+    LazyOp, Operation, OperationError, RVec, RawCPUBuffer, ScopePusher, Shape, Storage, Stride,
+    TensorDType, TensorId, cpu, get_current_scope, ops::*, rvec,
+};
 use anyhow::Result;
 use bitvec::prelude::*;
 use derive_new::new;
+use half::{bf16, f16};
 use maybe_async::maybe_async;
 use npyz::WriterBuilder;
 use num_traits::AsPrimitive;
+use num_traits::NumCast;
 use parking_lot::{RwLock, RwLockReadGuard, RwLockWriteGuard};
-use paste::paste;
+use piston_macros::tensor_op;
 use std::borrow::Cow;
 use std::io::{BufRead, Seek};
 use std::mem::ManuallyDrop;
@@ -233,7 +234,7 @@ impl OpTensor {
 
         for (tensor, shape) in tensors.into_iter().zip(shapes.iter()) {
             if shape != &broadcasted {
-                result.push(broadcast_to(tensor, broadcasted.clone())?);
+                result.push(broadcast_to_kernel(tensor, broadcasted.clone())?);
             } else {
                 result.push(tensor);
             }
@@ -500,7 +501,7 @@ impl OpTensor {
     }
 
     pub fn set(self, src: Self) -> Self {
-        copy(self, src).unwrap()
+        copy_kernel(self, src).unwrap()
     }
 
     #[cfg(feature = "plotting")]
@@ -528,182 +529,97 @@ impl OpTensor {
 
 macro_rules! impl_binary_op {
     ($method_name:ident, $op:expr) => {
-        paste! {
-            pub fn $method_name<T1: Into<OpTensor>, T2: Into<OpTensor>, T3: TensorTypeOrScalar<T2>>(
-                input: T1,
-                other: T3,
-            ) -> Result<OpTensor> {
-                let input = input.into();
-                let device = input.device().clone();
-                let (lhs, rhs) = match other.map_tensor(|other| other.into()).tensor_or_scalar() {
-                    Ok(TensorTypeOrScalarEnum::Tensor(other)) => {
-                        let (lhs, rhs) = input.broadcast_for_binary_op(other)?;
-                        (lhs, TensorTypeOrScalarEnum::Tensor(rhs))
-                    }
-                    Ok(TensorTypeOrScalarEnum::Scalar(other)) => {
-                        (input, TensorTypeOrScalarEnum::Scalar(other)) // TODO: this is wrong
-                    }
-                    Err(e) => return Err(e),
-                };
-                let binary = Binary::new(lhs, rhs, $op);
-                let new_view = binary.compute_view()?;
-                Ok(OpTensor::lazy(
-                    LazyOp::Binary(binary),
-                    new_view,
-                    device,
-                    false,
-                ))
-            }
-
-            impl Tensor {
-                #[allow(clippy::should_implement_trait)]
-                pub fn $method_name<T: TensorTypeOrScalar<Self>>(
-                    self,
-                    other: T,
-                ) -> Result<Self> {
-                    $method_name(self, other).map(Self::wrap)
+        #[tensor_op(variants = [function, method, method_inplace])]
+        pub fn $method_name<T: TensorTypeOrScalar<OpTensor>>(
+            input: OpTensor,
+            other: T,
+        ) -> Result<OpTensor> {
+            let device = input.device().clone();
+            let (lhs, rhs) = match other.tensor_or_scalar() {
+                Ok(TensorTypeOrScalarEnum::Tensor(other)) => {
+                    let (lhs, rhs) = input.broadcast_for_binary_op(other)?;
+                    (lhs, TensorTypeOrScalarEnum::Tensor(rhs))
                 }
-
-                pub fn [<$method_name _>]<T: TensorTypeOrScalar<Self>>(
-                    self,
-                    other: T,
-                ) -> Result<Self> {
-                    Ok(self.wrap_inplace($method_name(self.clone(), other)?))
+                Ok(TensorTypeOrScalarEnum::Scalar(other)) => {
+                    (input, TensorTypeOrScalarEnum::Scalar(other)) // TODO: this is wrong
                 }
-            }
+                Err(e) => return Err(e),
+            };
+            let binary = Binary::new(lhs, rhs, $op);
+            let new_view = binary.compute_view()?;
+            Ok(OpTensor::lazy(
+                LazyOp::Binary(binary),
+                new_view,
+                device,
+                false,
+            ))
         }
     };
 }
 
 macro_rules! impl_binary_op_tensor_only {
     ($method_name:ident, $op:expr) => {
-        paste! {
-            pub fn $method_name<T1: Into<OpTensor>, T2: Into<OpTensor>>(
-                input: T1,
-                other: T2,
-            ) -> Result<OpTensor> {
-                let input = input.into();
-                let other = other.into();
-                let device = input.device().clone();
-                let (lhs, rhs) = input.broadcast_for_binary_op(other)?;
-                let binary = Binary::new(lhs, TensorTypeOrScalarEnum::Tensor(rhs), $op);
-                let new_view = binary.compute_view()?;
-                Ok(OpTensor::lazy(
-                    LazyOp::Binary(binary),
-                    new_view,
-                    device,
-                    false,
-                ))
-            }
-
-            impl Tensor {
-                #[allow(clippy::should_implement_trait)]
-                pub fn $method_name<T: Into<OpTensor>>(self, other: T) -> Result<Self> {
-                    $method_name(self, other).map(Self::wrap)
-                }
-
-                pub fn [<$method_name _>] <
-                    T: Into<OpTensor>,
-                >(
-                    self,
-                    other: T,
-                ) -> Result<Self> {
-                    Ok(self.wrap_inplace($method_name(self.clone(), other)?))
-                }
-            }
+        #[tensor_op(variants = [function, method, method_inplace])]
+        pub fn $method_name(input: OpTensor, other: OpTensor) -> Result<OpTensor> {
+            let device = input.device().clone();
+            let (lhs, rhs) = input.broadcast_for_binary_op(other)?;
+            let binary = Binary::new(lhs, TensorTypeOrScalarEnum::Tensor(rhs), $op);
+            let new_view = binary.compute_view()?;
+            Ok(OpTensor::lazy(
+                LazyOp::Binary(binary),
+                new_view,
+                device,
+                false,
+            ))
         }
     };
 }
 
 macro_rules! impl_ternary_op {
     ($method_name:ident, $op:expr) => {
-        paste! {
-            pub fn $method_name<T1: Into<OpTensor>, T2: Into<OpTensor>, T3: Into<OpTensor>>(
-                input: T1,
-                tensor1: T2,
-                tensor2: T3,
-                value: f32,
-            ) -> Result<OpTensor> {
-                let input = input.into();
-                let tensor1 = tensor1.into();
-                let tensor2 = tensor2.into();
-                let device = input.device().clone();
-                let (input, t1, t2) = input.broadcast_for_ternary_op(tensor1, tensor2)?;
-                let ternary = Ternary::new(input, t1, t2, value, $op);
-                let new_view = ternary.compute_view()?;
-                Ok(OpTensor::lazy(
-                    LazyOp::Ternary(ternary),
-                    new_view,
-                    device,
-                    false,
-                ))
-            }
-
-            impl Tensor {
-                #[allow(clippy::should_implement_trait)]
-                pub fn $method_name(
-                    self,
-                    tensor1: Self,
-                    tensor2: Self,
-                    value: f32,
-                ) -> Result<Self> {
-                    $method_name(self, tensor1, tensor2, value).map(Self::wrap)
-                }
-
-                pub fn [<$method_name _>](
-                    self,
-                    tensor1: Self,
-                    tensor2: Self,
-                    value: f32,
-                ) -> Result<Self> {
-                    Ok(self.wrap_inplace($method_name(self.clone(), tensor1, tensor2, value)?))
-                }
-            }
+        #[tensor_op(variants = [function, method, method_inplace])]
+        pub fn $method_name(
+            input: OpTensor,
+            tensor1: OpTensor,
+            tensor2: OpTensor,
+            value: f32,
+        ) -> Result<OpTensor> {
+            let device = input.device().clone();
+            let (input, t1, t2) = input.broadcast_for_ternary_op(tensor1, tensor2)?;
+            let ternary = Ternary::new(input, t1, t2, value, $op);
+            let new_view = ternary.compute_view()?;
+            Ok(OpTensor::lazy(
+                LazyOp::Ternary(ternary),
+                new_view,
+                device,
+                false,
+            ))
         }
     };
 }
 
 macro_rules! impl_cmp_op {
     ($method_name:ident, $op:expr) => {
-        paste! {
-            pub fn $method_name<T1: Into<OpTensor>, T2: Into<OpTensor>, T3: TensorTypeOrScalar<T2>>(
-                input: T1,
-                other: T3,
-            ) -> Result<OpTensor> {
-                let input = input.into();
-                let device = input.device().clone();
-                match other.map_tensor(|other| other.into()).tensor_or_scalar() {
-                    Ok(TensorTypeOrScalarEnum::Tensor(other)) => {
-                        let (lhs, rhs) = input.broadcast_for_binary_op(other)?;
-                        let cmp = Cmp::new(lhs, TensorTypeOrScalarEnum::Tensor(rhs), $op);
-                        let new_view = cmp.compute_view()?;
-                        Ok(OpTensor::lazy(LazyOp::Cmp(cmp), new_view, device, false))
-                    }
-                    Ok(TensorTypeOrScalarEnum::Scalar(other)) => {
-                        let device = input.device.clone();
-                        let cmp = Cmp::new(input, TensorTypeOrScalarEnum::Scalar(other), $op);
-                        let new_view = cmp.compute_view()?;
-                        Ok(OpTensor::lazy(LazyOp::Cmp(cmp), new_view, device, false))
-                    }
-                    Err(e) => Err(e),
+        #[tensor_op(variants = [function, method, method_inplace])]
+        pub fn $method_name<T: TensorTypeOrScalar<OpTensor>>(
+            input: OpTensor,
+            other: T,
+        ) -> Result<OpTensor> {
+            let device = input.device().clone();
+            match other.tensor_or_scalar() {
+                Ok(TensorTypeOrScalarEnum::Tensor(other)) => {
+                    let (lhs, rhs) = input.broadcast_for_binary_op(other)?;
+                    let cmp = Cmp::new(lhs, TensorTypeOrScalarEnum::Tensor(rhs), $op);
+                    let new_view = cmp.compute_view()?;
+                    Ok(OpTensor::lazy(LazyOp::Cmp(cmp), new_view, device, false))
                 }
-            }
-
-            impl Tensor {
-                #[allow(clippy::should_implement_trait)]
-                pub fn $method_name<T: TensorTypeOrScalar<Self>>(
-                    self,
-                    other: T,
-                ) -> Result<Self> {
-                    $method_name(self, other).map(Self::wrap)
+                Ok(TensorTypeOrScalarEnum::Scalar(other)) => {
+                    let device = input.device.clone();
+                    let cmp = Cmp::new(input, TensorTypeOrScalarEnum::Scalar(other), $op);
+                    let new_view = cmp.compute_view()?;
+                    Ok(OpTensor::lazy(LazyOp::Cmp(cmp), new_view, device, false))
                 }
-
-                pub fn [<$method_name _>]<T: TensorTypeOrScalar<Self>>(
-                    self,
-                    other: T,
-                ) -> Result<Self> {
-                    Ok(self.wrap_inplace($method_name(self.clone(), other)?))
-                }
+                Err(e) => Err(e),
             }
         }
     };
@@ -711,30 +627,17 @@ macro_rules! impl_cmp_op {
 
 macro_rules! impl_unary_op {
     ($method_name:ident, $op:expr) => {
-        paste! {
-            pub fn $method_name<T: Into<OpTensor>>(input: T) -> Result<OpTensor> {
-                let input = input.into();
-                let device = input.device().clone();
-                let unary = Unary::new(input, $op);
-                let new_view = unary.compute_view()?;
-                Ok(OpTensor::lazy(
-                    LazyOp::Unary(unary),
-                    new_view,
-                    device,
-                    false,
-                ))
-            }
-
-            impl Tensor {
-                #[allow(clippy::should_implement_trait)]
-                pub fn $method_name(self) -> Result<Self> {
-                    $method_name(self).map(Self::wrap)
-                }
-
-                pub fn [<$method_name _>](self) -> Result<Self> {
-                    Ok(self.wrap_inplace($method_name(self.clone())?))
-                }
-            }
+        #[tensor_op(variants = [function, method, method_inplace])]
+        pub fn $method_name(input: OpTensor) -> Result<OpTensor> {
+            let device = input.device().clone();
+            let unary = Unary::new(input, $op);
+            let new_view = unary.compute_view()?;
+            Ok(OpTensor::lazy(
+                LazyOp::Unary(unary),
+                new_view,
+                device,
+                false,
+            ))
         }
     };
 }
@@ -776,8 +679,8 @@ impl_unary_op!(silu, UnaryOp::Silu);
 impl_unary_op!(square, UnaryOp::Square);
 impl_unary_op!(recip, UnaryOp::Reciprocal);
 
-pub fn cast<T: Into<OpTensor>>(input: T, dst_dtype: DType) -> Result<OpTensor> {
-    let input = input.into();
+#[tensor_op(variants = [function, method])]
+pub fn cast(input: OpTensor, dst_dtype: DType) -> Result<OpTensor> {
     if input.dtype() == dst_dtype {
         return Ok(input);
     }
@@ -789,25 +692,25 @@ pub fn cast<T: Into<OpTensor>>(input: T, dst_dtype: DType) -> Result<OpTensor> {
 }
 
 /// Cast a tensor to full precision (IEEE 754 32-bit floating point).
-pub fn float<T: Into<OpTensor>>(input: T) -> Result<OpTensor> {
-    cast(input, DType::F32)
+#[tensor_op(variants = [method])]
+pub fn float(input: OpTensor) -> Result<OpTensor> {
+    cast_kernel(input, DType::F32)
 }
 
 /// Cast a tensor to half precision (IEEE 754 16-bit floating point).
-pub fn half<T: Into<OpTensor>>(input: T) -> Result<OpTensor> {
-    cast(input, DType::F16)
+#[tensor_op(variants = [method])]
+pub fn half(input: OpTensor) -> Result<OpTensor> {
+    cast_kernel(input, DType::F16)
 }
 
-pub fn group_norm<T1: Into<OpTensor>, T2: Into<OpTensor>, T3: Into<OpTensor>>(
-    input: T1,
+#[tensor_op(variants = [function, method])]
+pub fn group_norm(
+    input: OpTensor,
     num_groups: usize,
-    weight: Option<T2>,
-    bias: Option<T3>,
+    weight: Option<OpTensor>,
+    bias: Option<OpTensor>,
     eps: f32,
 ) -> Result<OpTensor> {
-    let input = input.into();
-    let weight = weight.map(|w| w.into());
-    let bias = bias.map(|b| b.into());
     let device = input.device().clone();
     let group_norm = GroupNorm::new(Norm::new(input, weight, bias, eps), num_groups);
     let norm_op = NormOp::GroupNorm(group_norm);
@@ -820,15 +723,13 @@ pub fn group_norm<T1: Into<OpTensor>, T2: Into<OpTensor>, T3: Into<OpTensor>>(
     ))
 }
 
-pub fn layer_norm<T1: Into<OpTensor>, T2: Into<OpTensor>, T3: Into<OpTensor>>(
-    input: T1,
-    weight: Option<T2>,
-    bias: Option<T3>,
+#[tensor_op(variants = [function, method])]
+pub fn layer_norm(
+    input: OpTensor,
+    weight: Option<OpTensor>,
+    bias: Option<OpTensor>,
     eps: f32,
 ) -> Result<OpTensor> {
-    let input = input.into();
-    let weight = weight.map(|w| w.into());
-    let bias = bias.map(|b| b.into());
     let device = input.device().clone();
     let layer_norm = Norm::new(input, weight, bias, eps);
     let op = NormOp::LayerNorm(layer_norm);
@@ -836,13 +737,8 @@ pub fn layer_norm<T1: Into<OpTensor>, T2: Into<OpTensor>, T3: Into<OpTensor>>(
     Ok(OpTensor::lazy(LazyOp::Norm(op), new_view, device, false))
 }
 
-pub fn rms_norm<T1: Into<OpTensor>, T2: Into<OpTensor>>(
-    input: T1,
-    weight: Option<T2>,
-    eps: f32,
-) -> Result<OpTensor> {
-    let input = input.into();
-    let weight = weight.map(|w| w.into());
+#[tensor_op(variants = [function, method])]
+pub fn rms_norm(input: OpTensor, weight: Option<OpTensor>, eps: f32) -> Result<OpTensor> {
     let device = input.device().clone();
     let rms = Norm::new(input, weight, None, eps);
     let op = NormOp::RMSNorm(rms);
@@ -850,28 +746,22 @@ pub fn rms_norm<T1: Into<OpTensor>, T2: Into<OpTensor>>(
     Ok(OpTensor::lazy(LazyOp::Norm(op), new_view, device, false))
 }
 
-pub fn conv1d<T1: Into<OpTensor>, T2: Into<OpTensor>, T3: Into<OpTensor>>(
-    input: T1,
-    weight: T2,
-    bias: Option<T3>,
+#[tensor_op(variants = [function, method])]
+pub fn conv1d(
+    input: OpTensor,
+    weight: OpTensor,
+    bias: Option<OpTensor>,
     stride: usize,
     padding: usize,
 ) -> Result<OpTensor> {
-    let input = input.into();
     let device = input.device().clone();
-    let conv = Conv::new(
-        input,
-        weight.into(),
-        bias.map(|b| b.into()),
-        stride,
-        padding,
-    );
+    let conv = Conv::new(input, weight, bias, stride, padding);
     let new_view = conv.compute_view()?;
     Ok(OpTensor::lazy(LazyOp::Conv(conv), new_view, device, false))
 }
 
-pub fn softmax<T: Into<OpTensor>, D: Dim>(input: T, dim: D) -> Result<OpTensor> {
-    let input = input.into();
+#[tensor_op(variants = [function, method])]
+pub fn softmax<D: Dim>(input: OpTensor, dim: D) -> Result<OpTensor> {
     let device = input.device().clone();
     let dim = dim.to_index(input.shape(), "softmax")?;
     let softmax = Softmax::new(input, dim);
@@ -884,35 +774,31 @@ pub fn softmax<T: Into<OpTensor>, D: Dim>(input: T, dim: D) -> Result<OpTensor> 
     ))
 }
 
-fn rope_impl<T: Into<OpTensor>>(
-    input: T,
+fn rope_impl(
+    input: OpTensor,
     dim: usize,
     base: f32,
     offset: usize,
     is_backward: bool,
 ) -> Result<OpTensor> {
-    let input = input.into();
     let device = input.device().clone();
     let rope = RoPE::new(input, dim, base, offset, is_backward);
     let new_view = rope.compute_view()?;
     Ok(OpTensor::lazy(LazyOp::RoPE(rope), new_view, device, false))
 }
 
-pub fn rope<T: Into<OpTensor>>(input: T, dim: usize, base: f32, offset: usize) -> Result<OpTensor> {
+#[tensor_op(variants = [function, method_inplace])]
+pub fn rope(input: OpTensor, dim: usize, base: f32, offset: usize) -> Result<OpTensor> {
     rope_impl(input, dim, base, offset, false)
 }
 
-pub(crate) fn rope_backward<T: Into<OpTensor>>(
-    input: T,
-    dim: usize,
-    base: f32,
-    offset: usize,
-) -> Result<OpTensor> {
+#[tensor_op(variants = [function, method_inplace])]
+pub fn rope_backward(input: OpTensor, dim: usize, base: f32, offset: usize) -> Result<OpTensor> {
     rope_impl(input, dim, base, offset, true)
 }
 
-pub fn alibi<T: Into<OpTensor>>(input: T, max_bias: f32) -> Result<OpTensor> {
-    let input = input.into();
+#[tensor_op(variants = [function, method])]
+pub fn alibi(input: OpTensor, max_bias: f32) -> Result<OpTensor> {
     let device = input.device().clone();
     let alibi = Alibi::new(input, max_bias);
     let new_view = alibi.compute_view()?;
@@ -925,14 +811,13 @@ pub fn alibi<T: Into<OpTensor>>(input: T, max_bias: f32) -> Result<OpTensor> {
 }
 
 //TODO (vinhowe): figure out how to make this interface more like pytorch
-pub fn matmul<T1: Into<OpTensor>, T2: Into<OpTensor>>(
-    input: T1,
-    rhs: T2,
+#[tensor_op(variants = [function, method])]
+pub fn matmul(
+    input: OpTensor,
+    rhs: OpTensor,
     trans_lhs: bool,
     trans_rhs: bool,
 ) -> Result<OpTensor> {
-    let input = input.into();
-    let rhs = rhs.into();
     let device = input.device().clone();
     let matmul = Matmul::new(input, rhs, None, trans_lhs, trans_rhs, false);
     let new_view = matmul.compute_view()?;
@@ -944,17 +829,15 @@ pub fn matmul<T1: Into<OpTensor>, T2: Into<OpTensor>>(
     ))
 }
 
-pub fn gemm<T1: Into<OpTensor>, T2: Into<OpTensor>, T3: Into<OpTensor>>(
-    input: T1,
-    rhs: T2,
-    bias: Option<T3>,
+#[tensor_op(variants = [function, method])]
+pub fn gemm(
+    input: OpTensor,
+    rhs: OpTensor,
+    bias: Option<OpTensor>,
     trans_lhs: bool,
     trans_rhs: bool,
     trans_out: bool,
 ) -> Result<OpTensor> {
-    let input = input.into();
-    let rhs = rhs.into();
-    let bias = bias.map(|b| b.into());
     let device = input.device().clone();
     let gemm = Matmul::new(input, rhs, bias, trans_lhs, trans_rhs, trans_out);
     let new_view = gemm.compute_view()?;
@@ -966,8 +849,8 @@ pub fn gemm<T1: Into<OpTensor>, T2: Into<OpTensor>, T3: Into<OpTensor>>(
     ))
 }
 
-pub fn affine<T: Into<OpTensor>>(input: T, mul: f32, add: f32) -> Result<OpTensor> {
-    let input = input.into();
+#[tensor_op(variants = [function, method, method_inplace])]
+pub fn affine(input: OpTensor, mul: f32, add: f32) -> Result<OpTensor> {
     let device = input.device().clone();
     let affine = Affine::new(input, mul, add);
     let new_view = affine.compute_view()?;
@@ -979,32 +862,25 @@ pub fn affine<T: Into<OpTensor>>(input: T, mul: f32, add: f32) -> Result<OpTenso
     ))
 }
 
-pub fn lerp<
-    T1: Into<OpTensor>,
-    T2: Into<OpTensor>,
-    T3: Into<OpTensor>,
-    T4: TensorTypeOrScalar<T3>,
->(
-    input: T1,
-    end: T2,
-    weight: T4,
+#[tensor_op(variants = [function, method, method_inplace])]
+pub fn lerp<T: TensorTypeOrScalar<OpTensor>>(
+    input: OpTensor,
+    end: OpTensor,
+    weight: T,
 ) -> Result<OpTensor> {
-    let input = input.into();
-    let end = end.into();
-    let weight = weight.map_tensor(|w| w.into()).tensor_or_scalar()?;
+    let weight = weight.tensor_or_scalar()?;
     let device = input.device().clone();
     let lerp = Lerp::new(input, end, weight);
     let new_view = lerp.compute_view()?;
     Ok(OpTensor::lazy(LazyOp::Lerp(lerp), new_view, device, false))
 }
 
-fn reduce_impl<T: Into<OpTensor>>(
-    input: T,
+fn reduce_impl(
+    input: OpTensor,
     dims: RVec<usize>,
     keepdim: bool,
     op: ReduceOp,
 ) -> Result<OpTensor> {
-    let input = input.into();
     let device = input.device().clone();
     let reduce = Reduce::new(input, op, dims, keepdim);
     let new_view = reduce.compute_view()?;
@@ -1016,159 +892,70 @@ fn reduce_impl<T: Into<OpTensor>>(
     ))
 }
 
-fn sum_impl<T: Into<OpTensor>>(input: T, sum_dims: &[usize], keepdim: bool) -> Result<OpTensor> {
-    let input = input.into();
+#[tensor_op(variants = [function, method])]
+pub fn sum<D: Dims>(input: OpTensor, dim: D, keepdim: bool) -> Result<OpTensor> {
+    let sum_dims = dim.to_indexes(input.shape(), "sum")?;
     let device = input.device().clone();
-    let sum = Reduce::new(input, ReduceOp::Sum, sum_dims.into(), keepdim);
+    let sum = Reduce::new(input, ReduceOp::Sum, sum_dims, keepdim);
     let new_view = sum.compute_view()?;
     Ok(OpTensor::lazy(LazyOp::Reduce(sum), new_view, device, false))
 }
 
-pub fn sum_keepdim<T: Into<OpTensor>, D: Dims>(input: T, dim: D) -> Result<OpTensor> {
-    let input = input.into();
-    let sum_dims = dim.to_indexes(input.shape(), "sum_keepdim")?;
-    sum_impl(input, &sum_dims, true)
-}
-
-pub fn sum<T: Into<OpTensor>, D: Dims>(input: T, sum_dims: D) -> Result<OpTensor> {
-    let input = input.into();
-    let sum_dims = sum_dims.to_indexes(input.shape(), "sum")?;
-    sum_impl(input, &sum_dims, false)
-}
-
-pub fn sum_all<T: Into<OpTensor>>(input: T) -> Result<OpTensor> {
-    let input = input.into();
-    let dims: RVec<_> = (0..input.dim()).collect();
-    sum_impl(input, &dims, false)
-}
-
-fn mean_impl<T: Into<OpTensor>>(input: T, mean_dims: &[usize], keepdim: bool) -> Result<OpTensor> {
-    let input = input.into();
-    let reduced_dim: usize = mean_dims.iter().map(|i| input.shape()[*i]).product();
+#[tensor_op(variants = [function, method])]
+pub fn mean<D: Dims>(input: OpTensor, dim: D, keepdim: bool) -> Result<OpTensor> {
+    let dim = dim.to_indexes(input.shape(), "mean")?;
+    let reduced_dim: usize = dim.iter().map(|i| input.shape()[*i]).product();
     let scale = 1f32 / (reduced_dim as f32);
-    mul::<_, OpTensor, _>(sum_impl(input, mean_dims, keepdim)?, scale)
+    mul_kernel::<_, _, OpTensor>(sum_kernel(input, dim, keepdim)?, scale)
 }
 
-pub fn mean_keepdim<T: Into<OpTensor>, D: Dims>(input: T, dim: D) -> Result<OpTensor> {
-    let input = input.into();
-    let mean_dims = dim.to_indexes(input.shape(), "mean_keepdim")?;
-    mean_impl(input, &mean_dims, true)
+#[tensor_op(variants = [function, method])]
+pub fn var<D: Dims>(input: OpTensor, dim: D, keepdim: bool) -> Result<OpTensor> {
+    let dim = dim.to_indexes(input.shape(), "var_keepdim")?;
+    let n: usize = dim.iter().map(|&i| input.shape()[i]).product();
+    let mean = mean_kernel(input.clone(), dim.clone(), true)?;
+    let squares = square_kernel(sub_kernel(input, mean)?)?;
+    div_kernel::<_, _, OpTensor>(sum_kernel(squares, dim, keepdim)?, n as f32 - 1.0)
 }
 
-pub fn mean<T: Into<OpTensor>, D: Dims>(input: T, dim: D) -> Result<OpTensor> {
-    let input = input.into();
-    let mean_dims = dim.to_indexes(input.shape(), "mean")?;
-    mean_impl(input, &mean_dims, false)
-}
-
-pub fn mean_all<T: Into<OpTensor>>(input: T) -> Result<OpTensor> {
-    let input = input.into();
-    let dims: RVec<_> = (0..input.dim()).collect();
-    mean_impl(input, &dims, false)
-}
-
-fn var_impl<T: Into<OpTensor>>(input: T, var_dims: &[usize], keepdim: bool) -> Result<OpTensor> {
-    let input = input.into();
-    let n: usize = var_dims.iter().map(|&i| input.shape()[i]).product();
-    let mean = mean_impl(input.clone(), var_dims, true)?;
-    let squares = square(sub(input, mean)?)?;
-    div::<_, OpTensor, _>(sum_impl(squares, var_dims, keepdim)?, n as f32 - 1.0)
-}
-
-pub fn var_keepdim<T: Into<OpTensor>, D: Dims>(input: T, dim: D) -> Result<OpTensor> {
-    let input = input.into();
-    let var_dims = dim.to_indexes(input.shape(), "var_keepdim")?;
-    var_impl(input, &var_dims, true)
-}
-
-pub fn var<T: Into<OpTensor>, D: Dims>(input: T, dim: D) -> Result<OpTensor> {
-    let input = input.into();
-    let var_dims = dim.to_indexes(input.shape(), "var")?;
-    var_impl(input, &var_dims, false)
-}
-
-pub fn var_all<T: Into<OpTensor>>(input: T) -> Result<OpTensor> {
-    let input = input.into();
-    let dims: RVec<_> = (0..input.dim()).collect();
-    var_impl(input, &dims, false)
-}
-
-fn max_impl<T: Into<OpTensor>>(input: T, max_dims: &[usize], keepdim: bool) -> Result<OpTensor> {
-    let input = input.into();
-    reduce_impl(input, max_dims.into(), keepdim, ReduceOp::Max)
-}
-
-pub fn max_keepdim<T: Into<OpTensor>, D: Dims>(input: T, dim: D) -> Result<OpTensor> {
-    let input = input.into();
-    let max_dims = dim.to_indexes(input.shape(), "max_keepdim")?;
-    max_impl(input, &max_dims, true)
-}
-
-pub fn max<T: Into<OpTensor>, D: Dims>(input: T, dim: D) -> Result<OpTensor> {
-    let input = input.into();
+#[tensor_op(variants = [function, method])]
+pub fn max<D: Dims>(input: OpTensor, dim: D, keepdim: bool) -> Result<OpTensor> {
     let max_dims = dim.to_indexes(input.shape(), "max")?;
-    max_impl(input, &max_dims, false)
+    reduce_impl(input, max_dims, keepdim, ReduceOp::Max)
 }
 
-fn min_impl<T: Into<OpTensor>>(input: T, min_dims: &[usize], keepdim: bool) -> Result<OpTensor> {
-    let input = input.into();
-    reduce_impl(input, min_dims.into(), keepdim, ReduceOp::Min)
-}
-
-pub fn min_keepdim<T: Into<OpTensor>, D: Dims>(input: T, dim: D) -> Result<OpTensor> {
-    let input = input.into();
-    let min_dims = dim.to_indexes(input.shape(), "min_keepdim")?;
-    min_impl(input, &min_dims, true)
-}
-
-pub fn min<T: Into<OpTensor>, D: Dims>(input: T, dim: D) -> Result<OpTensor> {
-    let input = input.into();
+#[tensor_op(variants = [function, method])]
+pub fn min<D: Dims>(input: OpTensor, dim: D, keepdim: bool) -> Result<OpTensor> {
     let min_dims = dim.to_indexes(input.shape(), "min")?;
-    min_impl(input, &min_dims, false)
+    reduce_impl(input, min_dims, keepdim, ReduceOp::Min)
 }
 
-pub fn argmax_keepdim<T: Into<OpTensor>, D: Dims>(input: T, dim: D) -> Result<OpTensor> {
-    let input = input.into();
-    let dims = dim.to_indexes(input.shape(), "argmax_keepdim")?;
-    reduce_impl(input, dims, true, ReduceOp::ArgMax)
+#[tensor_op(variants = [function, method])]
+pub fn argmax<D: Dims>(input: OpTensor, dim: D, keepdim: bool) -> Result<OpTensor> {
+    let dim = dim.to_indexes(input.shape(), "argmax")?;
+    reduce_impl(input, dim, keepdim, ReduceOp::ArgMax)
 }
 
-pub fn argmax<T: Into<OpTensor>, D: Dims>(input: T, dim: D) -> Result<OpTensor> {
-    let input = input.into();
-    let dims = dim.to_indexes(input.shape(), "argmax")?;
-    reduce_impl(input, dims, false, ReduceOp::ArgMax)
+#[tensor_op(variants = [function, method])]
+pub fn argmin<D: Dims>(input: OpTensor, dim: D, keepdim: bool) -> Result<OpTensor> {
+    let dim = dim.to_indexes(input.shape(), "argmin")?;
+    reduce_impl(input, dim, keepdim, ReduceOp::ArgMin)
 }
 
-pub fn argmin_keepdim<T: Into<OpTensor>, D: Dims>(input: T, dim: D) -> Result<OpTensor> {
-    let input = input.into();
-    let dims = dim.to_indexes(input.shape(), "argmin_keepdim")?;
-    reduce_impl(input, dims, true, ReduceOp::ArgMin)
-}
-
-/// Similar to `argmin_keepdim` but the target dimension is squeezed.
-pub fn argmin<T: Into<OpTensor>, D: Dims>(input: T, dim: D) -> Result<OpTensor> {
-    let input = input.into();
-    let dims = dim.to_indexes(input.shape(), "argmin")?;
-    reduce_impl(input, dims, false, ReduceOp::ArgMin)
-}
-
-fn norm_impl<T: Into<OpTensor>>(
-    input: T,
+#[tensor_op(variants = [function, method])]
+pub fn norm<D: Dims>(
+    input: OpTensor,
     ord: Option<NormOrd>,
-    dim: Option<&[usize]>,
+    dim: D,
     keepdim: bool,
 ) -> Result<OpTensor> {
-    let input = input.into();
     let device = input.device().clone();
 
     // Default ord is Frobenius/2-norm
     let ord = ord.unwrap_or_default();
 
     // Default dim is all dimensions (flatten)
-    let dim = match dim {
-        Some(d) => d.to_indexes(input.shape(), "norm_impl")?,
-        None => (0..input.dim()).collect(),
-    };
+    let dim = dim.to_indexes(input.shape(), "norm")?;
 
     match ord {
         NormOrd::Frobenius | NormOrd::P(2.0) => {
@@ -1185,33 +972,20 @@ fn norm_impl<T: Into<OpTensor>>(
         NormOrd::Inf => {
             // Vector ∞-norm : max(|x|)
             // Matrix ∞-norm : max(row_sums(|A|))
-            let abs_tensor = abs(input)?;
+            let abs_tensor = abs_kernel(input)?;
             let result = if dim.len() == 1 {
-                // Vector case
-                if keepdim {
-                    max_keepdim(abs_tensor, dim.clone())?
-                } else {
-                    max(abs_tensor, dim.clone())?
-                }
+                max_kernel(abs_tensor, dim.clone(), keepdim)?
             } else if dim.len() == 2 {
                 // Matrix case – rows are dim[0], columns are dim[1]
                 let row_dim = dim[0];
                 let col_dim = dim[1];
-                let row_sums = if keepdim {
-                    sum_keepdim(abs_tensor, col_dim)?
-                } else {
-                    sum(abs_tensor, col_dim)?
-                };
+                let row_sums = sum_kernel(abs_tensor, col_dim, keepdim)?;
                 let row_dim_adj = if !keepdim && col_dim < row_dim {
                     row_dim - 1
                 } else {
                     row_dim
                 };
-                if keepdim {
-                    max_keepdim(row_sums, row_dim_adj)?
-                } else {
-                    max(row_sums, row_dim_adj)?
-                }
+                max_kernel(row_sums, row_dim_adj, keepdim)?
             } else {
                 // Fallback – reduce max over all specified dims.
                 reduce_impl(abs_tensor, dim.clone(), keepdim, ReduceOp::Max)?
@@ -1221,23 +995,19 @@ fn norm_impl<T: Into<OpTensor>>(
         NormOrd::NegInf => {
             // Vector −∞-norm : min(|x|)
             // Matrix −∞-norm : min(row_sums(|A|))
-            let abs_tensor = abs(input)?;
+            let abs_tensor = abs_kernel(input)?;
             let result = if dim.len() == 1 {
-                if keepdim {
-                    min_keepdim(abs_tensor, dim.clone())?
-                } else {
-                    min(abs_tensor, dim.clone())?
-                }
+                min_kernel(abs_tensor, dim.clone(), keepdim)?
             } else if dim.len() == 2 {
                 let row_dim = dim[0];
                 let col_dim = dim[1];
-                let row_sums = sum_impl(abs_tensor, &[col_dim], keepdim)?;
+                let row_sums = sum_kernel(abs_tensor, col_dim, keepdim)?;
                 let row_dim_adj = if !keepdim && col_dim < row_dim {
                     row_dim - 1
                 } else {
                     row_dim
                 };
-                min_impl(row_sums, &[row_dim_adj], keepdim)?
+                min_kernel(row_sums, row_dim_adj, keepdim)?
             } else {
                 reduce_impl(abs_tensor, dim.clone(), keepdim, ReduceOp::Min)?
             };
@@ -1248,32 +1018,24 @@ fn norm_impl<T: Into<OpTensor>>(
             if dim.len() != 1 {
                 anyhow::bail!("0-norm is only defined for 1-D tensors");
             }
-            sum_impl(ne::<_, OpTensor, _>(input, 0.0f32)?, &dim, keepdim)
+            sum_kernel(ne_kernel::<_, _, OpTensor>(input, 0.0f32)?, dim, keepdim)
         }
         NormOrd::One => {
             // Vector 1-norm : sum(|x|)
             // Matrix 1-norm : max(column_sums(|A|))
-            let abs_tensor = abs(input)?;
+            let abs_tensor = abs_kernel(input)?;
             let result = if dim.len() == 1 {
-                sum_impl(abs_tensor, &dim, keepdim)?
+                sum_kernel(abs_tensor, dim, keepdim)?
             } else if dim.len() == 2 {
                 let row_dim = dim[0];
                 let col_dim = dim[1];
-                let col_sums = if keepdim {
-                    sum_keepdim(abs_tensor, row_dim)?
-                } else {
-                    sum(abs_tensor, row_dim)?
-                };
+                let col_sums = sum_kernel(abs_tensor, row_dim, keepdim)?;
                 let col_dim_adj = if !keepdim && row_dim < col_dim {
                     col_dim - 1
                 } else {
                     col_dim
                 };
-                if keepdim {
-                    max_keepdim(col_sums, col_dim_adj)?
-                } else {
-                    max(col_sums, col_dim_adj)?
-                }
+                max_kernel(col_sums, col_dim_adj, keepdim)?
             } else {
                 anyhow::bail!("1-norm for tensors with more than 2 dims is not supported");
             };
@@ -1282,30 +1044,22 @@ fn norm_impl<T: Into<OpTensor>>(
         NormOrd::NegOne => {
             // Vector (−1)-norm : harmonic mean norm
             // Matrix (−1)-norm : min(column_sums(|A|))
-            let abs_tensor = abs(input)?;
+            let abs_tensor = abs_kernel(input)?;
             let result = if dim.len() == 1 {
                 let count = abs_tensor.shape()[dim[0]] as f32;
-                let sum_recip = sum_impl(recip(abs_tensor)?, &dim, keepdim)?;
+                let sum_recip = sum_kernel(recip_kernel(abs_tensor)?, dim, keepdim)?;
                 // count / sum(1/|x|)
-                mul::<_, OpTensor, _>(recip(sum_recip)?, count)?
+                mul_kernel::<_, _, OpTensor>(recip_kernel(sum_recip)?, count)?
             } else if dim.len() == 2 {
                 let row_dim = dim[0];
                 let col_dim = dim[1];
-                let col_sums = if keepdim {
-                    sum_keepdim(abs_tensor, row_dim)?
-                } else {
-                    sum(abs_tensor, row_dim)?
-                };
+                let col_sums = sum_kernel(abs_tensor, row_dim, keepdim)?;
                 let col_dim_adj = if !keepdim && row_dim < col_dim {
                     col_dim - 1
                 } else {
                     col_dim
                 };
-                if keepdim {
-                    min_keepdim(col_sums, col_dim_adj)?
-                } else {
-                    min(col_sums, col_dim_adj)?
-                }
+                min_kernel(col_sums, col_dim_adj, keepdim)?
             } else {
                 anyhow::bail!("-1 norm for tensors with more than 2 dims is not supported");
             };
@@ -1316,69 +1070,20 @@ fn norm_impl<T: Into<OpTensor>>(
                 anyhow::bail!("p-norm is only defined for 1-D tensors");
             }
             // General p-norm ‑ (sum(|x|^p))^(1/p)
-            let powered = pow::<_, OpTensor, _>(abs(input)?, p)?;
-            let summed = sum_impl(powered, &dim, keepdim)?;
-            pow::<_, OpTensor, _>(summed, 1.0 / p)
+            let powered = pow_kernel::<_, _, OpTensor>(abs_kernel(input)?, p)?;
+            let summed = sum_kernel(powered, dim, keepdim)?;
+            pow_kernel::<_, _, OpTensor>(summed, 1.0 / p)
         }
     }
 }
 
-pub fn norm<T: Into<OpTensor>>(input: T) -> Result<OpTensor> {
-    // Default: Frobenius norm over all dimensions
-    let input = input.into();
-    let dims: RVec<_> = (0..input.dim()).collect();
-    norm_impl(input, None, Some(&dims), false)
-}
-
-pub fn norm_keepdim<T: Into<OpTensor>, D: Dims>(input: T, dim: D) -> Result<OpTensor> {
-    let input = input.into();
-    let dims = dim.to_indexes(input.shape(), "norm_keepdim")?;
-    norm_impl(input, None, Some(&dims), true)
-}
-
-pub fn norm_ord<T: Into<OpTensor>>(input: T, ord: NormOrd) -> Result<OpTensor> {
-    let input = input.into();
-    let dims: RVec<_> = (0..input.dim()).collect();
-    norm_impl(input, Some(ord), Some(&dims), false)
-}
-
-pub fn norm_ord_keepdim<T: Into<OpTensor>>(input: T, ord: NormOrd) -> Result<OpTensor> {
-    let input = input.into();
-    let dims: RVec<_> = (0..input.dim()).collect();
-    norm_impl(input, Some(ord), Some(&dims), true)
-}
-
-pub fn norm_ord_dim<T: Into<OpTensor>, D: Dims>(
-    input: T,
-    ord: NormOrd,
-    dim: D,
-) -> Result<OpTensor> {
-    let input = input.into();
-    let dims = dim.to_indexes(input.shape(), "norm_ord_dim")?;
-    norm_impl(input, Some(ord), Some(&dims), false)
-}
-
-pub fn norm_ord_dim_keepdim<T: Into<OpTensor>, D: Dims>(
-    input: T,
-    ord: NormOrd,
-    dim: D,
-) -> Result<OpTensor> {
-    let input = input.into();
-    let dims = dim.to_indexes(input.shape(), "norm_ord_dim_keepdim")?;
-    norm_impl(input, Some(ord), Some(&dims), true)
-}
-
-fn flatten_impl<T: Into<OpTensor>>(
-    input: T,
-    start_dim: Option<usize>,
-    end_dim: Option<usize>,
-) -> Result<OpTensor> {
-    let input = input.into();
+#[tensor_op(variants = [function, method])]
+pub fn flatten<D1: Dim, D2: Dim>(input: OpTensor, start_dim: D1, end_dim: D2) -> Result<OpTensor> {
     if input.dim() == 0 {
-        view(input, 1)
+        view_kernel(input, 1)
     } else {
-        let start_dim = start_dim.unwrap_or(0);
-        let end_dim = end_dim.unwrap_or(input.dim() - 1);
+        let start_dim = start_dim.to_index(input.shape(), "flatten")?;
+        let end_dim = end_dim.to_index(input.shape(), "flatten")?;
         if start_dim < end_dim {
             let dims = input.shape();
             let mut dst_dims = dims[..start_dim].to_vec();
@@ -1390,35 +1095,11 @@ fn flatten_impl<T: Into<OpTensor>>(
             if end_dim + 1 < dims.len() {
                 dst_dims.extend(&dims[end_dim + 1..]);
             }
-            view(input, dst_dims)
+            view_kernel(input, dst_dims)
         } else {
             Ok(input)
         }
     }
-}
-
-pub fn flatten<T: Into<OpTensor>, D: Dim>(input: T, start_dim: D, end_dim: D) -> Result<OpTensor> {
-    let input = input.into();
-    let start_dim = start_dim.to_index(input.shape(), "flatten")?;
-    let end_dim = end_dim.to_index(input.shape(), "flatten")?;
-    flatten_impl(input, Some(start_dim), Some(end_dim))
-}
-
-pub fn flatten_to<T: Into<OpTensor>, D: Dim>(input: T, end_dim: D) -> Result<OpTensor> {
-    let input = input.into();
-    let end_dim = end_dim.to_index(input.shape(), "flatten")?;
-    flatten_impl(input, None::<usize>, Some(end_dim))
-}
-
-pub fn flatten_from<T: Into<OpTensor>, D: Dim>(input: T, start_dim: D) -> Result<OpTensor> {
-    let input = input.into();
-    let start_dim = start_dim.to_index(input.shape(), "flatten")?;
-    flatten_impl(input, Some(start_dim), None::<usize>)
-}
-
-pub fn flatten_all<T: Into<OpTensor>>(input: T) -> Result<OpTensor> {
-    let input = input.into();
-    flatten_impl(input, None::<usize>, None::<usize>)
 }
 
 /// # Slice
@@ -1426,11 +1107,8 @@ pub fn flatten_all<T: Into<OpTensor>>(input: T) -> Result<OpTensor> {
 /// Current slice implementation requires specification of all dimensions.
 /// Currently very user hostile, but will be improved.
 /// TODO: should allow mixed range types
-pub fn slice<T: Into<OpTensor>, D: std::ops::RangeBounds<usize>>(
-    input: T,
-    ranges: &[D],
-) -> Result<OpTensor> {
-    let input = input.into();
+#[tensor_op(variants = [function, method])]
+pub fn slice<D: std::ops::RangeBounds<usize>>(input: OpTensor, ranges: &[D]) -> Result<OpTensor> {
     let device = input.device().clone();
     let mut resolved_ranges = rvec![];
 
@@ -1457,13 +1135,8 @@ pub fn slice<T: Into<OpTensor>, D: std::ops::RangeBounds<usize>>(
 /// Returns a new tensor that is a narrowed version of the input, the dimension `dim`
 /// ranges from `start` to `start + len`.
 /// This calls `slice` internally.
-pub fn narrow<T: Into<OpTensor>, D: Dim>(
-    input: T,
-    dim: D,
-    start: usize,
-    len: usize,
-) -> Result<OpTensor> {
-    let input = input.into();
+#[tensor_op(variants = [function, method])]
+pub fn narrow<D: Dim>(input: OpTensor, dim: D, start: usize, len: usize) -> Result<OpTensor> {
     let dims = input.shape().as_slice();
     let device = input.device().clone();
     let dim = dim.to_index(input.shape(), "narrow")?;
@@ -1507,15 +1180,12 @@ pub fn narrow<T: Into<OpTensor>, D: Dim>(
 ///
 /// Creates a new tensor with the same data, but a different shape.
 /// The new shape must have the same number of elements as the original shape.
-pub fn view<T: Into<OpTensor>, S: crate::shape::ShapeWithOneHole>(
-    input: T,
-    shape: S,
-) -> Result<OpTensor> {
-    let input = input.into();
+#[tensor_op(variants = [function, method])]
+pub fn view<S: crate::shape::ShapeWithOneHole>(input: OpTensor, shape: S) -> Result<OpTensor> {
     let shape = shape.into_shape(input.shape().numel())?;
     if input.shape().numel() != shape.numel() {
         anyhow::bail!(
-            "Cannot reshape tensor with {} elements to shape {:?} ({} elements)",
+            "view: cannot reshape tensor with {} elements to shape {:?} ({} elements)",
             input.shape().numel(),
             shape,
             shape.numel()
@@ -1536,37 +1206,37 @@ pub fn view<T: Into<OpTensor>, S: crate::shape::ShapeWithOneHole>(
 }
 
 // Use view to add a singleton dimension
-pub fn unsqueeze<T: Into<OpTensor>, D: Dim>(input: T, dim: D) -> Result<OpTensor> {
-    let input = input.into();
+#[tensor_op(variants = [function, method, method_inplace])]
+pub fn unsqueeze<D: Dim>(input: OpTensor, dim: D) -> Result<OpTensor> {
     let dim = dim.to_index_plus_one(input.shape(), "unsqueeze")?;
     let mut new_shape = input.shape().clone();
     new_shape.unsqueeze(dim);
-    view(input, new_shape)
+    view_kernel(input, new_shape)
 }
 
-pub fn squeeze<T: Into<OpTensor>, D: Dims>(input: T, dims: D) -> Result<OpTensor> {
-    let input = input.into();
+#[tensor_op(variants = [function, method, method_inplace])]
+pub fn squeeze<D: Dims>(input: OpTensor, dims: D) -> Result<OpTensor> {
     let mut new_shape = input.shape().clone();
     let dims = dims.to_indexes(input.shape(), "squeeze")?;
-    new_shape.squeeze(Some(dims));
-    view(input, new_shape)
+    // Special case for empty dims, which means squeeze all dimensions
+    // Relative to PyTorch, this is a terrible hack because we don't really have optional
+    // params. Oh well.
+    if dims.is_empty() {
+        new_shape.squeeze(None);
+    } else {
+        new_shape.squeeze(Some(dims));
+    }
+    view_kernel(input, new_shape)
 }
 
-pub fn squeeze_all<T: Into<OpTensor>>(input: T) -> Result<OpTensor> {
-    let input = input.into();
-    let mut new_shape = input.shape().clone();
-    new_shape.squeeze(None);
-    view(input, new_shape)
-}
-
-pub fn cat<T: Into<OpTensor>, D: Dim>(tensors: RVec<T>, dim: D) -> Result<OpTensor> {
-    let tensors = tensors
-        .into_iter()
-        .map(|t| t.into())
-        .collect::<RVec<OpTensor>>();
+#[tensor_op(variants = [function])]
+pub fn cat<D: Dim>(tensors: RVec<OpTensor>, dim: D) -> Result<OpTensor> {
     let dim = dim.to_index(tensors[0].shape(), "cat")?;
     let device = tensors[0].device().clone();
-    assert!(tensors.iter().all(|t| t.device == device), "Mixed devices");
+    assert!(
+        tensors.iter().all(|t| t.device == device),
+        "cat: mixed devices"
+    );
 
     let cat = Concat::new(tensors, dim);
     let new_view = cat.compute_view()?;
@@ -1578,7 +1248,7 @@ fn stack_impl(tensors: RVec<OpTensor>, dim: usize, root: bool) -> Result<OpTenso
         0 => anyhow::bail!("Cannot stack empty list of tensors"),
         1 => {
             if root {
-                Ok(unsqueeze(tensors[0].clone(), dim)?)
+                Ok(unsqueeze_kernel(tensors[0].clone(), dim)?)
             } else {
                 Ok(tensors[0].clone())
             }
@@ -1587,17 +1257,20 @@ fn stack_impl(tensors: RVec<OpTensor>, dim: usize, root: bool) -> Result<OpTenso
             let tensors = if root {
                 tensors
                     .iter()
-                    .map(|t| unsqueeze(t.clone(), dim))
+                    .map(|t| unsqueeze_kernel(t.clone(), dim))
                     .collect::<anyhow::Result<RVec<OpTensor>>>()?
             } else {
                 tensors
             };
 
             let device = tensors[0].device.clone();
-            assert!(tensors.iter().all(|t| t.device == device), "Mixed devices");
+            assert!(
+                tensors.iter().all(|t| t.device == device),
+                "stack: mixed devices"
+            );
 
             if len <= 4 {
-                return cat(tensors, dim);
+                return cat_kernel(tensors, dim);
             }
 
             // Process tensors in chunks of 4 recursively
@@ -1620,17 +1293,14 @@ fn stack_impl(tensors: RVec<OpTensor>, dim: usize, root: bool) -> Result<OpTenso
     }
 }
 
-pub fn stack<T: Into<OpTensor>, D: Dim>(tensors: RVec<T>, dim: D) -> Result<OpTensor> {
-    let tensors = tensors
-        .into_iter()
-        .map(|t| t.into())
-        .collect::<RVec<OpTensor>>();
+#[tensor_op(variants = [function])]
+pub fn stack<D: Dim>(tensors: RVec<OpTensor>, dim: D) -> Result<OpTensor> {
     let dim = dim.to_index_plus_one(tensors[0].shape(), "stack")?;
     stack_impl(tensors, dim, true)
 }
 
-pub fn permute<T: Into<OpTensor>, D: Dims>(input: T, dims: D) -> Result<OpTensor> {
-    let input = input.into();
+#[tensor_op(variants = [function, method])]
+pub fn permute<D: Dims>(input: OpTensor, dims: D) -> Result<OpTensor> {
     let dims = dims.to_indexes(input.shape(), "permute")?;
     let device = input.device().clone();
     let permute = Permute::new(input, dims);
@@ -1640,33 +1310,33 @@ pub fn permute<T: Into<OpTensor>, D: Dims>(input: T, dims: D) -> Result<OpTensor
     Ok(OpTensor::lazy(op, out_view, device, false))
 }
 
-pub fn transpose<T: Into<OpTensor>, D: Dim>(input: T, dim0: D, dim1: D) -> Result<OpTensor> {
-    let input = input.into();
+#[tensor_op(variants = [function, method, method_inplace])]
+pub fn transpose<D: Dim>(input: OpTensor, dim0: D, dim1: D) -> Result<OpTensor> {
     let dim0 = dim0.to_index(input.shape(), "transpose")?;
     let dim1 = dim1.to_index(input.shape(), "transpose")?;
     let mut dims: RVec<usize> = (0..input.dim()).collect();
     dims.swap(dim0, dim1);
-    permute(input, dims)
+    permute_kernel(input, dims)
 }
 
-pub fn t<T: Into<OpTensor>>(input: T) -> Result<OpTensor> {
-    let input = input.into();
+#[tensor_op(variants = [function, method, method_inplace])]
+pub fn t(input: OpTensor) -> Result<OpTensor> {
     if input.dim() > 2 {
         anyhow::bail!(
             "t() can only be applied to tensors with 2 or fewer dimensions, got tensor with {} dimensions",
             input.dim()
         );
     }
-    transpose(input, 0, 1)
+    transpose_kernel(input, 0, 1)
 }
 
 /// Returns a tensor with the last two dimensions transposed.
 /// For 2D tensors, equivalent to transpose(0, 1).
 /// For tensors with any other number of dimensions, throws an error.
-pub fn T<T: Into<OpTensor>>(input: T) -> Result<OpTensor> {
-    let input = input.into();
+#[tensor_op(variants = [function, method, method_inplace])]
+pub fn T(input: OpTensor) -> Result<OpTensor> {
     match input.dim() {
-        2 => transpose(input, 0, 1),
+        2 => transpose_kernel(input, 0, 1),
         _ => anyhow::bail!(
             "T() can only be applied to 2D tensors, got tensor with {} dimensions",
             input.dim()
@@ -1676,25 +1346,19 @@ pub fn T<T: Into<OpTensor>>(input: T) -> Result<OpTensor> {
 
 /// Matrix transpose. Returns a tensor with the last two dimensions transposed.
 /// For tensors with fewer than 2 dimensions, returns the tensor unchanged.
-pub fn mT<T: Into<OpTensor>>(input: T) -> Result<OpTensor> {
-    let input = input.into();
+#[tensor_op(variants = [function, method, method_inplace])]
+pub fn mT(input: OpTensor) -> Result<OpTensor> {
     match input.dim() {
         0 | 1 => Ok(input),
         _ => {
             let dim = input.dim();
-            transpose(input, dim - 2, dim - 1)
+            transpose_kernel(input, dim - 2, dim - 1)
         }
     }
 }
 
-pub fn cache<T: Into<OpTensor>, D: Dim>(
-    input: T,
-    source: T,
-    dim: D,
-    offset: usize,
-) -> Result<OpTensor> {
-    let input = input.into();
-    let source = source.into();
+#[tensor_op(variants = [function, method, method_inplace])]
+pub fn cache<D: Dim>(input: OpTensor, source: OpTensor, dim: D, offset: usize) -> Result<OpTensor> {
     let dim = dim.to_index(input.shape(), "cache")?;
     let device = input.device().clone();
     let cache = Cache::new(input, source, dim, offset);
@@ -1709,18 +1373,15 @@ pub fn cache<T: Into<OpTensor>, D: Dim>(
 
 /// Returns a new tensor duplicating data from the original tensor. New dimensions are inserted
 /// on the left.
-pub fn broadcast_left<T: Into<OpTensor>, S: Into<Shape>>(
-    input: T,
-    left_shape: S,
-) -> Result<OpTensor> {
-    let input = input.into();
+#[tensor_op(variants = [function, method])]
+pub fn broadcast_left<S: Into<Shape>>(input: OpTensor, left_shape: S) -> Result<OpTensor> {
     let mut dims = left_shape.into().to_vec();
     dims.extend(input.shape().to_vec());
-    broadcast_to(input, Shape::from(dims))
+    broadcast_to_kernel(input, Shape::from(dims))
 }
 
-pub fn broadcast_to<T: Into<OpTensor>, S: Into<Shape>>(input: T, shape: S) -> Result<OpTensor> {
-    let input = input.into();
+#[tensor_op(variants = [function, method])]
+pub fn broadcast_to<S: Into<Shape>>(input: OpTensor, shape: S) -> Result<OpTensor> {
     let device = input.device().clone();
     let broadcast = Broadcast::new(input, shape.into());
     let new_view = broadcast.compute_view()?;
@@ -1729,9 +1390,8 @@ pub fn broadcast_to<T: Into<OpTensor>, S: Into<Shape>>(input: T, shape: S) -> Re
     Ok(OpTensor::lazy(op, new_view, device, false))
 }
 
-pub fn index_select<T: Into<OpTensor>, D: Dim>(input: T, indices: T, dim: D) -> Result<OpTensor> {
-    let input = input.into();
-    let indices = indices.into();
+#[tensor_op(variants = [function, method])]
+pub fn index_select<D: Dim>(input: OpTensor, indices: OpTensor, dim: D) -> Result<OpTensor> {
     let dim = dim.to_index(input.shape(), "index_select")?;
     let device = input.device().clone();
     let index_select = IndexSelect::new(input, indices, dim);
@@ -1745,13 +1405,8 @@ pub fn index_select<T: Into<OpTensor>, D: Dim>(input: T, indices: T, dim: D) -> 
 }
 
 // TODO(vinhowe): Make this API more like PyTorch's
-pub fn index_write<T: Into<OpTensor>, D: Dims>(
-    input: T,
-    src: T,
-    write_start: D,
-) -> Result<OpTensor> {
-    let input = input.into();
-    let src = src.into();
+#[tensor_op(variants = [function, method, method_inplace])]
+pub fn index_write<D: Dims>(input: OpTensor, src: OpTensor, write_start: D) -> Result<OpTensor> {
     let write_start = write_start.to_indexes(input.shape(), "index_write")?;
     let device = input.device().clone();
     let index_write = IndexWrite::new(input, src, write_start);
@@ -1760,19 +1415,12 @@ pub fn index_write<T: Into<OpTensor>, D: Dims>(
     Ok(OpTensor::lazy(op, new_view, device, false))
 }
 
-pub fn where_cond<
-    T1: Into<OpTensor>,
-    T2: Into<OpTensor>,
-    T3: Into<OpTensor>,
-    T4: TensorTypeOrScalar<T3>,
->(
-    input: T1,
-    condition: T2,
-    on_false: T4,
+#[tensor_op(variants = [function, method, method_inplace])]
+pub fn where_cond<T: TensorTypeOrScalar<OpTensor>>(
+    input: OpTensor,
+    condition: OpTensor,
+    on_false: T,
 ) -> Result<OpTensor> {
-    let input = input.into();
-    let condition = condition.into();
-    let on_false = on_false.map_tensor(|t| t.into())?;
     let device = condition.device().clone();
     let where_cond = WhereCond::new(condition, TensorTypeOrScalarEnum::Tensor(input), on_false);
     let new_view = where_cond.compute_view()?;
@@ -1784,15 +1432,13 @@ pub fn where_cond<
     ))
 }
 
-pub fn scatter_add<T1: Into<OpTensor>, T2: Into<OpTensor>, T3: Into<OpTensor>, D: Dim>(
-    input: T1,
-    indices: T2,
-    source: T3,
+#[tensor_op(variants = [function, method, method_inplace])]
+pub fn scatter_add<D: Dim>(
+    input: OpTensor,
+    indices: OpTensor,
+    source: OpTensor,
     dim: D,
 ) -> Result<OpTensor> {
-    let input = input.into();
-    let indices = indices.into();
-    let source = source.into();
     let dim = dim.to_index(input.shape(), "scatter_add")?;
     let source_dims = source.shape().to_vec();
     let self_dims = input.shape().to_vec();
@@ -1833,15 +1479,13 @@ pub fn scatter_add<T1: Into<OpTensor>, T2: Into<OpTensor>, T3: Into<OpTensor>, D
     ))
 }
 
-pub fn index_add<T1: Into<OpTensor>, T2: Into<OpTensor>, T3: Into<OpTensor>, D: Dim>(
-    input: T1,
-    indices: T2,
-    source: T3,
+#[tensor_op(variants = [function, method, method_inplace])]
+pub fn index_add<D: Dim>(
+    input: OpTensor,
+    indices: OpTensor,
+    source: OpTensor,
     dim: D,
 ) -> Result<OpTensor> {
-    let input = input.into();
-    let indices = indices.into();
-    let source = source.into();
     let dim = dim.to_index(input.shape(), "index_add")?;
     let source_dims = source.shape().to_vec();
     let self_dims = input.shape().to_vec();
@@ -1889,13 +1533,8 @@ pub fn index_add<T1: Into<OpTensor>, T2: Into<OpTensor>, T3: Into<OpTensor>, D: 
     ))
 }
 
-pub fn gather<T1: Into<OpTensor>, T2: Into<OpTensor>, D: Dim>(
-    input: T1,
-    indices: T2,
-    dim: D,
-) -> Result<OpTensor> {
-    let input = input.into();
-    let indices = indices.into();
+#[tensor_op(variants = [function, method, method_inplace])]
+pub fn gather<D: Dim>(input: OpTensor, indices: OpTensor, dim: D) -> Result<OpTensor> {
     let dim = dim.to_index(input.shape(), "gather")?;
     let self_dims = input.shape().to_vec();
     let indices_dims = indices.shape().to_vec();
@@ -1929,30 +1568,140 @@ pub fn gather<T1: Into<OpTensor>, T2: Into<OpTensor>, D: Dim>(
     ))
 }
 
-pub fn arange<T: TensorDType + PartialOrd + AsPrimitive<f32>>(
-    start: T,
-    end: T,
-    device: &Device,
-    requires_grad: bool,
-) -> Result<OpTensor> {
-    arange_step::<T>(start, end, T::one(), device, requires_grad)
+//
+// TensorOptions for factory functions
+//
+
+/// Options for tensor creation using the factory pattern.
+///
+/// # Examples
+///
+/// Creating tensors with different configurations using the builder pattern:
+///
+/// ```rust
+/// // Basic usage with defaults
+/// let tensor = zeros([2, 3], TensorOptions::default())?;
+///
+/// // Using the factory pattern to set specific options
+/// let tensor = zeros([2, 3], TensorOptions::new()
+///     .device(Device::GPU(gpu_device))
+///     .dtype(DType::F16)
+///     .requires_grad(true)
+///     .build())?;
+///
+/// // Chaining methods in different orders
+/// let tensor = ones([4, 4], TensorOptions::new()
+///     .dtype(DType::I32)
+///     .device(Device::CPU))?;
+///
+/// // Using only some options
+/// let tensor = full([3, 3], 5.0, TensorOptions::new()
+///     .requires_grad(true))?;
+/// ```
+pub struct TensorOptions {
+    pub device: Option<Device>,
+    pub dtype: Option<DType>,
+    pub requires_grad: Option<bool>,
 }
 
-/// Creates a new 1D tensor with values from the interval `[start, end)` taken with a common
-/// difference `step` from `start`.
-pub fn arange_step<T: TensorDType + PartialOrd + AsPrimitive<f32>>(
+impl TensorOptions {
+    /// Create a new TensorOptions builder with default values
+    pub fn new() -> Self {
+        Self {
+            device: None,
+            dtype: None,
+            requires_grad: None,
+        }
+    }
+
+    /// Set the device for tensor creation
+    pub fn device(mut self, device: Device) -> Self {
+        self.device = Some(device);
+        self
+    }
+
+    /// Set the dtype for tensor creation
+    pub fn dtype(mut self, dtype: DType) -> Self {
+        self.dtype = Some(dtype);
+        self
+    }
+
+    /// Set whether gradients are required for tensor creation
+    pub fn requires_grad(mut self, requires_grad: bool) -> Self {
+        self.requires_grad = Some(requires_grad);
+        self
+    }
+
+    pub fn device_or_default(&self) -> Device {
+        self.device.clone().unwrap_or(Device::CPU)
+    }
+
+    pub fn dtype_or_default(&self) -> DType {
+        self.dtype.unwrap_or(DType::F32)
+    }
+
+    pub fn requires_grad_or_default(&self) -> bool {
+        self.requires_grad.unwrap_or(false)
+    }
+}
+
+impl Default for TensorOptions {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+//
+// Dispatch macros to adapt potentially user-specified dtypes in factory methods
+//
+
+/// Dispatch to floating point types
+macro_rules! dispatch_floating_types {
+    ($dtype:expr, $func:ident $(, $args:expr)*) => {{
+        match $dtype {
+            DType::F32 => $func::<f32>($($args,)*),
+            DType::F16 => $func::<f16>($($args,)*),
+            DType::BF16 => $func::<bf16>($($args,)*),
+            _ => anyhow::bail!("dtype {:?} not supported for floating point operations", $dtype),
+        }
+    }};
+}
+
+/// Dispatch to integer types
+macro_rules! dispatch_int_types {
+    ($dtype:expr, $func:ident $(, $args:expr)*) => {{
+        match $dtype {
+            DType::I32 => $func::<i32>($($args,)*),
+            DType::U32 => $func::<u32>($($args,)*),
+            _ => anyhow::bail!("dtype {:?} not supported for integer operations", $dtype),
+        }
+    }};
+}
+
+/// Dispatch to all numeric types
+macro_rules! dispatch_all_types {
+    ($dtype:expr, $func:ident $(, $args:expr)*) => {{
+        match $dtype {
+            DType::F32 => $func::<f32>($($args,)*),
+            DType::F16 => $func::<f16>($($args,)*),
+            DType::BF16 => $func::<bf16>($($args,)*),
+            DType::I32 => $func::<i32>($($args,)*),
+            DType::U32 => $func::<u32>($($args,)*),
+            _ => anyhow::bail!("dtype {:?} not supported", $dtype),
+        }
+    }};
+}
+
+fn arange_impl<T: TensorDType + PartialOrd + AsPrimitive<f32>>(
     start: T,
     end: T,
     step: T,
+    shape_len: usize,
     device: &Device,
     requires_grad: bool,
 ) -> Result<OpTensor> {
-    if step == T::zero() {
-        anyhow::bail!("step cannot be zero")
-    }
-
     if device.is_cpu() {
-        let mut data = vec![];
+        let mut data = Vec::with_capacity(shape_len);
         let mut current = start;
         if step >= T::zero() {
             while current < end {
@@ -1987,15 +1736,71 @@ pub fn arange_step<T: TensorDType + PartialOrd + AsPrimitive<f32>>(
     }
 }
 
-#[cfg(feature = "rand")]
-pub fn randint<T: TensorDType + rand_distr::uniform::SampleUniform + PartialOrd, S: Into<Shape>>(
-    low: T,
-    high: T,
-    shape: S,
-    device: Device,
+fn arange_from_f32_impl<T: TensorDType + NumCast + PartialOrd + AsPrimitive<f32>>(
+    start_f32: f32,
+    end_f32: f32,
+    step_f32: f32,
+    shape_len: usize,
+    device: &Device,
     requires_grad: bool,
 ) -> Result<OpTensor> {
-    let shape = shape.into();
+    let start: T =
+        NumCast::from(start_f32).ok_or_else(|| anyhow::anyhow!("Failed to cast start value"))?;
+    let end: T =
+        NumCast::from(end_f32).ok_or_else(|| anyhow::anyhow!("Failed to cast end value"))?;
+    let step: T =
+        NumCast::from(step_f32).ok_or_else(|| anyhow::anyhow!("Failed to cast step value"))?;
+    arange_impl::<T>(start, end, step, shape_len, device, requires_grad)
+}
+
+/// Creates a new 1D tensor with values from the interval `[start, end)` taken with a common
+/// difference `step` from `start`.
+#[tensor_op(variants = [function])]
+pub fn arange(
+    start: Option<f32>,
+    end: f32,
+    step: Option<f32>,
+    options: TensorOptions,
+) -> Result<OpTensor> {
+    let device = options.device_or_default();
+    let dtype = options.dtype_or_default();
+
+    let start = start.unwrap_or(0.0);
+    let step = step.unwrap_or(1.0);
+
+    if step == 0.0 {
+        anyhow::bail!("step cannot be zero")
+    }
+
+    // Calculate length for pre-allocation
+    let len = if step > 0.0 {
+        ((end - start) / step).ceil() as usize
+    } else {
+        ((start - end) / (-step)).ceil() as usize
+    };
+    let len = len.max(0);
+
+    dispatch_all_types!(
+        dtype,
+        arange_from_f32_impl,
+        start,
+        end,
+        step,
+        len,
+        &device,
+        options.requires_grad_or_default()
+    )
+}
+
+#[cfg(feature = "rand")]
+/// Private implementation for randint
+fn randint_impl<T: TensorDType + rand_distr::uniform::SampleUniform + PartialOrd>(
+    low: T,
+    high: T,
+    shape: &Shape,
+    device: &Device,
+    requires_grad: bool,
+) -> Result<OpTensor> {
     let rng = device.get_rng();
     let data = (0..shape.numel())
         .map(|_| {
@@ -2003,19 +1808,71 @@ pub fn randint<T: TensorDType + rand_distr::uniform::SampleUniform + PartialOrd,
             sample
         })
         .collect::<Vec<_>>();
-    Ok(OpTensor::from_data(data, shape, device, requires_grad))
+
+    let stride = Stride::from(shape);
+    let meta = StorageView::new(shape.clone(), T::dtype(), stride);
+    let storage = Storage::from_slice(&data, shape, device);
+
+    Ok(OpTensor::new(
+        LazyOp::Const,
+        meta,
+        Some(storage),
+        device.clone(),
+        requires_grad,
+    ))
 }
 
 #[cfg(feature = "rand")]
-pub fn randn<T: TensorDType + num_traits::Float, S: Into<Shape>>(
-    mean: T,
-    std: T,
-    shape: S,
-    device: Device,
+fn randint_from_i32_impl<
+    T: TensorDType + NumCast + rand_distr::uniform::SampleUniform + PartialOrd,
+>(
+    low_i32: i32,
+    high_i32: i32,
+    shape: &Shape,
+    device: &Device,
     requires_grad: bool,
 ) -> Result<OpTensor> {
+    let low: T =
+        NumCast::from(low_i32).ok_or_else(|| anyhow::anyhow!("Failed to cast low value"))?;
+    let high: T =
+        NumCast::from(high_i32).ok_or_else(|| anyhow::anyhow!("Failed to cast high value"))?;
+    randint_impl::<T>(low, high, shape, device, requires_grad)
+}
+
+#[cfg(feature = "rand")]
+#[tensor_op(variants = [function])]
+pub fn randint<S: Into<Shape>>(
+    low: i32,
+    high: i32,
+    shape: S,
+    options: TensorOptions,
+) -> Result<OpTensor> {
     let shape = shape.into();
+    let device = options.device_or_default();
+    let dtype = options.dtype_or_default();
+
+    dispatch_int_types!(
+        dtype,
+        randint_from_i32_impl,
+        low,
+        high,
+        &shape,
+        &device,
+        options.requires_grad_or_default()
+    )
+}
+
+#[cfg(feature = "rand")]
+/// Private implementation for randn
+fn randn_impl<T: TensorDType + num_traits::Float + AsPrimitive<f32>>(
+    shape: &Shape,
+    mean: T,
+    std: T,
+    device: &Device,
+    requires_grad: bool,
+) -> Result<OpTensor> {
     let rng = device.get_rng();
+
     if device.is_cpu() {
         let distr = Normal::new(mean.to_f64().unwrap(), std.to_f64().unwrap()).unwrap();
         let data = (0..shape.numel())
@@ -2024,48 +1881,89 @@ pub fn randn<T: TensorDType + num_traits::Float, S: Into<Shape>>(
                 T::from(sample as f32).expect("Failed to convert sample")
             })
             .collect::<Vec<_>>();
-        let storage = Storage::from_slice(&data, &shape, &device);
-        let stride = Stride::from(&shape);
-        let meta = StorageView::new(shape, T::dtype(), stride);
+        let stride = Stride::from(shape);
+        let meta = StorageView::new(shape.clone(), T::dtype(), stride);
+        let storage = Storage::from_slice(&data, shape, device);
         Ok(OpTensor::new(
             LazyOp::Const,
             meta,
             Some(storage),
-            device,
+            device.clone(),
             requires_grad,
         ))
     } else {
         let meta = StorageView {
             shape: shape.clone(),
             dtype: T::dtype(),
-            stride: Stride::from(&shape.clone()),
+            stride: Stride::from(shape),
         };
         Ok(OpTensor::new(
             LazyOp::FillRandn(FillRandn {
-                shape,
-                mean: mean.to_f32().unwrap(),
-                std: std.to_f32().unwrap(),
+                shape: shape.clone(),
+                mean: mean.as_(),
+                std: std.as_(),
                 seed: Some(rng.write().next_u32()),
             }),
             meta,
             None,
-            device,
+            device.clone(),
             requires_grad,
         ))
     }
 }
 
 #[cfg(feature = "rand")]
-pub fn rand<T: TensorDType + num_traits::Float, S: Into<Shape>>(
-    lo: T,
-    up: T,
-    shape: S,
-    device: Device,
+fn randn_from_f32_impl<T: TensorDType + NumCast + num_traits::Float + AsPrimitive<f32>>(
+    shape: &Shape,
+    mean_f32: f32,
+    std_f32: f32,
+    device: &Device,
     requires_grad: bool,
 ) -> Result<OpTensor> {
+    let mean: T =
+        NumCast::from(mean_f32).ok_or_else(|| anyhow::anyhow!("Failed to cast mean value"))?;
+    let std: T =
+        NumCast::from(std_f32).ok_or_else(|| anyhow::anyhow!("Failed to cast std value"))?;
+    randn_impl::<T>(shape, mean, std, device, requires_grad)
+}
+
+#[cfg(feature = "rand")]
+#[tensor_op(variants = [function])]
+pub fn randn<S: Into<Shape>>(
+    shape: S,
+    mean: Option<f32>,
+    std: Option<f32>,
+    options: TensorOptions,
+) -> Result<OpTensor> {
     let shape = shape.into();
+    let device = options.device_or_default();
+    let dtype = options.dtype_or_default();
+
+    let mean = mean.unwrap_or(0.0);
+    let std = std.unwrap_or(1.0);
+
+    dispatch_floating_types!(
+        dtype,
+        randn_from_f32_impl,
+        &shape,
+        mean,
+        std,
+        &device,
+        options.requires_grad_or_default()
+    )
+}
+
+#[cfg(feature = "rand")]
+/// Private implementation for rand
+fn rand_impl<T: TensorDType + num_traits::Float + AsPrimitive<f32>>(
+    shape: &Shape,
+    lo: T,
+    up: T,
+    device: &Device,
+    requires_grad: bool,
+) -> Result<OpTensor> {
     let rng = device.get_rng();
-    let distr = Uniform::new(lo.to_f32().unwrap(), up.to_f32().unwrap());
+    let distr = Uniform::new(lo.as_(), up.as_());
     let data = (0..shape.numel())
         .map(|_| {
             let sample: f32 = distr.sample(&mut *rng.write());
@@ -2073,13 +1971,218 @@ pub fn rand<T: TensorDType + num_traits::Float, S: Into<Shape>>(
         })
         .collect::<Vec<_>>();
 
-    Ok(OpTensor::from_data(data, shape, device, requires_grad))
+    let stride = Stride::from(shape);
+    let meta = StorageView::new(shape.clone(), T::dtype(), stride);
+    let storage = Storage::from_slice(&data, shape, device);
+
+    Ok(OpTensor::new(
+        LazyOp::Const,
+        meta,
+        Some(storage),
+        device.clone(),
+        requires_grad,
+    ))
 }
 
-// TODO(vinhowe): Add inplace
 #[cfg(feature = "rand")]
-pub fn bernoulli<T: Into<OpTensor>>(input: T) -> Result<OpTensor> {
-    let input = input.into();
+fn rand_from_f32_impl<T: TensorDType + NumCast + num_traits::Float + AsPrimitive<f32>>(
+    shape: &Shape,
+    lo_f32: f32,
+    up_f32: f32,
+    device: &Device,
+    requires_grad: bool,
+) -> Result<OpTensor> {
+    let lo: T = NumCast::from(lo_f32).ok_or_else(|| anyhow::anyhow!("Failed to cast lo value"))?;
+    let up: T = NumCast::from(up_f32).ok_or_else(|| anyhow::anyhow!("Failed to cast up value"))?;
+    rand_impl::<T>(shape, lo, up, device, requires_grad)
+}
+
+#[cfg(feature = "rand")]
+#[tensor_op(variants = [function])]
+pub fn rand<S: Into<Shape>>(
+    shape: S,
+    lo: Option<f32>,
+    up: Option<f32>,
+    options: TensorOptions,
+) -> Result<OpTensor> {
+    let shape = shape.into();
+    let device = options.device_or_default();
+    let dtype = options.dtype_or_default();
+
+    let lo = lo.unwrap_or(0.0);
+    let up = up.unwrap_or(1.0);
+
+    dispatch_floating_types!(
+        dtype,
+        rand_from_f32_impl,
+        &shape,
+        lo,
+        up,
+        &device,
+        options.requires_grad_or_default()
+    )
+}
+
+/// Private implementation for full
+fn full_impl<T: TensorDType + AsPrimitive<f32>>(
+    shape: &Shape,
+    value: T,
+    device: &Device,
+    requires_grad: bool,
+) -> Result<OpTensor> {
+    let meta = StorageView {
+        shape: shape.clone(),
+        dtype: T::dtype(),
+        stride: Stride::from(shape),
+    };
+    Ok(OpTensor::new(
+        LazyOp::FillConstant(FillConstant {
+            shape: shape.clone(),
+            value: value.as_(),
+        }),
+        meta,
+        None,
+        device.clone(),
+        requires_grad,
+    ))
+}
+
+fn full_from_f32_impl<T: TensorDType + NumCast + AsPrimitive<f32>>(
+    shape: &Shape,
+    value_f32: f32,
+    device: &Device,
+    requires_grad: bool,
+) -> Result<OpTensor> {
+    let value: T =
+        NumCast::from(value_f32).ok_or_else(|| anyhow::anyhow!("Failed to cast value"))?;
+    full_impl::<T>(shape, value, device, requires_grad)
+}
+
+#[tensor_op(variants = [function])]
+pub fn full<S: Into<Shape>>(shape: S, value: f32, options: TensorOptions) -> Result<OpTensor> {
+    let shape = shape.into();
+    let device = options.device_or_default();
+    let dtype = options.dtype_or_default();
+
+    dispatch_all_types!(
+        dtype,
+        full_from_f32_impl,
+        &shape,
+        value,
+        &device,
+        options.requires_grad_or_default()
+    )
+}
+
+/// Private implementation for zeros
+fn zeros_impl<T: TensorDType + AsPrimitive<f32>>(
+    shape: &Shape,
+    device: &Device,
+    requires_grad: bool,
+) -> Result<OpTensor> {
+    if device.is_cpu() {
+        let storage = Storage::zeros::<T>(shape, device);
+        let stride = Stride::from(shape);
+        let meta = StorageView::new(shape.clone(), T::dtype(), stride);
+        Ok(OpTensor::new(
+            LazyOp::Const,
+            meta,
+            Some(storage),
+            device.clone(),
+            requires_grad,
+        ))
+    } else {
+        full_impl::<T>(shape, T::zero(), device, requires_grad)
+    }
+}
+
+#[tensor_op(variants = [function])]
+pub fn zeros<S: Into<Shape>>(shape: S, options: TensorOptions) -> Result<OpTensor> {
+    let shape = shape.into();
+    let device = options.device_or_default();
+    let dtype = options.dtype_or_default();
+
+    dispatch_all_types!(
+        dtype,
+        zeros_impl,
+        &shape,
+        &device,
+        options.requires_grad_or_default()
+    )
+}
+
+#[tensor_op(variants = [function, method])]
+pub fn zeros_like(input: OpTensor, options: TensorOptions) -> Result<OpTensor> {
+    let dtype = options.dtype.unwrap_or_else(|| input.dtype());
+    let device = options.device.as_ref().unwrap_or_else(|| input.device());
+
+    dispatch_all_types!(
+        dtype,
+        zeros_impl,
+        input.shape(),
+        device,
+        options.requires_grad_or_default()
+    )
+}
+
+fn ones_impl<T: TensorDType + AsPrimitive<f32>>(
+    shape: &Shape,
+    device: &Device,
+    requires_grad: bool,
+) -> Result<OpTensor> {
+    if device.is_cpu() {
+        let storage = Storage::ones::<T>(shape, device);
+        let stride = Stride::from(shape);
+        let meta = StorageView::new(shape.clone(), T::dtype(), stride);
+        Ok(OpTensor::new(
+            LazyOp::Const,
+            meta,
+            Some(storage),
+            device.clone(),
+            requires_grad,
+        ))
+    } else {
+        full_impl::<T>(shape, T::one(), device, requires_grad)
+    }
+}
+
+#[tensor_op(variants = [function])]
+pub fn ones<S: Into<Shape>>(shape: S, options: TensorOptions) -> Result<OpTensor> {
+    let shape = shape.into();
+    let device = options.device_or_default();
+    let dtype = options.dtype_or_default();
+
+    dispatch_all_types!(
+        dtype,
+        ones_impl,
+        &shape,
+        &device,
+        options.requires_grad_or_default()
+    )
+}
+
+#[tensor_op(variants = [function, method])]
+pub fn ones_like(input: OpTensor, options: TensorOptions) -> Result<OpTensor> {
+    let dtype = options.dtype.unwrap_or_else(|| input.dtype());
+    let device = options.device.as_ref().unwrap_or_else(|| input.device());
+
+    dispatch_all_types!(
+        dtype,
+        ones_impl,
+        input.shape(),
+        device,
+        options.requires_grad_or_default()
+    )
+}
+
+#[tensor_op(variants = [method_inplace])]
+pub fn zero(input: OpTensor) -> Result<OpTensor> {
+    mul_kernel::<_, _, OpTensor>(input, 0.)
+}
+
+#[cfg(feature = "rand")]
+#[tensor_op(variants = [function, method, method_inplace])]
+pub fn bernoulli(input: OpTensor) -> Result<OpTensor> {
     let rng = input.device().get_rng();
     let seed = rng.write().next_u32();
     let shape = input.shape();
@@ -2100,107 +2203,8 @@ pub fn bernoulli<T: Into<OpTensor>>(input: T) -> Result<OpTensor> {
     ))
 }
 
-pub(crate) fn full_impl<T: TensorDType + num_traits::AsPrimitive<f32>, S: Into<Shape>>(
-    shape: S,
-    value: T,
-    device: &Device,
-    requires_grad: bool,
-) -> Result<OpTensor> {
-    let shape = shape.into();
-    let meta = StorageView {
-        shape: shape.clone(),
-        dtype: T::dtype(),
-        stride: Stride::from(&shape.clone()),
-    };
-    Ok(OpTensor::new(
-        LazyOp::FillConstant(FillConstant {
-            shape: shape.clone(),
-            value: value.as_(),
-        }),
-        meta,
-        None,
-        device.clone(),
-        requires_grad,
-    ))
-}
-
-pub fn zeros<D: TensorDType + num_traits::AsPrimitive<f32>, S: Into<Shape>>(
-    shape: S,
-    device: &Device,
-    requires_grad: bool,
-) -> Result<OpTensor> {
-    let shape = shape.into();
-    if device.is_cpu() {
-        let storage = Storage::zeros::<D>(&shape, device);
-        let stride = Stride::from(&shape);
-        let meta = StorageView::new(shape.clone(), D::dtype(), stride);
-        Ok(OpTensor::new(
-            LazyOp::Const,
-            meta,
-            Some(storage),
-            device.clone(),
-            requires_grad,
-        ))
-    } else {
-        full_impl::<D, _>(shape, D::zero(), device, requires_grad)
-    }
-}
-
-pub fn zeros_like<T: Into<OpTensor>, D: TensorDType + num_traits::AsPrimitive<f32>>(
-    input: T,
-    device: Option<&Device>,
-    requires_grad: bool,
-) -> Result<OpTensor> {
-    let input = input.into();
-    zeros::<D, _>(
-        input.shape(),
-        device.unwrap_or(input.device()),
-        requires_grad,
-    )
-}
-
-pub fn ones<D: TensorDType + num_traits::AsPrimitive<f32>, S: Into<Shape>>(
-    shape: S,
-    device: &Device,
-    requires_grad: bool,
-) -> Result<OpTensor> {
-    let shape = shape.into();
-    if device.is_cpu() {
-        let storage = Storage::ones::<D>(&shape, device);
-        let stride = Stride::from(&shape);
-        let meta = StorageView::new(shape.clone(), D::dtype(), stride);
-        Ok(OpTensor::new(
-            LazyOp::Const,
-            meta,
-            Some(storage),
-            device.clone(),
-            requires_grad,
-        ))
-    } else {
-        full_impl::<D, _>(shape, D::one(), device, requires_grad)
-    }
-}
-
-pub fn ones_like<T: Into<OpTensor>, D: TensorDType + num_traits::AsPrimitive<f32>>(
-    input: T,
-    device: Option<&Device>,
-    requires_grad: bool,
-) -> Result<OpTensor> {
-    let input = input.into();
-    ones::<D, _>(
-        input.shape(),
-        device.unwrap_or(input.device()),
-        requires_grad,
-    )
-}
-
-pub fn zero_<T: Into<OpTensor>>(input: T) -> Result<OpTensor> {
-    let input = input.into();
-    mul::<_, OpTensor, _>(input, 0.)
-}
-
 // TODO(vinhowe): Add inplace
-fn trilu<T: Into<OpTensor>>(input: T, upper: bool, k: Option<i32>) -> Result<OpTensor> {
+fn trilu_kernel<T: Into<OpTensor>>(input: T, upper: bool, k: Option<i32>) -> Result<OpTensor> {
     let input = input.into();
     let device = input.device().clone();
     let trilu = Trilu::new(input, upper, k);
@@ -2213,17 +2217,18 @@ fn trilu<T: Into<OpTensor>>(input: T, upper: bool, k: Option<i32>) -> Result<OpT
     ))
 }
 
-pub fn triu<T: Into<OpTensor>>(input: T, k: Option<i32>) -> Result<OpTensor> {
-    trilu(input, true, k)
+#[tensor_op(variants = [function, method, method_inplace])]
+pub fn triu(input: OpTensor, k: Option<i32>) -> Result<OpTensor> {
+    trilu_kernel(input, true, k)
 }
 
-pub fn tril<T: Into<OpTensor>>(input: T, k: Option<i32>) -> Result<OpTensor> {
-    trilu(input, false, k)
+#[tensor_op(variants = [function, method, method_inplace])]
+pub fn tril(input: OpTensor, k: Option<i32>) -> Result<OpTensor> {
+    trilu_kernel(input, false, k)
 }
 
-pub fn copy<T1: Into<OpTensor>, T2: Into<OpTensor>>(src: T1, dst: T2) -> Result<OpTensor> {
-    let src = src.into();
-    let dst = dst.into();
+#[tensor_op(variants = [function, method, method_inplace])]
+pub fn copy(src: OpTensor, dst: OpTensor) -> Result<OpTensor> {
     Ok(OpTensor::new(
         LazyOp::Copy(TensorCopy {
             src: src.clone(),
@@ -2238,8 +2243,8 @@ pub fn copy<T1: Into<OpTensor>, T2: Into<OpTensor>>(src: T1, dst: T2) -> Result<
 
 /// Returns a tensor that is in row major order. This is the same as the original tensor if it
 /// was already contiguous, otherwise a copy is triggered.
-pub fn contiguous<T: Into<OpTensor>>(input: T) -> Result<OpTensor> {
-    let input = input.into();
+#[tensor_op(variants = [function, method, method_inplace])]
+pub fn contiguous(input: OpTensor) -> Result<OpTensor> {
     if input.is_contiguous() {
         Ok(input.clone())
     } else {
@@ -3328,462 +3333,9 @@ inventory::submit! {
 }
 
 impl Tensor {
-    pub fn cast(self, dst_dtype: DType) -> Result<Self> {
-        dispatch_operator("cast", (self, dst_dtype))
-    }
-
-    /// Cast a tensor to full precision (IEEE 754 32-bit floating point).
-    pub fn float(self) -> Result<Self> {
-        float(self).map(Self::wrap)
-    }
-
-    /// Cast a tensor to half precision (IEEE 754 16-bit floating point).
-    pub fn half(self) -> Result<Self> {
-        half(self).map(Self::wrap)
-    }
-
-    pub fn group_norm(
-        self,
-        num_groups: usize,
-        weight: Option<Self>,
-        bias: Option<Self>,
-        eps: f32,
-    ) -> Result<Self> {
-        group_norm(self, num_groups, weight, bias, eps).map(Self::wrap)
-    }
-
-    pub fn layer_norm(self, weight: Option<Self>, bias: Option<Self>, eps: f32) -> Result<Self> {
-        layer_norm(self, weight, bias, eps).map(Self::wrap)
-    }
-
-    pub fn rms_norm(self, weight: Option<Self>, eps: f32) -> Result<Self> {
-        rms_norm(self, weight, eps).map(Self::wrap)
-    }
-
-    pub fn conv1d(
-        self,
-        weight: Self,
-        bias: Option<Self>,
-        stride: usize,
-        padding: usize,
-    ) -> Result<Self> {
-        conv1d(self, weight, bias, stride, padding).map(Self::wrap)
-    }
-
-    pub fn softmax<D: Dim>(self, dim: D) -> Result<Self> {
-        softmax(self, dim).map(Self::wrap)
-    }
-
-    pub fn rope(self, dim: usize, base: f32, offset: usize) -> Result<Self> {
-        rope(self, dim, base, offset).map(Self::wrap)
-    }
-
-    pub(crate) fn rope_backward(self, dim: usize, base: f32, offset: usize) -> Result<Self> {
-        rope_backward(self, dim, base, offset).map(Self::wrap)
-    }
-
-    pub fn alibi(self, max_bias: f32) -> Result<Self> {
-        alibi(self, max_bias).map(Self::wrap)
-    }
-
-    pub fn alibi_inplace(self, max_bias: f32) -> Result<Self> {
-        alibi(self, max_bias).map(Self::wrap)
-    }
-
-    //TODO (vinhowe): figure out how to make this interface more like pytorch
-    pub fn matmul(self, rhs: Self, trans_lhs: bool, trans_rhs: bool) -> Result<Self> {
-        matmul(self, rhs, trans_lhs, trans_rhs).map(Self::wrap)
-    }
-
-    pub fn gemm(
-        self,
-        rhs: Self,
-        bias: Option<Self>,
-        trans_lhs: bool,
-        trans_rhs: bool,
-        trans_out: bool,
-    ) -> Result<Self> {
-        gemm(self, rhs, bias, trans_lhs, trans_rhs, trans_out).map(Self::wrap)
-    }
-
-    pub fn affine(self, mul: f32, add: f32) -> Result<Self> {
-        affine(self, mul, add).map(Self::wrap)
-    }
-
-    pub fn affine_(self, mul: f32, add: f32) -> Result<Self> {
-        Ok(self.wrap_inplace(affine(self.clone(), mul, add)?))
-    }
-
-    pub fn lerp<T: TensorTypeOrScalar<Tensor>>(self, end: Self, weight: T) -> Result<Self> {
-        lerp(self, end, weight).map(Self::wrap)
-    }
-
-    pub fn lerp_<T: TensorTypeOrScalar<Tensor>>(self, end: Self, weight: T) -> Result<Self> {
-        Ok(self.wrap_inplace(lerp(self.clone(), end, weight)?))
-    }
-
-    pub fn sum_keepdim<D: Dims>(self, sum_dims: D) -> Result<Self> {
-        sum_keepdim(self, sum_dims).map(Self::wrap)
-    }
-
-    pub fn sum<D: Dims>(self, sum_dims: D) -> Result<Self> {
-        sum(self, sum_dims).map(Self::wrap)
-    }
-
-    pub fn sum_all(self) -> Result<Self> {
-        sum_all(self).map(Self::wrap)
-    }
-
-    pub fn mean_keepdim<D: Dims>(self, dim: D) -> Result<Self> {
-        mean_keepdim(self, dim).map(Self::wrap)
-    }
-
-    pub fn mean<D: Dims>(self, dim: D) -> Result<Self> {
-        mean(self, dim).map(Self::wrap)
-    }
-
-    pub fn mean_all(self) -> Result<Self> {
-        mean_all(self).map(Self::wrap)
-    }
-
-    pub fn var_keepdim<D: Dims>(self, dim: D) -> Result<Self> {
-        var_keepdim(self, dim).map(Self::wrap)
-    }
-
-    pub fn var<D: Dims>(self, dim: D) -> Result<Self> {
-        var(self, dim).map(Self::wrap)
-    }
-
-    pub fn var_all(self) -> Result<Self> {
-        var_all(self).map(Self::wrap)
-    }
-
-    pub fn max_keepdim<D: Dim>(self, dim: D) -> Result<Self> {
-        max_keepdim(self, dim).map(Self::wrap)
-    }
-
-    pub fn max<D: Dim>(self, dim: D) -> Result<Self> {
-        max(self, dim).map(Self::wrap)
-    }
-
-    pub fn min_keepdim<D: Dim>(self, dim: D) -> Result<Self> {
-        min_keepdim(self, dim).map(Self::wrap)
-    }
-
-    pub fn min<D: Dim>(self, dim: D) -> Result<Self> {
-        min(self, dim).map(Self::wrap)
-    }
-
-    pub fn argmax_keepdim<D: Dim>(self, dim: D) -> Result<Self> {
-        argmax_keepdim(self, dim).map(Self::wrap)
-    }
-
-    pub fn argmax<D: Dim>(self, dim: D) -> Result<Self> {
-        argmax(self, dim).map(Self::wrap)
-    }
-
-    pub fn argmin_keepdim<D: Dim>(self, dim: D) -> Result<Self> {
-        argmin_keepdim(self, dim).map(Self::wrap)
-    }
-
-    /// Similar to `argmin_keepdim` but the target dimension is squeezed.
-    pub fn argmin<D: Dim>(self, dim: D) -> Result<Self> {
-        argmin(self, dim).map(Self::wrap)
-    }
-
-    pub fn norm(self) -> Result<Self> {
-        norm(self).map(Self::wrap)
-    }
-
-    pub fn norm_keepdim<D: Dims>(self, dim: D) -> Result<Self> {
-        norm_keepdim(self, dim).map(Self::wrap)
-    }
-
-    pub fn norm_ord(self, ord: NormOrd) -> Result<Self> {
-        norm_ord(self, ord).map(Self::wrap)
-    }
-
-    pub fn norm_ord_keepdim(self, ord: NormOrd) -> Result<Self> {
-        norm_ord_keepdim(self, ord).map(Self::wrap)
-    }
-
-    pub fn norm_ord_dim<D: Dims>(self, ord: NormOrd, dim: D) -> Result<Self> {
-        norm_ord_dim(self, ord, dim).map(Self::wrap)
-    }
-
-    pub fn norm_ord_dim_keepdim<D: Dims>(self, ord: NormOrd, dim: D) -> Result<Self> {
-        norm_ord_dim_keepdim(self, ord, dim).map(Self::wrap)
-    }
-
-    pub fn flatten<D: Dim>(self, start_dim: D, end_dim: D) -> Result<Self> {
-        flatten(self, start_dim, end_dim).map(Self::wrap)
-    }
-
-    pub fn flatten_to<D: Dim>(self, end_dim: D) -> Result<Self> {
-        flatten_to(self, end_dim).map(Self::wrap)
-    }
-
-    pub fn flatten_from<D: Dim>(self, start_dim: D) -> Result<Self> {
-        flatten_from(self, start_dim).map(Self::wrap)
-    }
-
-    pub fn flatten_all(self) -> Result<Self> {
-        flatten_all(self).map(Self::wrap)
-    }
-
-    /// # Slice
-    ///
-    /// Current slice implementation requires specification of all dimensions.
-    /// Currently very user hostile, but will be improved.
-    /// TODO: should allow mixed range types
-    pub fn slice<D: std::ops::RangeBounds<usize>>(self, ranges: &[D]) -> Result<Self> {
-        slice(self, ranges).map(Self::wrap)
-    }
-
-    /// Returns a new tensor that is a narrowed version of the input, the dimension `dim`
-    /// ranges from `start` to `start + len`.
-    /// This calls `slice` internally.
-    pub fn narrow<D: Dim>(self, dim: D, start: usize, len: usize) -> Result<Self> {
-        narrow(self, dim, start, len).map(Self::wrap)
-    }
-
-    /// # View
-    ///
-    /// Creates a new tensor with the same data, but a different shape.
-    /// The new shape must have the same number of elements as the original shape.
-    pub fn view<S: crate::shape::ShapeWithOneHole>(self, shape: S) -> Result<Self> {
-        view(self, shape).map(Self::wrap)
-    }
-
-    pub fn unsqueeze<D: Dim>(self, dim: D) -> Result<Self> {
-        unsqueeze(self, dim).map(Self::wrap)
-    }
-
-    pub fn unsqueeze_<D: Dim>(self, dim: D) -> Result<Self> {
-        Ok(self.wrap_inplace(unsqueeze(self.clone(), dim)?))
-    }
-
-    pub fn squeeze<D: Dims>(self, dims: D) -> Result<Self> {
-        squeeze(self, dims).map(Self::wrap)
-    }
-
-    pub fn squeeze_<D: Dims>(self, dims: D) -> Result<Self> {
-        Ok(self.wrap_inplace(squeeze(self.clone(), dims)?))
-    }
-
-    pub fn squeeze_all(self) -> Result<Self> {
-        squeeze_all(self).map(Self::wrap)
-    }
-
-    pub fn cat<D: Dim>(tensors: RVec<Self>, dim: D) -> Result<Self> {
-        cat(tensors, dim).map(Self::wrap)
-    }
-
-    pub fn stack<D: Dim>(tensors: RVec<Self>, dim: D) -> Result<Self> {
-        stack(tensors, dim).map(Self::wrap)
-    }
-
-    pub fn permute<D: Dims>(self, dims: D) -> Result<Self> {
-        permute(self, dims).map(Self::wrap)
-    }
-
-    pub fn transpose<D: Dim>(self, dim0: D, dim1: D) -> Result<Self> {
-        transpose(self, dim0, dim1).map(Self::wrap)
-    }
-
-    pub fn t(self) -> Result<Self> {
-        t(self).map(Self::wrap)
-    }
-
-    /// Returns a tensor with the last two dimensions transposed.
-    /// For 2D tensors, equivalent to transpose(0, 1).
-    /// For tensors with any other number of dimensions, throws an error.
-    pub fn T(self) -> Result<Self> {
-        T(self).map(Self::wrap)
-    }
-
-    /// Matrix transpose. Returns a tensor with the last two dimensions transposed.
-    /// For tensors with fewer than 2 dimensions, returns the tensor unchanged.
-    pub fn mT(self) -> Result<Self> {
-        mT(self).map(Self::wrap)
-    }
-
-    pub fn cache<D: Dim>(self, source: Self, dim: D, offset: usize) -> Result<Self> {
-        cache(self, source, dim, offset).map(Self::wrap)
-    }
-
-    /// Returns a new tensor duplicating data from the original tensor. New dimensions are inserted
-    /// on the left.
-    pub fn broadcast_left<S: Into<Shape>>(self, left_shape: S) -> Result<Self> {
-        broadcast_left(self, left_shape).map(Self::wrap)
-    }
-
-    pub fn broadcast_to<S: Into<Shape>>(self, shape: S) -> Result<Self> {
-        broadcast_to(self, shape).map(Self::wrap)
-    }
-
-    pub fn index_select<D: Dim>(self, indices: Self, dim: D) -> Result<Self> {
-        index_select(self, indices, dim).map(Self::wrap)
-    }
-
-    // TODO(vinhowe): Make this API more like PyTorch's
-    pub fn index_write<D: Dims>(self, src: Self, write_start: D) -> Result<Self> {
-        index_write(self, src, write_start).map(Self::wrap)
-    }
-
-    pub fn where_cond<T: TensorTypeOrScalar<Tensor>>(
-        self,
-        condition: Self,
-        on_false: T,
-    ) -> Result<Self> {
-        where_cond(self, condition, on_false).map(Self::wrap)
-    }
-
-    pub fn scatter_add<D: Dim>(self, indices: Self, source: Self, dim: D) -> Result<Self> {
-        scatter_add(self, indices, source, dim).map(Self::wrap)
-    }
-
-    pub fn scatter_add_<D: Dim>(self, indices: Self, source: Self, dim: D) -> Result<Self> {
-        Ok(self.wrap_inplace(scatter_add(self.clone(), indices, source, dim)?))
-    }
-
-    pub fn index_add_<D: Dim>(self, indices: Self, source: Self, dim: D) -> Result<Self> {
-        Ok(self.wrap_inplace(index_add(self.clone(), indices, source, dim)?))
-    }
-
-    pub fn gather<D: Dim>(self, indices: Self, dim: D) -> Result<Self> {
-        gather(self, indices, dim).map(Self::wrap)
-    }
-
-    pub fn arange<T: TensorDType + PartialOrd + AsPrimitive<f32>>(
-        start: T,
-        end: T,
-        device: &Device,
-        requires_grad: bool,
-    ) -> Result<Self> {
-        arange(start, end, device, requires_grad).map(Self::wrap)
-    }
-
-    /// Creates a new 1D tensor with values from the interval `[start, end)` taken with a common
-    /// difference `step` from `start`.
-    pub fn arange_step<T: TensorDType + PartialOrd + AsPrimitive<f32>>(
-        start: T,
-        end: T,
-        step: T,
-        device: &Device,
-        requires_grad: bool,
-    ) -> Result<Self> {
-        arange_step(start, end, step, device, requires_grad).map(Self::wrap)
-    }
-
-    #[cfg(feature = "rand")]
-    pub fn randint<
-        T: TensorDType + rand_distr::uniform::SampleUniform + PartialOrd,
-        S: Into<Shape>,
-    >(
-        low: T,
-        high: T,
-        shape: S,
-        device: Device,
-        requires_grad: bool,
-    ) -> Result<Self> {
-        randint(low, high, shape, device, requires_grad).map(Self::wrap)
-    }
-
-    #[cfg(feature = "rand")]
-    pub fn randn<T: TensorDType + num_traits::Float, S: Into<Shape>>(
-        mean: T,
-        std: T,
-        shape: S,
-        device: Device,
-        requires_grad: bool,
-    ) -> Result<Self> {
-        randn(mean, std, shape, device, requires_grad).map(Self::wrap)
-    }
-
-    #[cfg(feature = "rand")]
-    pub fn rand<T: TensorDType + num_traits::Float, S: Into<Shape>>(
-        lo: T,
-        up: T,
-        shape: S,
-        device: Device,
-        requires_grad: bool,
-    ) -> Result<Self> {
-        rand(lo, up, shape, device, requires_grad).map(Self::wrap)
-    }
-
-    // TODO(vinhowe): Add inplace
-    #[cfg(feature = "rand")]
-    pub fn bernoulli(self) -> Result<Self> {
-        bernoulli(self).map(Self::wrap)
-    }
-
-    #[cfg(feature = "rand")]
-    pub fn bernoulli_(self) -> Result<Self> {
-        Ok(self.wrap_inplace(bernoulli(self.clone())?))
-    }
-
-    pub fn zeros<T: TensorDType + num_traits::AsPrimitive<f32>, S: Into<Shape>>(
-        shape: S,
-        device: &Device,
-        requires_grad: bool,
-    ) -> Result<Self> {
-        zeros::<T, S>(shape, device, requires_grad).map(Self::wrap)
-    }
-
-    pub fn zeros_like<D: TensorDType + num_traits::AsPrimitive<f32>>(
-        &self,
-        device: Option<&Device>,
-        requires_grad: bool,
-    ) -> Result<Self> {
-        zeros_like::<_, D>(self, device, requires_grad).map(Self::wrap)
-    }
-
-    pub fn ones<T: TensorDType + num_traits::AsPrimitive<f32>, S: Into<Shape>>(
-        shape: S,
-        device: &Device,
-        requires_grad: bool,
-    ) -> Result<Self> {
-        ones::<T, S>(shape, device, requires_grad).map(Self::wrap)
-    }
-
-    pub fn ones_like<D: TensorDType + num_traits::AsPrimitive<f32>>(
-        &self,
-        device: Option<&Device>,
-        requires_grad: bool,
-    ) -> Result<Self> {
-        ones_like::<_, D>(self, device, requires_grad).map(Self::wrap)
-    }
-
-    pub fn zero_(self) -> Result<Self> {
-        Ok(self.wrap_inplace(zero_(self.clone())?))
-    }
-
-    pub fn triu(self, k: Option<i32>) -> Result<Self> {
-        triu(self, k).map(Self::wrap)
-    }
-
-    pub fn triu_(self, k: Option<i32>) -> Result<Self> {
-        Ok(self.wrap_inplace(triu(self.clone(), k)?))
-    }
-
-    pub fn tril(self, k: Option<i32>) -> Result<Self> {
-        tril(self, k).map(Self::wrap)
-    }
-
-    pub fn tril_(self, k: Option<i32>) -> Result<Self> {
-        Ok(self.wrap_inplace(tril(self.clone(), k)?))
-    }
-
     /// Returns true if the data is stored in a C contiguous (aka row major) way.
     pub fn is_contiguous(&self) -> bool {
         self.inner_or_source().clone().is_contiguous()
-    }
-
-    /// Returns a tensor that is in row major order. This is the same as the original tensor if it
-    /// was already contiguous, otherwise a copy is triggered.
-    pub fn contiguous(self) -> Result<Self> {
-        contiguous(self).map(Self::wrap)
     }
 
     pub fn has_nan<T: TensorDType + num_traits::Float>(&self) -> bool {
@@ -3832,10 +3384,6 @@ impl Tensor {
     pub fn detach_(&self) -> Self {
         let inner = self.inner_or_source().clone();
         self.wrap_inplace_untracked(inner.detach())
-    }
-
-    pub fn copy(&self, dst: &Self) -> Result<Self> {
-        copy(self, dst).map(Self::wrap)
     }
 
     /// # Safety
@@ -3995,7 +3543,7 @@ impl std::ops::Add<Tensor> for f32 {
     type Output = Result<Tensor>;
 
     fn add(self, rhs: Tensor) -> Self::Output {
-        add::<_, Tensor, _>(rhs, self).map(Tensor::wrap)
+        add_kernel::<_, _, Tensor>(rhs, self).map(Tensor::wrap)
     }
 }
 
@@ -4003,7 +3551,7 @@ impl std::ops::Mul<Tensor> for f32 {
     type Output = Result<Tensor>;
 
     fn mul(self, rhs: Tensor) -> Self::Output {
-        mul::<_, Tensor, _>(rhs, self).map(Tensor::wrap)
+        mul_kernel::<_, _, Tensor>(rhs, self).map(Tensor::wrap)
     }
 }
 
@@ -4024,6 +3572,10 @@ impl std::ops::Div<Tensor> for f32 {
     }
 }
 
+//
+// Tensor <-> OpTensor conversion
+//
+
 impl From<Tensor> for OpTensor {
     fn from(t: Tensor) -> Self {
         t.inner_or_source().clone()
@@ -4041,6 +3593,10 @@ impl From<OpTensor> for Tensor {
         Self::wrap(t)
     }
 }
+
+//
+// TensorTypeOrScalar
+//
 
 #[derive(Debug, Clone)]
 pub enum TensorTypeOrScalarEnum<T> {
@@ -4105,7 +3661,7 @@ impl<T: Clone> TensorTypeOrScalar<T> for TensorTypeOrScalarEnum<T> {
 
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod tests {
-    use crate::{rvec, Device, Tensor};
+    use crate::{Device, Tensor, rvec};
 
     #[test]
     fn has_nan_works() {

@@ -1,4 +1,4 @@
-import { randn, zeros } from "@/globals";
+import { gpu, randn, zeros } from "@/globals";
 import { Module } from "@/nn/module";
 import { Parameter } from "@/nn/parameter";
 import { Tensor } from "@/tensor";
@@ -14,10 +14,10 @@ export class Linear extends Module {
    */
   constructor(inFeatures: number, outFeatures: number, bias = true) {
     super();
-    this.weight = new Parameter(randn([outFeatures, inFeatures]));
+    this.weight = randn([outFeatures, inFeatures], undefined, { device: gpu, requiresGrad: true });
 
     if (bias) {
-      this.bias = new Parameter(zeros([outFeatures]));
+      this.bias = zeros([outFeatures], { device: gpu, requiresGrad: true });
     }
   }
 

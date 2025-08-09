@@ -2,6 +2,7 @@
 mod device;
 mod dtype;
 mod error;
+mod js_util;
 mod model;
 mod serialization;
 mod shape;

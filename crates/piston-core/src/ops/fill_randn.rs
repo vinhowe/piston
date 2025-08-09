@@ -5,10 +5,10 @@ use inline_wgsl::wgsl;
 use piston_macros::{IrFields, WgslMetadata};
 
 use crate::{
-    gpu::BindGroupLayoutDescriptor, rvec, Array, BindingMode, BuiltIn, DType, GPUOperation, Kernel,
-    KernelElement, KernelRenderable, KernelSource, OpGuards, OpTensor, Operation, OperationError,
-    RVec, Scalar, Shape, StorageView, Stride, Vec2, Vec4, WgslKernelBuilder, WgslPrimitive,
-    WorkgroupSize, Workload,
+    Array, BindingMode, BuiltIn, DType, GPUOperation, Kernel, KernelElement, KernelRenderable,
+    KernelSource, OpGuards, OpTensor, Operation, OperationError, RVec, Scalar, Shape, StorageView,
+    Stride, Vec2, Vec4, WgslKernelBuilder, WgslPrimitive, WorkgroupSize, Workload,
+    gpu::BindGroupLayoutDescriptor, rvec,
 };
 
 #[derive(new, Debug, Clone, IrFields)]
@@ -211,9 +211,9 @@ impl Kernel for FillRandnKernels {
 
 #[cfg(all(test, feature = "pyo3"))]
 mod tests {
-    use test_strategy::{proptest, Arbitrary};
+    use test_strategy::{Arbitrary, proptest};
 
-    use crate::{test_util::run_py_prg, DType, Device, DeviceRequest, Tensor};
+    use crate::{DType, Device, DeviceRequest, Tensor, randn, test_util::run_py_prg};
 
     fn normal_parameters(output: &Tensor) -> anyhow::Result<Tensor> {
         let prg = r#"
@@ -232,7 +232,7 @@ def check_normal(output):
     fn run_fill_randn_trial(problem: FillRandnProblem, device: Device) {
         let FillRandnProblem { B, M, N } = problem;
 
-        let a = Tensor::randn::<f32, _>(0f32, 1f32, (B, M, N), device.clone(), false)
+        let a = randn((B, M, N), None, None, Default::default())
             .unwrap()
             .to(&Device::CPU)
             .unwrap();

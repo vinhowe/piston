@@ -1,5 +1,5 @@
 use piston::TensorError;
-use wasm_bindgen::JsError;
+use wasm_bindgen::{JsError, JsValue};
 
 /// Helper trait to convert anyhow::Error to JsError while preserving error information
 pub trait IntoJsError {
@@ -25,5 +25,14 @@ impl IntoJsError for anyhow::Error {
 impl IntoJsError for TensorError {
     fn into_js_error(self) -> JsError {
         self.into()
+    }
+}
+
+impl IntoJsError for JsValue {
+    fn into_js_error(self) -> JsError {
+        let message = self
+            .as_string()
+            .unwrap_or_else(|| format!("JavaScript error: {self:?}"));
+        JsError::new(&message)
     }
 }

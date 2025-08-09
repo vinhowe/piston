@@ -5,11 +5,12 @@ use inline_wgsl::wgsl;
 use piston_macros::{IrFields, WgslMetadata};
 
 use crate::{
-    gpu::{dtype::WgslDType, BindGroupLayoutDescriptor},
-    rvec, Array, BindingMode, BuiltIn, DType, GPUOperation, InvariantError, Kernel, KernelElement,
+    Array, BindingMode, BuiltIn, DType, GPUOperation, InvariantError, Kernel, KernelElement,
     KernelRenderable, KernelSource, OpGuards, OpTensor, Operation, OperationError, RVec, Scalar,
     Shape, StorageView, Stride, Vec2, Vec4, WgslKernelBuilder, WgslPrimitive, WorkgroupSize,
     Workload,
+    gpu::{BindGroupLayoutDescriptor, dtype::WgslDType},
+    rvec,
 };
 #[cfg(test)]
 use test_strategy::Arbitrary;
@@ -303,8 +304,8 @@ impl Kernel for TernaryKernels {
 #[cfg(all(test, feature = "pyo3"))]
 #[cfg(test)]
 mod tests {
-    use crate::{test_util::run_py_prg, Device, DeviceRequest, Shape, Tensor, TernaryOp};
-    use test_strategy::{proptest, Arbitrary};
+    use crate::{Device, DeviceRequest, Shape, Tensor, TernaryOp, randn, test_util::run_py_prg};
+    use test_strategy::{Arbitrary, proptest};
 
     #[derive(Arbitrary, Debug)]
     struct TernaryProblem {
@@ -346,11 +347,10 @@ def {kn}(input, tensor1, tensor2):
     }
 
     fn run_ternary_trial(prob: TernaryProblem, device: Device) -> anyhow::Result<()> {
-        let cpu_device = Device::request_device(DeviceRequest::CPU)?;
         let TernaryProblem { op, shape } = prob;
-        let input = Tensor::randn::<f32, _>(0., 1., shape.clone(), cpu_device.clone(), false)?;
-        let tensor1 = Tensor::randn::<f32, _>(0., 1., shape.clone(), cpu_device.clone(), false)?;
-        let tensor2 = Tensor::randn::<f32, _>(0., 1., shape, cpu_device.clone(), false)?;
+        let input = randn(shape.clone(), None, None, Default::default())?;
+        let tensor1 = randn(shape.clone(), None, None, Default::default())?;
+        let tensor2 = randn(shape, None, None, Default::default())?;
         let value = 0.5;
         let ground = ground_truth(&input, &tensor1, &tensor2, value, &op)?;
 

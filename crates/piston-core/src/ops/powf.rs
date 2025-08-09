@@ -4,11 +4,12 @@ use inline_wgsl::wgsl;
 use piston_macros::IrFields;
 
 use crate::{
-    gpu::{dtype::WgslDType, BindGroupLayoutDescriptor},
-    rvec, Array, BindingMode, BuiltIn, DType, DynKernelMetadata, GPUOperation, InvariantError,
-    Kernel, KernelElement, KernelRenderable, KernelSource, OpGuards, OpTensor, Operation,
-    OperationError, RVec, Scalar, Shape, StorageView, Stride, TensorTypeOrScalarEnum, Vec2, Vec4,
+    Array, BindingMode, BuiltIn, DType, DynKernelMetadata, GPUOperation, InvariantError, Kernel,
+    KernelElement, KernelRenderable, KernelSource, OpGuards, OpTensor, Operation, OperationError,
+    RVec, Scalar, Shape, StorageView, Stride, TensorTypeOrScalarEnum, Vec2, Vec4,
     WgslKernelBuilder, WgslPrimitive, WorkgroupSize, Workload,
+    gpu::{BindGroupLayoutDescriptor, dtype::WgslDType},
+    rvec,
 };
 
 #[derive(new, Debug, Clone, IrFields)]
@@ -279,10 +280,10 @@ impl Kernel for PowfKernels {
 
 #[cfg(all(test, feature = "pyo3"))]
 mod tests {
-    use test_strategy::{proptest, Arbitrary};
+    use test_strategy::{Arbitrary, proptest};
 
     use crate::test_util::run_py_prg;
-    use crate::{Device, DeviceRequest, Tensor};
+    use crate::{Device, DeviceRequest, Tensor, randn};
 
     fn ground_truth(a: &Tensor, e: f32) -> anyhow::Result<Tensor> {
         let func_prg = r#"
@@ -317,7 +318,7 @@ def powf(a, e):
 
     fn run_powf_trial(problem: PowfProblem, device: Device) {
         let PowfProblem { B, M, N, e } = problem;
-        let a = Tensor::randn::<f32, _>(0., 1., (B, M, N), Device::CPU, false).unwrap();
+        let a = randn((B, M, N), None, None, Default::default()).unwrap();
         let ground = ground_truth(&a, e).unwrap();
 
         let a_gpu = a.to(&device).unwrap();
@@ -352,8 +353,8 @@ def powf(a, e):
 
     fn run_powf_tensor_trial(problem: PowfTensorProblem, device: Device) {
         let PowfTensorProblem { B, M, N } = problem;
-        let a = Tensor::randn::<f32, _>(0., 1., (B, M, N), Device::CPU, false).unwrap();
-        let e = Tensor::randn::<f32, _>(0.1, 2.0, (B, M, N), Device::CPU, false).unwrap();
+        let a = randn((B, M, N), None, None, Default::default()).unwrap();
+        let e = randn((B, M, N), None, None, Default::default()).unwrap();
         let ground = ground_truth_tensor(&a, &e).unwrap();
 
         let a_gpu = a.to(&device).unwrap();

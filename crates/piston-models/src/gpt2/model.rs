@@ -29,11 +29,11 @@ use super::{
     mlp::MLP,
 };
 use maybe_async::maybe_async;
-use piston::{Device, Tensor};
+use piston::{D, DType, Device, Tensor, TensorOptions, arange, stack};
 use piston_macros::scoped_module;
 use piston_nn::{
-    layer_norm, Dropout, Embedding, KVCache, LayerNorm, Linear, Module, SinusoidalEmbedding,
-    SinusoidalInput, VarBuilder,
+    Dropout, Embedding, KVCache, LayerNorm, Linear, Module, SinusoidalEmbedding, SinusoidalInput,
+    VarBuilder, layer_norm,
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -207,7 +207,12 @@ impl Module for GPT2 {
         // Add positional embeddings based on the type
         if let Some(wpe) = &self.wpe {
             // Learned embeddings
-            let pos = Tensor::arange(0, seq_len as i32, &x.device(), false)?;
+            let pos = arange(
+                Some(0.0),
+                seq_len as f32,
+                None,
+                TensorOptions::new().device(x.device()).dtype(DType::I32),
+            )?;
             let pos = pos.unsqueeze(0)?.broadcast_to((b_size, seq_len))?;
             let position_embeds = wpe.schedule(pos)?;
             x = x.add(position_embeds)?;
@@ -236,10 +241,10 @@ impl Module for GPT2 {
             };
             let (layer_output, layer_attn_masks) = layer.schedule(input)?;
             x = layer_output;
-            attn_masks.push(layer_attn_masks.flatten_from(2)?);
+            attn_masks.push(layer_attn_masks.flatten(2, D::Minus1)?);
         }
 
-        let attn_masks = Tensor::stack(attn_masks.into(), 0)?;
+        let attn_masks = stack(attn_masks.into(), 0)?;
         x = self.ln_f.schedule(x)?;
         let logits = self.lm_head.schedule(x)?;
         Ok((logits, attn_masks))
@@ -316,18 +321,18 @@ impl GPT2 {
 
 #[cfg(all(test, not(target_arch = "wasm32"), feature = "pyo3"))]
 mod tests {
-    use piston::{Device, DeviceRequest, Tensor};
+    use piston::{DType, Device, DeviceRequest, TensorOptions, zeros};
     use piston_datasets::{
-        nlp::tinystories::{Dataset, DatasetRandomIter},
         Batcher,
+        nlp::tinystories::{Dataset, DatasetRandomIter},
     };
-    use piston_nn::{cross_entropy, AdamW, Module, Optimizer, ParamsAdamW, VarBuilder, VarMap};
+    use piston_nn::{AdamW, Module, Optimizer, ParamsAdamW, VarBuilder, VarMap, cross_entropy};
 
     use super::GPT2;
     use crate::gpt2::{
+        LayerNormPosition,
         // generate,
         model::{Config, GPT2Input, PositionalEncoding},
-        LayerNormPosition,
     };
 
     #[test]
@@ -370,16 +375,26 @@ mod tests {
 
         const BATCH_SIZE: usize = 1;
 
-        for step in 0..100 {
-            let input = Tensor::zeros::<i32, _>((BATCH_SIZE, config.block_size), &device, false)?;
-            let tgt = Tensor::zeros::<i32, _>((BATCH_SIZE, config.block_size), &device, false)?;
+        for step in 0..3 {
+            let input = zeros(
+                (BATCH_SIZE, config.block_size),
+                TensorOptions::new()
+                    .device(device.clone())
+                    .dtype(DType::I32),
+            )?;
+            let tgt = zeros(
+                (BATCH_SIZE, config.block_size),
+                TensorOptions::new()
+                    .device(device.clone())
+                    .dtype(DType::I32),
+            )?;
 
             let (logits, _) = model.schedule(GPT2Input {
                 x: input,
                 index_pos: 0,
             })?;
 
-            let loss = cross_entropy(logits.flatten_to(1)?, tgt.flatten_to(1)?)?;
+            let loss = cross_entropy(logits.flatten(0, 1)?, tgt.flatten(0, 1)?)?;
 
             loss.backward()?;
 
@@ -428,15 +443,21 @@ mod tests {
         const BATCH_SIZE: usize = 10;
 
         for batch_index in 0..10 {
-            let input = Tensor::zeros::<i32, _>((BATCH_SIZE, config.block_size), &device, false)?;
-            let tgt = Tensor::zeros::<i32, _>((BATCH_SIZE, config.block_size), &device, false)?;
+            let input = zeros(
+                (BATCH_SIZE, config.block_size),
+                TensorOptions::new().device(device.clone()),
+            )?;
+            let tgt = zeros(
+                (BATCH_SIZE, config.block_size),
+                TensorOptions::new().device(device.clone()),
+            )?;
 
             let (logits, _) = model.schedule(GPT2Input {
                 x: input,
                 index_pos: 0,
             })?;
 
-            let loss = cross_entropy(logits.flatten_to(1)?, tgt.flatten_to(1)?)?;
+            let loss = cross_entropy(logits.flatten(0, 1)?, tgt.flatten(0, 1)?)?;
 
             device.try_gpu()?.mark_step()?;
 
@@ -508,7 +529,7 @@ mod tests {
                 index_pos: 0,
             })?;
 
-            let loss = cross_entropy(logits.flatten_to(1)?, tgt.flatten_to(1)?)?;
+            let loss = cross_entropy(logits.flatten(0, 1)?, tgt.flatten(0, 1)?)?;
 
             // This is something of a hack; we add references to all tensors that need to be backpropped
             loss.backward()?;

@@ -5,10 +5,11 @@ use piston_macros::{IrFields, WgslMetadata};
 
 use crate::gpu::dtype::WgslDType;
 use crate::{
+    Array, BindingMode, BuiltIn, DType, KernelElement, KernelSource, OpGuards, OpTensor, Operation,
+    OperationError, RVec, Scalar, StorageView, Stride, Vec2, Vec4, WgslKernelBuilder,
+    WgslPrimitive, WorkgroupSize, Workload,
     gpu::{BindGroupLayoutDescriptor, WorkgroupCount},
-    rvec, wgc, wgs, Array, BindingMode, BuiltIn, DType, KernelElement, KernelSource, OpGuards,
-    OpTensor, Operation, OperationError, RVec, Scalar, StorageView, Stride, Vec2, Vec4,
-    WgslKernelBuilder, WgslPrimitive, WorkgroupSize, Workload,
+    rvec, wgc, wgs,
 };
 use crate::{GPUOperation, Kernel, KernelRenderable};
 use inline_wgsl::wgsl;
@@ -330,10 +331,10 @@ impl Kernel for RoPEKernels {
 
 #[cfg(all(test, feature = "pyo3", target_os = "macos"))]
 mod tests {
-    use test_strategy::{proptest, Arbitrary};
+    use test_strategy::{Arbitrary, proptest};
 
     use crate::test_util::run_py_prg;
-    use crate::{Device, DeviceRequest, Tensor};
+    use crate::{Device, DeviceRequest, Tensor, randn};
 
     fn ground_truth(a: &Tensor, dim: usize, offset: usize) -> anyhow::Result<Tensor> {
         let prg = r#"
@@ -361,11 +362,11 @@ def mlx_rope(input, dim, offset):
             offset,
         } = problem;
         let shape = (BS, NH, SL, HD);
-        let a = Tensor::randn::<f32, _>(0., 1., shape, Device::CPU, false).unwrap();
+        let a = randn(shape, None, None, Default::default()).unwrap();
         let ground = ground_truth(&a, dim, offset).unwrap();
 
         let a = a.to(&device).unwrap();
-        let b = a.rope(dim, 10000.0, offset).unwrap();
+        let b = a.rope_(dim, 10000.0, offset).unwrap();
 
         let ours = b.to(&Device::CPU).unwrap();
         //println!("ours = \n{:#?}\n", ours.to_ndarray_view::<f32>());
