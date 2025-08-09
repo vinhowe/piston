@@ -5,10 +5,10 @@ use inline_wgsl::wgsl;
 use piston_macros::{IrFields, WgslMetadata};
 
 use crate::{
-    gpu::BindGroupLayoutDescriptor, rvec, Array, BindingMode, BuiltIn, DType, GPUOperation, Kernel,
-    KernelElement, KernelRenderable, KernelSource, OpGuards, OpTensor, Operation, OperationError,
-    RVec, Scalar, Shape, StorageView, Stride, Vec2, Vec4, WgslKernelBuilder, WgslPrimitive,
-    WorkgroupSize, Workload,
+    Array, BindingMode, BuiltIn, DType, GPUOperation, Kernel, KernelElement, KernelRenderable,
+    KernelSource, OpGuards, OpTensor, Operation, OperationError, RVec, Scalar, Shape, StorageView,
+    Stride, Vec2, Vec4, WgslKernelBuilder, WgslPrimitive, WorkgroupSize, Workload,
+    gpu::BindGroupLayoutDescriptor, rvec,
 };
 
 #[derive(new, Debug, Clone, IrFields)]
@@ -228,9 +228,11 @@ impl Kernel for TriluKernels {
 
 #[cfg(all(test, feature = "pyo3"))]
 mod tests {
-    use crate::{shape, test_util::run_py_prg, DType, Device, DeviceRequest, Tensor};
+    use crate::{
+        DType, Device, DeviceRequest, Tensor, TensorOptions, ones, shape, test_util::run_py_prg,
+    };
     use proptest::prelude::any;
-    use test_strategy::{proptest, Arbitrary};
+    use test_strategy::{Arbitrary, proptest};
 
     /// Generates the ground truth tensor using NumPy's triu or tril functions.
     ///
@@ -313,7 +315,7 @@ def trilu(shape, upper, k):
         // Define the shape of the tensor.
         let shape = shape![B, M, N];
 
-        let src = Tensor::ones::<f32, _>(shape.clone(), &device, false).unwrap();
+        let src = ones(shape.clone(), TensorOptions::new().device(device)).unwrap();
 
         // Generate the ground truth using NumPy.
         let ground = ground_truth(&shape, upper, Some(k))

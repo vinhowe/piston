@@ -6,11 +6,11 @@ use inline_wgsl::wgsl;
 use piston_macros::{IrFields, WgslMetadata};
 
 use crate::{
-    gpu::BindGroupLayoutDescriptor, rvec, Array, BindGroupLayoutEntryDescriptor,
-    BindGroupLayoutEntryExt, BindingMode, BuiltIn, DType, GPUOperation, Kernel, KernelElement,
-    KernelRenderable, KernelSource, OpGuards, OpTensor, Operation, OperationError, RVec, Scalar,
-    Shape, StorageView, Stride, Vec2, Vec4, WgslKernelBuilder, WgslPrimitive, WorkgroupSize,
-    Workload,
+    Array, BindGroupLayoutEntryDescriptor, BindGroupLayoutEntryExt, BindingMode, BuiltIn, DType,
+    GPUOperation, Kernel, KernelElement, KernelRenderable, KernelSource, OpGuards, OpTensor,
+    Operation, OperationError, RVec, Scalar, Shape, StorageView, Stride, Vec2, Vec4,
+    WgslKernelBuilder, WgslPrimitive, WorkgroupSize, Workload, gpu::BindGroupLayoutDescriptor,
+    rvec,
 };
 
 /// # Cache
@@ -266,29 +266,29 @@ impl Kernel for CacheKernels {
 
 #[cfg(test)]
 mod tests {
-    use crate::{rvec, Device, DeviceRequest, Tensor};
+    use crate::{Device, DeviceRequest, cat, randn, rvec, zeros};
 
     #[test]
     fn test_cache() -> anyhow::Result<()> {
         let device = Device::request_device(DeviceRequest::GPU).unwrap();
         let populated = 2;
         //Create cache with 2 populated entries, and 14 blank entries
-        let mut dst0 = Tensor::randn::<f32, _>(0., 1., (1, 2, populated, 16), Device::CPU, false)?;
+        let mut dst0 = randn((1, 2, populated, 16), None, None, Default::default())?;
         println!(
             "PREVIOUS CACHE\n {:?}\n",
             dst0.inner().read().to_ndarray_view::<f32>()
         );
         dst0 = dst0.to(&device)?;
-        let dst1 = Tensor::zeros::<f32, _>((1, 2, 4, 16), &device, false)?;
-        let cur_cache = Tensor::cat(rvec![dst0.clone(), dst1], 2)?;
+        let dst1 = zeros((1, 2, 4, 16), Default::default())?;
+        let cur_cache = cat(rvec![dst0.clone(), dst1], 2)?;
 
         //This is the k or v vector we write
-        let mut src = Tensor::randn::<f32, _>(0., 1., (1, 2, 1, 16), Device::CPU, false)?;
+        let mut src = randn((1, 2, 1, 16), None, None, Default::default())?;
         println!("SRC \n {:?}\n", src.inner().read().to_ndarray_view::<f32>());
         src = src.to(&device)?;
 
         //The result should be the concatenation of the cache and the source
-        let ground_truth = Tensor::cat(rvec![dst0.clone(), src.clone()], 2)?.to(&Device::CPU)?;
+        let ground_truth = cat(rvec![dst0.clone(), src.clone()], 2)?.to(&Device::CPU)?;
 
         let dim = 2;
         let b = cur_cache.clone().cache(src, dim, populated)?;

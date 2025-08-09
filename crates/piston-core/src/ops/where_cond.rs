@@ -4,11 +4,12 @@ use inline_wgsl::wgsl;
 use piston_macros::IrFields;
 
 use crate::{
-    gpu::{dtype::WgslDType, BindGroupLayoutDescriptor},
-    rvec, Array, BindingMode, BuiltIn, DType, DynKernelMetadata, GPUOperation, InvariantError,
-    Kernel, KernelElement, KernelRenderable, KernelSource, OpGuards, OpTensor, Operation,
-    OperationError, RVec, Scalar, Shape, StorageView, Stride, TensorTypeOrScalar,
-    TensorTypeOrScalarEnum, Vec2, Vec4, WgslKernelBuilder, WgslPrimitive, WorkgroupSize, Workload,
+    Array, BindingMode, BuiltIn, DType, DynKernelMetadata, GPUOperation, InvariantError, Kernel,
+    KernelElement, KernelRenderable, KernelSource, OpGuards, OpTensor, Operation, OperationError,
+    RVec, Scalar, Shape, StorageView, Stride, TensorTypeOrScalar, TensorTypeOrScalarEnum, Vec2,
+    Vec4, WgslKernelBuilder, WgslPrimitive, WorkgroupSize, Workload,
+    gpu::{BindGroupLayoutDescriptor, dtype::WgslDType},
+    rvec,
 };
 
 #[derive(new, Debug, Clone, IrFields)]
@@ -51,10 +52,10 @@ impl OpGuards for WhereCond {
         if let TensorTypeOrScalarEnum::Tensor(c) = c {
             assert!(matches!(c.dtype(), crate::DType::F32 | crate::DType::I32));
         }
-        if let TensorTypeOrScalarEnum::Tensor(b) = b {
-            if let TensorTypeOrScalarEnum::Tensor(c) = c {
-                assert!(b.dtype() == c.dtype())
-            }
+        if let TensorTypeOrScalarEnum::Tensor(b) = b
+            && let TensorTypeOrScalarEnum::Tensor(c) = c
+        {
+            assert!(b.dtype() == c.dtype())
         }
     }
 }
@@ -384,10 +385,10 @@ impl KernelRenderable for WhereCondKernels {
 #[cfg(all(test, feature = "pyo3"))]
 mod tests {
     use proptest::arbitrary::any;
-    use test_strategy::{proptest, Arbitrary};
+    use test_strategy::{Arbitrary, proptest};
 
     use crate::test_util::run_py_prg;
-    use crate::{Device, DeviceRequest, Tensor};
+    use crate::{Device, DeviceRequest, Tensor, randn};
 
     fn ground_truth(a: &Tensor, b: &Tensor, c: &Tensor) -> anyhow::Result<Tensor> {
         let prg = r#"
@@ -410,12 +411,12 @@ def where_cond_scalar(a, b, scalar):
     fn run_where_cond_trial(problem: WhereCondProblem, device: Device) {
         let WhereCondProblem { B, M, N } = problem;
         // Put through a ReLU so some of its entries are 0
-        let a = Tensor::randn::<f32, _>(0., 1., (B, M, N), Device::CPU, false)
+        let a = randn((B, M, N), None, None, Default::default())
             .unwrap()
             .relu()
             .unwrap();
-        let b = Tensor::randn::<f32, _>(0., 1., (B, M, N), Device::CPU, false).unwrap();
-        let c = Tensor::randn::<f32, _>(0., 1., (B, M, N), Device::CPU, false).unwrap();
+        let b = randn((B, M, N), None, None, Default::default()).unwrap();
+        let c = randn((B, M, N), None, None, Default::default()).unwrap();
         let ground = ground_truth(&b, &a, &c).unwrap();
 
         let a_gpu = a.to(&device).unwrap();
@@ -434,11 +435,11 @@ def where_cond_scalar(a, b, scalar):
     fn run_where_cond_scalar_trial(problem: WhereCondScalarProblem, device: Device) {
         let WhereCondScalarProblem { B, M, N, scalar } = problem;
         // Put through a ReLU so some of its entries are 0
-        let a = Tensor::randn::<f32, _>(0., 1., (B, M, N), Device::CPU, false)
+        let a = randn((B, M, N), None, None, Default::default())
             .unwrap()
             .relu()
             .unwrap();
-        let b = Tensor::randn::<f32, _>(0., 1., (B, M, N), Device::CPU, false).unwrap();
+        let b = randn((B, M, N), None, None, Default::default()).unwrap();
         let ground = ground_truth_scalar(&b, &a, scalar).unwrap();
 
         let a_gpu = a.to(&device).unwrap();

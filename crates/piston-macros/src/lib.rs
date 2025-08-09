@@ -1,5 +1,6 @@
 mod ir_fields;
 mod js_tensor;
+mod ops;
 mod scoped_module;
 mod wgsl_metadata;
 
@@ -38,4 +39,28 @@ pub fn scoped_module(_attr: TokenStream, item: TokenStream) -> TokenStream {
 #[proc_macro_attribute]
 pub fn js_tensor_operations(_attr: TokenStream, item: TokenStream) -> TokenStream {
     js_tensor::js_tensor_operations(item)
+}
+
+/// Generates tensor operation variants from an OpTensor kernel function.
+///
+/// This macro takes a function that operates on OpTensor and generates:
+/// - A kernel function with OT generics for Into<OpTensor> parameters
+/// - Optional function, method, and method_inplace variants
+///
+/// # Example
+/// ```rust
+/// #[tensor_op(variants = [function, method, method_inplace])]
+/// fn add<T: TensorTypeOrScalar<OpTensor>>(lhs: OpTensor, rhs: T) -> Result<OpTensor> {
+///     // implementation
+/// }
+/// ```
+#[proc_macro_attribute]
+pub fn tensor_op(attr: TokenStream, item: TokenStream) -> TokenStream {
+    let attr = parse_macro_input!(attr as ops::TensorOpAttr);
+    let item = parse_macro_input!(item as syn::ItemFn);
+
+    match ops::process_tensor_op(attr, item) {
+        Ok(tokens) => tokens.into(),
+        Err(err) => err.to_compile_error().into(),
+    }
 }

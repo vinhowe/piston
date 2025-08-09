@@ -1,4 +1,4 @@
-use crate::{rvec, shape, RVec, Stride};
+use crate::{RVec, Stride, rvec, shape};
 use anyhow::Result;
 use encase::impl_wrapper;
 use smallvec::ToSmallVec;
@@ -611,6 +611,14 @@ impl<D1: Dim, D2: Dim, D3: Dim, D4: Dim, D5: Dim, D6: Dim> Dims for (D1, D2, D3,
     }
 }
 
+pub struct AllDims;
+
+impl Dims for AllDims {
+    fn to_indexes_internal(self, shape: &Shape, _: &'static str) -> Result<RVec<usize>> {
+        Ok((0..shape.dim()).collect())
+    }
+}
+
 extract_dims!(dims0, 0, |_: &[usize]| (), ());
 extract_dims!(dims1, 1, |d: &[usize]| d[0], usize);
 extract_dims!(dims2, 2, |d: &[usize]| (d[0], d[1]), (usize, usize));
@@ -654,7 +662,7 @@ pub fn hole_size(el_count: usize, prod_d: usize, s: &dyn std::fmt::Debug) -> Res
         anyhow::bail!("cannot reshape tensor of {el_count} elements to {s:?}")
     }
     if !el_count.is_multiple_of(prod_d) {
-        anyhow::bail!("cannot reshape tensor with {el_count} elements to {s:?}")
+        anyhow::bail!("shape.hole_size: cannot reshape tensor with {el_count} elements to {s:?}")
     }
     Ok(el_count / prod_d)
 }

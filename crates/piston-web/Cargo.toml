@@ -2,7 +2,7 @@
 name = "piston-web"
 description = "Train small neural networks in your browser with WebGPU"
 version = "0.0.0"
-edition = "2021"
+edition = "2024"
 license = "MIT"
 repository = "https://github.com/vinhowe/piston"
 
@@ -57,6 +57,8 @@ tokenizers = { version = "0.19.1", default-features = false, features = [
 futures = "0.3.30"
 async-trait = { workspace = true }
 paste = { workspace = true }
+tsify = { workspace = true }
+smallvec = { workspace = true }
 [dependencies.web-sys]
 features = ['console', 'Window', 'Navigator']
 workspace = true

@@ -1,4 +1,4 @@
-use piston::{DType, ScopePusher, Tensor};
+use piston::{AllDims, DType, ScopePusher, Tensor};
 
 pub fn nll(inp: Tensor, target: Tensor) -> anyhow::Result<Tensor> {
     let _scope_guard = ScopePusher::new("loss:nll");
@@ -54,7 +54,7 @@ pub fn nll_masked(inp: Tensor, target: Tensor) -> anyhow::Result<Tensor> {
         .clone()
         .mul(mask_unsqueezed.cast(DType::F32)?)?;
 
-    let valid_count = mask.cast(DType::F32)?.sum_all()?;
+    let valid_count = mask.cast(DType::F32)?.sum(AllDims, false)?;
 
     masked_loss.div(valid_count.cast(DType::F32)?)
 }
@@ -107,7 +107,7 @@ pub fn label_smoothed_nll(log_probs: Tensor, target: Tensor, alpha: f32) -> anyh
     let nll_masked = nll_gathered.mul(mask.clone().unsqueeze(1)?)?;
 
     // We'll also average over only the valid tokens:
-    let valid_count = mask.clone().sum_all()?; // shape []
+    let valid_count = mask.clone().sum(AllDims, false)?; // shape []
 
     // (1) Ordinary cross-entropy term (averaged).
     let nll_loss = nll_masked.div(valid_count.clone())?;
@@ -118,11 +118,11 @@ pub fn label_smoothed_nll(log_probs: Tensor, target: Tensor, alpha: f32) -> anyh
     // we want the “average” log-prob over all classes, not just the correct one.
     // i.e. uniform_loss = - average over (vocab_size) of log_probs, restricted to masked positions.
     let all_probs_masked = log_probs.mul(mask.unsqueeze(1)?)?;
-    let sum_log_probs = all_probs_masked.sum(1)?;
+    let sum_log_probs = all_probs_masked.sum(1, false)?;
     // Now shape [batch_size], each entry is sum_{v in vocab} log_probs[i, v].
     // Negative average per token:
     let neg_avg_log_prob = sum_log_probs.affine(-1.0 / vocab_size as f32, 0.0)?;
-    let uniform_loss = neg_avg_log_prob.sum_all()?.div(valid_count)?;
+    let uniform_loss = neg_avg_log_prob.sum(AllDims, false)?.div(valid_count)?;
 
     // Combine with alpha
     // final = (1 - alpha) * nll + alpha * uniform_term
@@ -135,9 +135,9 @@ pub fn label_smoothed_nll(log_probs: Tensor, target: Tensor, alpha: f32) -> anyh
 
 pub fn log_softmax(xs: Tensor, d: usize) -> anyhow::Result<Tensor> {
     let _scope_guard = ScopePusher::new("loss:log_softmax");
-    let max = xs.clone().max_keepdim(d)?;
+    let max = xs.clone().max(d, true)?;
     let diff = xs.clone().sub(max)?;
-    let sum_exp = diff.clone().exp()?.sum_keepdim(d)?;
+    let sum_exp = diff.clone().exp()?.sum(d, true)?;
     let log_sm = diff.sub(sum_exp.log()?)?;
     Ok(log_sm)
 }
@@ -148,7 +148,7 @@ pub fn cross_entropy(inp: Tensor, target: Tensor) -> anyhow::Result<Tensor> {
         anyhow::bail!("cross_entropy expects an input tensor of rank 2")
     }
     let inp = log_softmax(inp, 1)?;
-    nll(inp, target)?.sum_all()
+    nll(inp, target)?.sum(AllDims, false)
 }
 
 #[cfg(all(test, feature = "pyo3"))]
@@ -156,7 +156,7 @@ mod tests {
     use super::*;
     use anyhow::Result;
     use piston::{DType, Device, DeviceRequest, Parameter};
-    use test_strategy::{proptest, Arbitrary};
+    use test_strategy::{Arbitrary, proptest};
 
     thread_local! {
         static GPU_DEVICE: Device = Device::request_device(DeviceRequest::GPU).unwrap();

@@ -4,10 +4,11 @@ use inline_wgsl::wgsl;
 use piston_macros::{IrFields, WgslMetadata};
 
 use crate::{
+    Array, BindingMode, BuiltIn, DType, GPUOperation, Kernel, KernelElement, KernelRenderable,
+    KernelSource, OpGuards, OpTensor, Operation, OperationError, RVec, Scalar, StorageView,
+    WgslKernelBuilder, WgslPrimitive, WorkgroupSize, Workload,
     gpu::{BindGroupLayoutDescriptor, WorkgroupCount},
-    rvec, wgc, wgs, Array, BindingMode, BuiltIn, DType, GPUOperation, Kernel, KernelElement,
-    KernelRenderable, KernelSource, OpGuards, OpTensor, Operation, OperationError, RVec, Scalar,
-    StorageView, WgslKernelBuilder, WgslPrimitive, WorkgroupSize, Workload,
+    rvec, wgc, wgs,
 };
 
 /// Implements "alibi" (Attention Linear Bias)
@@ -274,8 +275,8 @@ impl Kernel for AlibiKernels {
 
 #[cfg(all(test, feature = "pyo3"))]
 mod tests {
-    use crate::{test_util::run_py_prg, Device, DeviceRequest, Tensor};
-    use test_strategy::{proptest, Arbitrary};
+    use crate::{Device, DeviceRequest, Tensor, test_util::run_py_prg, zeros};
+    use test_strategy::{Arbitrary, proptest};
 
     /// Ground truth reference, computed by a Python snippet:
     ///
@@ -344,7 +345,7 @@ def alibi(input, max_bias):
         // shape = [B, n_head, seq]
         let shape = (b, n_head, seq);
         // let a_cpu = Tensor::randn::<f32, _>(0.0, 1.0, shape, Device::CPU).unwrap();
-        let a_cpu = Tensor::zeros::<f32, _>(shape, &Device::CPU, false).unwrap();
+        let a_cpu = zeros(shape, Default::default()).unwrap();
 
         let ground = ground_truth_alibi(&a_cpu, max_bias).unwrap();
         let a_gpu = a_cpu.to(&device).unwrap();

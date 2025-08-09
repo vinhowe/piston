@@ -5,10 +5,11 @@ use inline_wgsl::wgsl;
 use piston_macros::{IrFields, WgslMetadata};
 
 use crate::{
-    gpu::{dtype::WgslDType, BindGroupLayoutDescriptor},
-    rvec, Array, BindingMode, BuiltIn, DType, GPUOperation, Kernel, KernelElement,
-    KernelRenderable, KernelSource, OpGuards, OpTensor, Operation, OperationError, RVec, Scalar,
-    StorageView, Vec2, Vec4, WgslKernelBuilder, WgslPrimitive, WorkgroupSize, Workload,
+    Array, BindingMode, BuiltIn, DType, GPUOperation, Kernel, KernelElement, KernelRenderable,
+    KernelSource, OpGuards, OpTensor, Operation, OperationError, RVec, Scalar, StorageView, Vec2,
+    Vec4, WgslKernelBuilder, WgslPrimitive, WorkgroupSize, Workload,
+    gpu::{BindGroupLayoutDescriptor, dtype::WgslDType},
+    rvec,
 };
 
 #[derive(new, Debug, Clone, IrFields)]
@@ -232,9 +233,9 @@ impl Kernel for AffineKernels {
 #[cfg(all(test, feature = "pyo3"))]
 mod tests {
     use proptest::arbitrary::any;
-    use test_strategy::{proptest, Arbitrary};
+    use test_strategy::{Arbitrary, proptest};
 
-    use crate::{test_util::run_py_prg, Device, DeviceRequest, Tensor};
+    use crate::{Device, DeviceRequest, Tensor, randn, test_util::run_py_prg};
 
     fn ground_truth(a: &Tensor, mul: f32, add: f32) -> anyhow::Result<Tensor> {
         let prg = r#"
@@ -249,7 +250,7 @@ def affine(a, mul, add):
 
     fn run_affine_trial(problem: AffineProblem, device: Device) {
         let AffineProblem { B, M, N, add, mul } = problem;
-        let a = Tensor::randn::<f32, _>(0., 1., (B, M, N), Device::CPU, false).unwrap();
+        let a = randn((B, M, N), None, None, Default::default()).unwrap();
         let ground = ground_truth(&a, mul, add).unwrap();
 
         let a_gpu = a.to(&device).unwrap();

@@ -3,7 +3,7 @@ use heck::ToLowerCamelCase;
 use proc_macro::TokenStream;
 use proc_macro2::TokenStream as TokenStream2;
 use quote::quote;
-use syn::{parse_macro_input, FnArg, ImplItem, ItemImpl, Pat, PatIdent, Type};
+use syn::{FnArg, ImplItem, ItemImpl, Pat, PatIdent, Type, parse_macro_input};
 
 /// Converts a string to lower camel case, preserving leading and trailing underscores.
 fn to_lower_camel_case_with_underscore(ident: &str) -> String {
@@ -43,7 +43,7 @@ pub fn process_js_tensor_operations(mut item_impl: ItemImpl) -> TokenStream2 {
     let underlying_type_ident = syn::Ident::new(&underlying_type, proc_macro2::Span::call_site());
 
     for impl_item in &mut item_impl.items {
-        if let ImplItem::Fn(ref mut input_fn) = impl_item {
+        if let ImplItem::Fn(input_fn) = impl_item {
             // Look for our marker attribute #[js_tensor_operation].
             let mut has_js_tensor_skip = false;
             let is_async = input_fn.sig.asyncness.is_some();
@@ -93,54 +93,54 @@ pub fn process_js_tensor_operations(mut item_impl: ItemImpl) -> TokenStream2 {
 
             // Process parameters (e.g. for setting js names).
             for input in &mut input_fn.sig.inputs {
-                if let FnArg::Typed(pat_type) = input {
-                    if let syn::Pat::Ident(pat_ident) = &*pat_type.pat {
-                        let param_name = pat_ident.ident.to_string();
-                        let param_js_name = to_lower_camel_case_with_underscore(&param_name);
+                if let FnArg::Typed(pat_type) = input
+                    && let syn::Pat::Ident(pat_ident) = &*pat_type.pat
+                {
+                    let param_name = pat_ident.ident.to_string();
+                    let param_js_name = to_lower_camel_case_with_underscore(&param_name);
+                    if is_type(&pat_type.ty, "Shape")
+                        || is_type_ref(&pat_type.ty, "Shape")
+                        || is_type(&pat_type.ty, "ShapeWithOneHole")
+                        || is_type_ref(&pat_type.ty, "ShapeWithOneHole")
+                        || is_type(&pat_type.ty, "Dims")
+                        || is_type(&pat_type.ty, "TensorOrScalar")
+                        || is_optional_of_type(&pat_type.ty, "Shape")
+                        || is_optional_of_type(&pat_type.ty, "Dims")
+                    {
+                        let mut unchecked_param_type = if is_type(&pat_type.ty, "Dims")
+                            || is_optional_of_type(&pat_type.ty, "Dims")
+                        {
+                            "Int32Array | number[] | number".to_string()
+                        } else if is_type(&pat_type.ty, "ShapeWithOneHole")
+                            || is_optional_of_type(&pat_type.ty, "ShapeWithOneHole")
+                        {
+                            "Int32Array | number[]".to_string()
+                        } else if is_type(&pat_type.ty, "TensorOrScalar") {
+                            "Tensor | number".to_string()
+                        } else {
+                            "Uint32Array | number[]".to_string()
+                        };
                         if is_type(&pat_type.ty, "Shape")
                             || is_type_ref(&pat_type.ty, "Shape")
                             || is_type(&pat_type.ty, "ShapeWithOneHole")
                             || is_type_ref(&pat_type.ty, "ShapeWithOneHole")
-                            || is_type(&pat_type.ty, "Dims")
-                            || is_type(&pat_type.ty, "TensorOrScalar")
-                            || is_optional_of_type(&pat_type.ty, "Shape")
-                            || is_optional_of_type(&pat_type.ty, "Dims")
                         {
-                            let mut unchecked_param_type = if is_type(&pat_type.ty, "Dims")
-                                || is_optional_of_type(&pat_type.ty, "Dims")
-                            {
-                                "Int32Array | number[] | number".to_string()
-                            } else if is_type(&pat_type.ty, "ShapeWithOneHole")
-                                || is_optional_of_type(&pat_type.ty, "ShapeWithOneHole")
-                            {
-                                "Int32Array | number[]".to_string()
-                            } else if is_type(&pat_type.ty, "TensorOrScalar") {
-                                "Tensor | number".to_string()
-                            } else {
-                                "Uint32Array | number[]".to_string()
-                            };
-                            if is_type(&pat_type.ty, "Shape")
-                                || is_type_ref(&pat_type.ty, "Shape")
-                                || is_type(&pat_type.ty, "ShapeWithOneHole")
-                                || is_type_ref(&pat_type.ty, "ShapeWithOneHole")
-                            {
-                                has_shape_generic = true;
-                            }
-                            if is_optional(&pat_type.ty) {
-                                unchecked_param_type =
-                                    format!("{unchecked_param_type} | null | undefined");
-                            }
-                            pat_type
+                            has_shape_generic = true;
+                        }
+                        if is_optional(&pat_type.ty) {
+                            unchecked_param_type =
+                                format!("{unchecked_param_type} | null | undefined");
+                        }
+                        pat_type
                                 .attrs
                                 // We do this because we technically accept both and we want to make that clear to typescript
                                 .push(syn::parse_quote!(
                                     #[wasm_bindgen(js_name = #param_js_name, unchecked_param_type = #unchecked_param_type)]
                                 ));
-                        } else {
-                            pat_type
-                                .attrs
-                                .push(syn::parse_quote!(#[wasm_bindgen(js_name = #param_js_name)]));
-                        }
+                    } else {
+                        pat_type
+                            .attrs
+                            .push(syn::parse_quote!(#[wasm_bindgen(js_name = #param_js_name)]));
                     }
                 }
             }
@@ -161,12 +161,12 @@ pub fn process_js_tensor_operations(mut item_impl: ItemImpl) -> TokenStream2 {
                         has_self_param = true;
                         retained_inputs.push(input.clone());
                     }
-                    FnArg::Typed(ref mut pat_type) => {
+                    FnArg::Typed(pat_type) => {
                         let pat = &*pat_type.pat;
                         let ty = &*pat_type.ty;
                         let mut is_dtype_param = false;
                         let is_reference = matches!(ty, Type::Reference(_));
-                        let new_ident = if let Pat::Ident(PatIdent { ref ident, .. }) = pat {
+                        let new_ident = if let Pat::Ident(PatIdent { ident, .. }) = pat {
                             // Check if this parameter is named "dtype"
                             if ident == "dtype" {
                                 is_dtype_param = true;
@@ -520,6 +520,17 @@ fn generate_type_and_conversion(
             false,
             false,
         )
+    } else if is_type(ty, "TensorOptions") {
+        TypeConversion::new(
+            syn::parse_quote!(Option<crate::tensor::TensorOptions>),
+            quote! { piston::TensorOptions },
+            ident,
+            Some(
+                quote! { #expr.map(|opts| opts.into()).unwrap_or(piston::TensorOptions::default()) },
+            ),
+            false,
+            false,
+        )
     } else if is_type(ty, "Device") || is_type_ref(ty, "Device") {
         let is_option = if let Some(outer_ty) = outer_ty {
             is_type(outer_ty, "Option")
@@ -633,37 +644,35 @@ fn generate_type_and_conversion(
 
 /// Helper: if the type is a container (e.g. Option or Vec), return its inner type.
 fn get_inner_type<'a>(ty: &'a Type, container: &str) -> Option<(&'a Type, &'a Type)> {
-    if let Type::Path(type_path) = ty {
-        if let Some(segment) = type_path.path.segments.first() {
-            if segment.ident == container {
-                if let syn::PathArguments::AngleBracketed(angle_bracketed) = &segment.arguments {
-                    if let Some(syn::GenericArgument::Type(inner_ty)) = angle_bracketed.args.first()
-                    {
-                        return Some((inner_ty, ty));
-                    }
-                }
-            }
-        }
+    if let Type::Path(type_path) = ty
+        && let Some(segment) = type_path.path.segments.first()
+        && segment.ident == container
+        && let syn::PathArguments::AngleBracketed(angle_bracketed) = &segment.arguments
+        && let Some(syn::GenericArgument::Type(inner_ty)) = angle_bracketed.args.first()
+    {
+        return Some((inner_ty, ty));
     }
     None
 }
 
 /// Helper: checks whether a type is exactly the given expected type (e.g. "JsTensor").
 fn is_type(ty: &Type, expected: &str) -> bool {
-    if let Type::Path(type_path) = ty {
-        if type_path.qself.is_none() && type_path.path.segments.len() == 1 {
-            return type_path.path.segments[0].ident == expected;
-        }
+    if let Type::Path(type_path) = ty
+        && type_path.qself.is_none()
+        && type_path.path.segments.len() == 1
+    {
+        return type_path.path.segments[0].ident == expected;
     }
     false
 }
 
 /// Helper: checks whether a type is an Option of the expected type (e.g. "Option<Tensor>").
 fn is_optional_of_type(ty: &Type, expected: &str) -> bool {
-    if let Some((Type::Path(type_path), _)) = get_inner_type(ty, "Option") {
-        if type_path.qself.is_none() && type_path.path.segments.len() == 1 {
-            return type_path.path.segments[0].ident == expected;
-        }
+    if let Some((Type::Path(type_path), _)) = get_inner_type(ty, "Option")
+        && type_path.qself.is_none()
+        && type_path.path.segments.len() == 1
+    {
+        return type_path.path.segments[0].ident == expected;
     }
     false
 }
@@ -677,12 +686,12 @@ fn is_optional(ty: &Type) -> bool {
 
 /// Helper: checks whether a type is a reference to the expected type (e.g. "&Shape").
 fn is_type_ref(ty: &Type, expected: &str) -> bool {
-    if let Type::Reference(type_ref) = ty {
-        if let Type::Path(type_path) = &*type_ref.elem {
-            if type_path.qself.is_none() && type_path.path.segments.len() == 1 {
-                return type_path.path.segments[0].ident == expected;
-            }
-        }
+    if let Type::Reference(type_ref) = ty
+        && let Type::Path(type_path) = &*type_ref.elem
+        && type_path.qself.is_none()
+        && type_path.path.segments.len() == 1
+    {
+        return type_path.path.segments[0].ident == expected;
     }
     false
 }

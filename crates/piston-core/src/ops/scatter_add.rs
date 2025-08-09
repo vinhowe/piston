@@ -5,10 +5,10 @@ use inline_wgsl::wgsl;
 use piston_macros::{IrFields, WgslMetadata};
 
 use crate::{
-    gpu::BindGroupLayoutDescriptor, rvec, Array, BindingMode, BuiltIn, DType, GPUOperation, Kernel,
-    KernelElement, KernelRenderable, KernelSource, OpGuards, OpTensor, Operation, OperationError,
-    RVec, Scalar, StorageView, Vec2, Vec4, WgslKernelBuilder, WgslPrimitive, WorkgroupSize,
-    Workload,
+    Array, BindingMode, BuiltIn, DType, GPUOperation, Kernel, KernelElement, KernelRenderable,
+    KernelSource, OpGuards, OpTensor, Operation, OperationError, RVec, Scalar, StorageView, Vec2,
+    Vec4, WgslKernelBuilder, WgslPrimitive, WorkgroupSize, Workload,
+    gpu::BindGroupLayoutDescriptor, rvec,
 };
 
 #[derive(new, Debug, Clone, IrFields)]
@@ -215,10 +215,10 @@ impl Kernel for ScatterAddKernels {
 mod tests {
     use std::cmp::max;
 
-    use test_strategy::{proptest, Arbitrary};
+    use test_strategy::{Arbitrary, proptest};
 
     use crate::test_util::run_py_prg;
-    use crate::{shape, Device, DeviceRequest, Tensor};
+    use crate::{Device, DeviceRequest, Tensor, ones, randint, shape, zeros};
 
     fn ground_truth(
         dst: &Tensor,
@@ -247,16 +247,15 @@ def scatter_add(dst, src, ids):
         let mut src_shape = vec![B, M, N];
         src_shape[dim] = max(M.min(N) / 2, 1); // Make src dimension smaller than dst
 
-        let dst = Tensor::zeros::<f32, _>(&dst_shape, &Device::CPU, false).unwrap();
-        let src = Tensor::ones::<f32, _>(src_shape, &Device::CPU, false).unwrap();
+        let dst = zeros(dst_shape.clone(), Default::default()).unwrap();
+        let src = ones(src_shape, Default::default()).unwrap();
 
         // Create ids tensor with the same shape as src, but with values in range [0, dst_shape[dim])
-        let ids = Tensor::randint(
+        let ids = randint(
             0,
             dst_shape[dim] as i32,
             src.shape().clone(),
-            Device::CPU,
-            false,
+            Default::default(),
         )
         .unwrap();
 

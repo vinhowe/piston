@@ -9,10 +9,11 @@ use piston_macros::{IrFields, WgslMetadata};
 use strum_macros::EnumIter;
 
 use crate::{
-    gpu::{dtype::WgslDType, BindGroupLayoutDescriptor},
-    rvec, Array, BindingMode, BuiltIn, DType, GPUOperation, Kernel, KernelElement,
-    KernelRenderable, KernelSource, OpGuards, OpTensor, Operation, OperationError, RVec, Scalar,
-    StorageView, Vec2, Vec4, WgslKernelBuilder, WgslPrimitive, WorkgroupSize, Workload,
+    Array, BindingMode, BuiltIn, DType, GPUOperation, Kernel, KernelElement, KernelRenderable,
+    KernelSource, OpGuards, OpTensor, Operation, OperationError, RVec, Scalar, StorageView, Vec2,
+    Vec4, WgslKernelBuilder, WgslPrimitive, WorkgroupSize, Workload,
+    gpu::{BindGroupLayoutDescriptor, dtype::WgslDType},
+    rvec,
 };
 
 #[cfg(test)]
@@ -421,9 +422,9 @@ impl Kernel for UnaryKernels {
 
 #[cfg(all(test, feature = "pyo3"))]
 mod tests {
-    use test_strategy::{proptest, Arbitrary};
+    use test_strategy::{Arbitrary, proptest};
 
-    use crate::{test_util::run_py_prg, Device, DeviceRequest, Tensor, UnaryOp};
+    use crate::{Device, DeviceRequest, Tensor, UnaryOp, randn, test_util::run_py_prg};
 
     #[derive(Arbitrary, Debug)]
     struct UnaryProblem {
@@ -463,7 +464,7 @@ def {kn}(a):
 
     fn run_unary_trial(prob: UnaryProblem, device: Device) -> anyhow::Result<()> {
         let UnaryProblem { op, B, M } = prob;
-        let a = Tensor::randn::<f32, _>(0., 1., (B, M), Device::CPU, false)?;
+        let a = randn((B, M), None, None, Default::default())?;
 
         let args = match op {
             UnaryOp::Gelu => "approximate=\"tanh\"",

@@ -1,9 +1,9 @@
 use crate::{
-    gpu::{AllocatorError, PoolError, WgpuDevice},
     DType,
+    gpu::{AllocatorError, PoolError, WgpuDevice},
 };
 use parking_lot::RwLock;
-use rand::{rngs::StdRng, SeedableRng};
+use rand::{SeedableRng, rngs::StdRng};
 use std::{
     env,
     sync::{Arc, OnceLock},
@@ -45,10 +45,10 @@ pub enum Device {
 
 // Helper function to get a seeded RNG based on env var or entropy
 fn get_seeded_rng() -> StdRng {
-    if let Ok(seed_str) = env::var("PISTON_SEED") {
-        if let Ok(seed) = seed_str.parse::<u64>() {
-            return StdRng::seed_from_u64(seed);
-        }
+    if let Ok(seed_str) = env::var("PISTON_SEED")
+        && let Ok(seed) = seed_str.parse::<u64>()
+    {
+        return StdRng::seed_from_u64(seed);
     }
     StdRng::from_entropy()
 }

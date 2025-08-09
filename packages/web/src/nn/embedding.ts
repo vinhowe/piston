@@ -1,4 +1,4 @@
-import { randn } from "@/core";
+import { gpu, randn } from "@/core";
 import { Module } from "@/nn/module";
 import { Parameter } from "@/nn/parameter";
 import { Tensor } from "@/tensor";
@@ -13,7 +13,10 @@ export class Embedding extends Module {
    */
   constructor(numEmbeddings: number, embeddingDim: number) {
     super();
-    this.weight = new Parameter(randn([numEmbeddings, embeddingDim]));
+    this.weight = randn([numEmbeddings, embeddingDim], undefined, {
+      device: gpu,
+      requiresGrad: true,
+    });
     this.hiddenSize = embeddingDim;
   }
 

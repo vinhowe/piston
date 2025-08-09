@@ -3,10 +3,10 @@ use inline_wgsl::wgsl;
 use piston_macros::IrFields;
 
 use crate::{
-    gpu::BindGroupLayoutDescriptor, rvec, shape, wgc, wgs, Array, BindingMode, BuiltIn, DType,
-    DynKernelMetadata, GPUOperation, Kernel, KernelElement, KernelRenderable, KernelSource,
-    OpGuards, OpTensor, Operation, OperationError, RVec, Scalar, StorageView, Stride,
-    WgslKernelBuilder, WgslPrimitive, WorkgroupCount, WorkgroupSize, Workload,
+    Array, BindingMode, BuiltIn, DType, DynKernelMetadata, GPUOperation, Kernel, KernelElement,
+    KernelRenderable, KernelSource, OpGuards, OpTensor, Operation, OperationError, RVec, Scalar,
+    StorageView, Stride, WgslKernelBuilder, WgslPrimitive, WorkgroupCount, WorkgroupSize, Workload,
+    gpu::BindGroupLayoutDescriptor, rvec, shape, wgc, wgs,
 };
 
 #[derive(new, Debug, Clone, IrFields)]
@@ -226,9 +226,12 @@ mod tests {
 
     use num_traits::AsPrimitive;
     use pyo3::ToPyObject;
-    use test_strategy::{proptest, Arbitrary};
+    use test_strategy::{Arbitrary, proptest};
 
-    use crate::{test_util::run_py_prg, DType, Device, DeviceRequest, Tensor, TensorDType};
+    use crate::{
+        DType, Device, DeviceRequest, Tensor, TensorDType, TensorOptions, arange,
+        test_util::run_py_prg,
+    };
 
     fn ground_truth(
         start: &dyn ToPyObject,
@@ -253,20 +256,21 @@ def arange(start, stop, step):
         device: &Device,
     ) {
         fn abs<T: TensorDType + PartialOrd + Neg<Output = T>>(x: T) -> T {
-            if x >= T::zero() {
-                x
-            } else {
-                -x
-            }
+            if x >= T::zero() { x } else { -x }
         }
 
         // Determine correct sign for step based on start/stop relationship
         let step = if stop >= start { abs(step) } else { -abs(step) };
 
-        let a = Tensor::arange_step(start, stop, step, device, false)
-            .unwrap()
-            .cast(DType::F32)
-            .unwrap();
+        let a = arange(
+            Some(start.as_()),
+            Some(stop.as_()),
+            Some(step.as_()),
+            TensorOptions::new().device(device.clone()),
+        )
+        .unwrap()
+        .cast(DType::F32)
+        .unwrap();
         let ground = ground_truth(&start, &stop, &step).unwrap();
 
         let a_gpu = a.to(device).unwrap();

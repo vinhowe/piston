@@ -1,6 +1,6 @@
 #[cfg(all(test, feature = "pyo3"))]
 mod tests {
-    use piston::{test_util::run_py_prg, Device, DeviceRequest, Tensor};
+    use piston::{Device, DeviceRequest, Tensor, randn, test_util::run_py_prg};
 
     #[derive(Debug, derive_new::new)]
     struct AttentionTest {
@@ -68,10 +68,10 @@ def scaled_dot_product_attention(input, qw, kw, vw) -> torch.Tensor:
     #[test]
     pub fn test_sdpa() -> anyhow::Result<()> {
         let _ = env_logger::builder().is_test(true).try_init();
-        let input = Tensor::randn::<f32, _>(0., 1., (1, 128, 256), Device::CPU, false)?;
-        let qw = Tensor::randn::<f32, _>(0., 1., (256, 256), Device::CPU, false)?;
-        let kw = Tensor::randn::<f32, _>(0., 1., (256, 256), Device::CPU, false)?;
-        let vw = Tensor::randn::<f32, _>(0., 1., (256, 256), Device::CPU, false)?;
+        let input = randn((1, 128, 256), None, None, Default::default())?;
+        let qw = randn((256, 256), None, None, Default::default())?;
+        let kw = randn((256, 256), None, None, Default::default())?;
+        let vw = randn((256, 256), None, None, Default::default())?;
         let cpu_test_case = AttentionTest::new(input, qw, kw, vw, None);
         let ground = sdpa_ground(&cpu_test_case)?;
 
@@ -158,10 +158,10 @@ def qkv_attention(input, qw, kw, vw, n_heads):
     #[test]
     pub fn test_mha() -> anyhow::Result<()> {
         let _ = env_logger::builder().is_test(true).try_init();
-        let input = Tensor::randn::<f32, _>(0., 1., (1, 64, 384), Device::CPU, false)?;
-        let qw = Tensor::randn::<f32, _>(0., 1., (1, 384, 384), Device::CPU, false)?;
-        let kw = Tensor::randn::<f32, _>(0., 1., (1, 384, 384), Device::CPU, false)?;
-        let vw = Tensor::randn::<f32, _>(0., 1., (1, 384, 384), Device::CPU, false)?;
+        let input = randn((1, 64, 384), None, None, Default::default())?;
+        let qw = randn((1, 384, 384), None, None, Default::default())?;
+        let kw = randn((1, 384, 384), None, None, Default::default())?;
+        let vw = randn((1, 384, 384), None, None, Default::default())?;
         let cpu_test_case = AttentionTest::new(input, qw, kw, vw, Some(6));
         let ground = mha_ground(&cpu_test_case)?;
 

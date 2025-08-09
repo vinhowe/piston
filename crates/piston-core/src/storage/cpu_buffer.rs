@@ -1,7 +1,7 @@
 use bytemuck::{NoUninit, Pod};
 use half::f16;
 
-use crate::{storage::DeviceStorage, DType, Device, DeviceError, GPUBuffer, Shape, TensorDType};
+use crate::{DType, Device, DeviceError, GPUBuffer, Shape, TensorDType, storage::DeviceStorage};
 
 use maybe_async::maybe_async;
 use std::{alloc::Layout, fmt::Debug, mem::MaybeUninit, sync::Arc};

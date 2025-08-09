@@ -41,6 +41,6 @@ impl Module for RotaryEmbedding {
 
     fn schedule(&self, input: Self::Input) -> anyhow::Result<Self::Output> {
         let RotaryInput { input, offset } = input;
-        input.rope(self.dim, self.base, offset)
+        input.rope_(self.dim, self.base, offset)
     }
 }

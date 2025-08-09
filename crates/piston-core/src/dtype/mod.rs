@@ -233,7 +233,7 @@ map_half_type!(bf16, BF16);
 #[cfg(test)]
 use proptest::prelude::*;
 
-use crate::{rvec, Align, RVec, MIN_STORAGE_BUFFER_SIZE};
+use crate::{Align, MIN_STORAGE_BUFFER_SIZE, RVec, rvec};
 
 #[cfg(test)]
 impl Arbitrary for DType {

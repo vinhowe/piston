@@ -1,4 +1,4 @@
-import { ones, zeros } from "@/globals";
+import { gpu, ones, zeros } from "@/globals";
 import { Module } from "@/nn/module";
 import { Parameter } from "@/nn/parameter";
 import { Tensor } from "@/tensor";
@@ -12,8 +12,8 @@ export class LayerNorm extends Module {
     private eps = 1e-5,
   ) {
     super();
-    this.weight = new Parameter(ones([normalizedShape]));
-    this.bias = new Parameter(zeros([normalizedShape]));
+    this.weight = ones([normalizedShape], { device: gpu, requiresGrad: true });
+    this.bias = zeros([normalizedShape], { device: gpu, requiresGrad: true });
   }
 
   forward(input: Tensor) {
@@ -29,7 +29,7 @@ export class RMSNorm extends Module {
     private eps = 1e-5,
   ) {
     super();
-    this.weight = new Parameter(ones([normalizedShape]));
+    this.weight = ones([normalizedShape], { device: gpu, requiresGrad: true });
   }
 
   forward(input: Tensor) {

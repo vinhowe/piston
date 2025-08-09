@@ -1,19 +1,51 @@
 use crate::error::IntoJsError;
+use crate::js_util::downcast_from_ptr;
 use half::f16;
+use js_sys::{Array, Function, Object, Reflect};
 use paste::paste;
-use piston::{DType, Device, Dim, IrScalarValue, IrValue, LazyOp, NormOrd, RVec, Shape, Tensor};
+use piston::{
+    AllDims, DType, Device, Dim, IrScalarValue, IrValue, LazyOp, NormOrd, Shape, Tensor,
+    TensorOptions as CoreTensorOptions,
+};
 use piston::{TensorTypeOrScalar, TensorTypeOrScalarEnum};
 use piston_macros::js_tensor_operations;
+use serde::{Deserialize, Serialize};
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::str::FromStr;
+use tsify::Tsify;
 use wasm_bindgen::prelude::*;
-use wasm_bindgen::JsError;
+use wasm_bindgen::{JsError, JsValue};
 
 use crate::{
-    device::{gpu_sync, JsDevice, GPU_DEVICE},
+    device::{GPU_DEVICE, JsDevice, gpu_sync},
     dtype::JsDType,
     shape::{FromJsDim, FromJsVecISize},
 };
+
+#[derive(Tsify, Serialize, Deserialize)]
+#[tsify(into_wasm_abi, from_wasm_abi)]
+pub struct TensorOptions {
+    #[serde(default, with = "crate::js_util::try_from_js_value_preserve")]
+    #[tsify(optional)]
+    pub dtype: Option<JsDType>,
+    #[serde(default, with = "crate::js_util::try_from_js_value_preserve")]
+    #[tsify(optional)]
+    pub device: Option<JsDevice>,
+    #[serde(default, rename = "requiresGrad")]
+    #[tsify(optional)]
+    pub requires_grad: Option<bool>,
+}
+
+impl From<TensorOptions> for CoreTensorOptions {
+    fn from(options: TensorOptions) -> Self {
+        CoreTensorOptions {
+            dtype: options.dtype.map(|d| d.dtype),
+            device: options.device.map(|d| d.inner),
+            requires_grad: options.requires_grad,
+        }
+    }
+}
 
 #[wasm_bindgen(js_name = Tensor)]
 pub struct JsTensor {
@@ -24,6 +56,9 @@ type JsTensorResult = Result<JsTensor, JsError>;
 
 #[wasm_bindgen(js_class = Tensor)]
 impl JsTensor {
+    // Marker function for downcasting from a JS object
+    pub fn __wbg_piston_tensor() {}
+
     #[wasm_bindgen(getter)]
     pub fn id(&self) -> usize {
         self.inner.id().0
@@ -301,7 +336,7 @@ impl JsTensor {
 
     pub fn softmax(&self, dim: Dim) -> JsTensorResult {}
 
-    pub fn rope(&self, dim: usize, base: f32, offset: usize) -> JsTensorResult {}
+    pub fn rope_(&self, dim: usize, base: f32, offset: usize) -> JsTensorResult {}
 
     pub fn alibi(&self, max_bias: f32) -> JsTensorResult {}
 
@@ -321,13 +356,9 @@ impl JsTensor {
 
     pub fn sum(self, dim: Option<Dims>, keepdim: bool) -> JsTensorResult {
         let tensor = if let Some(sum_dims) = dim {
-            if keepdim {
-                self.inner.sum_keepdim(sum_dims)
-            } else {
-                self.inner.sum(sum_dims)
-            }
+            self.inner.sum(sum_dims, keepdim)
         } else {
-            self.inner.sum_all()
+            self.inner.sum(AllDims, keepdim)
         }
         .map_err(|e| e.into_js_error())?;
         Ok(JsTensor { inner: tensor })
@@ -335,13 +366,9 @@ impl JsTensor {
 
     pub fn mean(self, dim: Option<Dims>, keepdim: bool) -> JsTensorResult {
         let tensor = if let Some(mean_dims) = dim {
-            if keepdim {
-                self.inner.mean_keepdim(mean_dims)
-            } else {
-                self.inner.mean(mean_dims)
-            }
+            self.inner.mean(mean_dims, keepdim)
         } else {
-            self.inner.mean_all()
+            self.inner.mean(AllDims, keepdim)
         }
         .map_err(|e| e.into_js_error())?;
         Ok(JsTensor { inner: tensor })
@@ -349,70 +376,52 @@ impl JsTensor {
 
     pub fn var(self, dim: Option<Dims>, keepdim: bool) -> JsTensorResult {
         let tensor = if let Some(var_dims) = dim {
-            if keepdim {
-                self.inner.var_keepdim(var_dims)
-            } else {
-                self.inner.var(var_dims)
-            }
+            self.inner.var(var_dims, keepdim)
         } else {
-            self.inner.var_all()
+            self.inner.var(AllDims, keepdim)
         }
         .map_err(|e| e.into_js_error())?;
         Ok(JsTensor { inner: tensor })
     }
 
     pub fn max(self, dim: Dim, keepdim: bool) -> JsTensorResult {
-        let tensor = if keepdim {
-            self.inner.max_keepdim(dim)
-        } else {
-            self.inner.max(dim)
-        }
-        .map_err(|e| e.into_js_error())?;
+        let tensor = self
+            .inner
+            .max(dim, keepdim)
+            .map_err(|e| e.into_js_error())?;
         Ok(JsTensor { inner: tensor })
     }
 
     pub fn min(self, dim: Dim, keepdim: bool) -> JsTensorResult {
-        let tensor = if keepdim {
-            self.inner.min_keepdim(dim)
-        } else {
-            self.inner.min(dim)
-        }
-        .map_err(|e| e.into_js_error())?;
+        let tensor = self
+            .inner
+            .min(dim, keepdim)
+            .map_err(|e| e.into_js_error())?;
         Ok(JsTensor { inner: tensor })
     }
 
     pub fn argmax(self, dim: Dim, keepdim: bool) -> JsTensorResult {
-        let tensor = if keepdim {
-            self.inner.argmax_keepdim(dim)
-        } else {
-            self.inner.argmax(dim)
-        }
-        .map_err(|e| e.into_js_error())?;
+        let tensor = self
+            .inner
+            .argmax(dim, keepdim)
+            .map_err(|e| e.into_js_error())?;
         Ok(JsTensor { inner: tensor })
     }
 
     pub fn argmin(self, dim: Dim, keepdim: bool) -> JsTensorResult {
-        let tensor = if keepdim {
-            self.inner.argmin_keepdim(dim)
-        } else {
-            self.inner.argmin(dim)
-        }
-        .map_err(|e| e.into_js_error())?;
+        let tensor = self
+            .inner
+            .argmin(dim, keepdim)
+            .map_err(|e| e.into_js_error())?;
         Ok(JsTensor { inner: tensor })
     }
 
     pub fn norm(self, ord: JsValue, dim: Option<Dims>, keepdim: bool) -> JsTensorResult {
         let norm_ord = js_value_to_norm_ord(ord)?;
         let tensor = if let Some(dim) = dim {
-            if keepdim {
-                self.inner.norm_ord_dim_keepdim(norm_ord, dim)
-            } else {
-                self.inner.norm_ord_dim(norm_ord, dim)
-            }
-        } else if keepdim {
-            self.inner.norm_ord_keepdim(norm_ord)
+            self.inner.norm(norm_ord, dim, keepdim)
         } else {
-            self.inner.norm_ord(norm_ord)
+            self.inner.norm(norm_ord, AllDims, keepdim)
         }
         .map_err(|e| e.into_js_error())?;
         Ok(JsTensor { inner: tensor })
@@ -456,15 +465,11 @@ impl JsTensor {
         let inner = self.inner.clone();
         let result = match dims {
             Some(dims) => inner.squeeze(dims),
-            None => inner.squeeze_all(),
+            None => inner.squeeze(()),
         }
         .map_err(|e| e.into_js_error())?;
         Ok(Self { inner: result })
     }
-
-    pub fn cat(tensors: RVec<Tensor>, dim: Dim) -> JsTensorResult {}
-
-    pub fn stack(tensors: RVec<Tensor>, dim: Dim) -> JsTensorResult {}
 
     pub fn permute(self, dims: Dims) -> JsTensorResult {}
 
@@ -488,6 +493,7 @@ impl JsTensor {
 
     pub fn index_write(self, src: Tensor, write_start: Dims) -> JsTensorResult {}
 
+    #[wasm_bindgen(js_name = where)]
     pub fn where_cond(self, condition: Tensor, on_false: TensorOrScalar) -> JsTensorResult {}
 
     pub fn scatter_add(self, indices: Tensor, source: Tensor, dim: Dim) -> JsTensorResult {}
@@ -508,62 +514,6 @@ impl JsTensor {
 
     pub fn lerp_(&self, end: Tensor, weight: TensorOrScalar) -> JsTensorResult {}
 
-    #[dtype_generic(f32, f16)]
-    pub fn arange(
-        start: f32,
-        end: f32,
-        dtype: DType,
-        device: &Device,
-        requires_grad: bool,
-    ) -> JsTensorResult {
-    }
-
-    /// Creates a new 1D tensor with values from the interval `[start, end)` taken with a common
-    /// difference `step` from `start`.
-    #[dtype_generic]
-    pub fn arange_step(
-        start: f32,
-        end: f32,
-        step: f32,
-        dtype: DType,
-        device: &Device,
-        requires_grad: bool,
-    ) -> JsTensorResult {
-    }
-
-    #[dtype_generic(f32, i32, u32)]
-    pub fn randint(
-        low: f32,
-        high: f32,
-        shape: Shape,
-        dtype: DType,
-        device: Device,
-        requires_grad: bool,
-    ) -> JsTensorResult {
-    }
-
-    #[dtype_generic(f32, f16)]
-    pub fn randn(
-        mean: f32,
-        std: f32,
-        shape: Shape,
-        dtype: DType,
-        device: Device,
-        requires_grad: bool,
-    ) -> JsTensorResult {
-    }
-
-    #[dtype_generic(f32, f16)]
-    pub fn rand(
-        lo: f32,
-        up: f32,
-        shape: Shape,
-        dtype: DType,
-        device: Device,
-        requires_grad: bool,
-    ) -> JsTensorResult {
-    }
-
     // We use the dtype of the tensor
     pub fn bernoulli(self) -> JsTensorResult {}
 
@@ -571,41 +521,9 @@ impl JsTensor {
 
     pub fn zero_(self) -> JsTensorResult {}
 
-    #[dtype_generic]
-    pub fn zeros(
-        shape: Shape,
-        dtype: DType,
-        device: &Device,
-        requires_grad: bool,
-    ) -> JsTensorResult {
-    }
+    pub fn zeros_like(self, options: TensorOptions) -> JsTensorResult {}
 
-    #[dtype_generic]
-    pub fn zeros_like(
-        self,
-        dtype: DType,
-        device: Option<&Device>,
-        requires_grad: bool,
-    ) -> JsTensorResult {
-    }
-
-    #[dtype_generic]
-    pub fn ones(
-        shape: Shape,
-        dtype: DType,
-        device: &Device,
-        requires_grad: bool,
-    ) -> JsTensorResult {
-    }
-
-    #[dtype_generic]
-    pub fn ones_like(
-        self,
-        dtype: DType,
-        device: Option<&Device>,
-        requires_grad: bool,
-    ) -> JsTensorResult {
-    }
+    pub fn ones_like(self, options: TensorOptions) -> JsTensorResult {}
 
     pub fn is_contiguous(&self) -> bool {
         self.inner.is_contiguous()
@@ -817,6 +735,128 @@ impl JsTensor {
     }
 }
 
+#[wasm_bindgen(js_name = cat)]
+pub fn cat(tensors: Vec<JsTensor>, dim: isize) -> JsTensorResult {
+    let tensors = tensors.into_iter().map(|t| t.inner).collect();
+    let dim = FromJsDim(dim);
+    let tensor = piston::cat(tensors, dim).map_err(|e| e.into_js_error())?;
+    Ok(JsTensor { inner: tensor })
+}
+
+#[wasm_bindgen(js_name = stack)]
+pub fn stack(tensors: Vec<JsTensor>, dim: isize) -> JsTensorResult {
+    let tensors = tensors.into_iter().map(|t| t.inner).collect();
+    let dim = FromJsDim(dim);
+    let tensor = piston::stack(tensors, dim).map_err(|e| e.into_js_error())?;
+    Ok(JsTensor { inner: tensor })
+}
+
+#[derive(Tsify, Serialize, Deserialize, Default)]
+#[tsify(into_wasm_abi, from_wasm_abi)]
+pub struct ArangeNamedArgs {
+    #[tsify(optional)]
+    pub start: Option<f32>,
+    pub end: f32,
+    #[tsify(optional)]
+    pub step: Option<f32>,
+}
+
+#[wasm_bindgen(js_name = arange)]
+pub fn arange(kwargs: Option<ArangeNamedArgs>, options: Option<TensorOptions>) -> JsTensorResult {
+    let kwargs = kwargs.unwrap_or_default();
+    let options = options.map(|o| o.into()).unwrap_or_default();
+    let start = kwargs.start.unwrap_or(0.0);
+    let step = kwargs.step.unwrap_or(1.0);
+    let tensor = piston::arange(Some(start), kwargs.end, Some(step), options)
+        .map_err(|e| e.into_js_error())?;
+    Ok(JsTensor { inner: tensor })
+}
+
+#[derive(Tsify, Serialize, Deserialize, Default)]
+#[tsify(into_wasm_abi, from_wasm_abi)]
+pub struct RandintNamedArgs {
+    #[tsify(optional)]
+    pub low: Option<i32>,
+}
+
+#[wasm_bindgen(js_name = randint)]
+pub fn randint(
+    high: i32,
+    #[wasm_bindgen(unchecked_param_type = "Uint32Array | number[]")] shape: Vec<usize>,
+    kwargs: Option<RandintNamedArgs>,
+    options: Option<TensorOptions>,
+) -> JsTensorResult {
+    let kwargs = kwargs.unwrap_or_default();
+    let low = kwargs.low.unwrap_or(0);
+    let options = options.map(|o| o.into()).unwrap_or_default();
+    let tensor = piston::randint(low, high, shape, options).map_err(|e| e.into_js_error())?;
+    Ok(JsTensor { inner: tensor })
+}
+
+#[derive(Tsify, Serialize, Deserialize, Default)]
+#[tsify(into_wasm_abi, from_wasm_abi)]
+pub struct RandnNamedArgs {
+    #[tsify(optional)]
+    pub mean: Option<f32>,
+    #[tsify(optional)]
+    pub std: Option<f32>,
+}
+
+#[wasm_bindgen(js_name = randn)]
+pub fn randn(
+    #[wasm_bindgen(unchecked_param_type = "Uint32Array | number[]")] shape: Vec<usize>,
+    kwargs: Option<RandnNamedArgs>,
+    options: Option<TensorOptions>,
+) -> JsTensorResult {
+    let kwargs = kwargs.unwrap_or_default();
+    let options = options.map(|o| o.into()).unwrap_or_default();
+    let tensor =
+        piston::randn(shape, kwargs.mean, kwargs.std, options).map_err(|e| e.into_js_error())?;
+    Ok(JsTensor { inner: tensor })
+}
+
+#[derive(Tsify, Serialize, Deserialize, Default)]
+#[tsify(into_wasm_abi, from_wasm_abi)]
+pub struct RandNamedArgs {
+    #[tsify(optional)]
+    pub lo: Option<f32>,
+    #[tsify(optional)]
+    pub up: Option<f32>,
+}
+
+#[wasm_bindgen(js_name = rand)]
+pub fn rand(
+    #[wasm_bindgen(unchecked_param_type = "Uint32Array | number[]")] shape: Vec<usize>,
+    kwargs: Option<RandNamedArgs>,
+    options: Option<TensorOptions>,
+) -> JsTensorResult {
+    let kwargs = kwargs.unwrap_or_default();
+    let options = options.map(|o| o.into()).unwrap_or_default();
+    let tensor =
+        piston::rand(shape, kwargs.lo, kwargs.up, options).map_err(|e| e.into_js_error())?;
+    Ok(JsTensor { inner: tensor })
+}
+
+#[wasm_bindgen(js_name = zeros)]
+pub fn zeros(
+    #[wasm_bindgen(unchecked_param_type = "Uint32Array | number[]")] shape: Vec<usize>,
+    options: Option<TensorOptions>,
+) -> JsTensorResult {
+    let options = options.map(|o| o.into()).unwrap_or_default();
+    let tensor = piston::zeros(shape, options).map_err(|e| e.into_js_error())?;
+    Ok(JsTensor { inner: tensor })
+}
+
+#[wasm_bindgen(js_name = ones)]
+pub fn ones(
+    #[wasm_bindgen(unchecked_param_type = "Uint32Array | number[]")] shape: Vec<usize>,
+    options: Option<TensorOptions>,
+) -> JsTensorResult {
+    let options = options.map(|o| o.into()).unwrap_or_default();
+    let tensor = piston::ones(shape, options).map_err(|e| e.into_js_error())?;
+    Ok(JsTensor { inner: tensor })
+}
+
 #[wasm_bindgen(js_class = Tensor)]
 impl JsTensor {
     #[wasm_bindgen]
@@ -847,29 +887,31 @@ impl TensorTypeOrScalar<Tensor> for JsTensorOrScalar {
     }
 }
 
-fn js_value_to_norm_ord(value: JsValue) -> Result<NormOrd, JsError> {
+fn js_value_to_norm_ord(value: JsValue) -> Result<Option<NormOrd>, JsError> {
     if value.is_undefined() || value.is_null() {
         // Handle undefined or null values
-        Ok(NormOrd::Frobenius)
+        Ok(None)
     } else if let Some(num) = value.as_f64() {
         // Handle special numeric cases
         if num == 0.0 {
-            Ok(NormOrd::Zero)
+            Ok(Some(NormOrd::Zero))
         } else if num == 1.0 {
-            Ok(NormOrd::One)
+            Ok(Some(NormOrd::One))
         } else if num == -1.0 {
-            Ok(NormOrd::NegOne)
+            Ok(Some(NormOrd::NegOne))
         } else if num == f64::INFINITY {
-            Ok(NormOrd::Inf)
+            Ok(Some(NormOrd::Inf))
         } else if num == f64::NEG_INFINITY {
-            Ok(NormOrd::NegInf)
+            Ok(Some(NormOrd::NegInf))
         } else {
             // For other numbers, use P norm
-            Ok(NormOrd::P(num as f32))
+            Ok(Some(NormOrd::P(num as f32)))
         }
     } else if let Some(string) = value.as_string() {
         // Handle string values using from_str
-        NormOrd::from_str(&string).map_err(|e| JsError::new(&format!("Invalid norm order: {e}")))
+        Ok(Some(NormOrd::from_str(&string).map_err(|e| {
+            JsError::new(&format!("Invalid norm order: {e}"))
+        })?))
     } else {
         Err(JsError::new("Norm order must be a number or string"))
     }
@@ -950,15 +992,10 @@ fn convert_ir_value_to_js(value: &IrValue, op: &LazyOp) -> JsValue {
     }
 }
 
-#[wasm_bindgen(module = "/cast.js")]
-extern "C" {
-    #[wasm_bindgen(catch, js_name = cast)]
-    fn try_into_tensor(from: &JsValue) -> Result<JsTensor, JsValue>;
-}
-
 impl TryFrom<JsValue> for JsTensor {
-    type Error = JsValue;
+    type Error = JsError;
     fn try_from(value: JsValue) -> Result<Self, Self::Error> {
-        try_into_tensor(&value)
+        downcast_from_ptr(&value, "__wbg_piston_tensor")
+            .ok_or_else(|| JsError::new("Failed to downcast from JS value"))
     }
 }

@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use crate::error::IntoJsError;
 use crate::tensor::JsTensor;
 use futures::lock::Mutex;
 use js_sys::{Object, Reflect};
@@ -18,10 +19,10 @@ use web_sys::Url;
 /// The input is expected to be a JavaScript object mapping tensor ID strings to
 /// either JsTensor or JsParameter objects.
 #[wasm_bindgen]
-pub async fn save(data: JsValue) -> anyhow::Result<String, JsValue> {
+pub async fn save(data: JsValue) -> anyhow::Result<String, JsError> {
     // Check if the data is a JavaScript object
     if !data.is_object() {
-        return Err(JsValue::from_str(
+        return Err(JsError::new(
             "Expected an object mapping tensor IDs to tensors or parameters",
         ));
     }
@@ -35,24 +36,22 @@ pub async fn save(data: JsValue) -> anyhow::Result<String, JsValue> {
 
     for i in 0..keys_len {
         let key = keys.get(i).as_string().unwrap();
-        let value = Reflect::get(&obj, &JsValue::from_str(&key))?;
+        let value = Reflect::get(&obj, &JsValue::from_str(&key)).map_err(|e| e.into_js_error())?;
 
         // Try to extract tensor from the value
         match JsTensor::try_from(value) {
             Ok(tensor) => tensors.push((key, tensor.inner.clone())),
             Err(e) => {
-                return Err(JsValue::from_str(&format!(
-                    "Error processing key '{}': {}",
-                    key,
-                    e.as_string().unwrap_or_else(|| "Unknown error".to_string())
-                )))
+                return Err(JsError::new(&format!(
+                    "Error processing key '{key}': {e:?}"
+                )));
             }
         }
     }
 
     // Make sure we have at least one tensor
     if tensors.is_empty() {
-        return Err(JsValue::from_str(
+        return Err(JsError::new(
             "No valid tensors found in the provided object",
         ));
     }
@@ -74,7 +73,9 @@ pub async fn save(data: JsValue) -> anyhow::Result<String, JsValue> {
 
     // Wait for all futures
     let promise_array = js_sys::Array::from_iter(futures.iter());
-    JsFuture::from(js_sys::Promise::all(&promise_array)).await?;
+    JsFuture::from(js_sys::Promise::all(&promise_array))
+        .await
+        .map_err(|e| e.into_js_error())?;
 
     // Collect the results
     let data = Arc::try_unwrap(data).unwrap().into_inner();
@@ -87,14 +88,15 @@ pub async fn save(data: JsValue) -> anyhow::Result<String, JsValue> {
 
     // Serialize to safetensors format
     let serialized = safetensors::tensor::serialize(data_ref.iter().map(|(k, v)| (k, v)), &None)
-        .map_err(|e| JsValue::from_str(&format!("Failed to serialize tensors: {e}")))?;
+        .map_err(|e| JsError::new(&format!("Failed to serialize tensors: {e}")))?;
 
     // Create a Uint8Array from the serialized data
     let uint8_array = js_sys::Uint8Array::from(&serialized[..]);
-    let blob = Blob::new_with_u8_array_sequence(&js_sys::Array::of1(&JsValue::from(uint8_array)))?;
+    let blob = Blob::new_with_u8_array_sequence(&js_sys::Array::of1(&JsValue::from(uint8_array)))
+        .map_err(|e| e.into_js_error())?;
 
     // Create a download URL
-    let url = Url::create_object_url_with_blob(&blob)?;
+    let url = Url::create_object_url_with_blob(&blob).map_err(|e| e.into_js_error())?;
 
     Ok(url)
 }

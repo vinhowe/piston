@@ -1,7 +1,11 @@
 use std::cell::RefCell;
 
 use piston::{Device, DeviceRequest};
+use serde::de::Error as DeError;
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use wasm_bindgen::prelude::*;
+
+use crate::js_util::downcast_from_ptr;
 
 #[wasm_bindgen(js_name = Device)]
 #[derive(Clone)]
@@ -12,6 +16,10 @@ pub struct JsDevice {
 
 #[wasm_bindgen(js_class = Device)]
 impl JsDevice {
+    // Marker function for downcasting from a JS object
+    #[wasm_bindgen]
+    pub fn __wbg_piston_device() {}
+
     // This is used so we can keep a global device instance in the js lib without it being moved
     // into various methods. Probably not the best way to do this.
     #[wasm_bindgen(js_name = _clone)]
@@ -98,4 +106,43 @@ pub async fn cpu_wasm() -> Result<JsDevice, JsValue> {
 pub fn seed(seed: u64) -> Result<(), JsValue> {
     gpu_sync()?.inner.set_seed(seed);
     Ok(())
+}
+
+// Serialize and deserialize implementations for JsDevice tsify
+impl Serialize for JsDevice {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        // Serialize by a short string identifier
+        match self.inner {
+            Device::CPU => serializer.serialize_str("cpu"),
+            Device::GPU(_) => serializer.serialize_str("webgpu"),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for JsDevice {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let s = String::deserialize(deserializer)?;
+        let normalized = s.to_ascii_lowercase();
+        match normalized.as_str() {
+            "cpu" => Ok(JsDevice { inner: Device::CPU }),
+            "gpu" | "webgpu" => {
+                // Use the already-initialized GPU if available
+                match gpu_sync() {
+                    Ok(dev) => Ok(dev),
+                    Err(_e) => Err(DeError::custom(
+                        "GPU device not initialized. Call gpu() from JS to initialize first.",
+                    )),
+                }
+            }
+            other => Err(DeError::custom(format!("Unsupported device name: {other}"))),
+        }
+    }
+}
+
+impl TryFrom<JsValue> for JsDevice {
+    type Error = JsError;
+    fn try_from(value: JsValue) -> Result<Self, Self::Error> {
+        downcast_from_ptr(&value, "__wbg_piston_device")
+            .ok_or_else(|| JsError::new("Failed to downcast Device from JS value"))
+    }
 }

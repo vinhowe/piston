@@ -42,7 +42,6 @@ export {
   rand,
   randint,
   randn,
-  randnMeanStd,
   seed,
   stack,
   tensor,

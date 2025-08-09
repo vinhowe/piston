@@ -4,10 +4,11 @@ use inline_wgsl::wgsl;
 use piston_macros::{IrFields, WgslMetadata};
 
 use crate::{
-    gpu::{dtype::WgslDType, BindGroupLayoutDescriptor},
-    rvec, wgc, wgs, Array, BindingMode, BuiltIn, DType, GPUOperation, Kernel, KernelElement,
-    KernelRenderable, KernelSource, OpGuards, OpTensor, Operation, OperationError, RVec, Scalar,
-    Shape, StorageView, Stride, WgslKernelBuilder, WgslPrimitive, WorkgroupSize, Workload,
+    Array, BindingMode, BuiltIn, DType, GPUOperation, Kernel, KernelElement, KernelRenderable,
+    KernelSource, OpGuards, OpTensor, Operation, OperationError, RVec, Scalar, Shape, StorageView,
+    Stride, WgslKernelBuilder, WgslPrimitive, WorkgroupSize, Workload,
+    gpu::{BindGroupLayoutDescriptor, dtype::WgslDType},
+    rvec, wgc, wgs,
 };
 
 #[cfg(test)]
@@ -532,10 +533,10 @@ impl KernelRenderable for ReduceKernels {
 
 #[cfg(all(test, feature = "pyo3"))]
 mod tests {
-    use test_strategy::{proptest, Arbitrary};
+    use test_strategy::{Arbitrary, proptest};
 
     use crate::test_util::run_py_prg;
-    use crate::{DType, Device, DeviceRequest, NormOrd, Tensor};
+    use crate::{AllDims, DType, Device, DeviceRequest, NormOrd, Tensor, randn};
 
     use super::ReduceOp;
 
@@ -583,7 +584,7 @@ def reduce(a):
         dim: Option<usize>,
         device: Device,
     ) -> anyhow::Result<()> {
-        let a = Tensor::randn::<f32, _>(0., 1., (B, M, N), Device::CPU, false)?;
+        let a = randn((B, M, N), None, None, Default::default())?;
         let mut ground = ground_truth_forward(&a, op, dim)?;
 
         if dim.is_none() {
@@ -593,16 +594,16 @@ def reduce(a):
         let a_gpu = a.to(&device)?;
         let b_gpu = match dim {
             Some(dim) => match op {
-                ReduceOp::Sum => a_gpu.sum(dim),
-                ReduceOp::Min => a_gpu.min(dim),
-                ReduceOp::Max => a_gpu.max(dim),
-                ReduceOp::ArgMin => a_gpu.argmin(dim),
-                ReduceOp::ArgMax => a_gpu.argmax(dim),
-                ReduceOp::Norm2 => a_gpu.norm_ord_dim(NormOrd::Frobenius, dim),
+                ReduceOp::Sum => a_gpu.sum(dim, false),
+                ReduceOp::Min => a_gpu.min(dim, false),
+                ReduceOp::Max => a_gpu.max(dim, false),
+                ReduceOp::ArgMin => a_gpu.argmin(dim, false),
+                ReduceOp::ArgMax => a_gpu.argmax(dim, false),
+                ReduceOp::Norm2 => a_gpu.norm(Some(NormOrd::Frobenius), dim, false),
             },
             None => match op {
-                ReduceOp::Sum => a_gpu.sum_all(),
-                ReduceOp::Norm2 => a_gpu.norm(),
+                ReduceOp::Sum => a_gpu.sum(AllDims, false),
+                ReduceOp::Norm2 => a_gpu.norm(Some(NormOrd::Frobenius), AllDims, false),
                 _ => panic!("All * not supported"),
             },
         }?;
@@ -697,11 +698,11 @@ def reduce_backward(a):
     ) -> anyhow::Result<()> {
         let ReduceBackwardProblem { B, M, N } = problem;
         let gpu_device = device.try_gpu()?;
-        let a = Tensor::randn::<f32, _>(0., 1., (B, M, N), Device::CPU, false)?;
+        let a = randn((B, M, N), None, None, Default::default())?;
         let ground = ground_truth_backward(&a)?;
 
         let a_gpu = a.to(&device)?.requires_grad_(true)?;
-        let b_gpu = a_gpu.clone().sum_all()?;
+        let b_gpu = a_gpu.clone().sum(AllDims, false)?;
 
         b_gpu.backward()?;
         gpu_device.mark_step()?;

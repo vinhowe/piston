@@ -3,7 +3,7 @@ use encase::ShaderType;
 use piston_macros::WgslMetadata;
 
 use crate::{
-    rvec, OpGuards, OpTensor, Operation, OperationError, RVec, Shape, StorageView, Stride,
+    OpGuards, OpTensor, Operation, OperationError, RVec, Shape, StorageView, Stride, rvec,
 };
 use piston_macros::IrFields;
 
@@ -88,7 +88,9 @@ mod tests {
     };
     use test_strategy::proptest;
 
-    use crate::{shape, test_util::run_py_prg, Broadcast, Device, DeviceRequest, Shape, Tensor};
+    use crate::{
+        Broadcast, Device, DeviceRequest, Shape, Tensor, randn, shape, test_util::run_py_prg,
+    };
 
     impl Arbitrary for BroadcastProblem {
         type Parameters = ();
@@ -115,7 +117,7 @@ mod tests {
                 })
                 .prop_map(|(original_shape, to)| BroadcastProblem {
                     op: Broadcast::new(
-                        Tensor::randn::<f32, _>(0., 1., original_shape, Device::CPU, false)
+                        randn(original_shape, None, None, Default::default())
                             .unwrap()
                             .inner_or_source()
                             .clone(),
@@ -174,7 +176,7 @@ def slice(a):
         let device = Device::request_device(DeviceRequest::GPU).unwrap();
         let prob = BroadcastProblem {
             op: Broadcast::new(
-                Tensor::randn::<f32, _>(0., 1., 1, Device::CPU, false)
+                randn(1, None, None, Default::default())
                     .unwrap()
                     .inner_or_source()
                     .clone(),

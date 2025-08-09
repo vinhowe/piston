@@ -8,7 +8,7 @@ members = [
     "crates/piston-datasets",
 ]
 resolver = "2"
-edition = "2021"
+edition = "2024"
 
 [profile.test]
 debug = 2
@@ -105,3 +105,4 @@ maybe-async = "0.2"
 async-trait = "0.1.77"
 bitvec = { version = "1", default-features = false, features = ["alloc"] }
 paste = { version = "1.0.15" }
+tsify = { version = "0.5.5", features = ["js"] }

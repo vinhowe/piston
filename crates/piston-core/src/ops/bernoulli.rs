@@ -5,10 +5,10 @@ use inline_wgsl::wgsl;
 use piston_macros::{IrFields, WgslMetadata};
 
 use crate::{
-    gpu::BindGroupLayoutDescriptor, rvec, Array, BindingMode, BuiltIn, DType, GPUOperation, Kernel,
-    KernelElement, KernelRenderable, KernelSource, OpGuards, OpTensor, Operation, OperationError,
-    RVec, Scalar, StorageView, Stride, Vec2, Vec4, WgslKernelBuilder, WgslPrimitive, WorkgroupSize,
-    Workload,
+    Array, BindingMode, BuiltIn, DType, GPUOperation, Kernel, KernelElement, KernelRenderable,
+    KernelSource, OpGuards, OpTensor, Operation, OperationError, RVec, Scalar, StorageView, Stride,
+    Vec2, Vec4, WgslKernelBuilder, WgslPrimitive, WorkgroupSize, Workload,
+    gpu::BindGroupLayoutDescriptor, rvec,
 };
 
 #[derive(new, Debug, Clone, IrFields)]
@@ -206,9 +206,9 @@ impl Kernel for BernoulliKernels {
 
 #[cfg(all(test, feature = "pyo3", feature = "rand"))]
 mod tests {
-    use test_strategy::{proptest, Arbitrary};
+    use test_strategy::{Arbitrary, proptest};
 
-    use crate::{Device, DeviceRequest, Tensor};
+    use crate::{Device, DeviceRequest, randn};
 
     fn run_bernoulli_trial(problem: BernoulliProblem, device: Device) {
         let BernoulliProblem { B, M, N, seed } = problem;
@@ -216,7 +216,7 @@ mod tests {
         device.set_seed(seed as u64);
 
         // Create a tensor with random probabilities between 0 and 1
-        let probs = Tensor::rand::<f32, _>(0f32, 1f32, (B, M, N), Device::CPU, false).unwrap();
+        let probs = randn((B, M, N), None, None, Default::default()).unwrap();
         let probs_gpu = probs.to(&device).unwrap();
 
         // Apply Bernoulli sampling to the probabilities tensor

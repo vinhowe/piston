@@ -1,4 +1,4 @@
-use piston::{rvec, Tensor};
+use piston::{Tensor, TensorOptions, arange, cat, rvec};
 use piston_macros::scoped_module;
 
 use crate::Module;
@@ -43,11 +43,11 @@ impl Module for SinusoidalEmbedding {
         let seq_len = input.shape()[1];
 
         // Create position sequence [0, 1, 2, ..., seq_len-1]
-        let pos_seq = Tensor::arange::<f32>(
-            offset as f32,
+        let pos_seq = arange(
+            Some(offset as f32),
             (offset + seq_len) as f32,
-            &input.device(),
-            false,
+            None,
+            TensorOptions::new().device(input.device()),
         )?;
 
         // Compute outer product between positions and frequencies
@@ -62,7 +62,7 @@ impl Module for SinusoidalEmbedding {
 
         let last_dim = sin.shape().len() - 1;
         // Interleave sin and cos values
-        let pos_emb = Tensor::cat(rvec![sin, cos], last_dim)?;
+        let pos_emb = cat(rvec![sin, cos], last_dim)?;
 
         // Add batch dimension if needed
         let pos_emb = pos_emb.unsqueeze(0)?;

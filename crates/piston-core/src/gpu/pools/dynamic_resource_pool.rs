@@ -5,7 +5,7 @@ use std::{
     collections::hash_map::Entry,
     fmt::Debug,
     hash::Hash,
-    sync::{atomic::AtomicU64, Arc},
+    sync::{Arc, atomic::AtomicU64},
 };
 
 use crate::HashMap;
@@ -90,15 +90,15 @@ where
         let mut state = self.state.write();
 
         // First check if we can reclaim a resource we have around from a previous pass.
-        if desc.allow_reuse() {
-            if let Entry::Occupied(mut entry) = state.last_pass_deallocated.entry(desc.clone()) {
-                let handle = entry.get_mut().pop().unwrap();
-                if entry.get().is_empty() {
-                    entry.remove();
-                }
-
-                return state.all_resources[handle].clone();
+        if desc.allow_reuse()
+            && let Entry::Occupied(mut entry) = state.last_pass_deallocated.entry(desc.clone())
+        {
+            let handle = entry.get_mut().pop().unwrap();
+            if entry.get().is_empty() {
+                entry.remove();
             }
+
+            return state.all_resources[handle].clone();
         }
 
         // Otherwise create a new resource
@@ -155,7 +155,10 @@ where
         for (desc, resources) in state.last_pass_deallocated.drain() {
             for resource in resources {
                 let Some(removed_resource) = state.all_resources.remove(resource) else {
-                    debug_assert!(false, "a resource was marked as destroyed last pass that we no longer kept track of");
+                    debug_assert!(
+                        false,
+                        "a resource was marked as destroyed last pass that we no longer kept track of"
+                    );
                     continue;
                 };
                 update_stats(&desc);

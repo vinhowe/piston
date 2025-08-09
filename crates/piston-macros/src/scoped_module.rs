@@ -1,7 +1,7 @@
 use proc_macro::TokenStream;
 use proc_macro2::TokenStream as TokenStream2;
 use quote::quote;
-use syn::{parse2, ImplItem, ItemImpl, Type};
+use syn::{ImplItem, ItemImpl, Type, parse2};
 
 pub fn scoped_module(item: TokenStream) -> TokenStream {
     let input = proc_macro2::TokenStream::from(item);
@@ -15,20 +15,21 @@ fn scoped_module_impl(input: TokenStream2) -> TokenStream2 {
     let mut has_module_name = false;
 
     for item in &impl_block.items {
-        if let ImplItem::Fn(method) = item {
-            if method.sig.ident == "module_name" {
-                has_module_name = true;
-                break;
-            }
+        if let ImplItem::Fn(method) = item
+            && method.sig.ident == "module_name"
+        {
+            has_module_name = true;
+            break;
         }
     }
 
     for item in &mut impl_block.items {
-        if let ImplItem::Fn(method) = item {
-            if method.sig.ident == "schedule" {
-                let original_body = method.block.clone();
+        if let ImplItem::Fn(method) = item
+            && method.sig.ident == "schedule"
+        {
+            let original_body = method.block.clone();
 
-                method.block = syn::parse2(quote! {
+            method.block = syn::parse2(quote! {
                     {
                         let _scope_guard = piston::ScopePusher::new(&format!("mod:{}", self.module_name()));
 
@@ -37,8 +38,7 @@ fn scoped_module_impl(input: TokenStream2) -> TokenStream2 {
                 })
                 .unwrap();
 
-                break;
-            }
+            break;
         }
     }
 

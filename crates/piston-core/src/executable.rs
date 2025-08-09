@@ -5,8 +5,8 @@ use crate::{
 };
 
 // #[cfg(feature = "debug")] (for tensor?)
-use crate::gpu::Profiler;
 use crate::OpTensor;
+use crate::gpu::Profiler;
 #[cfg(feature = "debug")]
 use crate::{DType, HashMap, TensorId};
 #[cfg(feature = "debug")]
@@ -590,10 +590,10 @@ impl Executable {
                 "Storage: {:?}",
                 storage.as_ref().map(|s| s.plot_fmt().to_string())
             );
-            if let Some(storage) = storage {
-                if !tensor.resolved() {
-                    tensor.update_storage(storage.clone());
-                }
+            if let Some(storage) = storage
+                && !tensor.resolved()
+            {
+                tensor.update_storage(storage.clone());
             }
         }
 

@@ -1,6 +1,5 @@
-import { Module } from "./nn/module";
-import { ScopeItem, tensorScopeStack } from "./nn/tracking";
-import { BinaryOpInput, DimsType, ShapeType } from "./types";
+/* eslint-disable @typescript-eslint/no-unsafe-declaration-merging */
+import { DimsType, ShapeType, TensorOrScalar } from "./types";
 import { DType, Tensor_wasm } from "./wasm";
 
 export type OpDescription = {
@@ -9,44 +8,165 @@ export type OpDescription = {
   fields: Record<string, unknown>;
 };
 
-export type TensorHookOptions = {
-  dependency: boolean;
-};
+/**
+ * Promotes two data types to a common type according to a type hierarchy.
+ * The promotion hierarchy is: uint32 < int32 < float16 < float32
+ *
+ * @param dtype1 - First data type
+ * @param dtype2 - Second data type
+ * @returns The promoted data type that can represent both inputs
+ */
+export function promoteTypes(dtype1: DType, dtype2: DType): DType {
+  // If types are the same, no promotion needed
+  if (dtype1.name === dtype2.name) {
+    return dtype1;
+  }
 
-export type TensorHook = (tensor: Tensor, options: TensorHookOptions) => Tensor | undefined;
+  if (dtype1.name === "U32" || dtype2.name === "U32") {
+    if (dtype1.isFloatingPoint) {
+      return dtype1;
+    }
+    if (dtype2.isFloatingPoint) {
+      return dtype2;
+    }
+    throw new Error(
+      `Promotion for uint16, uint32, uint64 types is not supported, attempted to promote ${dtype1.name} and ${dtype2.name}`,
+    );
+  }
+
+  // Define type hierarchy using direct DType comparison
+  // Each entry is [dtype, precedence] where higher precedence wins
+  const getTypePrecedence = (dtype: DType): number => {
+    if (dtype.name === "U32") return 0;
+    if (dtype.name === "I32") return 1;
+    if (dtype.name === "F16") return 2;
+    if (dtype.name === "F32") return 3;
+    throw new Error(`Cannot promote unknown type`);
+  };
+
+  const precedence1 = getTypePrecedence(dtype1);
+  const precedence2 = getTypePrecedence(dtype2);
+
+  // Return the type with higher precedence
+  if (precedence1 >= precedence2) {
+    return dtype1;
+  } else {
+    return dtype2;
+  }
+}
+
+// Define operation name groups once so we can use them for both runtime wiring
+// and compile-time typing via mapped types.
+const binaryOps = [
+  "add",
+  "add_",
+  "sub",
+  "sub_",
+  "mul",
+  "mul_",
+  "div",
+  "div_",
+  "pow",
+  "pow_",
+] as const satisfies readonly (keyof Tensor_wasm)[];
+
+const binaryTensorOnlyOps = [
+  "minimum",
+  "maximum",
+  "minimum_",
+  "maximum_",
+] as const satisfies readonly (keyof Tensor_wasm)[];
+
+const ternaryOps = [
+  "addcdiv",
+  "addcdiv_",
+  "addcmul",
+  "addcmul_",
+] as const satisfies readonly (keyof Tensor_wasm)[];
+
+const cmpOps = [
+  "eq",
+  "eq_",
+  "ne",
+  "ne_",
+  "gt",
+  "gt_",
+  "ge",
+  "ge_",
+  "lt",
+  "lt_",
+  "le",
+  "le_",
+] as const satisfies readonly (keyof Tensor_wasm)[];
+
+const unaryOps = [
+  "gelu",
+  "gelu_",
+  "tanh",
+  "tanh_",
+  "exp",
+  "exp_",
+  "log",
+  "log_",
+  "sin",
+  "sin_",
+  "cos",
+  "cos_",
+  "abs",
+  "abs_",
+  "sqrt",
+  "sqrt_",
+  "relu",
+  "relu_",
+  "relu2",
+  "relu2_",
+  "floor",
+  "floor_",
+  "ceil",
+  "ceil_",
+  "neg",
+  "neg_",
+  "sigmoid",
+  "sigmoid_",
+  "swiglu",
+  "swiglu_",
+  "silu",
+  "silu_",
+  "square",
+  "square_",
+  "recip",
+  "recip_",
+  "float",
+  "half",
+] as const satisfies readonly (keyof Tensor_wasm)[];
+
+/**
+ * Casts two tensors to a common promoted type if needed.
+ * Returns the original tensors if no casting is required.
+ *
+ * @param tensor1 - First tensor
+ * @param tensor2 - Second tensor
+ * @returns Tuple of [tensor1, tensor2] with appropriate casting applied
+ */
+function promotedCast(tensor1: Tensor, tensor2: TensorOrScalar): [Tensor, TensorOrScalar] {
+  if (!(tensor2 instanceof Tensor)) {
+    return [tensor1, tensor2];
+  }
+
+  const dtype1 = tensor1.dtype;
+  const dtype2 = tensor2.dtype;
+
+  const promotedType = promoteTypes(dtype1, dtype2);
+
+  // Cast each tensor only if its type is different from the promoted type
+  const newTensor1 = dtype1 === promotedType ? tensor1 : tensor1.cast(promotedType);
+  const newTensor2 = dtype2 === promotedType ? tensor2 : tensor2.cast(promotedType);
+
+  return [newTensor1, newTensor2];
+}
 
 export class Tensor {
-  scope: ScopeItem[] | undefined;
-  nameOnParent: string | undefined;
-  constructor(private readonly innerTensor: Tensor_wasm) {
-    this.scope = [...tensorScopeStack];
-  }
-
-  // @internal
-  get parentModule(): Module<unknown, unknown> | undefined {
-    return this.scope?.findLast((item) => item.type === "module")?.module;
-  }
-
-  private static runHooks<T extends Tensor | Tensor[]>(
-    tensorOrTensors: T,
-    options?: TensorHookOptions,
-  ): T {
-    options = options ?? { dependency: false };
-    const tensors = Array.isArray(tensorOrTensors) ? tensorOrTensors : [tensorOrTensors];
-    for (let i = 0; i < tensors.length; i++) {
-      const tensor = tensors[i];
-      const hooks = tensor.parentModule?._tensorHooks;
-      if (hooks) {
-        for (const hook of hooks.values()) {
-          const result = hook(tensor, options);
-          if (result) {
-            tensors[i] = result;
-          }
-        }
-      }
-    }
-    return tensors.length === 1 ? tensors[0] : (tensors as T);
-  }
+  constructor(private readonly innerTensor: Tensor_wasm) {}
 
   // Helper method to access inner tensor for internal use
   static _unwrap(tensor: Tensor): Tensor_wasm {
@@ -55,185 +175,107 @@ export class Tensor {
 
   // Creates a new Tensor from a Tensor_wasm
   static _wrap(tensor: Tensor_wasm): Tensor {
-    // TODO: This might be more cloning than necessary
-    return new Tensor(tensor._clone());
+    return new Tensor(tensor);
   }
 
-  // Create a scalar tensor (empty shape) with the given value
-  static scalar(value: number, dtype?: DType): Tensor {
-    return Tensor._wrap(Tensor_wasm.full([], value, dtype || null, null, false));
+  private wrappedOp(op: (selfClone: Tensor_wasm) => Tensor_wasm): Tensor {
+    return Tensor._wrap(op(this._cloneInner()));
   }
 
-  private wrappedOp(op: (a: Tensor_wasm) => Tensor_wasm): Tensor {
-    Tensor.runHooks(this, { dependency: true });
-    const result = Tensor._wrap(op(this._cloneInner()));
-    return Tensor.runHooks(result);
-  }
-
-  // Define binary operations using a constructor
-  private makeBinaryOp(name: keyof Tensor_wasm): (other: BinaryOpInput) => Tensor {
-    return (other: BinaryOpInput): Tensor => {
-      const otherValue = other instanceof Tensor ? other._cloneInner() : other;
-      if (otherValue instanceof Tensor) {
-        Tensor.runHooks(otherValue, { dependency: true });
-      }
-      return this.wrappedOp((a) => (a[name] as (b: Tensor_wasm) => Tensor_wasm)(otherValue));
+  // Static factories for creating prototype methods
+  private static makeBinaryOp(name: keyof Tensor_wasm) {
+    return function (this: Tensor, other: TensorOrScalar): Tensor {
+      const [promotedThis, promotedOther] = promotedCast(this, other);
+      return promotedThis.wrappedOp((a: Tensor_wasm) =>
+        (a[name] as (b: Tensor_wasm | number) => Tensor_wasm)(
+          promotedOther instanceof Tensor ? promotedOther._cloneInner() : promotedOther,
+        ),
+      );
     };
   }
 
-  add = this.makeBinaryOp("add");
-  add_ = this.makeBinaryOp("add_");
-  sub = this.makeBinaryOp("sub");
-  sub_ = this.makeBinaryOp("sub_");
-  mul = this.makeBinaryOp("mul");
-  mul_ = this.makeBinaryOp("mul_");
-  div = this.makeBinaryOp("div");
-  div_ = this.makeBinaryOp("div_");
-  minimum = this.makeBinaryOp("minimum");
-  minimum_ = this.makeBinaryOp("minimum_");
-  maximum = this.makeBinaryOp("maximum");
-  maximum_ = this.makeBinaryOp("maximum_");
+  private static makeBinaryOpTensorOnly(name: keyof Tensor_wasm) {
+    return function (this: Tensor, other: Tensor): Tensor {
+      const [promotedThis, promotedOther] = promotedCast(this, other);
+      return promotedThis.wrappedOp((a: Tensor_wasm) =>
+        (a[name] as (b: Tensor_wasm | number) => Tensor_wasm)(
+          (promotedOther as Tensor)._cloneInner(),
+        ),
+      );
+    };
+  }
 
-  private makeTernaryOp(
-    name: keyof Tensor_wasm,
-  ): (tensor1: Tensor, tensor2: Tensor, value: number) => Tensor {
-    return (tensor1: Tensor, tensor2: Tensor, value: number): Tensor => {
-      Tensor.runHooks([tensor1, tensor2], { dependency: true });
-      return this.wrappedOp((a) =>
-        (a[name] as (b: Tensor_wasm, c: Tensor_wasm, d: number) => Tensor_wasm)(
-          tensor1._cloneInner(),
-          tensor2._cloneInner(),
+  private static makeTernaryOp(name: keyof Tensor_wasm) {
+    return function (this: Tensor, tensor1: Tensor, tensor2: Tensor, value: number): Tensor {
+      const [promotedTensor1, promotedTensor2] = promotedCast(tensor1, tensor2);
+      const [promotedThis, _] = promotedCast(this, promotedTensor1);
+      return promotedThis.wrappedOp((a: Tensor_wasm) =>
+        (a[name] as (b: Tensor_wasm, c: Tensor_wasm, value: number) => Tensor_wasm)(
+          promotedTensor1._cloneInner(),
+          (promotedTensor2 as Tensor)._cloneInner(),
           value,
         ),
       );
     };
   }
 
-  addcdiv = this.makeTernaryOp("addcdiv");
-  addcdiv_ = this.makeTernaryOp("addcdiv_");
-  addcmul = this.makeTernaryOp("addcmul");
-  addcmul_ = this.makeTernaryOp("addcmul_");
-
-  private makeCmpOp(name: keyof Tensor_wasm): (other: Tensor) => Tensor {
-    return (other: Tensor): Tensor => {
-      Tensor.runHooks(other, { dependency: true });
-      return this.wrappedOp((a) =>
-        (a[name] as (b: Tensor_wasm) => Tensor_wasm)(other._cloneInner()),
+  private static makeCmpOp(name: keyof Tensor_wasm) {
+    return function (this: Tensor, other: TensorOrScalar): Tensor {
+      const [promotedThis, promotedOther] = promotedCast(this, other);
+      return promotedThis.wrappedOp((a: Tensor_wasm) =>
+        (a[name] as (b: Tensor_wasm | number) => Tensor_wasm)(
+          promotedOther instanceof Tensor ? promotedOther._cloneInner() : promotedOther,
+        ),
       );
     };
   }
 
-  eq = this.makeCmpOp("eq");
-  eq_ = this.makeCmpOp("eq_");
-  ne = this.makeCmpOp("ne");
-  ne_ = this.makeCmpOp("ne_");
-  gt = this.makeCmpOp("gt");
-  gt_ = this.makeCmpOp("gt_");
-  ge = this.makeCmpOp("ge");
-  ge_ = this.makeCmpOp("ge_");
-  lt = this.makeCmpOp("lt");
-  lt_ = this.makeCmpOp("lt_");
-  le = this.makeCmpOp("le");
-  le_ = this.makeCmpOp("le_");
-
-  private makeUnaryOp(name: keyof Tensor_wasm): () => Tensor {
-    return (): Tensor => this.wrappedOp((a) => (a[name] as () => Tensor_wasm)());
+  private static makeUnaryOp(name: keyof Tensor_wasm) {
+    return function (this: Tensor): Tensor {
+      return this.wrappedOp((a: Tensor_wasm) => (a[name] as () => Tensor_wasm)());
+    };
   }
 
-  gelu = this.makeUnaryOp("gelu");
-  gelu_ = this.makeUnaryOp("gelu_");
-  tanh = this.makeUnaryOp("tanh");
-  tanh_ = this.makeUnaryOp("tanh_");
-  exp = this.makeUnaryOp("exp");
-  exp_ = this.makeUnaryOp("exp_");
-  log = this.makeUnaryOp("log");
-  log_ = this.makeUnaryOp("log_");
-  sin = this.makeUnaryOp("sin");
-  sin_ = this.makeUnaryOp("sin_");
-  cos = this.makeUnaryOp("cos");
-  cos_ = this.makeUnaryOp("cos_");
-  abs = this.makeUnaryOp("abs");
-  abs_ = this.makeUnaryOp("abs_");
-  sqrt = this.makeUnaryOp("sqrt");
-  sqrt_ = this.makeUnaryOp("sqrt_");
-  relu = this.makeUnaryOp("relu");
-  relu_ = this.makeUnaryOp("relu_");
-  relu2 = this.makeUnaryOp("relu2");
-  relu2_ = this.makeUnaryOp("relu2_");
-  floor = this.makeUnaryOp("floor");
-  floor_ = this.makeUnaryOp("floor_");
-  ceil = this.makeUnaryOp("ceil");
-  ceil_ = this.makeUnaryOp("ceil_");
-  neg = this.makeUnaryOp("neg");
-  neg_ = this.makeUnaryOp("neg_");
-  sigmoid = this.makeUnaryOp("sigmoid");
-  sigmoid_ = this.makeUnaryOp("sigmoid_");
-  swiglu = this.makeUnaryOp("swiglu");
-  swiglu_ = this.makeUnaryOp("swiglu_");
-  silu = this.makeUnaryOp("silu");
-  silu_ = this.makeUnaryOp("silu_");
-  square = this.makeUnaryOp("square");
-  square_ = this.makeUnaryOp("square_");
-  recip = this.makeUnaryOp("recip");
-  recip_ = this.makeUnaryOp("recip_");
-
-  float = this.makeUnaryOp("float");
-  half = this.makeUnaryOp("half");
-
   cast(dstDtype?: DType): Tensor {
-    return this.wrappedOp((a) => a.cast(dstDtype?._clone()));
+    return this.wrappedOp((a: Tensor_wasm) => a.cast(dstDtype?._clone()));
   }
 
   groupNorm(numGroups: number, weight?: Tensor, bias?: Tensor, eps: number = 1e-5): Tensor {
-    Tensor.runHooks(weight, { dependency: true });
-    if (bias) {
-      Tensor.runHooks(bias, { dependency: true });
-    }
-    return this.wrappedOp((a) =>
+    return this.wrappedOp((a: Tensor_wasm) =>
       a.groupNorm(numGroups, weight?._cloneInner(), bias ? bias._cloneInner() : null, eps),
     );
   }
 
   layerNorm(weight?: Tensor, bias?: Tensor, eps: number = 1e-5): Tensor {
-    Tensor.runHooks(weight, { dependency: true });
-    if (bias) {
-      Tensor.runHooks(bias, { dependency: true });
-    }
-    return this.wrappedOp((a) =>
+    return this.wrappedOp((a: Tensor_wasm) =>
       a.layerNorm(weight?._cloneInner(), bias ? bias._cloneInner() : null, eps),
     );
   }
 
   rmsNorm(weight?: Tensor, eps: number = 1e-5): Tensor {
-    Tensor.runHooks(weight, { dependency: true });
-    return this.wrappedOp((a) => a.rmsNorm(weight?._cloneInner(), eps));
+    return this.wrappedOp((a: Tensor_wasm) => a.rmsNorm(weight?._cloneInner(), eps));
   }
 
   conv1d(weight: Tensor, bias?: Tensor, stride: number = 1, padding: number = 0): Tensor {
-    Tensor.runHooks(weight, { dependency: true });
-    if (bias) {
-      Tensor.runHooks(bias, { dependency: true });
-    }
-    return this.wrappedOp((a) =>
+    return this.wrappedOp((a: Tensor_wasm) =>
       a.conv1d(weight?._cloneInner(), bias ? bias._cloneInner() : null, stride, padding),
     );
   }
 
   softmax(dim: number): Tensor {
-    return this.wrappedOp((a) => a.softmax(dim));
+    return this.wrappedOp((a: Tensor_wasm) => a.softmax(dim));
   }
 
   rope(dim: number, base: number, offset: number): Tensor {
-    return this.wrappedOp((a) => a.rope(dim, base, offset));
+    return this.wrappedOp((a: Tensor_wasm) => a.rope_(dim, base, offset));
   }
 
   alibi(maxBias: number): Tensor {
-    return this.wrappedOp((a) => a.alibi(maxBias));
+    return this.wrappedOp((a: Tensor_wasm) => a.alibi(maxBias));
   }
 
   matmul(rhs: Tensor, transLhs: boolean = false, transRhs: boolean = false): Tensor {
-    Tensor.runHooks(rhs, { dependency: true });
-    return this.wrappedOp((a) => a.matmul(rhs._cloneInner(), transLhs, transRhs));
+    return this.wrappedOp((a: Tensor_wasm) => a.matmul(rhs._cloneInner(), transLhs, transRhs));
   }
 
   gemm(
@@ -243,168 +285,172 @@ export class Tensor {
     transRhs: boolean = false,
     transOut: boolean = false,
   ): Tensor {
-    Tensor.runHooks(rhs, { dependency: true });
-    if (bias) {
-      Tensor.runHooks(bias, { dependency: true });
-    }
-    return this.wrappedOp((a) =>
+    return this.wrappedOp((a: Tensor_wasm) =>
       a.gemm(rhs._cloneInner(), bias ? bias._cloneInner() : null, transLhs, transRhs, transOut),
     );
   }
 
   affine(mul: number, add: number): Tensor {
-    return this.wrappedOp((a) => a.affine(mul, add));
-  }
-
-  pow(e: number): Tensor {
-    return this.wrappedOp((a) => a.pow(e));
-  }
-
-  pow_(e: number): Tensor {
-    return this.wrappedOp((a) => a.pow_(e));
+    return this.wrappedOp((a: Tensor_wasm) => a.affine(mul, add));
   }
 
   sum(dim?: DimsType, keepdim?: boolean): Tensor {
-    return this.wrappedOp((a) => a.sum(dim as Int32Array, keepdim ?? false));
+    return this.wrappedOp((a: Tensor_wasm) => a.sum(dim as Int32Array, keepdim ?? false));
   }
 
   mean(dim?: DimsType, keepdim?: boolean): Tensor {
-    return this.wrappedOp((a) => a.mean(dim as Int32Array, keepdim ?? false));
+    return this.wrappedOp((a: Tensor_wasm) => a.mean(dim as Int32Array, keepdim ?? false));
   }
 
   var(dim?: DimsType, keepdim?: boolean): Tensor {
-    return this.wrappedOp((a) => a.var(dim, keepdim ?? false));
+    return this.wrappedOp((a: Tensor_wasm) => a.var(dim, keepdim ?? false));
   }
 
   max(dim: number, keepdim?: boolean): Tensor {
-    return this.wrappedOp((a) => a.max(dim, keepdim ?? false));
+    return this.wrappedOp((a: Tensor_wasm) => a.max(dim, keepdim ?? false));
   }
 
   min(dim: number, keepdim?: boolean): Tensor {
-    return this.wrappedOp((a) => a.min(dim, keepdim ?? false));
+    return this.wrappedOp((a: Tensor_wasm) => a.min(dim, keepdim ?? false));
   }
 
   argmax(dim: number, keepdim?: boolean): Tensor {
-    return this.wrappedOp((a) => a.argmax(dim, keepdim ?? false));
+    return this.wrappedOp((a: Tensor_wasm) => a.argmax(dim, keepdim ?? false));
   }
 
   argmin(dim: number, keepdim?: boolean): Tensor {
-    return this.wrappedOp((a) => a.argmin(dim, keepdim ?? false));
+    return this.wrappedOp((a: Tensor_wasm) => a.argmin(dim, keepdim ?? false));
   }
 
-  norm(): Tensor {
-    return this.wrappedOp((a) => a.norm());
+  norm(ord?: string | number | null, dim?: DimsType, keepdim?: boolean): Tensor {
+    return this.wrappedOp((a: Tensor_wasm) => a.norm(ord, dim, keepdim ?? false));
   }
 
   flatten(startDim?: number, endDim?: number): Tensor {
-    return this.wrappedOp((a) => a.flatten(startDim, endDim));
+    return this.wrappedOp((a: Tensor_wasm) => a.flatten(startDim, endDim));
   }
 
   // TODO: Replace with more expressive indexer .i
   slice(ranges: number[][]): Tensor {
-    return this.wrappedOp((a) => a.slice(ranges));
+    return this.wrappedOp((a: Tensor_wasm) => a.slice(ranges));
   }
 
   view(...shape: number[] | [number[]]): Tensor {
     if (shape.length === 1 && Array.isArray(shape[0])) {
-      return this.wrappedOp((a) => a.view(shape[0] as number[]));
+      return this.wrappedOp((a: Tensor_wasm) => a.view(shape[0] as number[]));
     } else {
-      return this.wrappedOp((a) => a.view(shape as number[]));
+      return this.wrappedOp((a: Tensor_wasm) => a.view(shape as number[]));
     }
   }
 
   unsqueeze(dim: number): Tensor {
-    return this.wrappedOp((a) => a.unsqueeze(dim));
+    return this.wrappedOp((a: Tensor_wasm) => a.unsqueeze(dim));
   }
 
   squeeze(dims?: DimsType): Tensor {
-    return this.wrappedOp((a) => a.squeeze(dims));
+    return this.wrappedOp((a: Tensor_wasm) => a.squeeze(dims));
   }
 
   permute(dims: DimsType): Tensor {
-    return this.wrappedOp((a) => a.permute(dims));
+    return this.wrappedOp((a: Tensor_wasm) => a.permute(dims));
   }
 
   transpose(dim0: number, dim1: number): Tensor {
-    return this.wrappedOp((a) => a.transpose(dim0, dim1));
+    return this.wrappedOp((a: Tensor_wasm) => a.transpose(dim0, dim1));
   }
 
   t(): Tensor {
-    return this.wrappedOp((a) => a.t());
+    return this.wrappedOp((a: Tensor_wasm) => a.t());
+  }
+
+  get T(): Tensor {
+    return this.wrappedOp((a: Tensor_wasm) => a.T);
+  }
+
+  get mT(): Tensor {
+    return this.wrappedOp((a: Tensor_wasm) => a.mT);
   }
 
   cache(source: Tensor, dim: number, offset: number): Tensor {
-    Tensor.runHooks(source, { dependency: true });
-    return this.wrappedOp((a) => a.cache(source._cloneInner(), dim, offset));
+    return this.wrappedOp((a: Tensor_wasm) => a.cache(source._cloneInner(), dim, offset));
   }
 
   broadcastLeft(leftShape: ShapeType): Tensor {
-    return this.wrappedOp((a) => a.broadcastLeft(leftShape));
+    return this.wrappedOp((a: Tensor_wasm) => a.broadcastLeft(leftShape));
   }
 
   broadcastTo(shape: ShapeType): Tensor {
-    return this.wrappedOp((a) => a.broadcastTo(shape));
+    return this.wrappedOp((a: Tensor_wasm) => a.broadcastTo(shape));
   }
 
   indexSelect(indices: Tensor, dim: number): Tensor {
-    Tensor.runHooks(indices, { dependency: true });
-    return this.wrappedOp((a) => a.indexSelect(indices._cloneInner(), dim));
+    return this.wrappedOp((a: Tensor_wasm) => a.indexSelect(indices._cloneInner(), dim));
   }
 
   indexWrite(src: Tensor, writeStart: DimsType): Tensor {
-    Tensor.runHooks(src, { dependency: true });
-    return this.wrappedOp((a) => a.indexWrite(src._cloneInner(), writeStart));
+    return this.wrappedOp((a: Tensor_wasm) => a.indexWrite(src._cloneInner(), writeStart));
   }
 
-  where(condition: Tensor, onFalse: Tensor): Tensor {
-    Tensor.runHooks(condition, { dependency: true });
-    Tensor.runHooks(onFalse, { dependency: true });
-    return this.wrappedOp((a) => a.whereCond(condition._cloneInner(), onFalse._cloneInner()));
+  where(condition: Tensor, onFalse: TensorOrScalar): Tensor {
+    return this.wrappedOp((a: Tensor_wasm) =>
+      a.where(condition._cloneInner(), onFalse instanceof Tensor ? onFalse._cloneInner() : onFalse),
+    );
   }
 
   scatterAdd(indices: Tensor, source: Tensor, dim: number): Tensor {
-    Tensor.runHooks(indices, { dependency: true });
-    Tensor.runHooks(source, { dependency: true });
-    return this.wrappedOp((a) => a.scatterAdd(indices._cloneInner(), source._cloneInner(), dim));
+    return this.wrappedOp((a: Tensor_wasm) =>
+      a.scatterAdd(indices._cloneInner(), source._cloneInner(), dim),
+    );
   }
 
   indexAdd_(indices: Tensor, source: Tensor, dim: number): Tensor {
-    Tensor.runHooks(indices, { dependency: true });
-    Tensor.runHooks(source, { dependency: true });
-    return this.wrappedOp((a) => a.indexAdd_(indices._cloneInner(), source._cloneInner(), dim));
+    return this.wrappedOp((a: Tensor_wasm) =>
+      a.indexAdd_(indices._cloneInner(), source._cloneInner(), dim),
+    );
   }
 
   gather(indices: Tensor, dim: number): Tensor {
-    Tensor.runHooks(indices, { dependency: true });
-    return this.wrappedOp((a) => a.gather(indices._cloneInner(), dim));
+    return this.wrappedOp((a: Tensor_wasm) => a.gather(indices._cloneInner(), dim));
   }
 
   triu(k?: number): Tensor {
-    return this.wrappedOp((a) => a.triu(k));
+    return this.wrappedOp((a: Tensor_wasm) => a.triu(k));
   }
 
   triu_(k?: number): Tensor {
-    return this.wrappedOp((a) => a.triu_(k));
+    return this.wrappedOp((a: Tensor_wasm) => a.triu_(k));
   }
 
   tril(k?: number): Tensor {
-    return this.wrappedOp((a) => a.tril(k));
+    return this.wrappedOp((a: Tensor_wasm) => a.tril(k));
   }
 
   tril_(k?: number): Tensor {
-    return this.wrappedOp((a) => a.tril_(k));
+    return this.wrappedOp((a: Tensor_wasm) => a.tril_(k));
+  }
+
+  lerp(end: Tensor, weight: TensorOrScalar): Tensor {
+    return this.wrappedOp((a: Tensor_wasm) =>
+      a.lerp(end._cloneInner(), weight instanceof Tensor ? weight._cloneInner() : weight),
+    );
+  }
+
+  lerp_(end: Tensor, weight: TensorOrScalar): Tensor {
+    return this.wrappedOp((a: Tensor_wasm) =>
+      a.lerp_(end._cloneInner(), weight instanceof Tensor ? weight._cloneInner() : weight),
+    );
   }
 
   bernoulli(): Tensor {
-    return this.wrappedOp((a) => a.bernoulli());
+    return this.wrappedOp((a: Tensor_wasm) => a.bernoulli());
   }
 
   bernoulli_(): Tensor {
-    return this.wrappedOp((a) => a.bernoulli_());
+    return this.wrappedOp((a: Tensor_wasm) => a.bernoulli_());
   }
 
   zero_(): Tensor {
-    return this.wrappedOp((a) => a.zero_());
+    return this.wrappedOp((a: Tensor_wasm) => a.zero_());
   }
 
   // We skip onesLike and zerosLike because they're not defined as members in
@@ -416,19 +462,19 @@ export class Tensor {
   }
 
   contiguous(): Tensor {
-    return this.wrappedOp((a) => a.contiguous());
+    return this.wrappedOp((a: Tensor_wasm) => a.contiguous());
   }
 
   detach(): Tensor {
-    return this.wrappedOp((a) => a.detach());
+    return this.wrappedOp((a: Tensor_wasm) => a.detach());
   }
 
   detach_(): Tensor {
-    return this.wrappedOp((a) => a.detach_());
+    return this.wrappedOp((a: Tensor_wasm) => a.detach_());
   }
 
   requiresGrad_(requiresGrad: boolean = true): Tensor {
-    return this.wrappedOp((a) => a.requiresGrad_(requiresGrad));
+    return this.wrappedOp((a: Tensor_wasm) => a.requiresGrad_(requiresGrad));
   }
 
   async item(dtype?: DType): Promise<number> {
@@ -536,4 +582,45 @@ export class Tensor {
   invalidate(): void {
     this.innerTensor.invalidate();
   }
+
+  static {
+    for (const op of binaryOps) {
+      (Tensor.prototype as unknown as Record<string, unknown>)[op] = Tensor.makeBinaryOp(op);
+    }
+
+    for (const op of binaryTensorOnlyOps) {
+      (Tensor.prototype as unknown as Record<string, unknown>)[op] =
+        Tensor.makeBinaryOpTensorOnly(op);
+    }
+
+    for (const op of ternaryOps) {
+      (Tensor.prototype as unknown as Record<string, unknown>)[op] = Tensor.makeTernaryOp(op);
+    }
+
+    for (const op of cmpOps) {
+      (Tensor.prototype as unknown as Record<string, unknown>)[op] = Tensor.makeCmpOp(op);
+    }
+
+    for (const op of unaryOps) {
+      (Tensor.prototype as unknown as Record<string, unknown>)[op] = Tensor.makeUnaryOp(op);
+    }
+  }
 }
+
+// Make dynamically-attached ops visible to TypeScript via interface merging.
+type BinaryMethods = { [K in (typeof binaryOps)[number]]: (other: TensorOrScalar) => Tensor };
+type BinaryTensorOnlyMethods = {
+  [K in (typeof binaryTensorOnlyOps)[number]]: (other: Tensor) => Tensor;
+};
+type UnaryMethods = { [K in (typeof unaryOps)[number]]: () => Tensor };
+type CmpMethods = { [K in (typeof cmpOps)[number]]: (other: TensorOrScalar) => Tensor };
+type TernaryMethods = {
+  [K in (typeof ternaryOps)[number]]: (tensor1: Tensor, tensor2: Tensor, value: number) => Tensor;
+};
+
+export interface Tensor
+  extends BinaryMethods,
+    BinaryTensorOnlyMethods,
+    UnaryMethods,
+    CmpMethods,
+    TernaryMethods {}
