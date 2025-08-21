@@ -1,7 +1,7 @@
 use std::{cell::RefCell, rc::Rc};
 
 use maybe_async::maybe_async;
-use piston::Tensor;
+use piston::{Tensor, TensorOptions};
 use piston_macros::scoped_module;
 use piston_nn::{
     AlibiEmbedding, AlibiInput, Dropout, KVCache, Linear, Module, RotaryEmbedding, RotaryInput,
@@ -186,7 +186,11 @@ impl Module for GPT2SelfAttention {
 
 fn masked_fill(on_false: &Tensor, mask: &Tensor, on_true: f32) -> anyhow::Result<Tensor> {
     let shape = mask.shape();
-    let on_true = Tensor::full(shape, on_true, &on_false.device(), false)?;
+    let on_true = Tensor::full(
+        shape,
+        on_true,
+        TensorOptions::new().device(on_false.device()),
+    )?;
     let m = on_true.where_cond(mask.clone(), on_false.clone())?;
     Ok(m)
 }

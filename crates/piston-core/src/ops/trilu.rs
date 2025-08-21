@@ -1,3 +1,4 @@
+#![allow(clippy::doc_overindented_list_items)]
 use derive_new::new;
 use encase::ShaderType;
 use half::f16;

@@ -73,6 +73,7 @@ unsafe impl Sync for CPUBuffer {}
 impl CPUBuffer {
     pub fn new(inner: RawCPUBuffer) -> Self {
         Self {
+            #[allow(clippy::arc_with_non_send_sync)]
             inner: Arc::new(inner),
         }
     }

@@ -1,14 +1,14 @@
 use crate::error::IntoJsError;
 use crate::js_util::downcast_from_ptr;
+use crate::shape::FromJsDim;
 use half::f16;
 use js_sys::{Array, Function, Object, Reflect};
-use paste::paste;
 use piston::{
-    AllDims, DType, Device, Dim, IrScalarValue, IrValue, LazyOp, NormOrd, Shape, Tensor,
+    AllDims, DType, Device, Dim, IrScalarValue, IrValue, LazyOp, NormOrd, Tensor,
     TensorOptions as CoreTensorOptions,
 };
 use piston::{TensorTypeOrScalar, TensorTypeOrScalarEnum};
-use piston_macros::js_tensor_operations;
+use piston_macros::js_tensor_web_op;
 use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -18,9 +18,8 @@ use wasm_bindgen::prelude::*;
 use wasm_bindgen::{JsError, JsValue};
 
 use crate::{
-    device::{GPU_DEVICE, JsDevice, gpu_sync},
+    device::{GPU_DEVICE, JsDevice},
     dtype::JsDType,
-    shape::{FromJsDim, FromJsVecISize},
 };
 
 #[derive(Tsify, Serialize, Deserialize)]
@@ -52,12 +51,29 @@ pub struct JsTensor {
     pub(crate) inner: Tensor,
 }
 
-type JsTensorResult = Result<JsTensor, JsError>;
+impl JsTensor {
+    fn js_value(&self) -> JsValue {
+        self._clone().into()
+    }
+}
 
 #[wasm_bindgen(js_class = Tensor)]
 impl JsTensor {
     // Marker function for downcasting from a JS object
+    #[wasm_bindgen(unchecked_prelude = "__wbg_piston_tensor(): void;")]
     pub fn __wbg_piston_tensor() {}
+
+    #[wasm_bindgen(constructor, unchecked_return_type = "Tensor")]
+    pub fn new_js(
+        #[wasm_bindgen(
+            unchecked_param_type = "Float32Array | Float64Array | Int32Array | Uint32Array | number[]"
+        )]
+        data: &JsValue,
+        #[wasm_bindgen(unchecked_param_type = "Uint32Array | number[]")] value: &JsValue,
+        #[wasm_bindgen(unchecked_param_type = "FromDataOptions")] options: &JsValue,
+    ) -> Result<JsValue, JsError> {
+        fromData(data, value, options)
+    }
 
     #[wasm_bindgen(getter)]
     pub fn id(&self) -> usize {
@@ -82,7 +98,10 @@ impl JsTensor {
         }
     }
 
-    #[wasm_bindgen(unchecked_return_type = "number[] | number")]
+    #[wasm_bindgen(
+        unchecked_return_type = "number[] | number",
+        unchecked_prelude = "size(): number[];\nsize(dim: number): number;"
+    )]
     pub fn size(&self, dim: Option<isize>) -> JsValue {
         if let Some(dim) = dim {
             let dim = FromJsDim(dim);
@@ -98,11 +117,20 @@ impl JsTensor {
         }
     }
 
-    pub fn shape(&self) -> Vec<usize> {
-        self.inner.shape().to_vec()
+    #[wasm_bindgen(getter, unchecked_return_type = "number[]")]
+    pub fn shape(&self) -> JsValue {
+        let shape = self.inner.shape().to_vec();
+        let array = js_sys::Array::new();
+        for dim in shape {
+            array.push(&JsValue::from_f64(dim as f64));
+        }
+        array.into()
     }
 
-    #[wasm_bindgen(unchecked_return_type = "number[] | number")]
+    #[wasm_bindgen(
+        unchecked_return_type = "number[] | number",
+        unchecked_prelude = "stride(): number[];\nstride(dim: number): number;"
+    )]
     pub fn stride(&self, dim: Option<isize>) -> JsValue {
         if let Some(dim) = dim {
             let dim = FromJsDim(dim);
@@ -123,10 +151,10 @@ impl JsTensor {
         self.inner.num_bytes()
     }
 
-    pub fn device(&self) -> String {
-        match self.inner.device() {
-            Device::CPU => "cpu".to_string(),
-            Device::GPU(_) => "webgpu".to_string(),
+    #[wasm_bindgen(getter)]
+    pub fn device(&self) -> JsDevice {
+        JsDevice {
+            inner: self.inner.device(),
         }
     }
 
@@ -183,408 +211,464 @@ impl JsTensor {
 }
 
 macro_rules! impl_binary_op {
-    ($op:ident) => {
-        #[wasm_bindgen(js_class = Tensor)]
-        #[js_tensor_operations]
-        impl JsTensor {
-            pub fn $op(&self, other: TensorOrScalar) -> JsTensorResult {}
-        }
+    ($op:ident, $Name:ident) => {
+        // Web free-function exports for method and inplace (place outside paste!)
+        #[js_tensor_web_op(name = $Name, variants = [method, method_inplace])]
+        pub fn $op(input: Tensor, other: TensorOrScalar) -> anyhow::Result<Tensor> {}
     };
 }
 
 macro_rules! impl_binary_op_tensor_only {
-    ($op:ident) => {
-        paste! {
-            #[wasm_bindgen(js_class = Tensor)]
-            #[js_tensor_operations]
-            impl JsTensor {
-                pub fn $op(&self, other: Tensor) -> JsTensorResult {}
-            }
-        }
+    ($op:ident, $Name:ident) => {
+        #[js_tensor_web_op(name = $Name, variants = [method, method_inplace])]
+        pub fn $op(input: Tensor, other: Tensor) -> anyhow::Result<Tensor> {}
     };
 }
 
 macro_rules! impl_ternary_op {
-    ($op:ident) => {
-        paste! {
-            #[wasm_bindgen(js_class = Tensor)]
-            #[js_tensor_operations]
-            impl JsTensor {
-                pub fn $op(&self, tensor1: Tensor, tensor2: Tensor, value: f32) -> JsTensorResult {}
-                pub fn [<$op _>](&self, tensor1: Tensor, tensor2: Tensor, value: f32) -> JsTensorResult {}
-            }
+    ($op:ident, $Name:ident) => {
+        #[js_tensor_web_op(name = $Name, variants = [method, method_inplace])]
+        pub fn $op(
+            input: Tensor,
+            tensor1: Tensor,
+            tensor2: Tensor,
+            value: f32,
+        ) -> anyhow::Result<Tensor> {
         }
     };
 }
 
 macro_rules! impl_cmp_op {
-    ($op:ident) => {
-        paste! {
-            #[wasm_bindgen(js_class = Tensor)]
-            #[js_tensor_operations]
-            impl JsTensor {
-                pub fn $op(&self, other: TensorOrScalar) -> JsTensorResult {}
-                pub fn [<$op _>](&self, other: TensorOrScalar) -> JsTensorResult {}
-            }
-        }
+    ($op:ident, $Name:ident) => {
+        #[js_tensor_web_op(name = $Name, variants = [method, method_inplace])]
+        pub fn $op(input: Tensor, other: TensorOrScalar) -> anyhow::Result<Tensor> {}
     };
 }
 
 macro_rules! impl_unary_op {
-    ($op:ident) => {
-        paste! {
-            #[wasm_bindgen(js_class = Tensor)]
-            #[js_tensor_operations]
-            impl JsTensor {
-                pub fn $op(&self) -> JsTensorResult {}
-                pub fn [<$op _>](&self) -> JsTensorResult {}
-            }
-        }
+    ($op:ident, $Name:ident) => {
+        #[js_tensor_web_op(name = $Name, variants = [method, method_inplace])]
+        pub fn $op(input: Tensor) -> anyhow::Result<Tensor> {}
     };
 }
 
-impl_binary_op!(add);
-impl_binary_op!(add_);
-impl_binary_op!(sub);
-impl_binary_op!(sub_);
-impl_binary_op!(mul);
-impl_binary_op!(mul_);
-impl_binary_op!(div);
-impl_binary_op!(div_);
-impl_binary_op!(pow);
-impl_binary_op!(pow_);
-impl_binary_op_tensor_only!(minimum);
-impl_binary_op_tensor_only!(maximum);
-impl_binary_op_tensor_only!(minimum_);
-impl_binary_op_tensor_only!(maximum_);
+impl_binary_op!(add, Add);
+impl_binary_op!(sub, Sub);
+impl_binary_op!(mul, Mul);
+impl_binary_op!(div, Div);
+impl_binary_op!(pow, Pow);
+impl_binary_op_tensor_only!(minimum, Minimum);
+impl_binary_op_tensor_only!(maximum, Maximum);
 
-impl_ternary_op!(addcdiv);
-impl_ternary_op!(addcmul);
+impl_ternary_op!(addcdiv, Addcdiv);
+impl_ternary_op!(addcmul, Addcmul);
 
-impl_cmp_op!(eq);
-impl_cmp_op!(ne);
-impl_cmp_op!(gt);
-impl_cmp_op!(ge);
-impl_cmp_op!(lt);
-impl_cmp_op!(le);
+impl_cmp_op!(eq, Eq);
+impl_cmp_op!(ne, Ne);
+impl_cmp_op!(gt, Gt);
+impl_cmp_op!(ge, Ge);
+impl_cmp_op!(lt, Lt);
+impl_cmp_op!(le, Le);
 
-impl_unary_op!(gelu);
-impl_unary_op!(tanh);
-impl_unary_op!(exp);
-impl_unary_op!(log);
-impl_unary_op!(sin);
-impl_unary_op!(cos);
-impl_unary_op!(abs);
-impl_unary_op!(sqrt);
-impl_unary_op!(relu);
-impl_unary_op!(relu2);
-impl_unary_op!(floor);
-impl_unary_op!(ceil);
-impl_unary_op!(neg);
-impl_unary_op!(sigmoid);
-impl_unary_op!(swiglu);
-impl_unary_op!(silu);
-impl_unary_op!(square);
-impl_unary_op!(recip);
+impl_unary_op!(gelu, Gelu);
+impl_unary_op!(tanh, Tanh);
+impl_unary_op!(exp, Exp);
+impl_unary_op!(log, Log);
+impl_unary_op!(sin, Sin);
+impl_unary_op!(cos, Cos);
+impl_unary_op!(abs, Abs);
+impl_unary_op!(sqrt, Sqrt);
+impl_unary_op!(relu, Relu);
+impl_unary_op!(relu2, Relu2);
+impl_unary_op!(floor, Floor);
+impl_unary_op!(ceil, Ceil);
+impl_unary_op!(neg, Neg);
+impl_unary_op!(sigmoid, Sigmoid);
+impl_unary_op!(swiglu, Swiglu);
+impl_unary_op!(silu, Silu);
+impl_unary_op!(square, Square);
+impl_unary_op!(recip, Recip);
+
+#[js_tensor_web_op(name = Full, variants = [function])]
+pub fn full(shape: Shape, value: f32, options: TensorOptions) -> JsTensorResult {
+    piston::full(shape, value, options)
+}
+
+#[js_tensor_web_op(name = Cast, variants = [method])]
+pub fn cast(input: Tensor, dtype: DType) -> JsTensorResult {
+    piston::cast(input, dtype)
+}
+
+#[js_tensor_web_op(name = Float, variants = [method])]
+pub fn float(input: Tensor) -> JsTensorResult {
+    piston::cast(input, DType::F32)
+}
+
+#[js_tensor_web_op(name = Half, variants = [method])]
+pub fn half(input: Tensor) -> JsTensorResult {
+    piston::cast(input, DType::F16)
+}
+
+#[js_tensor_web_op(name = GroupNorm, variants = [method])]
+pub fn group_norm(
+    input: Tensor,
+    num_groups: usize,
+    weight: Option<Tensor>,
+    bias: Option<Tensor>,
+    eps: f32,
+) -> JsTensorResult {
+}
+
+#[js_tensor_web_op(name = LayerNorm, variants = [method])]
+pub fn layer_norm(
+    input: Tensor,
+    weight: Option<Tensor>,
+    bias: Option<Tensor>,
+    eps: f32,
+) -> JsTensorResult {
+}
+
+#[js_tensor_web_op(name = RmsNorm, variants = [method])]
+pub fn rms_norm(
+    input: Tensor,
+    weight: Option<Tensor>,
+    #[op(default = 1e-5)] eps: f32,
+) -> JsTensorResult {
+}
+
+#[js_tensor_web_op(name = Conv1d, variants = [method])]
+pub fn conv1d(
+    input: Tensor,
+    weight: Tensor,
+    bias: Option<Tensor>,
+    #[op(default = 1)] stride: usize,
+    #[op(default = 0)] padding: usize,
+) -> JsTensorResult {
+}
+
+#[js_tensor_web_op(name = Softmax, variants = [method])]
+pub fn softmax(input: Tensor, dim: Dim) -> JsTensorResult {}
+
+#[js_tensor_web_op(name = Rope, variants = [method_inplace])]
+pub fn rope(input: Tensor, dim: usize, base: f32, offset: usize) -> JsTensorResult {}
+
+#[js_tensor_web_op(name = Alibi, variants = [method])]
+pub fn alibi(input: Tensor, #[op(default = 8.0)] max_bias: f32) -> JsTensorResult {}
+
+#[js_tensor_web_op(name = Matmul, variants = [method])]
+pub fn matmul(
+    input: Tensor,
+    rhs: Tensor,
+    #[op(default = false)] trans_lhs: bool,
+    #[op(default = false)] trans_rhs: bool,
+) -> JsTensorResult {
+}
+
+#[js_tensor_web_op(name = Gemm, variants = [method])]
+pub fn gemm(
+    input: Tensor,
+    rhs: Tensor,
+    bias: Option<Tensor>,
+    #[op(default = false)] trans_lhs: bool,
+    #[op(default = false)] trans_rhs: bool,
+    #[op(default = false)] trans_out: bool,
+) -> JsTensorResult {
+}
+
+#[js_tensor_web_op(name = Affine, variants = [method])]
+pub fn affine(
+    input: Tensor,
+    #[op(default = 1.0)] mul: f32,
+    #[op(default = 0.0)] add: f32,
+) -> JsTensorResult {
+}
+
+#[js_tensor_web_op(name = Sum, variants = [method])]
+pub fn sum(
+    input: Tensor,
+    dim: Option<Dims>,
+    #[op(default = false)] keepdim: bool,
+) -> JsTensorResult {
+    if let Some(sum_dims) = dim {
+        input.sum(sum_dims, keepdim)
+    } else {
+        input.sum(AllDims, keepdim)
+    }
+}
+
+// mean(Tensor tensor, Dims? dim=None, bool keepdim=False)
+#[js_tensor_web_op(name = Mean, variants = [method])]
+pub fn mean(
+    input: Tensor,
+    dim: Option<Dims>,
+    #[op(default = false)] keepdim: bool,
+) -> JsTensorResult {
+    if let Some(mean_dims) = dim {
+        input.mean(mean_dims, keepdim)
+    } else {
+        input.mean(AllDims, keepdim)
+    }
+}
+
+// var(Tensor tensor, Dims? dim=None, bool keepdim=False)
+#[js_tensor_web_op(name = Var, variants = [method])]
+pub fn var(
+    input: Tensor,
+    dim: Option<Dims>,
+    #[op(default = false)] keepdim: bool,
+) -> JsTensorResult {
+    if let Some(var_dims) = dim {
+        input.var(var_dims, keepdim)
+    } else {
+        input.var(AllDims, keepdim)
+    }
+}
+
+// max(Tensor tensor, Dims? dim=None, bool keepdim=False)
+#[js_tensor_web_op(name = Max, variants = [method])]
+pub fn max(
+    input: Tensor,
+    dim: Option<Dims>,
+    #[op(default = false)] keepdim: bool,
+) -> JsTensorResult {
+    if let Some(max_dims) = dim {
+        input.max(max_dims, keepdim)
+    } else {
+        input.max(AllDims, keepdim)
+    }
+}
+
+// min(Tensor tensor, Dims? dim=None, bool keepdim=False)
+#[js_tensor_web_op(name = Min, variants = [method])]
+pub fn min(
+    input: Tensor,
+    dim: Option<Dims>,
+    #[op(default = false)] keepdim: bool,
+) -> JsTensorResult {
+    if let Some(min_dims) = dim {
+        input.min(min_dims, keepdim)
+    } else {
+        input.min(AllDims, keepdim)
+    }
+}
+
+#[js_tensor_web_op(name = Argmax, variants = [method])]
+pub fn argmax(
+    input: Tensor,
+    dim: Option<Dims>,
+    #[op(default = false)] keepdim: bool,
+) -> JsTensorResult {
+    if let Some(argmax_dims) = dim {
+        input.argmax(argmax_dims, keepdim)
+    } else {
+        input.argmax(AllDims, keepdim)
+    }
+}
+
+#[js_tensor_web_op(name = Argmin, variants = [method])]
+pub fn argmin(
+    input: Tensor,
+    dim: Option<Dims>,
+    #[op(default = false)] keepdim: bool,
+) -> JsTensorResult {
+    if let Some(argmin_dims) = dim {
+        input.argmin(argmin_dims, keepdim)
+    } else {
+        input.argmin(AllDims, keepdim)
+    }
+}
+
+#[js_tensor_web_op(name = Norm, variants = [method])]
+pub fn norm(
+    input: Tensor,
+    ord: Option<NormOrd>,
+    dim: Option<Dims>,
+    #[op(default = false)] keepdim: bool,
+) -> JsTensorResult {
+    if let Some(norm_dims) = dim {
+        input.norm(ord, norm_dims, keepdim)
+    } else {
+        input.norm(ord, AllDims, keepdim)
+    }
+}
+
+#[js_tensor_web_op(name = Flatten, variants = [method])]
+pub fn flatten(
+    input: Tensor,
+    #[op(default = 0)] start_dim: Dim,
+    #[op(default = -1)] end_dim: Dim,
+) -> JsTensorResult {
+}
+
+#[js_tensor_web_op(name = Slice, variants = [method])]
+pub fn slice(
+    input: Tensor,
+    #[op(unchecked_type = "[start: number, end: number][]")] ranges: JsValue,
+) -> JsTensorResult {
+    let ranges = ranges
+        .dyn_into::<js_sys::Array>()
+        .expect("Ranges must be an array")
+        .iter()
+        .map(|r| {
+            let range: js_sys::Array = r.clone().into();
+            let start = range.get(0).as_f64().map(|v| v as usize);
+            let end = range.get(1).as_f64().map(|v| v as usize);
+            if let Some(end) = end {
+                start.expect("Invalid range")..end
+            } else {
+                0usize..start.expect("Invalid range")
+            }
+        })
+        .collect::<Vec<_>>();
+    input.slice(&ranges)
+}
+
+#[js_tensor_web_op(name = View, variants = [method])]
+pub fn view(input: Tensor, shape: ShapeWithOneHole) -> JsTensorResult {}
+
+// unsqueeze(Tensor tensor, int dim)
+#[js_tensor_web_op(name = Unsqueeze, variants = [method])]
+pub fn unsqueeze(input: Tensor, dim: Dim) -> JsTensorResult {}
+
+#[js_tensor_web_op(name = Squeeze, variants = [method])]
+pub fn squeeze(input: Tensor, dim: Option<Dims>) -> JsTensorResult {
+    match dim {
+        Some(dims) => input.squeeze(dims),
+        None => input.squeeze(()),
+    }
+}
+
+#[js_tensor_web_op(name = Permute, variants = [method])]
+pub fn permute(input: Tensor, dims: Dims) -> JsTensorResult {}
+
+#[js_tensor_web_op(name = Transpose, variants = [method])]
+pub fn transpose(input: Tensor, dim0: Dim, dim1: Dim) -> JsTensorResult {}
+
+#[js_tensor_web_op(name = t, variants = [method])]
+pub fn t(input: Tensor) -> JsTensorResult {}
+
+#[js_tensor_web_op(getter, name = TUpper, variants = [method], target = T)]
+#[allow(non_snake_case)]
+pub fn T_upper(input: Tensor) -> JsTensorResult {}
+
+#[js_tensor_web_op(getter, name = mT, variants = [method])]
+#[allow(non_snake_case)]
+pub fn mT(input: Tensor) -> JsTensorResult {}
+
+#[js_tensor_web_op(name = Cache, variants = [method])]
+pub fn cache(input: Tensor, source: Tensor, dim: Dim, offset: usize) -> JsTensorResult {}
+
+#[js_tensor_web_op(name = BroadcastLeft, variants = [method])]
+pub fn broadcast_left(input: Tensor, left_shape: Shape) -> JsTensorResult {}
+
+#[js_tensor_web_op(name = BroadcastTo, variants = [method])]
+pub fn broadcast_to(input: Tensor, shape: Shape) -> JsTensorResult {}
+
+#[js_tensor_web_op(name = IndexSelect, variants = [method])]
+pub fn index_select(input: Tensor, indices: Tensor, dim: Dim) -> JsTensorResult {}
+
+#[js_tensor_web_op(name = IndexWrite, variants = [method])]
+pub fn index_write(input: Tensor, src: Tensor, write_start: Dims) -> JsTensorResult {}
+
+#[js_tensor_web_op(name = Where, variants = [method], js_name = "where")]
+pub fn where_cond(input: Tensor, condition: Tensor, on_false: TensorOrScalar) -> JsTensorResult {}
+
+#[js_tensor_web_op(name = ScatterAdd, variants = [method])]
+pub fn scatter_add(input: Tensor, indices: Tensor, source: Tensor, dim: Dim) -> JsTensorResult {}
+
+#[js_tensor_web_op(name = IndexAdd, variants = [method_inplace])]
+pub fn index_add(input: Tensor, indices: Tensor, source: Tensor, dim: Dim) -> JsTensorResult {}
+
+#[js_tensor_web_op(name = Gather, variants = [method])]
+pub fn gather(input: Tensor, dim: Dim, index: Tensor) -> JsTensorResult {}
+
+#[js_tensor_web_op(name = Triu, variants = [method, method_inplace])]
+pub fn triu(input: Tensor, k: Option<i32>) -> JsTensorResult {}
+
+#[js_tensor_web_op(name = Tril, variants = [method, method_inplace])]
+pub fn tril(input: Tensor, k: Option<i32>) -> JsTensorResult {}
+
+#[js_tensor_web_op(name = Lerp, variants = [method, method_inplace])]
+pub fn lerp(input: Tensor, end: Tensor, weight: TensorOrScalar) -> JsTensorResult {}
+
+#[js_tensor_web_op(name = Bernoulli, variants = [function, method, method_inplace])]
+pub fn bernoulli(input: Tensor) -> JsTensorResult {}
+
+#[js_tensor_web_op(name = Zero, variants = [method_inplace])]
+pub fn zero(input: Tensor) -> JsTensorResult {}
+
+#[js_tensor_web_op(name = ZerosLike, variants = [function])]
+pub fn zeros_like(input: Tensor, options: TensorOptions) -> JsTensorResult {}
+
+#[js_tensor_web_op(name = OnesLike, variants = [function])]
+pub fn ones_like(input: Tensor, options: TensorOptions) -> JsTensorResult {}
+
+#[js_tensor_web_op(name = Contiguous, variants = [method])]
+pub fn contiguous(input: Tensor) -> JsTensorResult {}
+
+#[js_tensor_web_op(name = RequiresGrad, variants = [method_inplace])]
+pub fn requires_grad(input: Tensor, requires_grad: bool) -> JsTensorResult {}
+
+#[js_tensor_web_op(name = FromData, variants = [function])]
+pub fn from_data(
+    #[op(
+        unchecked_type = "Float32Array | Float16Array | Float64Array | Int32Array | Uint32Array | Uint8Array | number[]"
+    )]
+    data: JsValue,
+    shape: Shape,
+    options: TensorOptions,
+) -> JsTensorResult {
+    if data.is_array() {
+        let array = data
+            .dyn_into::<js_sys::Array>()
+            .map_err(|_| JsError::new("Failed to convert data to array"))?;
+
+        let data = array
+            .iter()
+            .map(|v| {
+                v.as_f64()
+                    .map(|f| f as f32)
+                    .ok_or_else(|| JsError::new("Array contains non-numeric values"))
+            })
+            .collect::<Result<Vec<f32>, JsError>>()?;
+
+        Ok::<_, JsError>(Tensor::from_data(data, shape, options))
+    } else if js_sys::Float32Array::instanceof(&data) {
+        let array = js_sys::Float32Array::from(data);
+        let data = array.to_vec().into_iter().collect::<Vec<_>>();
+        Ok::<_, JsError>(Tensor::from_data(data, shape, options))
+    } else if js_sys::Float64Array::instanceof(&data) {
+        let array = js_sys::Float64Array::from(data);
+        let data = array
+            .to_vec()
+            .into_iter()
+            .map(|v| v as f32)
+            .collect::<Vec<_>>();
+        Ok::<_, JsError>(Tensor::from_data(data, shape, options))
+    } else if js_sys::Int32Array::instanceof(&data) {
+        let array = js_sys::Int32Array::from(data);
+        let data = array.to_vec().into_iter().collect::<Vec<_>>();
+        Ok::<_, JsError>(Tensor::from_data(data, shape, options))
+    } else if js_sys::Uint32Array::instanceof(&data) {
+        let array = js_sys::Uint32Array::from(data);
+        let data = array.to_vec().into_iter().collect::<Vec<_>>();
+        Ok::<_, JsError>(Tensor::from_data(data, shape, options))
+    } else {
+        return Err(JsError::new("Unsupported data type"));
+    }
+}
+
+#[wasm_bindgen(js_name = promoteTypes)]
+pub fn promote_types(dtype1: JsDType, dtype2: JsDType) -> Result<JsDType, JsError> {
+    piston::promote_types(dtype1.dtype, dtype2.dtype)
+        .map(|dtype| JsDType { dtype })
+        .map_err(|e| e.into_js_error())
+}
 
 #[wasm_bindgen(js_class = Tensor)]
-#[js_tensor_operations]
 impl JsTensor {
-    #[dtype_generic]
-    pub fn full(
-        shape: Shape,
-        value: f32,
-        dtype: DType,
-        device: &Device,
-        requires_grad: bool,
-    ) -> JsTensorResult {
-    }
-
-    pub fn cast(&self, dst_dtype: DType) -> JsTensorResult {}
-
-    pub fn float(&self) -> JsTensorResult {}
-
-    pub fn half(&self) -> JsTensorResult {}
-
-    pub fn group_norm(
-        &self,
-        num_groups: usize,
-        weight: Option<Tensor>,
-        bias: Option<Tensor>,
-        eps: f32,
-    ) -> JsTensorResult {
-    }
-
-    pub fn layer_norm(
-        &self,
-        weight: Option<Tensor>,
-        bias: Option<Tensor>,
-        eps: f32,
-    ) -> JsTensorResult {
-    }
-
-    pub fn rms_norm(&self, weight: Option<Tensor>, eps: f32) -> JsTensorResult {}
-
-    pub fn conv1d(
-        &self,
-        weight: Tensor,
-        bias: Option<Tensor>,
-        stride: usize,
-        padding: usize,
-    ) -> JsTensorResult {
-    }
-
-    pub fn softmax(&self, dim: Dim) -> JsTensorResult {}
-
-    pub fn rope_(&self, dim: usize, base: f32, offset: usize) -> JsTensorResult {}
-
-    pub fn alibi(&self, max_bias: f32) -> JsTensorResult {}
-
-    pub fn matmul(&self, rhs: Tensor, trans_lhs: bool, trans_rhs: bool) -> JsTensorResult {}
-
-    pub fn gemm(
-        &self,
-        rhs: Tensor,
-        bias: Option<Tensor>,
-        trans_lhs: bool,
-        trans_rhs: bool,
-        trans_out: bool,
-    ) -> JsTensorResult {
-    }
-
-    pub fn affine(&self, mul: f32, add: f32) -> JsTensorResult {}
-
-    pub fn sum(self, dim: Option<Dims>, keepdim: bool) -> JsTensorResult {
-        let tensor = if let Some(sum_dims) = dim {
-            self.inner.sum(sum_dims, keepdim)
-        } else {
-            self.inner.sum(AllDims, keepdim)
-        }
-        .map_err(|e| e.into_js_error())?;
-        Ok(JsTensor { inner: tensor })
-    }
-
-    pub fn mean(self, dim: Option<Dims>, keepdim: bool) -> JsTensorResult {
-        let tensor = if let Some(mean_dims) = dim {
-            self.inner.mean(mean_dims, keepdim)
-        } else {
-            self.inner.mean(AllDims, keepdim)
-        }
-        .map_err(|e| e.into_js_error())?;
-        Ok(JsTensor { inner: tensor })
-    }
-
-    pub fn var(self, dim: Option<Dims>, keepdim: bool) -> JsTensorResult {
-        let tensor = if let Some(var_dims) = dim {
-            self.inner.var(var_dims, keepdim)
-        } else {
-            self.inner.var(AllDims, keepdim)
-        }
-        .map_err(|e| e.into_js_error())?;
-        Ok(JsTensor { inner: tensor })
-    }
-
-    pub fn max(self, dim: Dim, keepdim: bool) -> JsTensorResult {
-        let tensor = self
-            .inner
-            .max(dim, keepdim)
-            .map_err(|e| e.into_js_error())?;
-        Ok(JsTensor { inner: tensor })
-    }
-
-    pub fn min(self, dim: Dim, keepdim: bool) -> JsTensorResult {
-        let tensor = self
-            .inner
-            .min(dim, keepdim)
-            .map_err(|e| e.into_js_error())?;
-        Ok(JsTensor { inner: tensor })
-    }
-
-    pub fn argmax(self, dim: Dim, keepdim: bool) -> JsTensorResult {
-        let tensor = self
-            .inner
-            .argmax(dim, keepdim)
-            .map_err(|e| e.into_js_error())?;
-        Ok(JsTensor { inner: tensor })
-    }
-
-    pub fn argmin(self, dim: Dim, keepdim: bool) -> JsTensorResult {
-        let tensor = self
-            .inner
-            .argmin(dim, keepdim)
-            .map_err(|e| e.into_js_error())?;
-        Ok(JsTensor { inner: tensor })
-    }
-
-    pub fn norm(self, ord: JsValue, dim: Option<Dims>, keepdim: bool) -> JsTensorResult {
-        let norm_ord = js_value_to_norm_ord(ord)?;
-        let tensor = if let Some(dim) = dim {
-            self.inner.norm(norm_ord, dim, keepdim)
-        } else {
-            self.inner.norm(norm_ord, AllDims, keepdim)
-        }
-        .map_err(|e| e.into_js_error())?;
-        Ok(JsTensor { inner: tensor })
-    }
-
-    pub fn flatten(self, start_dim: Option<Dim>, end_dim: Option<Dim>) -> JsTensorResult {
-        let start_dim = start_dim.unwrap_or(FromJsDim(0));
-        let end_dim = end_dim.unwrap_or(FromJsDim(-1));
-        let tensor = self
-            .inner
-            .flatten(start_dim, end_dim)
-            .map_err(|e| e.into_js_error())?;
-        Ok(JsTensor { inner: tensor })
-    }
-
-    pub fn slice(self, ranges: JsValue) -> JsTensorResult {
-        let ranges = ranges
-            .dyn_into::<js_sys::Array>()
-            .expect("Ranges must be an array")
-            .iter()
-            .map(|r| {
-                let range: js_sys::Array = r.clone().into();
-                let start = range.get(0).as_f64().map(|v| v as usize);
-                let end = range.get(1).as_f64().map(|v| v as usize);
-                if let Some(end) = end {
-                    start.expect("Invalid range")..end
-                } else {
-                    0usize..start.expect("Invalid range")
-                }
-            })
-            .collect::<Vec<_>>();
-        let result = self.inner.slice(&ranges).map_err(|e| e.into_js_error())?;
-        Ok(JsTensor { inner: result })
-    }
-
-    pub fn view(self, shape: ShapeWithOneHole) -> JsTensorResult {}
-
-    pub fn unsqueeze(self, dim: Dim) -> JsTensorResult {}
-
-    pub fn squeeze(self, dims: Option<Dims>) -> JsTensorResult {
-        let inner = self.inner.clone();
-        let result = match dims {
-            Some(dims) => inner.squeeze(dims),
-            None => inner.squeeze(()),
-        }
-        .map_err(|e| e.into_js_error())?;
-        Ok(Self { inner: result })
-    }
-
-    pub fn permute(self, dims: Dims) -> JsTensorResult {}
-
-    pub fn transpose(self, dim0: Dim, dim1: Dim) -> JsTensorResult {}
-
-    pub fn t(self) -> JsTensorResult {}
-
-    #[allow(non_snake_case)]
-    #[wasm_bindgen(getter)]
-    pub fn mT(self) -> JsTensorResult {}
-
-    pub fn cache(self, source: Tensor, dim: Dim, offset: usize) -> JsTensorResult {}
-
-    /// Returns a new tensor duplicating data from the original tensor. New dimensions are inserted
-    /// on the left.
-    pub fn broadcast_left(self, left_shape: Shape) -> JsTensorResult {}
-
-    pub fn broadcast_to(self, shape: Shape) -> JsTensorResult {}
-
-    pub fn index_select(self, indices: Tensor, dim: Dim) -> JsTensorResult {}
-
-    pub fn index_write(self, src: Tensor, write_start: Dims) -> JsTensorResult {}
-
-    #[wasm_bindgen(js_name = where)]
-    pub fn where_cond(self, condition: Tensor, on_false: TensorOrScalar) -> JsTensorResult {}
-
-    pub fn scatter_add(self, indices: Tensor, source: Tensor, dim: Dim) -> JsTensorResult {}
-
-    pub fn index_add_(self, indices: Tensor, source: Tensor, dim: Dim) -> JsTensorResult {}
-
-    pub fn gather(self, indices: Tensor, dim: Dim) -> JsTensorResult {}
-
-    pub fn triu(self, k: Option<i32>) -> JsTensorResult {}
-
-    pub fn triu_(self, k: Option<i32>) -> JsTensorResult {}
-
-    pub fn tril(self, k: Option<i32>) -> JsTensorResult {}
-
-    pub fn tril_(self, k: Option<i32>) -> JsTensorResult {}
-
-    pub fn lerp(&self, end: Tensor, weight: TensorOrScalar) -> JsTensorResult {}
-
-    pub fn lerp_(&self, end: Tensor, weight: TensorOrScalar) -> JsTensorResult {}
-
-    // We use the dtype of the tensor
-    pub fn bernoulli(self) -> JsTensorResult {}
-
-    pub fn bernoulli_(self) -> JsTensorResult {}
-
-    pub fn zero_(self) -> JsTensorResult {}
-
-    pub fn zeros_like(self, options: TensorOptions) -> JsTensorResult {}
-
-    pub fn ones_like(self, options: TensorOptions) -> JsTensorResult {}
-
     pub fn is_contiguous(&self) -> bool {
         self.inner.is_contiguous()
-    }
-
-    pub fn contiguous(self) -> JsTensorResult {}
-
-    pub fn from_data(
-        data: JsValue,
-        shape: Shape,
-        device: &Device,
-        requires_grad: bool,
-    ) -> JsTensorResult {
-        let tensor = if data.is_array() {
-            let array = data
-                .dyn_into::<js_sys::Array>()
-                .map_err(|_| JsError::new("Failed to convert data to array"))?;
-
-            let data = array
-                .iter()
-                .map(|v| {
-                    v.as_f64()
-                        .map(|f| f as f32)
-                        .ok_or_else(|| JsError::new("Array contains non-numeric values"))
-                })
-                .collect::<Result<Vec<f32>, JsError>>()?;
-
-            Tensor::from_data(data, shape, device.clone(), requires_grad)
-        } else if js_sys::Float32Array::instanceof(&data) {
-            let array = js_sys::Float32Array::from(data);
-            let data = array.to_vec().into_iter().collect::<Vec<_>>();
-            Tensor::from_data(data, shape, device.clone(), requires_grad)
-        } else if js_sys::Float64Array::instanceof(&data) {
-            let array = js_sys::Float64Array::from(data);
-            let data = array
-                .to_vec()
-                .into_iter()
-                .map(|v| v as f32)
-                .collect::<Vec<_>>();
-            Tensor::from_data(data, shape, device.clone(), requires_grad)
-        } else if js_sys::Int32Array::instanceof(&data) {
-            let array = js_sys::Int32Array::from(data);
-            let data = array.to_vec().into_iter().collect::<Vec<_>>();
-            Tensor::from_data(data, shape, device.clone(), requires_grad)
-        } else if js_sys::Uint32Array::instanceof(&data) {
-            let array = js_sys::Uint32Array::from(data);
-            let data = array.to_vec().into_iter().collect::<Vec<_>>();
-            Tensor::from_data(data, shape, device.clone(), requires_grad)
-        } else {
-            return Err(JsError::new("Unsupported data type"));
-        };
-        Ok(JsTensor { inner: tensor })
-    }
-
-    pub fn from_bytes(
-        data: &[u8],
-        dtype: DType,
-        shape: Shape,
-        device: Device,
-        requires_grad: bool,
-    ) -> JsTensorResult {
     }
 
     pub fn detach(&self) -> JsTensor {
@@ -598,9 +682,6 @@ impl JsTensor {
             inner: self.inner.detach_(),
         }
     }
-
-    #[wasm_bindgen(js_name = requiresGrad_)]
-    pub fn requires_grad_(&self, requires_grad: bool) -> JsTensorResult {}
 
     // Skipping copy; the api is not great right now
 
@@ -678,15 +759,6 @@ impl JsTensor {
         }
     }
 
-    #[wasm_bindgen(getter, js_name = T)]
-    #[allow(non_snake_case)]
-    pub fn T_upper(self) -> JsTensorResult {
-        // We can't generate this one automatically because wasm bindgen lowercases all function
-        // names internally, so t() and T conflict
-        let inner = self.inner.T().map_err(|e| e.into_js_error())?;
-        Ok(JsTensor { inner })
-    }
-
     pub async fn to(&self, device: String) -> Result<JsTensor, JsError> {
         let device = match device.as_str() {
             "cpu" => Device::CPU,
@@ -735,127 +807,66 @@ impl JsTensor {
     }
 }
 
-#[wasm_bindgen(js_name = cat)]
-pub fn cat(tensors: Vec<JsTensor>, dim: isize) -> JsTensorResult {
-    let tensors = tensors.into_iter().map(|t| t.inner).collect();
-    let dim = FromJsDim(dim);
-    let tensor = piston::cat(tensors, dim).map_err(|e| e.into_js_error())?;
-    Ok(JsTensor { inner: tensor })
+#[js_tensor_web_op(name = "Cat", variants = [function])]
+pub fn cat(tensors: Vec<Tensor>, #[op(default = 0)] dim: Dim) -> anyhow::Result<Tensor> {
+    piston::cat(tensors.into(), dim)
 }
 
-#[wasm_bindgen(js_name = stack)]
-pub fn stack(tensors: Vec<JsTensor>, dim: isize) -> JsTensorResult {
-    let tensors = tensors.into_iter().map(|t| t.inner).collect();
-    let dim = FromJsDim(dim);
-    let tensor = piston::stack(tensors, dim).map_err(|e| e.into_js_error())?;
-    Ok(JsTensor { inner: tensor })
+#[js_tensor_web_op(name = "Stack", variants = [function])]
+pub fn stack(tensors: Vec<Tensor>, #[op(default = 0)] dim: Dim) -> anyhow::Result<Tensor> {
+    piston::stack(tensors.into(), dim)
 }
 
-#[derive(Tsify, Serialize, Deserialize, Default)]
-#[tsify(into_wasm_abi, from_wasm_abi)]
-pub struct ArangeNamedArgs {
-    #[tsify(optional)]
-    pub start: Option<f32>,
-    pub end: f32,
-    #[tsify(optional)]
-    pub step: Option<f32>,
+#[js_tensor_web_op(name = "Arange", variants = [function])]
+pub fn arange(
+    #[op(keyword)] end: f32,
+    #[op(default = 0.0)] start: f32,
+    #[op(default = 1.0)] step: f32,
+    options: TensorOptions,
+) -> anyhow::Result<Tensor> {
+    piston::arange(Some(start), end, Some(step), options)
 }
 
-#[wasm_bindgen(js_name = arange)]
-pub fn arange(kwargs: Option<ArangeNamedArgs>, options: Option<TensorOptions>) -> JsTensorResult {
-    let kwargs = kwargs.unwrap_or_default();
-    let options = options.map(|o| o.into()).unwrap_or_default();
-    let start = kwargs.start.unwrap_or(0.0);
-    let step = kwargs.step.unwrap_or(1.0);
-    let tensor = piston::arange(Some(start), kwargs.end, Some(step), options)
-        .map_err(|e| e.into_js_error())?;
-    Ok(JsTensor { inner: tensor })
-}
-
-#[derive(Tsify, Serialize, Deserialize, Default)]
-#[tsify(into_wasm_abi, from_wasm_abi)]
-pub struct RandintNamedArgs {
-    #[tsify(optional)]
-    pub low: Option<i32>,
-}
-
-#[wasm_bindgen(js_name = randint)]
+#[js_tensor_web_op(name = "Randint", variants = [function])]
 pub fn randint(
     high: i32,
-    #[wasm_bindgen(unchecked_param_type = "Uint32Array | number[]")] shape: Vec<usize>,
-    kwargs: Option<RandintNamedArgs>,
-    options: Option<TensorOptions>,
-) -> JsTensorResult {
-    let kwargs = kwargs.unwrap_or_default();
-    let low = kwargs.low.unwrap_or(0);
-    let options = options.map(|o| o.into()).unwrap_or_default();
-    let tensor = piston::randint(low, high, shape, options).map_err(|e| e.into_js_error())?;
-    Ok(JsTensor { inner: tensor })
+    #[op(keyword)] shape: Shape,
+    #[op(default = 0)] low: i32,
+    options: TensorOptions,
+) -> anyhow::Result<Tensor> {
+    piston::randint(low, high, shape, options)
 }
 
-#[derive(Tsify, Serialize, Deserialize, Default)]
-#[tsify(into_wasm_abi, from_wasm_abi)]
-pub struct RandnNamedArgs {
-    #[tsify(optional)]
-    pub mean: Option<f32>,
-    #[tsify(optional)]
-    pub std: Option<f32>,
-}
-
-#[wasm_bindgen(js_name = randn)]
+#[js_tensor_web_op(name = "Randn", variants = [function])]
 pub fn randn(
-    #[wasm_bindgen(unchecked_param_type = "Uint32Array | number[]")] shape: Vec<usize>,
-    kwargs: Option<RandnNamedArgs>,
-    options: Option<TensorOptions>,
-) -> JsTensorResult {
-    let kwargs = kwargs.unwrap_or_default();
-    let options = options.map(|o| o.into()).unwrap_or_default();
-    let tensor =
-        piston::randn(shape, kwargs.mean, kwargs.std, options).map_err(|e| e.into_js_error())?;
-    Ok(JsTensor { inner: tensor })
+    shape: Shape,
+    mean: Option<f32>,
+    std: Option<f32>,
+    options: TensorOptions,
+) -> anyhow::Result<Tensor> {
+    piston::randn(shape, mean, std, options)
 }
 
-#[derive(Tsify, Serialize, Deserialize, Default)]
-#[tsify(into_wasm_abi, from_wasm_abi)]
-pub struct RandNamedArgs {
-    #[tsify(optional)]
-    pub lo: Option<f32>,
-    #[tsify(optional)]
-    pub up: Option<f32>,
-}
-
-#[wasm_bindgen(js_name = rand)]
+#[js_tensor_web_op(name = "Rand", variants = [function])]
 pub fn rand(
-    #[wasm_bindgen(unchecked_param_type = "Uint32Array | number[]")] shape: Vec<usize>,
-    kwargs: Option<RandNamedArgs>,
-    options: Option<TensorOptions>,
-) -> JsTensorResult {
-    let kwargs = kwargs.unwrap_or_default();
-    let options = options.map(|o| o.into()).unwrap_or_default();
-    let tensor =
-        piston::rand(shape, kwargs.lo, kwargs.up, options).map_err(|e| e.into_js_error())?;
-    Ok(JsTensor { inner: tensor })
+    shape: Shape,
+    lo: Option<f32>,
+    up: Option<f32>,
+    options: TensorOptions,
+) -> anyhow::Result<Tensor> {
+    piston::rand(shape, lo, up, options)
 }
 
-#[wasm_bindgen(js_name = zeros)]
-pub fn zeros(
-    #[wasm_bindgen(unchecked_param_type = "Uint32Array | number[]")] shape: Vec<usize>,
-    options: Option<TensorOptions>,
-) -> JsTensorResult {
-    let options = options.map(|o| o.into()).unwrap_or_default();
-    let tensor = piston::zeros(shape, options).map_err(|e| e.into_js_error())?;
-    Ok(JsTensor { inner: tensor })
+#[js_tensor_web_op(name = "Zeros", variants = [function])]
+pub fn zeros(shape: Shape, options: TensorOptions) -> anyhow::Result<Tensor> {
+    piston::zeros(shape, options)
 }
 
-#[wasm_bindgen(js_name = ones)]
-pub fn ones(
-    #[wasm_bindgen(unchecked_param_type = "Uint32Array | number[]")] shape: Vec<usize>,
-    options: Option<TensorOptions>,
-) -> JsTensorResult {
-    let options = options.map(|o| o.into()).unwrap_or_default();
-    let tensor = piston::ones(shape, options).map_err(|e| e.into_js_error())?;
-    Ok(JsTensor { inner: tensor })
+#[js_tensor_web_op(name = "Ones", variants = [function])]
+pub fn ones(shape: Shape, options: TensorOptions) -> anyhow::Result<Tensor> {
+    piston::ones(shape, options)
 }
+
 
 #[wasm_bindgen(js_class = Tensor)]
 impl JsTensor {
@@ -996,6 +1007,6 @@ impl TryFrom<JsValue> for JsTensor {
     type Error = JsError;
     fn try_from(value: JsValue) -> Result<Self, Self::Error> {
         downcast_from_ptr(&value, "__wbg_piston_tensor")
-            .ok_or_else(|| JsError::new("Failed to downcast from JS value"))
+            .ok_or_else(|| JsError::new("Failed to downcast Tensor from JS value"))
     }
 }

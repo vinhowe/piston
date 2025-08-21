@@ -54,7 +54,7 @@ impl JsDevice {
     }
 
     #[wasm_bindgen(js_name = setVRAMLimit)]
-    pub fn set_vram_limit(&self, vram_limit: Option<u64>) {
+    pub fn set_vram_limit(&self, #[wasm_bindgen(js_name = vramLimit)] vram_limit: Option<u64>) {
         self.inner.try_gpu().unwrap().set_vram_limit(vram_limit);
     }
 }

@@ -247,7 +247,7 @@ def gather(src, ids, dim):
         let src_gpu = src.to(&device).unwrap();
         let ids_gpu = ids.to(&device).unwrap();
 
-        let result = src_gpu.gather(ids_gpu, dim).unwrap();
+        let result = src_gpu.gather(dim, ids_gpu).unwrap();
 
         let ours = result.to(&Device::CPU).unwrap();
         log::debug!("src = {src:?}");
@@ -320,7 +320,7 @@ def gather_backward(src, ids):
         let src_gpu = src.to(&device)?;
         let ids_gpu = ids.to(&device)?;
         let src_var = src_gpu.requires_grad_(true)?;
-        let result_gpu = src_var.clone().gather(ids_gpu, dim)?;
+        let result_gpu = src_var.clone().gather(dim, ids_gpu)?;
 
         result_gpu.backward()?;
         device.try_gpu()?.mark_step()?;

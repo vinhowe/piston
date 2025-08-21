@@ -1,3 +1,4 @@
+#![allow(clippy::doc_overindented_list_items)]
 use super::TensorUsageRecord;
 use crate::{
     DeviceError, GpuCompileKey, OpTensor, TensorId,

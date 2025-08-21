@@ -29,6 +29,7 @@ impl Module for Embedding {
     type Output = Tensor;
 
     fn schedule(&self, input: Self::Input) -> anyhow::Result<Self::Output> {
+        assert_eq!(input.dtype(), DType::I32);
         let mut final_dims = input.shape().to_vec();
         final_dims.push(self.hidden_size);
         let indexes = input.flatten(0, D::Minus1)?;

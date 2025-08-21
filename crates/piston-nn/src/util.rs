@@ -3,7 +3,7 @@ use piston::{AllDims, Device, Tensor, TensorOptions, ones};
 // This seems to work, but it is very slow. Norming and adding all the gradients is probaby quite slow;
 // there are probably some easy wins here, like maybe a fused norm op?
 pub fn clip_grad_norm(vars: Vec<Tensor>, max_norm: f32, device: &Device) -> anyhow::Result<Tensor> {
-    let mut total_norm = Tensor::full(1, 0., device, false)?;
+    let mut total_norm = Tensor::full(1, 0., TensorOptions::new().device(device.clone()))?;
     let mut any_grads = false;
 
     for var in vars.iter() {

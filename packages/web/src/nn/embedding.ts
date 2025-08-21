@@ -13,7 +13,7 @@ export class Embedding extends Module {
    */
   constructor(numEmbeddings: number, embeddingDim: number) {
     super();
-    this.weight = randn([numEmbeddings, embeddingDim], undefined, {
+    this.weight = randn([numEmbeddings, embeddingDim], {
       device: gpu,
       requiresGrad: true,
     });

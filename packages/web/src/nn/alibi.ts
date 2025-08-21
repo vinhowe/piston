@@ -35,7 +35,7 @@ export class AlibiEmbedding extends Module {
     const alibiBase = zeros(zerosShape, { device: input.device });
     
     // Apply ALiBi bias and add to input
-    const alibiBias = alibiBase.alibi(this.maxBias).unsqueeze(3);
+    const alibiBias = alibiBase.alibi({ maxBias: this.maxBias }).unsqueeze(3);
     return input.add(alibiBias);
   }
 }

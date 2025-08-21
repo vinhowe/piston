@@ -120,3 +120,98 @@ impl ShapeWithOneHole for FromJsVecISize {
         Ok(Shape::from(shape_vec))
     }
 }
+
+pub struct FromJsVecUsize(pub(crate) Vec<usize>);
+
+impl FromJsVecUsize {
+    pub fn from_js_value(value: JsValue) -> Result<Option<Self>, JsError> {
+        if value.is_null() || value.is_undefined() {
+            return Ok(None);
+        }
+
+        if let Some(num) = value.as_f64() {
+            let f = num;
+            if !f.is_finite() {
+                return Err(JsError::new(
+                    "Expected a finite non-negative integer for dimension",
+                ));
+            }
+            if f < 0.0 {
+                return Err(JsError::new(&format!(
+                    "Expected non-negative dimension, got {f}"
+                )));
+            }
+            if f.fract() != 0.0 {
+                return Err(JsError::new(&format!(
+                    "Expected integer dimension, got {f}"
+                )));
+            }
+            if f > (usize::MAX as f64) {
+                return Err(JsError::new(&format!(
+                    "Dimension exceeds usize::MAX, got {f}"
+                )));
+            }
+            Ok(Some(FromJsVecUsize(vec![f as usize])))
+        } else if value.is_array() {
+            let array = value.dyn_into::<js_sys::Array>().unwrap();
+            let mut dims: Vec<usize> = Vec::with_capacity(array.length() as usize);
+            for v in array.iter() {
+                let Some(f) = v.as_f64() else {
+                    return Err(JsError::new("All dimensions in the array must be numbers"));
+                };
+                if !f.is_finite() {
+                    return Err(JsError::new(
+                        "All dimensions must be finite non-negative integers",
+                    ));
+                }
+                if f < 0.0 {
+                    return Err(JsError::new(&format!(
+                        "Dimensions must be non-negative, got {f}"
+                    )));
+                }
+                if f.fract() != 0.0 {
+                    return Err(JsError::new(&format!(
+                        "Dimensions must be integers, got {f}"
+                    )));
+                }
+                if f > (usize::MAX as f64) {
+                    return Err(JsError::new(&format!(
+                        "Dimension exceeds usize::MAX, got {f}"
+                    )));
+                }
+                dims.push(f as usize);
+            }
+            Ok(Some(FromJsVecUsize(dims)))
+        } else if js_sys::Int32Array::instanceof(&value) {
+            let array = js_sys::Int32Array::from(value);
+            let mut dims: Vec<usize> = Vec::with_capacity(array.length() as usize);
+            for v in array.to_vec() {
+                if v < 0 {
+                    return Err(JsError::new(&format!(
+                        "Dimensions must be non-negative, got {v}"
+                    )));
+                }
+                dims.push(v as usize);
+            }
+            Ok(Some(FromJsVecUsize(dims)))
+        } else if js_sys::Uint32Array::instanceof(&value) {
+            let array = js_sys::Uint32Array::from(value);
+            let dims = array
+                .to_vec()
+                .into_iter()
+                .map(|v| v as usize)
+                .collect::<Vec<_>>();
+            Ok(Some(FromJsVecUsize(dims)))
+        } else {
+            Err(JsError::new(
+                "Expected a non-negative integer, an array of non-negative integers, Int32Array, or Uint32Array",
+            ))
+        }
+    }
+}
+
+impl From<FromJsVecUsize> for Shape {
+    fn from(value: FromJsVecUsize) -> Self {
+        Shape::from(value.0)
+    }
+}

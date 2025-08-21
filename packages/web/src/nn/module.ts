@@ -1,8 +1,75 @@
 import { Buffer, Parameter } from "@/nn/parameter";
-import { RemovableHandle } from "@/nnUtils";
-import { TensorHook } from "@/tensor";
+import { RemovableHandle } from "@/utils";
 
-import { ModuleScopeItem, ScopeItem, withScope } from "./tracking";
+/**
+ * Type definitions for registration hooks
+ */
+export type ParameterRegistrationHook = (
+  module: Module<unknown, unknown>,
+  name: string,
+  param: Parameter | null,
+) => void;
+
+export type BufferRegistrationHook = (
+  module: Module<unknown, unknown>,
+  name: string,
+  buffer: Buffer | null,
+) => void;
+
+export type ModuleRegistrationHook = (
+  module: Module<unknown, unknown>,
+  name: string,
+  submodule: Module<unknown, unknown> | null,
+) => void;
+
+const _globalParameterRegistrationHooks = new Map<number, ParameterRegistrationHook>();
+const _globalBufferRegistrationHooks = new Map<number, BufferRegistrationHook>();
+const _globalModuleRegistrationHooks = new Map<number, ModuleRegistrationHook>();
+
+/**
+ * Register a global parameter registration hook.
+ * The hook will be called whenever a parameter is registered to any module.
+ *
+ * @param hook - Function to call when a parameter is registered
+ * @returns A handle that can be used to remove the hook
+ */
+export function registerModuleParameterRegistrationHook(
+  hook: ParameterRegistrationHook,
+): RemovableHandle {
+  const handle = new RemovableHandle(_globalParameterRegistrationHooks);
+  _globalParameterRegistrationHooks.set(handle.id, hook);
+  return handle;
+}
+
+/**
+ * Register a global buffer registration hook.
+ * The hook will be called whenever a buffer is registered to any module.
+ *
+ * @param hook - Function to call when a buffer is registered
+ * @returns A handle that can be used to remove the hook
+ */
+export function registerModuleBufferRegistrationHook(
+  hook: BufferRegistrationHook,
+): RemovableHandle {
+  const handle = new RemovableHandle(_globalBufferRegistrationHooks);
+  _globalBufferRegistrationHooks.set(handle.id, hook);
+  return handle;
+}
+
+/**
+ * Register a global module registration hook.
+ * The hook will be called whenever a module is registered to any module.
+ *
+ * @param hook - Function to call when a module is registered
+ * @returns A handle that can be used to remove the hook
+ */
+export function registerModuleModuleRegistrationHook(
+  hook: ModuleRegistrationHook,
+): RemovableHandle {
+  const handle = new RemovableHandle(_globalModuleRegistrationHooks);
+  _globalModuleRegistrationHooks.set(handle.id, hook);
+  return handle;
+}
 
 /**
  * Module class to represent neural network modules
@@ -368,14 +435,14 @@ export class Module<Input = unknown, Output = unknown> {
    *
    * @param prefix - Prefix to prepend to all parameter names
    * @param recurse - If true, recurses into child modules
-   * @param remove_duplicate - If true, removes duplicate parameters
+   * @param removeDuplicate - If true, removes duplicate parameters
    */
   namedParameters(
     prefix: string = "",
     recurse: boolean = true,
-    remove_duplicate: boolean = true,
+    removeDuplicate: boolean = true,
   ): Array<[string, Parameter]> {
-    return Array.from(this.namedParametersIter(prefix, recurse, remove_duplicate));
+    return Array.from(this.namedParametersIter(prefix, recurse, removeDuplicate));
   }
 
   /**
@@ -609,19 +676,6 @@ export class Module<Input = unknown, Output = unknown> {
   ): RemovableHandle {
     const handle = new RemovableHandle(this._forwardHooks);
     this._forwardHooks.set(handle.id, hook);
-    return handle;
-  }
-
-  /**
-   * Registers a tensor hook which will be called when a tensor within this module is created.
-   *
-   * @internal
-   * @param hook - Function taking a tensor and returning a transformed tensor
-   * @returns A handle that can be used to remove the hook
-   */
-  registerTensorHook(hook: TensorHook): RemovableHandle {
-    const handle = new RemovableHandle(this._tensorHooks);
-    this._tensorHooks.set(handle.id, hook);
     return handle;
   }
 
@@ -907,7 +961,8 @@ export class ModuleList<Input = unknown, Output = unknown> extends Module<Input,
  * ModuleDict can be accessed like an object to retrieve contained modules.
  * This is similar to torch.nn.ModuleDict in PyTorch.
  */
-export class ModuleDict<T extends Record<string, Module>> extends Module {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export class ModuleDict<T extends Record<string, Module<any, any>>> extends Module {
   private _proxy: ModuleDict<T>;
 
   constructor(modules: T = {} as T) {

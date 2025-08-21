@@ -313,7 +313,8 @@ mod tests {
 
     use crate::test_util::run_py_prg;
     use crate::{
-        Device, DeviceRequest, Q8_0F, Shape, Tensor, quantize, randint, randn, rvec, shape,
+        Device, DeviceRequest, Q8_0F, Shape, Tensor, TensorOptions, quantize, randint, randn, rvec,
+        shape,
     };
 
     impl Arbitrary for IndexSelectProblem {
@@ -372,7 +373,11 @@ def index_select(input, indices):
     fn test_qindex_select() {
         let prob = IndexSelectProblem {
             input_shape: shape![256, 32],
-            indices: Tensor::from_data(vec![64, 192, 255], 3, Device::CPU, false),
+            indices: Tensor::from_data(
+                vec![64, 192, 255],
+                3,
+                TensorOptions::new().device(Device::CPU),
+            ),
         };
         let device = Device::request_device(DeviceRequest::GPU).unwrap();
         run_index_select_trial(prob.clone(), device, true);

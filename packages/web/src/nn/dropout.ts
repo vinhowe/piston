@@ -14,6 +14,6 @@ export class Dropout extends Module {
 
     const probs = full(input.size(), this.p, { device: input.device });
     const mask = bernoulli(probs);
-    return input.mul(mask).affine(1 / (1 - this.p), 0);
+    return input.mul(mask).div(1 - this.p);
   }
 }

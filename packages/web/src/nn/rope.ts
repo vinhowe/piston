@@ -35,6 +35,6 @@ export class RotaryEmbedding extends Module {
    * @returns Tensor with rotary positional embeddings applied.
    */
   forward(input: Tensor, offset: number = 0): Tensor {
-    return input.rope(this.dim, this.base, offset);
+    return input.rope_(this.dim, this.base, offset);
   }
 }

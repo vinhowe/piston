@@ -1,4 +1,4 @@
-use piston::{AllDims, DType, ScopePusher, Tensor};
+use piston::{AllDims, DType, ScopePusher, Tensor, TensorOptions};
 
 pub fn nll(inp: Tensor, target: Tensor) -> anyhow::Result<Tensor> {
     let _scope_guard = ScopePusher::new("loss:nll");
@@ -14,7 +14,7 @@ pub fn nll(inp: Tensor, target: Tensor) -> anyhow::Result<Tensor> {
         }
         dims => anyhow::bail!("the target tensor should have two dimensions ({dims:?})"),
     }
-    inp.gather(target.clone().unsqueeze(1)?, 1)?
+    inp.gather(1, target.clone().unsqueeze(1)?)?
         .affine(-1f32 / b_sz as f32, 0.)
 }
 
@@ -38,8 +38,7 @@ pub fn nll_masked(inp: Tensor, target: Tensor) -> anyhow::Result<Tensor> {
     let mask = target.clone().ne(Tensor::full(
         target.shape(),
         ignore_index,
-        &target.device(),
-        false,
+        TensorOptions::new().device(target.device()),
     )?)?;
 
     // Note here that we seem to be able to get away with passing negative indices to gather.
@@ -47,7 +46,7 @@ pub fn nll_masked(inp: Tensor, target: Tensor) -> anyhow::Result<Tensor> {
     // before passing them to gather.
 
     let per_sample_loss = inp
-        .gather(target.clone().unsqueeze(1)?, 1)?
+        .gather(1, target.clone().unsqueeze(1)?)?
         .affine(-1f32, 0.)?;
     let mask_unsqueezed = mask.clone().unsqueeze(1)?;
     let masked_loss = per_sample_loss
@@ -91,8 +90,7 @@ pub fn label_smoothed_nll(log_probs: Tensor, target: Tensor, alpha: f32) -> anyh
         .ne(Tensor::full(
             target.shape(),
             ignore_index,
-            &target.device(),
-            false,
+            TensorOptions::new().device(target.device()),
         )?)?
         .cast(piston::DType::F32)?;
 
@@ -100,7 +98,7 @@ pub fn label_smoothed_nll(log_probs: Tensor, target: Tensor, alpha: f32) -> anyh
     // nll_loss[i] = -log_probs[i, target[i]]  (for each token i).
     let nll_gathered = log_probs
         .clone()
-        .gather(target.clone().unsqueeze(1)?, 1)? // shape [batch_size, 1]
+        .gather(1, target.clone().unsqueeze(1)?)? // shape [batch_size, 1]
         .affine(-1.0, 0.0)?; // multiply by -1
 
     // Mask out ignored tokens (multiply by 0 where masked=0).

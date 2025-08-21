@@ -14,7 +14,7 @@ export class Linear extends Module {
    */
   constructor(inFeatures: number, outFeatures: number, bias = true) {
     super();
-    this.weight = randn([outFeatures, inFeatures], undefined, { device: gpu, requiresGrad: true });
+    this.weight = randn([outFeatures, inFeatures], { device: gpu, requiresGrad: true });
 
     if (bias) {
       this.bias = zeros([outFeatures], { device: gpu, requiresGrad: true });
@@ -31,7 +31,7 @@ export class Linear extends Module {
       w = this.weight;
     }
 
-    const x = input.matmul(w, false, true);
+    const x = input.matmul(w, { transRhs: true });
 
     if (this.bias) {
       return x.add(this.bias.cast(x.dtype));

@@ -3,7 +3,7 @@ import { Module } from "@/nn/module";
 import { Parameter } from "@/nn/parameter";
 import { Tensor } from "@/tensor";
 
-export class LayerNorm extends Module {
+export class LayerNorm extends Module<[Tensor], Tensor> {
   weight: Parameter;
   bias: Parameter;
 
@@ -17,11 +17,11 @@ export class LayerNorm extends Module {
   }
 
   forward(input: Tensor) {
-    return input.layerNorm(this.weight, this.bias, this.eps);
+    return input.layerNorm({ weight: this.weight, bias: this.bias, eps: this.eps });
   }
 }
 
-export class RMSNorm extends Module {
+export class RMSNorm extends Module<[Tensor], Tensor> {
   weight: Parameter;
 
   constructor(
@@ -33,6 +33,6 @@ export class RMSNorm extends Module {
   }
 
   forward(input: Tensor) {
-    return input.rmsNorm(this.weight, this.eps);
+    return input.rmsNorm({ weight: this.weight, eps: this.eps });
   }
 }
