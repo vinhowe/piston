@@ -4,11 +4,12 @@ use inline_wgsl::wgsl;
 use piston_macros::IrFields;
 
 use crate::{
-    gpu::{dtype::WgslDType, BindGroupLayoutDescriptor},
-    rvec, Array, BindingMode, BuiltIn, DType, DynKernelMetadata, GPUOperation, Kernel,
-    KernelElement, KernelRenderable, KernelSource, OpGuards, OpTensor, Operation, OperationError,
-    RVec, Scalar, Shape, StorageView, Stride, Vec2, Vec4, WgslKernelBuilder, WgslPrimitive,
-    WorkgroupSize, Workload,
+    Array, BindingMode, BuiltIn, DType, DynKernelMetadata, GPUOperation, Kernel, KernelElement,
+    KernelRenderable, KernelSource, OpGuards, OpTensor, Operation, OperationError, RVec, Scalar,
+    Shape, StorageView, Stride, Vec2, Vec4, WgslKernelBuilder, WgslPrimitive, WorkgroupSize,
+    Workload,
+    gpu::{BindGroupLayoutDescriptor, dtype::WgslDType},
+    rvec,
 };
 
 #[derive(new, Debug, Clone, IrFields)]
@@ -200,9 +201,9 @@ impl Kernel for FillConstantKernels {
 
 #[cfg(all(test, feature = "pyo3"))]
 mod tests {
-    use test_strategy::{proptest, Arbitrary};
+    use test_strategy::{Arbitrary, proptest};
 
-    use crate::{test_util::run_py_prg, DType, Device, DeviceRequest, Tensor};
+    use crate::{DType, Device, DeviceRequest, Tensor, TensorOptions, test_util::run_py_prg};
 
     fn ground_truth(shape: &[usize], value: f32) -> anyhow::Result<Tensor> {
         let prg = r#"
@@ -217,7 +218,12 @@ def fill_constant(shape, value):
     fn run_fill_constant_trial(problem: FillConstantProblem, device: Device) {
         let FillConstantProblem { B, M, N, value } = problem;
 
-        let a = Tensor::full((B, M, N), value, &device, false).unwrap();
+        let a = Tensor::full(
+            (B, M, N),
+            value,
+            TensorOptions::new().device(device.clone()),
+        )
+        .unwrap();
         let ground = ground_truth(&[B, M, N], value).unwrap();
 
         let a_gpu = a.to(&device).unwrap();
