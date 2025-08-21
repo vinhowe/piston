@@ -8,10 +8,9 @@ mod unary;
 mod utils;
 
 use crate::{
-    dequantize, Cast, Concat, DType, IndexSelect, InvariantError, LazyOp, OpTensor, Operation,
-    OperationError, RVec, Shape, TensorDType,
+    Cast, Concat, DType, IndexSelect, InvariantError, LazyOp, OpTensor, Operation, OperationError,
+    RVec, Shape, TensorDType, dequantize,
 };
-use anyhow::anyhow;
 use half::{bf16, f16};
 use maybe_async::maybe_async;
 use rope::cpu_rope;

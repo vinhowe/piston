@@ -36,23 +36,23 @@ async fn apply_layer_norm(
     }: &Norm,
     dst: OpTensor,
 ) -> Result<OpTensor, OperationError> {
-    if let Some(scale) = scale {
-        if input.dtype() != scale.dtype() {
-            return Err(InvariantError::DTypeMismatch {
-                expected: input.dtype(),
-                actual: scale.dtype(),
-            }
-            .into());
+    if let Some(scale) = scale
+        && input.dtype() != scale.dtype()
+    {
+        return Err(InvariantError::DTypeMismatch {
+            expected: input.dtype(),
+            actual: scale.dtype(),
         }
+        .into());
     }
-    if let Some(b) = bias {
-        if b.dtype() != input.dtype() {
-            return Err(InvariantError::DTypeMismatch {
-                expected: input.dtype(),
-                actual: b.dtype(),
-            }
-            .into());
+    if let Some(b) = bias
+        && b.dtype() != input.dtype()
+    {
+        return Err(InvariantError::DTypeMismatch {
+            expected: input.dtype(),
+            actual: b.dtype(),
         }
+        .into());
     }
 
     match input.dtype() {
@@ -169,23 +169,23 @@ async fn apply_rms_norm(
     }: &Norm,
     dst: OpTensor,
 ) -> Result<OpTensor, OperationError> {
-    if let Some(scale) = scale {
-        if input.dtype() != scale.dtype() {
-            return Err(InvariantError::DTypeMismatch {
-                expected: input.dtype(),
-                actual: scale.dtype(),
-            }
-            .into());
+    if let Some(scale) = scale
+        && input.dtype() != scale.dtype()
+    {
+        return Err(InvariantError::DTypeMismatch {
+            expected: input.dtype(),
+            actual: scale.dtype(),
         }
+        .into());
     }
-    if let Some(b) = bias {
-        if b.dtype() != input.dtype() {
-            return Err(InvariantError::DTypeMismatch {
-                expected: input.dtype(),
-                actual: b.dtype(),
-            }
-            .into());
+    if let Some(b) = bias
+        && b.dtype() != input.dtype()
+    {
+        return Err(InvariantError::DTypeMismatch {
+            expected: input.dtype(),
+            actual: b.dtype(),
         }
+        .into());
     }
 
     match input.dtype() {
