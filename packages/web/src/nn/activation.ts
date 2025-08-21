@@ -11,9 +11,9 @@ export class LogSoftmax extends Module {
     // log as an option to the softmax operation, including the max subtract)
     //
     // For numerical stability, subtract max value before exponential
-    const max = input.max(this.dim, true);
+    const max = input.max({ dim: this.dim, keepdim: true });
     const diff = input.sub(max);
-    const sumExp = diff.exp().sum(this.dim, true);
+    const sumExp = diff.exp().sum({ dim: this.dim, keepdim: true });
     const logSm = diff.sub(sumExp.log());
     return logSm;
   }

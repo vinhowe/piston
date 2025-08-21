@@ -1,8 +1,8 @@
-use crate::gpt2::{GPT2Input, GPT2};
+use crate::gpt2::{GPT2, GPT2Input};
 use maybe_async::maybe_async;
 use ndarray::{Array3, Axis, Ix3};
 use ndarray_stats::QuantileExt;
-use piston::{Device, Tensor};
+use piston::{Device, Tensor, TensorOptions};
 use piston_nn::{Module, ModuleMode, ModuleModeGuard};
 
 #[maybe_async]
@@ -44,8 +44,7 @@ pub async fn generate(
         let input = Tensor::from_data(
             tokens_to_feed,
             (1, tokens_to_feed.len()),
-            model.device.clone(),
-            false,
+            TensorOptions::new().device(model.device.clone()),
         );
 
         // The index_pos is the total length of the context so far.

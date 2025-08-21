@@ -48,7 +48,7 @@ export class SinusoidalEmbedding extends Module {
     const seqLen = input.shape[input.shape.length - 2]; // Get sequence length (second to last dim)
 
     // Create position sequence [offset, offset + 1, ..., offset + seqLen - 1]
-    const posSeq = arange(offset, offset + seqLen, undefined, { device });
+    const posSeq = arange({ start: offset, end: offset + seqLen, device });
 
     // Compute outer product: [seqLen, 1] @ [1, dim/2] -> [seqLen, dim/2]
     const sinusoidInp = posSeq.unsqueeze(1).matmul(this.invFreq.unsqueeze(0));
@@ -58,7 +58,7 @@ export class SinusoidalEmbedding extends Module {
     const cos = sinusoidInp.cos();
 
     // Interleave sin and cos: [seqLen, dim]
-    const posEmb = cat([sin, cos], -1); // Concatenate along the last dimension
+    const posEmb = cat([sin, cos], { dim: -1 }); // Concatenate along the last dimension
 
     // Add batch dimension if input has batch: [1, seqLen, dim] or keep as [seqLen, dim]
     const posEmbFinal = input.shape.length === 3 ? posEmb.unsqueeze(0) : posEmb;

@@ -6,31 +6,32 @@ import {
   OptionalShapeConfig,
   RequiresGradConfig,
   ShapeType,
-  TensorCreationFunction,
 } from "@/types";
 import {
-  arange_wasm,
-  cat_wasm,
+  arange as arange_wasm,
+  bernoulli as bernoulli_wasm,
+  cat as cat_wasm,
   cpu_wasm,
   Device,
   DType,
   float16_wasm,
   float32_wasm,
+  fromData,
+  full as full_wasm,
   gpu_wasm,
   int32_wasm,
-  ones_wasm,
-  rand_wasm,
-  randint_wasm,
-  RandintNamedArgs,
-  randn_wasm,
-  RandNamedArgs,
-  RandnNamedArgs,
+  ones as ones_wasm,
+  onesLike as onesLike_wasm,
+  rand as rand_wasm,
+  randint as randint_wasm,
+  randn as randn_wasm,
   seed_wasm,
-  stack_wasm,
+  stack as stack_wasm,
   Tensor_wasm,
   TensorOptions,
   uint32_wasm,
-  zeros_wasm,
+  zeros as zeros_wasm,
+  zerosLike as zerosLike_wasm,
 } from "@/wasm";
 
 // dtypes
@@ -47,21 +48,18 @@ export let gpu: Device;
 export let seed: (seed: number) => void;
 
 // tensor creation functions
-export let full: TensorCreationFunction<[shape: ShapeType, value: number]>;
-export let cat: (tensors: Tensor[], dim: number) => Tensor;
-export let stack: (tensors: Tensor[], dim: number) => Tensor;
-export let arange: TensorCreationFunction<[start: number, end?: number, step?: number]>;
-export let randint: TensorCreationFunction<
-  [high: number, shape: ShapeType, kwargs?: RandintNamedArgs]
->;
-export let randn: TensorCreationFunction<[shape: ShapeType, kwargs?: RandnNamedArgs]>;
-export let rand: TensorCreationFunction<[shape: ShapeType, kwargs?: RandNamedArgs]>;
-// This just calls .bernoulli() on the tensor
-export let bernoulli: (t: Tensor) => Tensor;
-export let zeros: TensorCreationFunction<[shape: ShapeType]>;
-export let zerosLike: TensorCreationFunction<[t: Tensor]>;
-export let ones: TensorCreationFunction<[shape: ShapeType]>;
-export let onesLike: TensorCreationFunction<[t: Tensor]>;
+export let full: typeof full_wasm;
+export let cat: typeof cat_wasm;
+export let stack: typeof stack_wasm;
+export let arange: typeof arange_wasm;
+export let randint: typeof randint_wasm;
+export let randn: typeof randn_wasm;
+export let rand: typeof rand_wasm;
+export let bernoulli: typeof bernoulli_wasm;
+export let zeros: typeof zeros_wasm;
+export let zerosLike: typeof zerosLike_wasm;
+export let ones: typeof ones_wasm;
+export let onesLike: typeof onesLike_wasm;
 
 export let tensor: {
   (data: CreateTensorData, config: RequiresGradConfig & OptionalShapeConfig): Parameter;
@@ -150,24 +148,34 @@ function wrapWithLibTensor<Args extends unknown[]>(
   fn: (...args: Args) => Tensor_wasm,
 ): (...args: Args) => Tensor {
   return (...args: Args) => {
+    // // console.log(JSON.stringify(args));
+    // if (args[0] instanceof Parameter) {
+    //   console.log(args[0]);
+    // }
     return Tensor._wrap(fn(...args));
   };
 }
 
-function wrapWithParam<Args extends unknown[]>(
-  fn: (...args: [...Args, TensorOptions?]) => Tensor,
-): TensorCreationFunction<Args> {
-  return (...args: [...Args, TensorOptions?]): Parameter => {
-    const configArg = args[args.length - 1] as TensorOptions | undefined;
-    const restArgs = args.slice(0, args.length - 1) as Args;
+function wrapWithParam<Args extends unknown[], O extends TensorOptions>(
+  fn: (...args: [...Args, O?]) => Tensor,
+): {
+  (...args: [...Args, O & RequiresGradConfig]): Parameter;
+  (...args: [...Args, O?]): Tensor;
+} {
+  function wrapped(...args: [...Args, O & RequiresGradConfig]): Parameter;
+  function wrapped(...args: [...Args, O?]): Tensor;
+  function wrapped(...args: [...Args, O?]): Tensor | Parameter {
+    const maybeCfg = args[args.length - 1] as O | undefined;
+    const hasCfg = typeof maybeCfg === "object" && maybeCfg !== null;
+
+    const restArgs = (hasCfg ? args.slice(0, -1) : args) as Args;
+    const configArg = (hasCfg ? (maybeCfg as O) : undefined) as O | undefined;
 
     const tensor = fn(...restArgs, configArg);
-    if (configArg?.requiresGrad) {
-      // Create a Parameter from the tensor and wrap it with proxy
-      return new Parameter(tensor);
-    }
-    return tensor;
-  };
+    return (configArg as TensorOptions | undefined)?.requiresGrad ? new Parameter(tensor) : tensor;
+  }
+
+  return wrapped;
 }
 
 export function inferShapeFromNestedArray(arr: NestedNumberList): number[] {
@@ -215,52 +223,18 @@ export async function initGlobals() {
     seed_wasm(typeof seed === "bigint" ? seed : BigInt(seed));
   };
 
-  full = wrapWithParam(wrapWithLibTensor(unwrapFullConfigArgs(Tensor_wasm.full)));
-  cat = wrapWithLibTensor((tensors: Tensor[], dim: number) => {
-    return cat_wasm(
-      tensors.map((t) => Tensor._unwrap(t)),
-      dim,
-    );
-  });
-  stack = wrapWithLibTensor((tensors: Tensor[], dim: number) => {
-    return stack_wasm(
-      tensors.map((t) => Tensor._unwrap(t)),
-      dim,
-    );
-  });
-  arange = wrapWithParam(
-    wrapWithLibTensor((start: number, end?: number, step?: number, config?: FullInitConfig) => {
-      if (end === undefined) {
-        end = start;
-        start = 0;
-      }
-      if (step === undefined) {
-        step = 1;
-      }
-      return arange_wasm({ start, end, step }, tensorCreationArgs(config));
-    }),
-  );
+  full = wrapWithParam(wrapWithLibTensor(full_wasm));
+  cat = wrapWithLibTensor(cat_wasm);
+  stack = wrapWithLibTensor(stack_wasm);
+  arange = wrapWithParam(wrapWithLibTensor(arange_wasm));
   randint = wrapWithParam(wrapWithLibTensor(randint_wasm));
-  // This puts us in line with the PyTorch API
-  randn = wrapWithParam(
-    wrapWithLibTensor((shape: ShapeType, kwargs?: RandnNamedArgs, config?: FullInitConfig) => {
-      return randn_wasm(shape as Uint32Array, kwargs, tensorCreationArgs(config));
-    }),
-  );
+  randn = wrapWithParam(wrapWithLibTensor(randn_wasm));
   rand = wrapWithParam(wrapWithLibTensor(rand_wasm));
-  bernoulli = wrapWithLibTensor((t: Tensor) => Tensor._unwrap(t).bernoulli());
+  bernoulli = wrapWithLibTensor(bernoulli_wasm);
   zeros = wrapWithParam(wrapWithLibTensor(zeros_wasm));
-  zerosLike = wrapWithParam(
-    wrapWithLibTensor((t: Tensor, config?: FullInitConfig) => {
-      return Tensor._unwrap(t).zerosLike(tensorCreationArgs(config));
-    }),
-  );
+  zerosLike = wrapWithParam(wrapWithLibTensor(zerosLike_wasm));
   ones = wrapWithParam(wrapWithLibTensor(ones_wasm));
-  onesLike = wrapWithParam(
-    wrapWithLibTensor((t: Tensor, config?: FullInitConfig) => {
-      return Tensor._unwrap(t).onesLike(tensorCreationArgs(config));
-    }),
-  );
+  onesLike = wrapWithParam(wrapWithLibTensor(onesLike_wasm));
   tensor = wrapWithParam(
     wrapWithLibTensor(
       (
@@ -292,7 +266,11 @@ export async function initGlobals() {
           shape = dataShape;
         } else {
           // Verify that data shape and shape are correct
-          const providedShapeArray = Array.isArray(shape) ? shape : Array.from(shape);
+          const providedShapeArray = Array.isArray(shape)
+            ? shape
+            : typeof shape === "number"
+              ? [shape]
+              : Array.from(shape);
           const shapeNumel = providedShapeArray.reduce((a, b) => a * b, 1);
           if (shapeNumel !== dataNumel) {
             throw Error(
@@ -321,12 +299,14 @@ export async function initGlobals() {
           castData = Array.isArray(data) ? new Float32Array(data as number[]) : data;
         }
 
-        return Tensor_wasm.fromData(
-          castData,
-          shape,
-          parseDevice(config?.device),
-          config?.requiresGrad ?? false,
-        );
+        if (!castData) {
+          throw new Error("No data to create tensor from");
+        }
+
+        return fromData(castData, shape, {
+          device: parseDevice(config?.device),
+          requiresGrad: config?.requiresGrad ?? false,
+        });
       },
     ),
   );

@@ -1,5 +1,15 @@
+// Import the full wasm module namespace so Rust can reflect on its exports
+import * as pistonWasmExports from "@piston-ml/piston-web-wasm";
+
+import { PistonFunctionMode } from "@/function";
 import { initGlobals } from "@/globals";
-import { wasmInit } from "@/wasm";
+import { Tensor } from "@/tensor";
+import {
+  _setFunctionModeConstructor,
+  _setPistonWebModule,
+  _setTensorConstructor,
+  wasmInit,
+} from "@/wasm";
 
 // Track initialization state
 let isInitialized = false;
@@ -24,9 +34,15 @@ async function init(): Promise<void> {
     throw error;
   }
 
+  // Setup references to JS objects we need from Rust
+  _setPistonWebModule(pistonWasmExports as unknown as object);
+  _setFunctionModeConstructor(PistonFunctionMode);
+  _setTensorConstructor(Tensor);
+
   await initGlobals();
 }
 
+export * from "@/function";
 export {
   arange,
   bernoulli,

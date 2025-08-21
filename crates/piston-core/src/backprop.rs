@@ -1120,7 +1120,7 @@ impl Tensor {
                     let src = src.wrap();
                     let ids = ids.wrap();
                     ctx.add(&dst, grad.clone())?;
-                    let src_grad = grad.gather(ids.clone(), dim)?;
+                    let src_grad = grad.gather(dim, ids.clone())?;
                     ctx.add(&src, src_grad)?;
                 }
                 LazyOp::Trilu(Trilu { src: arg, upper, k }) => {

@@ -79,13 +79,13 @@ export class CrossEntropyLoss extends Module {
       .cast(float32);
 
     // Gather the negative log-prob for the correct classes
-    const nllGathered = logProbs.gather(target.unsqueeze(1), 1).mul(-1);
+    const nllGathered = logProbs.gather(1, target.unsqueeze(1)).mul(-1);
 
     // Mask out ignored tokens
     const nllMasked = nllGathered.mul(mask.unsqueeze(1));
 
     // At this point, nllMasked has shape [batchSize, 1]. We squeeze it to get a per-sample loss.
-    const nllLossPerSample = nllMasked.squeeze(1); // shape: [batchSize]
+    const nllLossPerSample = nllMasked.squeeze({ dim: 1 }); // shape: [batchSize]
 
     // Compute final per-sample loss (without global normalization)
     let finalLossPerSample = nllLossPerSample;
@@ -94,7 +94,7 @@ export class CrossEntropyLoss extends Module {
     if (this.labelSmoothing > 0) {
       // Calculate uniform loss: average log probability over all classes for each sample.
       const allProbsMasked = logProbs.mul(mask.unsqueeze(1));
-      const sumLogProbs = allProbsMasked.sum(1); // shape: [batchSize]
+      const sumLogProbs = allProbsMasked.sum({ dim: 1 }); // shape: [batchSize]
       const uniformLossPerSample = sumLogProbs.mul(-1 / vocabSize);
 
       // Combine with the nll loss using the smoothing factor.

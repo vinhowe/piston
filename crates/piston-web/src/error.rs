@@ -36,3 +36,9 @@ impl IntoJsError for JsValue {
         JsError::new(&message)
     }
 }
+
+impl IntoJsError for JsError {
+    fn into_js_error(self) -> JsError {
+        self
+    }
+}

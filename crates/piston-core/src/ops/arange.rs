@@ -264,7 +264,7 @@ def arange(start, stop, step):
 
         let a = arange(
             Some(start.as_()),
-            Some(stop.as_()),
+            stop.as_(),
             Some(step.as_()),
             TensorOptions::new().device(device.clone()),
         )

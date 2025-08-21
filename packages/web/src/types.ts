@@ -2,8 +2,8 @@ import { Parameter } from "@/nn/parameter";
 import { Tensor } from "@/tensor";
 import { Device, DType, TensorOptions } from "@/wasm";
 
-export type ShapeType = number[] | Uint32Array;
-export type ShapeWithHolesType = number[] | Int32Array;
+export type ShapeType = number | number[] | Uint32Array;
+export type ShapeWithHolesType = number | number[] | Int32Array;
 export type DimsType = number[] | Int32Array | number;
 export type NestedNumberList = number | NestedNumberList[];
 export type DeviceType = Device | "cpu" | "gpu" | "webgpu";

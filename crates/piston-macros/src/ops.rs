@@ -845,6 +845,9 @@ fn generate_method_inplace_variant(
     let mut call_args = Vec::new();
     call_args.push(quote!(inner));
 
+    // We'll collect guard bindings for converted arguments here
+    let mut pre_bindings: Vec<TokenStream2> = Vec::new();
+
     // Skip the first parameter since it becomes self
     for param in params.iter().skip(1) {
         let param_name = Ident::new(&param.name, Span::call_site());
@@ -853,10 +856,17 @@ fn generate_method_inplace_variant(
 
         method_params.push(quote!(#param_name: #param_type));
 
+        // For inplace methods, pull out conversions into guard variables instead of inlining
         if is_option_with_tensor_or_self(&param_type) {
-            call_args.push(quote!(#param_name.map(|t| t.inner_or_source().clone())));
+            let inner_name = Ident::new(&format!("{}_inner", param.name), Span::call_site());
+            pre_bindings.push(
+                quote! { let #inner_name = #param_name.map(|t| t.inner_or_source().clone()); },
+            );
+            call_args.push(quote!(#inner_name));
         } else if param.is_op_tensor {
-            call_args.push(quote!(#param_name.inner_or_source().clone()));
+            let inner_name = Ident::new(&format!("{}_inner", param.name), Span::call_site());
+            pre_bindings.push(quote! { let #inner_name = #param_name.inner_or_source().clone(); });
+            call_args.push(quote!(#inner_name));
         } else {
             call_args.push(quote!(#param_name));
         }
@@ -871,6 +881,7 @@ fn generate_method_inplace_variant(
     let method = quote! {
         pub fn #method_name #generics (self, #(#method_params),*) #return_type {
             let inner = self.inner_or_source().clone();
+            #(#pre_bindings)*
             Ok(self.wrap_inplace(#kernel_name(#(#call_args),*)?))
         }
     };

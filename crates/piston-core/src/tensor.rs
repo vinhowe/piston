@@ -142,9 +142,10 @@ impl OpTensor {
     pub(crate) fn full_impl<T: TensorDType + num_traits::AsPrimitive<f32>, S: Into<Shape>>(
         shape: S,
         value: T,
-        device: &Device,
-        requires_grad: bool,
+        options: TensorOptions,
     ) -> Result<Self> {
+        let device = options.device_or_default();
+        let requires_grad = options.requires_grad_or_default();
         let shape = shape.into();
         let meta = StorageView {
             shape: shape.clone(),
@@ -166,16 +167,16 @@ impl OpTensor {
     pub fn full<T: TensorDType + num_traits::AsPrimitive<f32>, S: Into<Shape>>(
         shape: S,
         value: T,
-        device: &Device,
-        requires_grad: bool,
+        options: TensorOptions,
     ) -> Result<Self> {
         let shape = shape.into();
+        let device = options.device_or_default();
         if device.is_cpu() {
             let mut data = Vec::with_capacity(shape.numel());
             data.resize(shape.numel(), value);
-            Ok(Self::from_data(data, shape, device.clone(), requires_grad))
+            Ok(Self::from_data(data, shape, options))
         } else {
-            Self::full_impl::<T, _>(shape, value, device, requires_grad)
+            Self::full_impl::<T, _>(shape, value, options)
         }
     }
 
@@ -535,13 +536,14 @@ macro_rules! impl_binary_op {
             other: T,
         ) -> Result<OpTensor> {
             let device = input.device().clone();
+            let (input, other) = crate::promoted_cast(input, other)?;
             let (lhs, rhs) = match other.tensor_or_scalar() {
                 Ok(TensorTypeOrScalarEnum::Tensor(other)) => {
-                    let (lhs, rhs) = input.broadcast_for_binary_op(other)?;
+                    let (lhs, rhs) = input.broadcast_for_binary_op(other.tensor().unwrap())?;
                     (lhs, TensorTypeOrScalarEnum::Tensor(rhs))
                 }
                 Ok(TensorTypeOrScalarEnum::Scalar(other)) => {
-                    (input, TensorTypeOrScalarEnum::Scalar(other)) // TODO: this is wrong
+                    (input, TensorTypeOrScalarEnum::Scalar(other))
                 }
                 Err(e) => return Err(e),
             };
@@ -562,6 +564,7 @@ macro_rules! impl_binary_op_tensor_only {
         #[tensor_op(variants = [function, method, method_inplace])]
         pub fn $method_name(input: OpTensor, other: OpTensor) -> Result<OpTensor> {
             let device = input.device().clone();
+            let (input, other) = crate::promoted_cast(input, other)?;
             let (lhs, rhs) = input.broadcast_for_binary_op(other)?;
             let binary = Binary::new(lhs, TensorTypeOrScalarEnum::Tensor(rhs), $op);
             let new_view = binary.compute_view()?;
@@ -585,7 +588,10 @@ macro_rules! impl_ternary_op {
             value: f32,
         ) -> Result<OpTensor> {
             let device = input.device().clone();
-            let (input, t1, t2) = input.broadcast_for_ternary_op(tensor1, tensor2)?;
+            // Promote dtypes across all three tensors and cast prior to broadcast
+            let (input, t1, t2) =
+                crate::promoted_cast_ternary::<_, OpTensor, OpTensor>(input, tensor1, tensor2)?;
+            let (input, t1, t2) = input.broadcast_for_ternary_op(t1, t2)?;
             let ternary = Ternary::new(input, t1, t2, value, $op);
             let new_view = ternary.compute_view()?;
             Ok(OpTensor::lazy(
@@ -606,6 +612,7 @@ macro_rules! impl_cmp_op {
             other: T,
         ) -> Result<OpTensor> {
             let device = input.device().clone();
+            let (input, other) = crate::promoted_cast(input, other)?;
             match other.tensor_or_scalar() {
                 Ok(TensorTypeOrScalarEnum::Tensor(other)) => {
                     let (lhs, rhs) = input.broadcast_for_binary_op(other)?;
@@ -1534,10 +1541,10 @@ pub fn index_add<D: Dim>(
 }
 
 #[tensor_op(variants = [function, method, method_inplace])]
-pub fn gather<D: Dim>(input: OpTensor, indices: OpTensor, dim: D) -> Result<OpTensor> {
+pub fn gather<D: Dim>(input: OpTensor, dim: D, index: OpTensor) -> Result<OpTensor> {
     let dim = dim.to_index(input.shape(), "gather")?;
     let self_dims = input.shape().to_vec();
-    let indices_dims = indices.shape().to_vec();
+    let indices_dims = index.shape().to_vec();
     let mismatch = if indices_dims.len() != self_dims.len() {
         true
     } else {
@@ -1554,11 +1561,11 @@ pub fn gather<D: Dim>(input: OpTensor, indices: OpTensor, dim: D) -> Result<OpTe
         Err(InvariantError::ShapeMismatchBinaryOp {
             op: "gather",
             lhs: input.shape().clone(),
-            rhs: indices.shape().clone(),
+            rhs: index.shape().clone(),
         })?
     }
     let device = input.device().clone();
-    let gather = Gather::new(input, indices, dim);
+    let gather = Gather::new(input, index, dim);
     let new_view = gather.compute_view()?;
     Ok(OpTensor::lazy(
         LazyOp::Gather(gather),
@@ -1697,9 +1704,9 @@ fn arange_impl<T: TensorDType + PartialOrd + AsPrimitive<f32>>(
     end: T,
     step: T,
     shape_len: usize,
-    device: &Device,
-    requires_grad: bool,
+    options: TensorOptions,
 ) -> Result<OpTensor> {
+    let device = options.device_or_default();
     if device.is_cpu() {
         let mut data = Vec::with_capacity(shape_len);
         let mut current = start;
@@ -1715,12 +1722,7 @@ fn arange_impl<T: TensorDType + PartialOrd + AsPrimitive<f32>>(
             }
         }
         let len = data.len();
-        Ok(OpTensor::from_data(
-            data,
-            len,
-            device.clone(),
-            requires_grad,
-        ))
+        Ok(OpTensor::from_data(data, len, options))
     } else {
         let arange = Arange::new(start.as_(), end.as_(), step.as_());
         let numel = arange.numel();
@@ -1732,7 +1734,12 @@ fn arange_impl<T: TensorDType + PartialOrd + AsPrimitive<f32>>(
             stride: Stride::from(&Shape::from(numel)),
         };
 
-        Ok(OpTensor::lazy(op, meta, device.clone(), requires_grad))
+        Ok(OpTensor::lazy(
+            op,
+            meta,
+            device.clone(),
+            options.requires_grad_or_default(),
+        ))
     }
 }
 
@@ -1741,8 +1748,7 @@ fn arange_from_f32_impl<T: TensorDType + NumCast + PartialOrd + AsPrimitive<f32>
     end_f32: f32,
     step_f32: f32,
     shape_len: usize,
-    device: &Device,
-    requires_grad: bool,
+    options: TensorOptions,
 ) -> Result<OpTensor> {
     let start: T =
         NumCast::from(start_f32).ok_or_else(|| anyhow::anyhow!("Failed to cast start value"))?;
@@ -1750,7 +1756,7 @@ fn arange_from_f32_impl<T: TensorDType + NumCast + PartialOrd + AsPrimitive<f32>
         NumCast::from(end_f32).ok_or_else(|| anyhow::anyhow!("Failed to cast end value"))?;
     let step: T =
         NumCast::from(step_f32).ok_or_else(|| anyhow::anyhow!("Failed to cast step value"))?;
-    arange_impl::<T>(start, end, step, shape_len, device, requires_grad)
+    arange_impl::<T>(start, end, step, shape_len, options)
 }
 
 /// Creates a new 1D tensor with values from the interval `[start, end)` taken with a common
@@ -1762,7 +1768,6 @@ pub fn arange(
     step: Option<f32>,
     options: TensorOptions,
 ) -> Result<OpTensor> {
-    let device = options.device_or_default();
     let dtype = options.dtype_or_default();
 
     let start = start.unwrap_or(0.0);
@@ -1780,16 +1785,7 @@ pub fn arange(
     };
     let len = len.max(0);
 
-    dispatch_all_types!(
-        dtype,
-        arange_from_f32_impl,
-        start,
-        end,
-        step,
-        len,
-        &device,
-        options.requires_grad_or_default()
-    )
+    dispatch_all_types!(dtype, arange_from_f32_impl, start, end, step, len, options)
 }
 
 #[cfg(feature = "rand")]
@@ -2280,10 +2276,11 @@ impl OpTensor {
     pub fn from_data<T: TensorDType, U: AsRef<[T]>, S: Into<Shape>>(
         data: U,
         shape: S,
-        device: Device,
-        requires_grad: bool,
+        options: TensorOptions,
     ) -> Self {
         let shape = shape.into();
+        let device = options.device_or_default();
+        let requires_grad = options.requires_grad_or_default();
         let storage = Storage::from_slice(data.as_ref(), &shape, &device);
         let stride = Stride::from(&shape);
         let meta = StorageView::new(shape, T::dtype(), stride);
@@ -2292,12 +2289,13 @@ impl OpTensor {
 
     pub fn from_bytes<S: Into<Shape>>(
         data: &[u8],
-        dtype: DType,
         shape: S,
-        device: Device,
-        requires_grad: bool,
+        options: TensorOptions,
     ) -> Result<Self> {
         let shape = shape.into();
+        let device = options.device_or_default();
+        let requires_grad = options.requires_grad_or_default();
+        let dtype = options.dtype_or_default();
         let storage = Storage::from_bytes(data, dtype.size_of(), &device);
         let stride = Stride::from(&shape);
         let meta = StorageView::new(shape, dtype, stride);
@@ -2916,12 +2914,12 @@ impl<T: TensorDType + Default + num_traits::Float> CloseStats<T> {
 
 #[cfg(feature = "testing")]
 impl OpTensor {
-    pub fn read_npy<T, P>(path: P, device: &Device, requires_grad: bool) -> Result<Self>
+    pub fn read_npy<T, P>(path: P, options: TensorOptions) -> Result<Self>
     where
         T: TensorDType + npyz::Deserialize,
         P: AsRef<Path>,
     {
-        Self::from_npy_bytes::<T>(&std::fs::read(path)?, device, requires_grad)
+        Self::from_npy_bytes::<T>(&std::fs::read(path)?, options)
     }
 
     pub fn write_npy<T, P>(&self, path: P) -> anyhow::Result<()>
@@ -2954,8 +2952,7 @@ impl OpTensor {
 
     pub fn from_npy_bytes<T: TensorDType + npyz::Deserialize>(
         bytes: &[u8],
-        device: &Device,
-        requires_grad: bool,
+        options: TensorOptions,
     ) -> Result<Self> {
         let reader = npyz::NpyFile::new(bytes)?;
         let shape = reader
@@ -2964,12 +2961,7 @@ impl OpTensor {
             .map(|&x| x as usize)
             .collect::<RVec<_>>();
         let data = reader.into_vec::<T>()?;
-        Ok(OpTensor::from_data(
-            data,
-            shape,
-            device.clone(),
-            requires_grad,
-        ))
+        Ok(OpTensor::from_data(data, shape, options))
     }
 
     pub fn into_ndarray<T: TensorDType>(self) -> ArrayD<T> {
@@ -3122,11 +3114,6 @@ pub struct Tensor {
 }
 
 impl Tensor {
-    #[track_caller]
-    fn lazy(op: LazyOp, meta: StorageView, device: Device, requires_grad: bool) -> Self {
-        OpTensor::lazy(op, meta, device, requires_grad).into()
-    }
-
     pub fn shallow(
         op: LazyOp,
         meta: StorageView,
@@ -3195,10 +3182,9 @@ impl Tensor {
     pub fn full<T: TensorDType + num_traits::AsPrimitive<f32>, S: Into<Shape>>(
         shape: S,
         value: T,
-        device: &Device,
-        requires_grad: bool,
+        options: TensorOptions,
     ) -> Result<Self> {
-        OpTensor::full(shape, value, device, requires_grad).map(Self::wrap)
+        OpTensor::full(shape, value, options).map(Self::wrap)
     }
 }
 
@@ -3282,23 +3268,23 @@ impl Tensor {
     }
 }
 
-struct CastBackendOp;
-impl BoxedKernel for CastBackendOp {
-    fn handle(
-        &self,
-        _op: &OperatorHandle,
-        _keys: DispatchKeySet,
-        args: &mut RVec<Value>,
-    ) -> anyhow::Result<()> {
-        let (tensor, dtype) = (Tensor::pop(args), DType::pop(args));
-        let result = cast(tensor, dtype).map(Tensor::wrap)?;
-        result.push(args);
-        Ok(())
-    }
-}
+// struct CastBackendOp;
+// impl BoxedKernel for CastBackendOp {
+//     fn handle(
+//         &self,
+//         _op: &OperatorHandle,
+//         _keys: DispatchKeySet,
+//         args: &mut RVec<Value>,
+//     ) -> anyhow::Result<()> {
+//         let (tensor, dtype) = (Tensor::pop(args), DType::pop(args));
+//         let result = cast(tensor, dtype).map(Tensor::wrap)?;
+//         result.push(args);
+//         Ok(())
+//     }
+// }
 
-// SAFETY: `CastBackendOp` is stateless and thus thread-safe.
-unsafe impl Sync for CastBackendOp {}
+// // SAFETY: `CastBackendOp` is stateless and thus thread-safe.
+// unsafe impl Sync for CastBackendOp {}
 
 inventory::submit! {
     OperatorRegistration {
@@ -3323,7 +3309,7 @@ inventory::submit! {
         handler: &KernelFunction {
             unboxed: Some(|_op, _keys, args| {
                 let (tensor, dtype) = (Tensor::pop(args), DType::pop(args));
-                let result = cast(tensor, dtype).map(Tensor::wrap)?;
+                let result = cast_kernel(tensor, dtype).map(Tensor::wrap)?;
                 result.push(args);
                 Ok(())
             }),
@@ -3349,20 +3335,17 @@ impl Tensor {
     pub fn from_data<T: TensorDType, U: AsRef<[T]>, S: Into<Shape>>(
         data: U,
         shape: S,
-        device: Device,
-        requires_grad: bool,
+        options: TensorOptions,
     ) -> Self {
-        OpTensor::from_data(data, shape, device, requires_grad).into()
+        OpTensor::from_data(data, shape, options).into()
     }
 
     pub fn from_bytes<S: Into<Shape>>(
         data: &[u8],
-        dtype: DType,
         shape: S,
-        device: Device,
-        requires_grad: bool,
+        options: TensorOptions,
     ) -> Result<Self> {
-        OpTensor::from_bytes(data, dtype, shape, device, requires_grad).map(Self::wrap)
+        OpTensor::from_bytes(data, shape, options).map(Self::wrap)
     }
 
     /// Create a parameter based on the values currently stored in a tensor. The storage is always
@@ -3623,6 +3606,15 @@ pub trait TensorTypeOrScalar<TensorType> {
     }
 }
 
+impl<T> TensorTypeOrScalarEnum<Result<T>> {
+    pub fn transpose(self) -> Result<TensorTypeOrScalarEnum<T>> {
+        match self {
+            TensorTypeOrScalarEnum::Tensor(t) => Ok(TensorTypeOrScalarEnum::Tensor(t?)),
+            TensorTypeOrScalarEnum::Scalar(s) => Ok(TensorTypeOrScalarEnum::Scalar(s)),
+        }
+    }
+}
+
 impl TensorTypeOrScalar<OpTensor> for OpTensor {
     fn tensor_or_scalar(&self) -> Result<TensorTypeOrScalarEnum<OpTensor>> {
         Ok(TensorTypeOrScalarEnum::Tensor(self.clone()))
@@ -3659,17 +3651,32 @@ impl<T: Clone> TensorTypeOrScalar<T> for TensorTypeOrScalarEnum<T> {
     }
 }
 
+impl From<TensorTypeOrScalarEnum<OpTensor>> for OpTensor {
+    fn from(t: TensorTypeOrScalarEnum<OpTensor>) -> Self {
+        match t {
+            TensorTypeOrScalarEnum::Tensor(t) => t,
+            TensorTypeOrScalarEnum::Scalar(s) => {
+                panic!("Scalar {s} cannot be converted to OpTensor")
+            }
+        }
+    }
+}
+
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod tests {
-    use crate::{Device, Tensor, rvec};
+    use crate::{Device, Tensor, TensorOptions, cat, randn, rvec};
 
     #[test]
     fn has_nan_works() {
         let device = Device::request_device(crate::DeviceRequest::GPU).unwrap();
-        let rand = Tensor::randn::<f32, _>(0., 1., (1, 1500, 384), device.clone(), false).unwrap();
-        let nans = Tensor::from_data(vec![f32::NAN; 1500 * 384], (1, 1500, 384), device, false);
+        let rand = randn((1, 1500, 384), None, None, TensorOptions::new()).unwrap();
+        let nans = Tensor::from_data(
+            vec![f32::NAN; 1500 * 384],
+            (1, 1500, 384),
+            TensorOptions::new(),
+        );
 
-        let bingo = Tensor::cat(rvec![rand, nans], 2).unwrap();
+        let bingo = cat(rvec![rand, nans], 2).unwrap();
 
         let result = bingo.to(&Device::CPU).unwrap();
         println!("RESULT: {result:?}");

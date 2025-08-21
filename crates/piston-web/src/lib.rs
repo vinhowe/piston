@@ -2,6 +2,7 @@
 mod device;
 mod dtype;
 mod error;
+mod function;
 mod js_util;
 mod model;
 mod serialization;
@@ -11,13 +12,19 @@ mod tensor;
 #[cfg(test)]
 mod test_utils;
 
+use std::cell::RefCell;
+
 use wasm_bindgen::prelude::*;
 
 // Fix: https://github.com/rustwasm/wasm-bindgen/issues/4446#issuecomment-2729543167
 mod wasm_ctor_workaround {
-    extern "C" {
+    unsafe extern "C" {
         pub(super) fn __wasm_call_ctors();
     }
+}
+
+thread_local! {
+    static PISTON_WEB_MOD: RefCell<Option<JsValue>> = const { RefCell::new(None) };
 }
 
 #[wasm_bindgen(start)]
@@ -41,8 +48,30 @@ pub fn start() {
         .level(log::LevelFilter::Info)
         .chain(fern::Output::call(console_log::log))
         .apply();
+
     match logger {
         Ok(_) => log::info!("Logging initialized."),
         Err(error) => eprintln!("Error initializing logging: {error:?}"),
     }
+}
+
+/// Called once from JS right after you finish instantiating the wasm.
+#[wasm_bindgen(js_name = "_setPistonWebModule")]
+pub fn set_piston_web_module(module: &JsValue) {
+    PISTON_WEB_MOD.with(|cell| {
+        cell.borrow_mut().replace(module.clone());
+    });
+}
+
+pub(crate) fn with_piston_web_module<F, R>(f: F) -> Result<R, JsError>
+where
+    F: FnOnce(&JsValue) -> Result<R, JsError>,
+{
+    PISTON_WEB_MOD.with(|cell| {
+        let module = cell.borrow();
+        let Some(module) = module.as_ref() else {
+            return Err(JsError::new("PistonWeb module not loaded"));
+        };
+        f(module)
+    })
 }

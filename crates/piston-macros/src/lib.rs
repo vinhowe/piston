@@ -1,5 +1,6 @@
 mod ir_fields;
 mod js_tensor;
+mod js_tensor_web_op;
 mod ops;
 mod scoped_module;
 mod wgsl_metadata;
@@ -60,6 +61,21 @@ pub fn tensor_op(attr: TokenStream, item: TokenStream) -> TokenStream {
     let item = parse_macro_input!(item as syn::ItemFn);
 
     match ops::process_tensor_op(attr, item) {
+        Ok(tokens) => tokens.into(),
+        Err(err) => err.to_compile_error().into(),
+    }
+}
+
+/// Generates wasm-bindgen-exposed functions for Tensor ops in the web crate.
+///
+/// See `docs/js_tensor_web_op.md` for detailed behavior. This macro is attached to a
+/// typed Rust function and generates free-function exports: function/method/method_inplace.
+#[proc_macro_attribute]
+pub fn js_tensor_web_op(attr: TokenStream, item: TokenStream) -> TokenStream {
+    let attr = parse_macro_input!(attr as js_tensor_web_op::JsTensorWebOpAttr);
+    let item = parse_macro_input!(item as syn::ItemFn);
+
+    match js_tensor_web_op::process_js_tensor_web_op(attr, item) {
         Ok(tokens) => tokens.into(),
         Err(err) => err.to_compile_error().into(),
     }

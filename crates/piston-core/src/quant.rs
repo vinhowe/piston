@@ -1,5 +1,6 @@
 use crate::{
-    DType, Device, Q4_KF, Q4_KH, Q8_0F, Q8_0H, Tensor, dtype::Quantized, gpu::STORAGE_BUFFER_ALIGN,
+    DType, Device, Q4_KF, Q4_KH, Q8_0F, Q8_0H, Tensor, TensorOptions, dtype::Quantized,
+    gpu::STORAGE_BUFFER_ALIGN,
 };
 use maybe_async::maybe_async;
 use num::integer::div_floor;
@@ -134,8 +135,7 @@ pub fn dequantize(quantized: Tensor) -> Tensor {
             Tensor::from_data(
                 &dequantized,
                 original_shape,
-                Device::CPU,
-                quantized_requires_grad,
+                TensorOptions::new().requires_grad(quantized_requires_grad),
             )
         }
         DType::Q4_KF(_) => {
@@ -146,8 +146,7 @@ pub fn dequantize(quantized: Tensor) -> Tensor {
             Tensor::from_data(
                 &dequantized,
                 original_shape,
-                Device::CPU,
-                quantized_requires_grad,
+                TensorOptions::new().requires_grad(quantized_requires_grad),
             )
         }
         DType::Q8_0H(_) => {
@@ -158,8 +157,7 @@ pub fn dequantize(quantized: Tensor) -> Tensor {
             Tensor::from_data(
                 &dequantized,
                 original_shape,
-                Device::CPU,
-                quantized_requires_grad,
+                TensorOptions::new().requires_grad(quantized_requires_grad),
             )
         }
         DType::Q4_KH(_) => {
@@ -170,8 +168,7 @@ pub fn dequantize(quantized: Tensor) -> Tensor {
             Tensor::from_data(
                 &dequantized,
                 original_shape,
-                Device::CPU,
-                quantized_requires_grad,
+                TensorOptions::new().requires_grad(quantized_requires_grad),
             )
         }
         dtype => panic!("Unsupported dtype {dtype}"),

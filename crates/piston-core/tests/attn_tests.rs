@@ -1,6 +1,6 @@
 #[cfg(all(test, feature = "pyo3"))]
 mod tests {
-    use piston::{Device, DeviceRequest, Tensor, randn, test_util::run_py_prg};
+    use piston::{Device, DeviceRequest, Tensor, TensorOptions, randn, test_util::run_py_prg};
 
     #[derive(Debug, derive_new::new)]
     struct AttentionTest {
@@ -58,7 +58,11 @@ def scaled_dot_product_attention(input, qw, kw, vw) -> torch.Tensor:
         let v_proj = input.matmul(vw, false, false)?;
 
         let scale_factor = 1f64 / (q_proj.shape()[2] as f64).sqrt();
-        let scale_factor = Tensor::from_data([scale_factor as f32], 1, device, false);
+        let scale_factor = Tensor::from_data(
+            [scale_factor as f32],
+            1,
+            TensorOptions::new().device(device),
+        );
         let kt = k_proj.permute((0, 2, 1))?;
 
         let logits = q_proj.matmul(kt, false, false)?.mul(scale_factor)?;
@@ -133,7 +137,7 @@ def qkv_attention(input, qw, kw, vw, n_heads):
         let n_heads = case.n_heads.unwrap();
         let qdim = q_proj.shape()[2];
         let scale = ((qdim / n_heads) as f32).powf(-0.25);
-        let scale = Tensor::from_data([scale], 1, device, false);
+        let scale = Tensor::from_data([scale], 1, TensorOptions::new().device(device));
 
         let hdim = qdim / n_heads;
         let q = q_proj

@@ -25,7 +25,8 @@ impl SinusoidalEmbedding {
         }
 
         // Create inverse frequency tensor
-        let inv_freq = Tensor::from_data(&freqs, dim / 2, device.clone(), false);
+        let inv_freq =
+            Tensor::from_data(&freqs, dim / 2, TensorOptions::new().device(device.clone()));
 
         Ok(Self { dim, inv_freq })
     }
