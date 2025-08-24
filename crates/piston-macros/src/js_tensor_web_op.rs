@@ -1163,6 +1163,12 @@ pub fn process_js_tensor_web_op(attr: JsTensorWebOpAttr, item: ItemFn) -> SynRes
     let pack_start = find_pack_start(&params).unwrap_or(params.len());
     let include_tensor_options = last_param_is_tensor_options(&params);
     let has_options = pack_start < params.len() || include_tensor_options;
+    let is_async = item.sig.asyncness.is_some();
+    let async_token = if is_async {
+        quote! { async }
+    } else {
+        quote! {}
+    };
 
     // Build Options struct
     let options_struct_tokens = if has_options {
@@ -1442,7 +1448,7 @@ pub fn process_js_tensor_web_op(attr: JsTensorWebOpAttr, item: ItemFn) -> SynRes
         let wasm_fn = {
             quote! {
                 #[wasm_bindgen(js_name = #js_name_lit, unchecked_return_type = "Tensor")]
-                pub fn #export_ident( #(#param_decls),* ) -> Result<wasm_bindgen::JsValue, wasm_bindgen::JsError> {
+                pub #async_token fn #export_ident( #(#param_decls),* ) -> Result<wasm_bindgen::JsValue, wasm_bindgen::JsError> {
                     #handle_call
                     #pos_prelude
                     #opts_prelude
@@ -1525,7 +1531,11 @@ pub fn process_js_tensor_web_op(attr: JsTensorWebOpAttr, item: ItemFn) -> SynRes
             if has_options {
                 call_args.push(quote! { options });
             }
-            let call_tokens = quote! { #free_fn_ident( #(#call_args),* ) };
+            let call_tokens = if is_async {
+                quote! { #free_fn_ident( #(#call_args),* ).await }
+            } else {
+                quote! { #free_fn_ident( #(#call_args),* ) }
+            };
 
             // Name the Rust method after the original Rust function ident to avoid collisions (e.g., `T_upper`),
             // and append '_' for inplace variants.
@@ -1539,7 +1549,7 @@ pub fn process_js_tensor_web_op(attr: JsTensorWebOpAttr, item: ItemFn) -> SynRes
                 impl JsTensor {
                     #method_name_attr
                     #[allow(non_snake_case)]
-                    pub fn #wrapper_fn_ident(&self, #(#wrapper_param_decls),*) -> Result<wasm_bindgen::JsValue, wasm_bindgen::JsError> {
+                    pub #async_token fn #wrapper_fn_ident(&self, #(#wrapper_param_decls),*) -> Result<wasm_bindgen::JsValue, wasm_bindgen::JsError> {
                         let input_js = self.js_value();
                         #call_tokens
                     }
