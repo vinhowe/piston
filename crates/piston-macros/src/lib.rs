@@ -1,5 +1,4 @@
 mod ir_fields;
-mod js_tensor;
 mod js_tensor_web_op;
 mod ops;
 mod scoped_module;
@@ -32,14 +31,6 @@ pub fn derive_ir_fields(input: TokenStream) -> TokenStream {
 #[proc_macro_attribute]
 pub fn scoped_module(_attr: TokenStream, item: TokenStream) -> TokenStream {
     scoped_module::scoped_module(item)
-}
-
-/// Derives the `JsTensorMethod` trait implementation for a method.
-///
-/// Automatically does the boilerplate for converting a method to a JS method.
-#[proc_macro_attribute]
-pub fn js_tensor_operations(_attr: TokenStream, item: TokenStream) -> TokenStream {
-    js_tensor::js_tensor_operations(item)
 }
 
 /// Generates tensor operation variants from an OpTensor kernel function.
