@@ -1,6 +1,6 @@
 {
   "compilerOptions": {
-    "target": "es2020",
+    "target": "es2023",
     "module": "esnext",
     "lib": ["dom", "esnext"],
     "importHelpers": true,
@@ -16,18 +16,18 @@
     "noImplicitReturns": true,
     "noFallthroughCasesInSwitch": true,
     "moduleResolution": "node",
+    "stripInternal": true,
     "baseUrl": "./",
     "paths": {
       "@/*": ["src/*"],
-      "@piston/piston-web": ["../../target/pkg/piston-web"]
+      "@piston-ml/piston-web-wasm": ["../../target/pkg/piston-web"]
     },
     "preserveSymlinks": true,
     "jsx": "react",
     "esModuleInterop": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
-    // We do this because we don't want to include the Node.js Buffer type (or others, really)
-    "types": []
+    "types": ["vitest/globals", "node"],
   },
   "include": ["src", "../../target/pkg/piston-web/piston-web.d.ts"],
   "exclude": ["node_modules", "dist", "test"]
