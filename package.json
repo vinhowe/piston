@@ -1,7 +1,7 @@
 {
   "name": "piston-repo",
   "version": "0.0.0",
-  "packageManager": "pnpm@8.15.8",
+  "packageManager": "pnpm@10.13.1",
   "private": true,
   "devDependencies": {
     "pkg-pr-new": "0.0.15",
