@@ -44,3 +44,4 @@ export class RemovableHandle {
 }
 
 export * from "./data";
+export * from "./weak";

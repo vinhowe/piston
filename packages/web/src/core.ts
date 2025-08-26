@@ -43,28 +43,7 @@ async function init(): Promise<void> {
 }
 
 export * from "@/function";
-export {
-  arange,
-  bernoulli,
-  cat,
-  cpu,
-  float16,
-  float32,
-  full,
-  gpu,
-  int32,
-  ones,
-  onesLike,
-  rand,
-  randint,
-  randn,
-  seed,
-  stack,
-  tensor,
-  uint32,
-  zeros,
-  zerosLike,
-} from "@/globals";
+export * from "@/globals";
 export * as nn from "@/nn";
 export * from "@/nn";
 export { debugBufferHook } from "@/nn/moduleUtils";

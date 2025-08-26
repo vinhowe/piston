@@ -3,6 +3,12 @@
 // surface area via unsafe declaration merging for TypeScript typing.
 import { Tensor_wasm } from "./wasm";
 
+export type OpDescription = {
+  name: string;
+  // TODO(vinhowe): Fix this to be like the actual type
+  fields: Record<string, unknown>;
+};
+
 // Track the inner wasm tensor for both the target and its proxy
 const innerMap: WeakMap<object, Tensor_wasm> = new WeakMap();
 
@@ -88,7 +94,7 @@ export class Tensor {
   static _unwrap(tensor: Tensor): Tensor_wasm {
     const inner = innerMap.get(tensor);
     if (!inner) throw new Error("Tensor is missing its inner value");
-    return inner._clone();
+    return inner._cloneWeak();
   }
 }
 

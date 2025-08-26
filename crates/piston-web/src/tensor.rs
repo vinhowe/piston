@@ -1,59 +1,99 @@
+// TODO(vinhowe): This cursed approach to reference handling partly reflects the tension between
+// Rust's convenient reference counting approach to memory management and JS's automatic garbage
+// collection, but there is probably a more thoughtful approach to this. Hard to justify the energy
+// right now, though.
+
 use crate::error::IntoJsError;
 use crate::js_util::downcast_from_ptr;
 use crate::shape::FromJsDim;
 use half::f16;
 use js_sys::{Array, Function, Object, Reflect};
+use parking_lot::RwLock;
 use piston::{
-    AllDims, DType, Device, Dim, IrScalarValue, IrValue, LazyOp, NormOrd, Tensor,
-    TensorOptions as CoreTensorOptions,
+    AllDims, DType, Dim, IrScalarValue, IrValue, LazyOp, NormOrd, Tensor, TensorId,
+    TensorTypeOrScalar, TensorTypeOrScalarEnum,
 };
-use piston::{TensorTypeOrScalar, TensorTypeOrScalarEnum};
 use piston_macros::js_tensor_web_op;
-use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::str::FromStr;
-use tsify::Tsify;
+use std::sync::{Arc, Weak};
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::{JsError, JsValue};
 
-use crate::{
-    device::{GPU_DEVICE, JsDevice},
-    dtype::JsDType,
-};
+use crate::{device::JsDevice, dtype::JsDType};
 
-#[derive(Tsify, Serialize, Deserialize)]
-#[tsify(into_wasm_abi, from_wasm_abi)]
-pub struct TensorOptions {
-    #[serde(default, with = "crate::js_util::try_from_js_value_preserve")]
-    #[tsify(optional)]
-    pub dtype: Option<JsDType>,
-    #[serde(default, with = "crate::js_util::try_from_js_value_preserve")]
-    #[tsify(optional)]
-    pub device: Option<JsDevice>,
-    #[serde(default, rename = "requiresGrad")]
-    #[tsify(optional)]
-    pub requires_grad: Option<bool>,
+enum MaybeStrong<T> {
+    Strong(Arc<T>),
+    Weak(Weak<T>),
 }
 
-impl From<TensorOptions> for CoreTensorOptions {
-    fn from(options: TensorOptions) -> Self {
-        CoreTensorOptions {
-            dtype: options.dtype.map(|d| d.dtype),
-            device: options.device.map(|d| d.inner),
-            requires_grad: options.requires_grad,
+impl<T> MaybeStrong<T> {
+    pub fn downgrade(&self) -> Weak<T> {
+        match self {
+            MaybeStrong::Strong(a) => Arc::downgrade(a),
+            MaybeStrong::Weak(w) => w.clone(),
+        }
+    }
+
+    pub fn upgrade(&self) -> Option<Arc<T>> {
+        match self {
+            MaybeStrong::Strong(a) => Some(a.clone()),
+            MaybeStrong::Weak(w) => w.upgrade(),
         }
     }
 }
 
 #[wasm_bindgen(js_name = Tensor)]
 pub struct JsTensor {
-    pub(crate) inner: Tensor,
+    inner: MaybeStrong<(RwLock<Option<Tensor>>, StrongJsTensorId)>,
 }
 
 impl JsTensor {
+    fn new_impl(inner: MaybeStrong<(RwLock<Option<Tensor>>, StrongJsTensorId)>) -> Self {
+        if let MaybeStrong::Strong(ref inner) = inner {
+            register_active_tensor(JsTensor::new_impl(MaybeStrong::Weak(Arc::downgrade(inner))));
+        }
+        Self { inner }
+    }
+
+    pub fn new(inner: Tensor) -> Self {
+        Self::new_impl(MaybeStrong::Strong(Arc::new((
+            RwLock::new(Some(inner)),
+            StrongJsTensorId::new(),
+        ))))
+    }
+
+    pub fn new_weak(inner: Weak<(RwLock<Option<Tensor>>, StrongJsTensorId)>) -> Self {
+        Self::new_impl(MaybeStrong::Weak(inner))
+    }
+
+    pub(crate) fn inner(&self) -> Tensor {
+        match self.inner {
+            MaybeStrong::Strong(ref inner) => inner
+                .0
+                .read()
+                .as_ref()
+                .expect("Tried to use a dropped Tensor; strong inner value taken")
+                .clone(),
+            MaybeStrong::Weak(ref inner) => inner
+                .upgrade()
+                .as_ref()
+                .expect("Tried to use a dropped Tensor; ref dropped")
+                .0
+                .read()
+                .as_ref()
+                .expect("Tried to use a dropped Tensor; weak inner value taken")
+                .clone(),
+        }
+    }
+
+    pub(crate) fn weak(&self) -> JsTensor {
+        JsTensor::new_weak(self.inner.downgrade())
+    }
+
     fn js_value(&self) -> JsValue {
-        self._clone().into()
+        self.weak().into()
     }
 }
 
@@ -63,8 +103,8 @@ impl JsTensor {
     #[wasm_bindgen(unchecked_prelude = "__wbg_piston_tensor(): void;")]
     pub fn __wbg_piston_tensor() {}
 
-    #[wasm_bindgen(constructor, unchecked_return_type = "Tensor")]
-    pub fn new_js(
+    #[wasm_bindgen(js_name = new, unchecked_return_type = "Tensor")]
+    pub async fn new_js(
         #[wasm_bindgen(
             unchecked_param_type = "Float32Array | Float64Array | Int32Array | Uint32Array | number[]"
         )]
@@ -75,26 +115,46 @@ impl JsTensor {
         fromData(data, value, options)
     }
 
+    #[wasm_bindgen(js_name = __pistonDrop)]
+    pub fn __piston_drop(&self) {
+        if let Some(inner) = self.inner.upgrade() {
+            inner.0.write().take();
+        }
+    }
+
+    #[wasm_bindgen(getter = __pistonHasValue)]
+    pub fn __piston_has_value(&self) -> bool {
+        self.inner
+            .upgrade()
+            .map(|inner| inner.0.read().is_some())
+            .unwrap_or(false)
+    }
+
+    #[wasm_bindgen(getter = __pistonStrongId)]
+    pub fn __piston_strong_id(&self) -> usize {
+        self.inner.upgrade().map(|inner| inner.1.0).unwrap_or(0)
+    }
+
     #[wasm_bindgen(getter)]
     pub fn id(&self) -> usize {
-        self.inner.id().0
+        self.inner().id().0
     }
 
     // - Skipping storage_view
 
     pub fn dim(&self) -> usize {
-        self.inner.dim()
+        self.inner().dim()
     }
 
     #[wasm_bindgen(getter)]
     pub fn ndim(&self) -> usize {
-        self.inner.dim()
+        self.inner().dim()
     }
 
     #[wasm_bindgen(getter)]
     pub fn dtype(&self) -> JsDType {
         JsDType {
-            dtype: self.inner.dtype(),
+            dtype: self.inner().dtype(),
         }
     }
 
@@ -103,12 +163,13 @@ impl JsTensor {
         unchecked_prelude = "size(): number[];\nsize(dim: number): number;"
     )]
     pub fn size(&self, dim: Option<isize>) -> JsValue {
+        let inner = self.inner();
         if let Some(dim) = dim {
             let dim = FromJsDim(dim);
-            let size = dim.to_index(&self.inner.shape(), "size").unwrap();
-            JsValue::from_f64(self.inner.shape()[size] as f64)
+            let size = dim.to_index(&inner.shape(), "size").unwrap();
+            JsValue::from_f64(inner.shape()[size] as f64)
         } else {
-            let shape = self.inner.shape().to_vec();
+            let shape = inner.shape().to_vec();
             let array = js_sys::Array::new();
             for dim in shape {
                 array.push(&JsValue::from_f64(dim as f64));
@@ -119,7 +180,7 @@ impl JsTensor {
 
     #[wasm_bindgen(getter, unchecked_return_type = "number[]")]
     pub fn shape(&self) -> JsValue {
-        let shape = self.inner.shape().to_vec();
+        let shape = self.inner().shape().to_vec();
         let array = js_sys::Array::new();
         for dim in shape {
             array.push(&JsValue::from_f64(dim as f64));
@@ -132,12 +193,13 @@ impl JsTensor {
         unchecked_prelude = "stride(): number[];\nstride(dim: number): number;"
     )]
     pub fn stride(&self, dim: Option<isize>) -> JsValue {
+        let inner = self.inner();
         if let Some(dim) = dim {
             let dim = FromJsDim(dim);
-            let stride = dim.to_index(&self.inner.shape(), "stride").unwrap();
-            JsValue::from_f64(self.inner.stride()[stride] as f64)
+            let stride = dim.to_index(&inner.shape(), "stride").unwrap();
+            JsValue::from_f64(inner.stride()[stride] as f64)
         } else {
-            let stride = self.inner.stride().to_vec();
+            let stride = inner.stride().to_vec();
             let array = js_sys::Array::new();
             for dim in stride {
                 array.push(&JsValue::from_f64(dim as f64));
@@ -148,24 +210,24 @@ impl JsTensor {
 
     #[wasm_bindgen(getter = nbytes)]
     pub fn num_bytes(&self) -> usize {
-        self.inner.num_bytes()
+        self.inner().num_bytes()
     }
 
     #[wasm_bindgen(getter)]
     pub fn device(&self) -> JsDevice {
         JsDevice {
-            inner: self.inner.device(),
+            inner: self.inner().device(),
         }
     }
 
     // - Skipping storage
 
     pub fn resolved(&self) -> bool {
-        self.inner.resolved()
+        self.inner().resolved()
     }
 
     pub fn op(&self) -> JsValue {
-        let op = self.inner.op();
+        let op = self.inner().op();
         let ir = op.ir();
         let name = ir.name().to_string();
 
@@ -185,28 +247,39 @@ impl JsTensor {
     }
 
     // Convenient for building graphs
-    #[wasm_bindgen(js_name = srcIds)]
-    pub fn src_ids(&self) -> Vec<usize> {
-        self.inner.op().srcs().iter().map(|s| s.id().0).collect()
+    #[wasm_bindgen(unchecked_return_type = "number[]", js_name = srcIds)]
+    pub fn src_ids(&self) -> JsValue {
+        let src_ids = self
+            .inner()
+            .op()
+            .srcs()
+            .iter()
+            .map(|s| s.id().0)
+            .collect::<Vec<_>>();
+        let array = js_sys::Array::new();
+        for id in src_ids {
+            array.push(&JsValue::from_f64(id as f64));
+        }
+        array.into()
     }
 
     pub fn scope(&self) -> Option<String> {
-        self.inner.scope().clone()
+        self.inner().scope().clone()
     }
 
     #[wasm_bindgen(js_name = isScalar)]
     pub fn is_scalar(&self) -> bool {
-        self.inner.is_scalar()
+        self.inner().is_scalar()
     }
 
     #[wasm_bindgen(getter = requiresGrad)]
     pub fn requires_grad(&self) -> bool {
-        self.inner.requires_grad()
+        self.inner().requires_grad()
     }
 
     #[wasm_bindgen(js_name = storageId)]
     pub fn storage_id(&self) -> Option<usize> {
-        self.inner.storage_id()
+        self.inner().storage_id()
     }
 }
 
@@ -658,6 +731,22 @@ pub fn from_data(
     }
 }
 
+#[js_tensor_web_op(name = To, variants = [method])]
+pub async fn to(input: Tensor, device: Device) -> Result<JsTensor, JsError> {
+    Ok::<_, JsError>(input.to(&device).await?)
+}
+
+#[js_tensor_web_op(name = Grad, variants = [method], getter)]
+pub fn grad(input: Tensor) -> Result<Option<JsTensor>, JsError> {
+    Ok::<_, JsError>(input.grad().map(JsTensor::new))
+}
+
+#[cfg(not(feature = "debug"))]
+#[js_tensor_web_op(name = DebugTensor, variants = [method], getter)]
+pub fn debug_tensor(input: Tensor) -> Result<JsTensor, JsError> {
+    input.get_or_create_debug_tensor()
+}
+
 #[wasm_bindgen(js_name = promoteTypes)]
 pub fn promote_types(dtype1: JsDType, dtype2: JsDType) -> Result<JsDType, JsError> {
     piston::promote_types(dtype1.dtype, dtype2.dtype)
@@ -668,19 +757,15 @@ pub fn promote_types(dtype1: JsDType, dtype2: JsDType) -> Result<JsDType, JsErro
 #[wasm_bindgen(js_class = Tensor)]
 impl JsTensor {
     pub fn is_contiguous(&self) -> bool {
-        self.inner.is_contiguous()
+        self.inner().is_contiguous()
     }
 
     pub fn detach(&self) -> JsTensor {
-        JsTensor {
-            inner: self.inner.detach(),
-        }
+        JsTensor::new(self.inner().detach())
     }
 
     pub fn detach_(&self) -> JsTensor {
-        JsTensor {
-            inner: self.inner.detach_(),
-        }
+        JsTensor::new(self.inner().detach_())
     }
 
     // Skipping copy; the api is not great right now
@@ -696,45 +781,30 @@ impl JsTensor {
 impl JsTensor {
     #[wasm_bindgen(js_name = toVec, unchecked_return_type = "Float32Array | Int32Array | Uint32Array")]
     pub async fn to_vec(&self, dtype: Option<JsDType>) -> Result<JsValue, JsError> {
-        let dtype = dtype.map(|d| d.dtype).unwrap_or(self.inner.dtype());
+        let dtype = dtype.map(|d| d.dtype).unwrap_or(self.inner().dtype());
+        let inner = self.inner();
         match dtype {
             DType::F32 => {
-                let result = self
-                    .inner
-                    .to_vec::<f32>()
-                    .await
-                    .map_err(|e| e.into_js_error())?;
+                let result = inner.to_vec::<f32>().await.map_err(|e| e.into_js_error())?;
                 let array = js_sys::Float32Array::new_with_length(result.len() as u32);
                 array.copy_from(&result);
                 Ok(array.into())
             }
             DType::F16 => {
-                let result = self
-                    .inner
-                    .to_vec::<f16>()
-                    .await
-                    .map_err(|e| e.into_js_error())?;
+                let result = inner.to_vec::<f16>().await.map_err(|e| e.into_js_error())?;
                 let f32_vec: Vec<f32> = result.iter().map(|&x| f16::to_f32(x)).collect();
                 let array = js_sys::Float32Array::new_with_length(f32_vec.len() as u32);
                 array.copy_from(&f32_vec);
                 Ok(array.into())
             }
             DType::I32 => {
-                let result = self
-                    .inner
-                    .to_vec::<i32>()
-                    .await
-                    .map_err(|e| e.into_js_error())?;
+                let result = inner.to_vec::<i32>().await.map_err(|e| e.into_js_error())?;
                 let array = js_sys::Int32Array::new_with_length(result.len() as u32);
                 array.copy_from(&result);
                 Ok(array.into())
             }
             DType::U32 => {
-                let result = self
-                    .inner
-                    .to_vec::<u32>()
-                    .await
-                    .map_err(|e| e.into_js_error())?;
+                let result = inner.to_vec::<u32>().await.map_err(|e| e.into_js_error())?;
                 let array = js_sys::Uint32Array::new_with_length(result.len() as u32);
                 array.copy_from(&result);
                 Ok(array.into())
@@ -747,63 +817,40 @@ impl JsTensor {
 
     #[wasm_bindgen(unchecked_return_type = "number")]
     pub async fn item(&self, dtype: Option<JsDType>) -> Result<JsValue, JsError> {
-        let dtype = dtype.map(|d| d.dtype).unwrap_or(self.inner.dtype());
+        let dtype = dtype.map(|d| d.dtype).unwrap_or(self.inner().dtype());
+        let inner = self.inner();
         match dtype {
-            DType::F32 => Ok(JsValue::from_f64(self.inner.item::<f32>().await.into())),
+            DType::F32 => Ok(JsValue::from_f64(inner.item::<f32>().await.into())),
             DType::F16 => Ok(JsValue::from_f64(
-                f16::to_f32(self.inner.item::<f16>().await).into(),
+                f16::to_f32(inner.item::<f16>().await).into(),
             )),
-            DType::I32 => Ok(JsValue::from_f64(self.inner.item::<i32>().await.into())),
-            DType::U32 => Ok(JsValue::from_f64(self.inner.item::<u32>().await.into())),
+            DType::I32 => Ok(JsValue::from_f64(inner.item::<i32>().await.into())),
+            DType::U32 => Ok(JsValue::from_f64(inner.item::<u32>().await.into())),
             _ => panic!("Unsupported dtype"),
         }
-    }
-
-    pub async fn to(&self, device: String) -> Result<JsTensor, JsError> {
-        let device = match device.as_str() {
-            "cpu" => Device::CPU,
-            "gpu" | "webgpu" => {
-                GPU_DEVICE.with(|device| device.borrow().clone().unwrap().inner.clone())
-            }
-            _ => return Err(JsError::new("Unsupported device")),
-        };
-        let inner = self.inner.to(&device).await?;
-        Ok(JsTensor { inner })
     }
 
     #[wasm_bindgen(js_name = hasNaN)]
     pub fn has_nan(&self, dtype: Option<JsDType>) -> bool {
-        let dtype = dtype.map(|d| d.dtype).unwrap_or(self.inner.dtype());
+        let dtype = dtype.map(|d| d.dtype).unwrap_or(self.inner().dtype());
         match dtype {
-            DType::F32 => self.inner.has_nan::<f32>(),
-            DType::F16 => self.inner.has_nan::<f16>(),
+            DType::F32 => self.inner().has_nan::<f32>(),
+            DType::F16 => self.inner().has_nan::<f16>(),
             _ => panic!("Unsupported dtype"),
         }
     }
 
-    #[wasm_bindgen(getter)]
-    pub fn grad(&self) -> Option<JsTensor> {
-        self.inner.grad().map(|grad| JsTensor { inner: grad })
-    }
-
     #[wasm_bindgen(setter = grad)]
     pub fn set_grad(&self, grad: Option<JsTensor>) {
-        self.inner.set_grad(grad.map(|g| g.inner));
-    }
-
-    #[cfg(not(feature = "debug"))]
-    #[wasm_bindgen(js_name = debugTensor)]
-    pub fn debug_tensor(&self) -> Result<JsTensor, JsError> {
-        let tensor = self.inner.get_or_create_debug_tensor()?;
-        Ok(JsTensor { inner: tensor })
+        self.inner().set_grad(grad.map(|g| g.inner().clone()));
     }
 
     pub fn backward(&self) -> Result<(), JsError> {
-        self.inner.backward().map_err(|e| e.into_js_error())
+        self.inner().backward().map_err(|e| e.into_js_error())
     }
 
     pub fn invalidate(&mut self) -> Result<(), JsError> {
-        self.inner.invalidate().map_err(|e| e.into())
+        self.inner().invalidate().map_err(|e| e.into())
     }
 }
 
@@ -867,14 +914,16 @@ pub fn ones(shape: Shape, options: TensorOptions) -> anyhow::Result<Tensor> {
     piston::ones(shape, options)
 }
 
-
 #[wasm_bindgen(js_class = Tensor)]
 impl JsTensor {
-    #[wasm_bindgen]
-    pub fn _clone(&self) -> JsTensor {
-        JsTensor {
-            inner: self.inner.clone(),
-        }
+    #[wasm_bindgen(js_name = _clone)]
+    pub fn _clone_js(&self) -> JsTensor {
+        JsTensor::new(self.inner().clone())
+    }
+
+    #[wasm_bindgen(js_name = _cloneWeak)]
+    pub fn _clone_weak_js(&self) -> JsTensor {
+        JsTensor::new_weak(self.inner.downgrade())
     }
 }
 
@@ -886,7 +935,7 @@ struct JsTensorOrScalar {
 impl TensorTypeOrScalar<Tensor> for JsTensorOrScalar {
     fn tensor_or_scalar(&self) -> anyhow::Result<TensorTypeOrScalarEnum<Tensor>> {
         if let Ok(other) = JsTensor::try_from(self.inner.clone()) {
-            Ok(TensorTypeOrScalarEnum::Tensor(other.inner))
+            Ok(TensorTypeOrScalarEnum::Tensor(other.inner()))
         } else {
             let other: f32 = self
                 .inner
@@ -945,15 +994,14 @@ fn convert_ir_fields_to_js(
 fn convert_ir_value_to_js(value: &IrValue, op: &LazyOp) -> JsValue {
     match value {
         IrValue::Tensor(tensor_value) => {
-            // Get the tensor from the operation's sources
-            if let Some(tensor) = op.srcs().iter().find(|t| t.id() == tensor_value.id) {
-                let js_tensor = JsTensor {
-                    inner: Tensor::wrap((*tensor).clone()),
-                };
-                JsValue::from(js_tensor)
-            } else {
-                JsValue::NULL
+            // Use existing JS tensors from the active map to avoid creating strong allocations
+            if let Some(list) = active_tensors().get(&tensor_value.id)
+                && let Some(first) = list.first()
+            {
+                return first.js_value();
             }
+            // No suitable existing JS tensor found :(
+            JsValue::NULL
         }
         // Handle scalar values
         IrValue::Scalar(scalar) => match scalar {
@@ -1006,7 +1054,80 @@ fn convert_ir_value_to_js(value: &IrValue, op: &LazyOp) -> JsValue {
 impl TryFrom<JsValue> for JsTensor {
     type Error = JsError;
     fn try_from(value: JsValue) -> Result<Self, Self::Error> {
-        downcast_from_ptr(&value, "__wbg_piston_tensor")
+        downcast_from_ptr::<JsTensor>(&value, "__wbg_piston_tensor", true)
             .ok_or_else(|| JsError::new("Failed to downcast Tensor from JS value"))
+    }
+}
+
+thread_local! {
+    pub(crate) static ACTIVE_TENSORS: RefCell<Vec<JsTensor>> = const { RefCell::new(Vec::new()) };
+}
+
+fn register_active_tensor(tensor: JsTensor) {
+    ACTIVE_TENSORS
+        .try_with(|cell| {
+            cell.borrow_mut()
+                .push(JsTensor::new_weak(tensor.inner.downgrade()));
+        })
+        .ok();
+}
+
+fn active_tensors() -> HashMap<TensorId, Vec<JsTensor>> {
+    ACTIVE_TENSORS.with(|cell| {
+        let mut list = cell.borrow_mut();
+        // Clean out broken references
+        list.retain(|t| t.inner.upgrade().filter(|t| t.0.read().is_some()).is_some());
+        // Group by TensorId
+        let mut map: HashMap<TensorId, Vec<JsTensor>> = HashMap::new();
+        for t in list.iter() {
+            let id = t.inner().id();
+            map.entry(id).or_default().push(t._clone_weak_js());
+        }
+        map
+    })
+}
+
+#[wasm_bindgen(js_name = __pistonActiveTensors, unchecked_return_type = "Map<number, Tensor[]>")]
+pub fn active_tensors_js() -> JsValue {
+    let map_js = js_sys::Map::new();
+    for (id, list) in active_tensors() {
+        let arr = Array::new();
+        for js_tensor in list {
+            arr.push(&JsValue::from(js_tensor));
+        }
+        map_js.set(&JsValue::from_f64(id.0 as f64), &arr.into());
+    }
+    map_js.into()
+}
+
+/// Unique identifier for tensors.
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+#[wasm_bindgen]
+pub struct StrongJsTensorId(pub usize);
+
+impl std::fmt::Debug for StrongJsTensorId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "T{}", self.0)
+    }
+}
+
+impl Ord for StrongJsTensorId {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.0.cmp(&other.0)
+    }
+}
+
+impl PartialOrd for StrongJsTensorId {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl StrongJsTensorId {
+    pub(crate) fn new() -> Self {
+        // https://users.rust-lang.org/t/idiomatic-rust-way-to-generate-unique-id/33805
+        use std::sync::atomic;
+        static COUNTER: atomic::AtomicUsize = atomic::AtomicUsize::new(1);
+        Self(COUNTER.fetch_add(1, atomic::Ordering::Relaxed))
     }
 }

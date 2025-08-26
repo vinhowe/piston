@@ -64,7 +64,7 @@ pub fn uint32() -> JsDType {
 impl TryFrom<JsValue> for JsDType {
     type Error = JsError;
     fn try_from(value: JsValue) -> Result<Self, Self::Error> {
-        downcast_from_ptr(&value, "__wbg_piston_dtype")
+        downcast_from_ptr(&value, "__wbg_piston_dtype", false)
             .ok_or_else(|| JsError::new("Failed to downcast DType from JS value"))
     }
 }

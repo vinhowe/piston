@@ -28,11 +28,13 @@ import {
   seed_wasm,
   stack as stack_wasm,
   Tensor_wasm,
-  TensorOptions,
   uint32_wasm,
   zeros as zeros_wasm,
   zerosLike as zerosLike_wasm,
 } from "@/wasm";
+
+export { __pistonActiveTensors } from "@/wasm";
+export * as wasm from "@/wasm";
 
 // dtypes
 export let float32: DType;
@@ -178,6 +180,17 @@ function wrapWithParam<Args extends unknown[], O extends TensorOptions>(
   return wrapped;
 }
 
+function inferDTypeFromTypedArray(
+  data: Float32Array | Float64Array | Int32Array | Uint32Array | Uint8Array,
+): DType {
+  if (data instanceof Float32Array) return float32._clone();
+  if (data instanceof Float64Array) return float32._clone();
+  if (data instanceof Int32Array) return int32._clone();
+  if (data instanceof Uint32Array) return uint32._clone();
+  if (data instanceof Uint8Array) return uint32._clone();
+  return float32._clone();
+}
+
 export function inferShapeFromNestedArray(arr: NestedNumberList): number[] {
   if (!Array.isArray(arr)) {
     // Base case: number
@@ -246,7 +259,7 @@ export async function initGlobals() {
           | Float64Array
           | Int32Array
           | Uint32Array,
-        config?: FullInitConfig & OptionalShapeConfig,
+        config?: TensorOptions & OptionalShapeConfig,
       ) => {
         // Infer shape here, if we're looking at a nested number list
         let shape: ShapeType | undefined = config?.shape;
@@ -279,24 +292,76 @@ export async function initGlobals() {
           }
         }
 
-        let castData;
+        // Determine effective dtype: explicit config wins; otherwise infer from input
+        const isTyped =
+          data instanceof Float32Array ||
+          data instanceof Float64Array ||
+          data instanceof Int32Array ||
+          data instanceof Uint32Array ||
+          data instanceof Uint8Array;
+
+        const targetDType = config?.dtype
+          ? parseDType(config.dtype)
+          : isTyped
+            ? inferDTypeFromTypedArray(
+                data as Float32Array | Float64Array | Int32Array | Uint32Array | Uint8Array,
+              )
+            : float32._clone();
+
+        // Prepare data with minimal conversions
+        let castData:
+          | Float32Array
+          | Float64Array
+          | Int32Array
+          | Uint32Array
+          | Uint8Array
+          | number[];
         if (Array.isArray(data)) {
-          data = data.flat();
+          const flattened = (data as unknown[]).flat(Infinity) as number[];
+          // If user specified dtype, prefer constructing the corresponding typed array
+          if (config?.dtype) {
+            if (targetDType.isFloatingPoint) {
+              // Use Float32Array for both F32 and F16 inputs
+              castData = new Float32Array(flattened);
+            } else if (targetDType.isSigned) {
+              castData = new Int32Array(flattened);
+            } else {
+              castData = new Uint32Array(flattened);
+            }
+          } else {
+            // Default to F32
+            castData = flattened; // pass number[] to avoid extra JS copy
+          }
         } else if (typeof data === "number") {
-          data = [data];
-        }
-        if (config?.dtype) {
-          if (config.dtype === float32) {
-            castData = new Float32Array(data as number[]);
-          } else if (config.dtype === float16) {
-            castData = new Float16Array(data as number[]);
-          } else if (config.dtype === int32) {
-            castData = new Int32Array(data as number[]);
-          } else if (config.dtype === uint32) {
-            castData = new Uint32Array(data as number[]);
+          if (config?.dtype) {
+            if (targetDType.isFloatingPoint) {
+              castData = new Float32Array([data]);
+            } else if (targetDType.isSigned) {
+              castData = new Int32Array([data]);
+            } else {
+              castData = new Uint32Array([data]);
+            }
+          } else {
+            castData = [data];
+          }
+        } else if (data instanceof Uint8Array) {
+          // Uint8Array is not directly handled; promote once using fast typed-array copy
+          if (targetDType.isFloatingPoint) {
+            const out = new Float32Array(data.length);
+            out.set(data);
+            castData = out;
+          } else if (targetDType.isSigned) {
+            const out = new Int32Array(data.length);
+            out.set(data);
+            castData = out;
+          } else {
+            const out = new Uint32Array(data.length);
+            out.set(data);
+            castData = out;
           }
         } else {
-          castData = Array.isArray(data) ? new Float32Array(data as number[]) : data;
+          // Already one of the supported typed arrays; avoid JS-side casts
+          castData = data as Float32Array | Float64Array | Int32Array | Uint32Array | Uint8Array;
         }
 
         if (!castData) {
@@ -304,6 +369,7 @@ export async function initGlobals() {
         }
 
         return fromData(castData, shape, {
+          dtype: targetDType,
           device: parseDevice(config?.device),
           requiresGrad: config?.requiresGrad ?? false,
         });

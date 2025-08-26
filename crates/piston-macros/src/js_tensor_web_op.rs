@@ -450,97 +450,136 @@ fn is_optional_of_type(ty: &Type, expected: &str) -> bool {
     false
 }
 
-fn param_unchecked_ts_type(ty: &Type, optional: bool) -> String {
-    // Handle Option<Vec<Tensor>> specially
-    if let Some((inner_ty, _)) = get_inner_type(ty, "Option")
-        && let Some((vec_inner, _)) = get_inner_type(inner_ty, "Vec")
-        && is_type(vec_inner, "Tensor")
-    {
-        let mut s = "Tensor[]".to_string();
-        s.push_str(" | null | undefined");
-        return s;
-    }
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum ParamKind {
+    Tensor,
+    VecTensor,
+    TensorOrScalar,
+    Shape,
+    ShapeWithOneHole,
+    Dims,
+    Dim,
+    NormOrd,
+    DType,
+    Device,
+    Bool,
+    Usize,
+    I32,
+    U32,
+    F32,
+    Unknown,
+}
 
-    let mut s = if is_type(ty, "Tensor") || is_optional_of_type(ty, "Tensor") {
-        "Tensor".to_string()
-    } else if let Some((vec_inner, _)) = get_inner_type(ty, "Vec") {
-        if is_type(vec_inner, "Tensor") {
-            "Tensor[]".to_string()
-        } else {
-            "unknown[]".to_string()
-        }
-    } else if is_type(ty, "TensorOrScalar") || is_optional_of_type(ty, "TensorOrScalar") {
-        "Tensor | number".to_string()
-    } else if is_type(ty, "NormOrd") || is_optional_of_type(ty, "NormOrd") {
-        // Accept common string literals or numeric values for NormOrd
-        "'fro' | 'inf' | '-inf' | '0' | '1' | '-1' | number".to_string()
-    } else if is_type(ty, "Shape") || is_optional_of_type(ty, "Shape") {
-        "Uint32Array | number[] | number".to_string()
-    } else if is_type(ty, "ShapeWithOneHole")
-        || is_optional_of_type(ty, "ShapeWithOneHole")
-        || is_type(ty, "Dims")
-        || is_optional_of_type(ty, "Dims")
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+struct KindMeta {
+    optional: bool,
+}
+
+fn classify_param_kind(ty: &Type) -> (ParamKind, KindMeta) {
+    // Unwrap Option<T>
+    if let Some((inner, _)) = get_inner_type(ty, "Option") {
+        let (kind, _meta) = classify_param_kind(inner);
+        return (kind, KindMeta { optional: true });
+    }
+    // Vec<Tensor>
+    if let Some((inner, _)) = get_inner_type(ty, "Vec")
+        && is_type(inner, "Tensor")
     {
-        "Int32Array | number[] | number".to_string()
-    } else if is_type(ty, "Dim") || is_optional_of_type(ty, "Dim") {
-        "number".to_string()
-    } else if is_type(ty, "Device") || is_optional_of_type(ty, "Device") {
-        // Devices only from options in our model; for positional, show string fallback
-        "string".to_string()
-    } else if is_type(ty, "DType") || is_optional_of_type(ty, "DType") {
-        // DType only from options; for positional just show JsDType
-        "DType".to_string()
-    } else if is_type(ty, "bool") || is_optional_of_type(ty, "bool") {
-        "boolean".to_string()
-    } else if is_type(ty, "usize")
-        || is_optional_of_type(ty, "usize")
-        || is_type(ty, "i32")
-        || is_optional_of_type(ty, "i32")
-        || is_type(ty, "u32")
-        || is_optional_of_type(ty, "u32")
-        || is_type(ty, "f32")
-        || is_optional_of_type(ty, "f32")
-    {
-        "number".to_string()
+        return (ParamKind::VecTensor, KindMeta { optional: false });
+    }
+    // Base kinds
+    let kind = if is_type(ty, "Tensor") {
+        ParamKind::Tensor
+    } else if is_type(ty, "TensorOrScalar") {
+        ParamKind::TensorOrScalar
+    } else if is_type(ty, "Shape") {
+        ParamKind::Shape
+    } else if is_type(ty, "ShapeWithOneHole") {
+        ParamKind::ShapeWithOneHole
+    } else if is_type(ty, "Dims") {
+        ParamKind::Dims
+    } else if is_type(ty, "Dim") {
+        ParamKind::Dim
+    } else if is_type(ty, "NormOrd") {
+        ParamKind::NormOrd
+    } else if is_type(ty, "DType") {
+        ParamKind::DType
+    } else if is_type(ty, "Device") {
+        ParamKind::Device
+    } else if is_type(ty, "bool") {
+        ParamKind::Bool
+    } else if is_type(ty, "usize") {
+        ParamKind::Usize
+    } else if is_type(ty, "i32") {
+        ParamKind::I32
+    } else if is_type(ty, "u32") {
+        ParamKind::U32
+    } else if is_type(ty, "f32") {
+        ParamKind::F32
     } else {
-        // fallback: unknown
-        "unknown".to_string()
+        ParamKind::Unknown
     };
-    if optional {
+    (kind, KindMeta { optional: false })
+}
+
+fn is_return_type_option(func: &ItemFn) -> bool {
+    // Returns (is_option, inner_is_js_tensor)
+    // Look at the function signature return type and detect if Ok type is Option<Tensor> or Option<JsTensor>
+    use syn::ReturnType;
+    let mut ty_opt: Option<&Type> = None;
+    if let ReturnType::Type(_, ty) = &func.sig.output {
+        ty_opt = Some(ty);
+    }
+    if let Some(ty) = ty_opt {
+        // Unwrap Result<Ok, Err> -> Ok
+        let ok_ty = if let Some((inner, _)) = get_inner_type(ty, "Result") {
+            inner
+        } else {
+            ty
+        };
+        // Check Option<...>
+        return is_optional_of_type(ok_ty, "JsTensor");
+    }
+    false
+}
+
+fn param_unchecked_ts_type(ty: &Type, optional: bool) -> String {
+    let (kind, meta) = classify_param_kind(ty);
+    let is_optional = optional || meta.optional;
+    let mut s = match kind {
+        ParamKind::Tensor => "Tensor".to_string(),
+        ParamKind::VecTensor => "Tensor[]".to_string(),
+        ParamKind::TensorOrScalar => "Tensor | number".to_string(),
+        ParamKind::NormOrd => "'fro' | 'inf' | '-inf' | '0' | '1' | '-1' | number".to_string(),
+        ParamKind::Shape => "Uint32Array | number[] | number".to_string(),
+        ParamKind::ShapeWithOneHole | ParamKind::Dims => {
+            "Int32Array | number[] | number".to_string()
+        }
+        ParamKind::Dim => "number".to_string(),
+        ParamKind::Device => "Device | 'cpu' | 'gpu' | 'webgpu'".to_string(),
+        ParamKind::DType => "DType".to_string(),
+        ParamKind::Bool => "boolean".to_string(),
+        ParamKind::Usize | ParamKind::I32 | ParamKind::U32 | ParamKind::F32 => "number".to_string(),
+        ParamKind::Unknown => "unknown".to_string(),
+    };
+    if is_optional {
         s.push_str(" | null | undefined");
     }
     s
 }
 
 fn options_field_ts_type_for_ty(ty: &Type) -> TokenStream2 {
-    if is_type(ty, "Tensor") || is_optional_of_type(ty, "Tensor") {
-        // Use JsTensor with try_from_js_value_preserve
-        quote! { crate::tensor::JsTensor }
-    } else if is_type(ty, "TensorOrScalar") || is_optional_of_type(ty, "TensorOrScalar") {
-        // Use JsTensorOrScalar with try_from_js_value_preserve
-        quote! { crate::tensor::JsTensorOrScalar }
-    } else if is_type(ty, "Shape") || is_optional_of_type(ty, "Shape") {
-        // We will parse Vec<usize> from JS arrays
-        quote! { Vec<usize> }
-    } else if is_type(ty, "NormOrd") || is_optional_of_type(ty, "NormOrd") {
-        // Represent as JsValue in options; we'll parse via js_value_to_norm_ord
-        quote! { JsValue }
-    } else if is_type(ty, "ShapeWithOneHole")
-        || is_optional_of_type(ty, "ShapeWithOneHole")
-        || is_type(ty, "Dims")
-        || is_optional_of_type(ty, "Dims")
-        || is_type(ty, "Dim")
-        || is_optional_of_type(ty, "Dim")
-    {
-        quote! { JsValue }
-    } else if is_type(ty, "DType") {
-        // from options use JsDType
-        quote! { crate::dtype::JsDType }
-    } else if is_type(ty, "Device") {
-        quote! { crate::device::JsDevice }
-    } else {
-        // primitive stays primitive
-        quote! { #ty }
+    let (kind, _meta) = classify_param_kind(ty);
+    match kind {
+        ParamKind::Tensor => quote! { crate::tensor::JsTensor },
+        ParamKind::TensorOrScalar => quote! { crate::tensor::JsTensorOrScalar },
+        ParamKind::Shape => quote! { Vec<usize> },
+        ParamKind::NormOrd | ParamKind::ShapeWithOneHole | ParamKind::Dims | ParamKind::Dim => {
+            quote! { JsValue }
+        }
+        ParamKind::DType => quote! { crate::dtype::JsDType },
+        ParamKind::Device => quote! { crate::device::JsDevice },
+        _ => quote! { #ty },
     }
 }
 
@@ -623,7 +662,17 @@ fn build_options_struct(
         let camel = name_str.to_lower_camel_case();
         // Required fields remain non-Option; optional fields become Option<...>
         let is_optional = p.is_option || p.meta.default_expr.is_some();
-        let rust_field_ty = options_field_ts_type_for_ty(&p.ty);
+        // Avoid Option<Option<T>> in the generated options struct by mapping Option<T> to T first
+        let ty_for_mapping: &Type = if p.is_option {
+            if let Some((inner, _)) = get_inner_type(&p.ty, "Option") {
+                inner
+            } else {
+                &p.ty
+            }
+        } else {
+            &p.ty
+        };
+        let rust_field_ty = options_field_ts_type_for_ty(ty_for_mapping);
         let field_ty_tokens = if is_optional && rust_field_ty.to_string() != "JsValue" {
             quote! { Option<#rust_field_ty> }
         } else {
@@ -736,128 +785,137 @@ fn build_options_struct(
 fn conversion_from_jsvalue(
     ident: &Ident,
     ty: &Type,
-    has_self: bool,
+    _has_self: bool,
     fn_name: &str,
 ) -> (TokenStream2, TokenStream2) {
     // Returns (prelude code, call expr) for building typed variable named ident
-    if is_type(ty, "Tensor") {
-        (
-            quote! { let #ident: piston::Tensor = crate::tensor::JsTensor::try_from(#ident.clone())?.inner; },
-            quote! { #ident },
-        )
-    } else if let Some((inner_ty, _)) = get_inner_type(ty, "Option") {
-        if is_type(inner_ty, "Tensor") {
-            (
-                quote! {
-                    let #ident: Option<piston::Tensor> = if #ident.is_undefined() || #ident.is_null() {
-                        None
-                    } else {
-                        Some(crate::tensor::JsTensor::try_from(#ident.clone())?.inner)
-                    };
-                },
-                quote! { #ident },
-            )
-        } else {
-            (quote! {}, quote! { #ident })
+    let (kind, meta) = classify_param_kind(ty);
+    match kind {
+        ParamKind::Tensor => {
+            if meta.optional {
+                (
+                    quote! {
+                        let #ident: Option<piston::Tensor> = if #ident.is_undefined() || #ident.is_null() {
+                            None
+                        } else {
+                            Some(crate::tensor::JsTensor::try_from(#ident.clone())?.inner())
+                        };
+                    },
+                    quote! { #ident },
+                )
+            } else {
+                (
+                    quote! { let #ident: piston::Tensor = crate::tensor::JsTensor::try_from(#ident.clone())?.inner(); },
+                    quote! { #ident },
+                )
+            }
         }
-    } else if let Some((vec_inner, _)) = get_inner_type(ty, "Vec") {
-        if is_type(vec_inner, "Tensor") {
-            (
-                quote! {
-                    let #ident: Vec<piston::Tensor> = if #ident.is_array() {
-                        let array = #ident.dyn_into::<js_sys::Array>().map_err(|_| wasm_bindgen::JsError::new("Expected an array of Tensors"))?;
-                        array
-                            .iter()
-                            .map(|v| crate::tensor::JsTensor::try_from(v.clone()).map(|t| t.inner))
-                            .collect::<Result<Vec<_>, wasm_bindgen::JsError>>()?
-                    } else {
-                        return Err(wasm_bindgen::JsError::new("Expected an array of Tensors"));
-                    };
-                },
-                quote! { #ident },
-            )
-        } else {
-            (quote! {}, quote! { #ident })
+        ParamKind::VecTensor => {
+            if meta.optional {
+                (
+                    quote! {
+                        let #ident: Option<Vec<piston::Tensor>> = if #ident.is_undefined() || #ident.is_null() {
+                            None
+                        } else if #ident.is_array() {
+                            let array = #ident.dyn_into::<js_sys::Array>().map_err(|_| wasm_bindgen::JsError::new("Expected an array of Tensors"))?;
+                            Some(array
+                                .iter()
+                                .map(|v| crate::tensor::JsTensor::try_from(v.clone()).map(|t| t.inner()))
+                                .collect::<Result<Vec<_>, wasm_bindgen::JsError>>()?)
+                        } else {
+                            return Err(wasm_bindgen::JsError::new("Expected an array of Tensors"));
+                        };
+                    },
+                    quote! { #ident },
+                )
+            } else {
+                (
+                    quote! {
+                        let #ident: Vec<piston::Tensor> = if #ident.is_array() {
+                            let array = #ident.dyn_into::<js_sys::Array>().map_err(|_| wasm_bindgen::JsError::new("Expected an array of Tensors"))?;
+                            array
+                                .iter()
+                                .map(|v| crate::tensor::JsTensor::try_from(v.clone()).map(|t| t.inner()))
+                                .collect::<Result<Vec<_>, wasm_bindgen::JsError>>()?
+                        } else {
+                            return Err(wasm_bindgen::JsError::new("Expected an array of Tensors"));
+                        };
+                    },
+                    quote! { #ident },
+                )
+            }
         }
-    } else if is_type(ty, "TensorOrScalar") {
-        (
+        ParamKind::TensorOrScalar => (
             quote! { let #ident: crate::tensor::JsTensorOrScalar = crate::tensor::JsTensorOrScalar { inner: #ident.clone() }; },
             quote! { #ident.tensor_or_scalar().map_err(|e| e.into_js_error())? },
-        )
-    } else if is_type(ty, "Shape") {
-        (
-            quote! {
-                let #ident: piston::Shape = crate::shape::FromJsVecUsize::from_js_value(#ident.clone())?.ok_or(wasm_bindgen::JsError::new("Missing required dims"))?.into();
-            },
-            quote! { #ident },
-        )
-    } else if is_type(ty, "ShapeWithOneHole") || is_type(ty, "Dims") {
-        (
-            quote! { let #ident: crate::shape::FromJsVecISize = crate::shape::FromJsVecISize::from_js_value(#ident.clone())?.ok_or(wasm_bindgen::JsError::new("Missing required dims"))?; },
-            quote! { #ident },
-        )
-    } else if is_type(ty, "NormOrd") {
-        (
+        ),
+        ParamKind::Shape => {
+            if meta.optional {
+                (
+                    quote! {
+                        let #ident: Option<piston::Shape> = crate::shape::FromJsVecUsize::from_js_value(#ident.clone())?.map(|v| v.into());
+                    },
+                    quote! { #ident },
+                )
+            } else {
+                (
+                    quote! {
+                        let #ident: piston::Shape = crate::shape::FromJsVecUsize::from_js_value(#ident.clone())?.ok_or(wasm_bindgen::JsError::new("Missing required dims"))?.into();
+                    },
+                    quote! { #ident },
+                )
+            }
+        }
+        ParamKind::ShapeWithOneHole | ParamKind::Dims => {
+            if meta.optional {
+                (
+                    quote! { let #ident: Option<crate::shape::FromJsVecISize> = crate::shape::FromJsVecISize::from_js_value(#ident.clone())?; },
+                    quote! { #ident },
+                )
+            } else {
+                (
+                    quote! { let #ident: crate::shape::FromJsVecISize = crate::shape::FromJsVecISize::from_js_value(#ident.clone())?.ok_or(wasm_bindgen::JsError::new("Missing required dims"))?; },
+                    quote! { #ident },
+                )
+            }
+        }
+        ParamKind::NormOrd => (
             quote! { let #ident: Option<piston::NormOrd> = crate::tensor::js_value_to_norm_ord(#ident.clone())?; },
             quote! { #ident },
-        )
-    } else if let Some((inner_ty, _)) = get_inner_type(ty, "Option") {
-        if is_type(inner_ty, "Dims") || is_type(inner_ty, "ShapeWithOneHole") {
-            (
-                quote! { let #ident: Option<crate::shape::FromJsVecISize> = crate::shape::FromJsVecISize::from_js_value(#ident.clone())?; },
-                quote! { #ident },
-            )
-        } else if is_type(inner_ty, "NormOrd") {
-            (
-                quote! { let #ident: Option<piston::NormOrd> = crate::tensor::js_value_to_norm_ord(#ident.clone())?; },
-                quote! { #ident },
-            )
-        } else {
-            (quote! {}, quote! { #ident })
-        }
-    } else if is_type(ty, "Dim") {
-        (
+        ),
+        ParamKind::Dim => (
             quote! { let #ident = crate::shape::FromJsDim(#ident.as_f64().ok_or(wasm_bindgen::JsError::new(format!("dim must be a number; got {:?} (in {})", #ident, #fn_name).as_str()))? as isize); },
             quote! { #ident },
-        )
-    } else if is_type(ty, "bool") {
-        (
+        ),
+        ParamKind::Bool => (
             quote! { let #ident: bool = #ident.as_bool().unwrap_or(false); },
             quote! { #ident },
-        )
-    } else if is_type(ty, "usize") {
-        (
+        ),
+        ParamKind::Usize => (
             quote! { let #ident: usize = #ident.as_f64().ok_or(wasm_bindgen::JsError::new("expected number"))? as usize; },
             quote! { #ident },
-        )
-    } else if is_type(ty, "i32") {
-        (
+        ),
+        ParamKind::I32 => (
             quote! { let #ident: i32 = #ident.as_f64().ok_or(wasm_bindgen::JsError::new("expected number"))? as i32; },
             quote! { #ident },
-        )
-    } else if is_type(ty, "u32") {
-        (
+        ),
+        ParamKind::U32 => (
             quote! { let #ident: u32 = #ident.as_f64().ok_or(wasm_bindgen::JsError::new("expected number"))? as u32; },
             quote! { #ident },
-        )
-    } else if is_type(ty, "f32") {
-        (
+        ),
+        ParamKind::F32 => (
             quote! { let #ident: f32 = #ident.as_f64().ok_or(wasm_bindgen::JsError::new("expected number"))? as f32; },
             quote! { #ident },
-        )
-    } else if is_type(ty, "DType") {
-        (
+        ),
+        ParamKind::DType => (
             quote! { let #ident: piston::DType = crate::dtype::JsDType::try_from(#ident.clone())?.dtype; },
             quote! { #ident },
-        )
-    } else if is_type(ty, "Device") {
-        (
+        ),
+        ParamKind::Device => (
             quote! { let #ident: piston::Device = crate::device::JsDevice::try_from(#ident.clone())?.inner; },
             quote! { #ident },
-        )
-    } else {
-        // Fallback: pass as-is (not recommended)
-        (quote! {}, quote! { #ident })
+        ),
+        ParamKind::Unknown => (quote! {}, quote! { #ident }),
     }
 }
 
@@ -930,147 +988,161 @@ fn build_options_parsing(
         }
         let field_ident = &p.ident;
         let default_expr = p.meta.default_expr.as_ref().map(|e| quote! { #e });
-        if is_type(&p.ty, "Tensor") {
-            prelude.push(quote! {
-                let __js = #opts_ident.#field_ident.clone();
-                let __js = crate::js_util::to_option(__js).unwrap_or(wasm_bindgen::JsValue::UNDEFINED);
-                let #field_ident: piston::Tensor = crate::tensor::JsTensor::try_from(__js)?.inner;
-            });
-            typed_fields.push(quote! { #field_ident });
-        } else if is_optional_of_type(&p.ty, "Tensor") {
-            // Option<Tensor> in options
-            prelude.push(quote! {
-                let #field_ident: Option<piston::Tensor> = #opts_ident.#field_ident.map(|tensor| tensor.inner);
-            });
-            typed_fields.push(quote! { #field_ident });
-        } else if is_type(&p.ty, "TensorOrScalar") {
-            prelude.push(quote! {
-                let __js = crate::js_util::to_option(#opts_ident.#field_ident.clone()).unwrap_or(wasm_bindgen::JsValue::UNDEFINED);
-                let #field_ident: crate::tensor::JsTensorOrScalar = crate::tensor::JsTensorOrScalar { inner: __js };
-            });
-            typed_fields
-                .push(quote! { #field_ident.tensor_or_scalar().map_err(|e| e.into_js_error())? });
-        } else if is_type(&p.ty, "Shape") {
-            if p.is_option || p.meta.default_expr.is_some() {
-                prelude.push(quote! {
-                    let #field_ident: Vec<usize> = #opts_ident.#field_ident.unwrap_or_default();
-                });
-            } else {
-                prelude.push(quote! {
-                    let #field_ident: Vec<usize> = #opts_ident.#field_ident;
-                });
-            }
-            typed_fields.push(quote! { #field_ident });
-        } else if is_type(&p.ty, "ShapeWithOneHole") {
-            prelude.push(quote! {
-                let __js = crate::js_util::to_option(#opts_ident.#field_ident.clone()).unwrap_or(wasm_bindgen::JsValue::UNDEFINED);
-                let #field_ident: crate::shape::FromJsVecISize = crate::shape::FromJsVecISize::from_js_value(__js)?.ok_or(wasm_bindgen::JsError::new("Missing required dims"))?;
-            });
-            typed_fields.push(quote! { #field_ident });
-        } else if is_type(&p.ty, "NormOrd") {
-            // Non-optional NormOrd from options: parse JsValue and require it
-            prelude.push(quote! {
-                let __js = crate::js_util::to_option(#opts_ident.#field_ident.clone()).unwrap_or(wasm_bindgen::JsValue::UNDEFINED);
-                let #field_ident: Option<piston::NormOrd> = crate::tensor::js_value_to_norm_ord(__js)?;
-            });
-            typed_fields.push(quote! { #field_ident });
-        } else if is_type(&p.ty, "Dims") {
-            if let Some(def) = default_expr {
-                prelude.push(quote! {
-                    let __js = #opts_ident.#field_ident.clone();
-                    let #field_ident: crate::shape::FromJsVecISize = match crate::shape::FromJsVecISize::from_js_value(__js) {
-                        Ok(Some(v)) => v,
-                        _ => { #def }
-                    };
-                });
-                typed_fields.push(quote! { #field_ident });
-            } else {
-                prelude.push(quote! {
-                    let __js = #opts_ident.#field_ident.clone();
-                    let #field_ident: crate::shape::FromJsVecISize = crate::shape::FromJsVecISize::from_js_value(__js)?.ok_or(wasm_bindgen::JsError::new("Missing required dims"))?;
-                });
-                typed_fields.push(quote! { #field_ident });
-            }
-        } else if is_type(&p.ty, "Dim") {
-            // Use provided default expr if any, else fall back to 0
-            if let Some(def) = default_expr {
-                prelude.push(quote! {
-                    let __js = #opts_ident.#field_ident.clone();
-                    let #field_ident = crate::shape::FromJsDim(
-                        crate::js_util::to_option(__js)
-                            .and_then(|v| v.as_f64())
-                            .unwrap_or(#def as f64) as isize,
-                    );
-                });
-            } else {
-                prelude.push(quote! {
-                    let __js = #opts_ident.#field_ident.clone();
-                    let #field_ident = crate::shape::FromJsDim(
-                        crate::js_util::to_option(__js)
-                            .and_then(|v| v.as_f64())
-                            .unwrap_or(0.0) as isize,
-                    );
-                });
-            }
-            typed_fields.push(quote! { #field_ident });
-        } else if is_optional_of_type(&p.ty, "Dims") {
-            prelude.push(quote! {
-                let __js = #opts_ident.#field_ident.clone();
-                let #field_ident: Option<crate::shape::FromJsVecISize> = crate::shape::FromJsVecISize::from_js_value(__js)?;
-            });
-            typed_fields.push(quote! { #field_ident });
-        } else if is_optional_of_type(&p.ty, "NormOrd") {
-            prelude.push(quote! {
-                let __js = #opts_ident.#field_ident.clone();
-                let #field_ident: Option<piston::NormOrd> = crate::tensor::js_value_to_norm_ord(__js)?;
-            });
-            typed_fields.push(quote! { #field_ident });
-        } else if is_optional_of_type(&p.ty, "Dim") {
-            prelude.push(quote! {
-                let __js = #opts_ident.#field_ident.clone();
-                let #field_ident: Option<crate::shape::FromJsDim> = crate::js_util::to_option(__js)
-                    .and_then(|v| v.as_f64())
-                    .map(|n| crate::shape::FromJsDim(n as isize));
-            });
-            let default = quote! { crate::shape::FromJsDim(0) };
-            typed_fields.push(quote! { #field_ident.unwrap_or(#default) });
-        } else if is_type(&p.ty, "bool")
-            || is_type(&p.ty, "usize")
-            || is_type(&p.ty, "i32")
-            || is_type(&p.ty, "u32")
-            || is_type(&p.ty, "f32")
-        {
-            let ty = &p.ty;
-            // If the original param was Option<T>, keep Option<T> and pass through.
-            if p.is_option {
-                prelude.push(quote! { let #field_ident: #ty = #opts_ident.#field_ident; });
-                typed_fields.push(quote! { #field_ident });
-            } else if let Some(def) = default_expr {
-                // Field type in options is Option<T>, so unwrap with default
-                prelude.push(
-                    quote! { let #field_ident: #ty = #opts_ident.#field_ident.unwrap_or(#def); },
-                );
-                typed_fields.push(quote! { #field_ident });
-            } else {
-                // Required field: stored as bare T in options, take as-is
-                prelude.push(quote! { let #field_ident: #ty = #opts_ident.#field_ident; });
-                typed_fields.push(quote! { #field_ident });
-            }
-        } else if p.meta.raw_js {
-            // Pass raw JsValue through
+        let (kind, _meta) = classify_param_kind(&p.ty);
+
+        if p.meta.raw_js {
             prelude.push(quote! {
                 let #field_ident: wasm_bindgen::JsValue = crate::js_util::to_option(#opts_ident.#field_ident.clone()).unwrap_or(wasm_bindgen::JsValue::UNDEFINED);
             });
             typed_fields.push(quote! { #field_ident });
-        } else {
-            // Fallback: pass as default
-            let rhs = if let Some(def) = default_expr {
-                quote! { #opts_ident.#field_ident.unwrap_or(#def) }
-            } else {
-                quote! { #opts_ident.#field_ident.unwrap_or_default() }
-            };
-            prelude.push(quote! { let #field_ident = #rhs; });
-            typed_fields.push(quote! { #field_ident });
+            continue;
+        }
+
+        match kind {
+            ParamKind::Tensor => {
+                if p.is_option {
+                    prelude.push(quote! { let #field_ident: Option<piston::Tensor> = #opts_ident.#field_ident.map(|tensor| tensor.inner()); });
+                } else {
+                    prelude.push(quote! { let #field_ident: piston::Tensor = #opts_ident.#field_ident.inner(); });
+                }
+                typed_fields.push(quote! { #field_ident });
+            }
+            ParamKind::TensorOrScalar => {
+                prelude.push(quote! {
+                    let __js = crate::js_util::to_option(#opts_ident.#field_ident.clone()).unwrap_or(wasm_bindgen::JsValue::UNDEFINED);
+                    let #field_ident: crate::tensor::JsTensorOrScalar = crate::tensor::JsTensorOrScalar { inner: __js };
+                });
+                typed_fields.push(
+                    quote! { #field_ident.tensor_or_scalar().map_err(|e| e.into_js_error())? },
+                );
+            }
+            ParamKind::Shape => {
+                if p.is_option || p.meta.default_expr.is_some() {
+                    prelude.push(quote! { let #field_ident: Vec<usize> = #opts_ident.#field_ident.unwrap_or_default(); });
+                } else {
+                    prelude
+                        .push(quote! { let #field_ident: Vec<usize> = #opts_ident.#field_ident; });
+                }
+                typed_fields.push(quote! { #field_ident });
+            }
+            ParamKind::ShapeWithOneHole => {
+                prelude.push(quote! {
+                    let __js = crate::js_util::to_option(#opts_ident.#field_ident.clone()).unwrap_or(wasm_bindgen::JsValue::UNDEFINED);
+                    let #field_ident: crate::shape::FromJsVecISize = crate::shape::FromJsVecISize::from_js_value(__js)?.ok_or(wasm_bindgen::JsError::new("Missing required dims"))?;
+                });
+                typed_fields.push(quote! { #field_ident });
+            }
+            ParamKind::Dims => {
+                if let Some(def) = default_expr {
+                    prelude.push(quote! {
+                        let __js = #opts_ident.#field_ident.clone();
+                        let #field_ident: crate::shape::FromJsVecISize = match crate::shape::FromJsVecISize::from_js_value(__js) {
+                            Ok(Some(v)) => v,
+                            _ => { #def }
+                        };
+                    });
+                } else if p.is_option {
+                    prelude.push(quote! {
+                        let __js = #opts_ident.#field_ident.clone();
+                        let #field_ident: Option<crate::shape::FromJsVecISize> = crate::shape::FromJsVecISize::from_js_value(__js)?;
+                    });
+                } else {
+                    prelude.push(quote! {
+                        let __js = #opts_ident.#field_ident.clone();
+                        let #field_ident: crate::shape::FromJsVecISize = crate::shape::FromJsVecISize::from_js_value(__js)?.ok_or(wasm_bindgen::JsError::new("Missing required dims"))?;
+                    });
+                }
+                typed_fields.push(quote! { #field_ident });
+            }
+            ParamKind::NormOrd => {
+                prelude.push(quote! {
+                    let __js = crate::js_util::to_option(#opts_ident.#field_ident.clone()).unwrap_or(wasm_bindgen::JsValue::UNDEFINED);
+                    let #field_ident: Option<piston::NormOrd> = crate::tensor::js_value_to_norm_ord(__js)?;
+                });
+                typed_fields.push(quote! { #field_ident });
+            }
+            ParamKind::Dim => {
+                if let Some(def) = default_expr {
+                    prelude.push(quote! {
+                        let __js = #opts_ident.#field_ident.clone();
+                        let #field_ident = crate::shape::FromJsDim(
+                            crate::js_util::to_option(__js)
+                                .and_then(|v| v.as_f64())
+                                .unwrap_or(#def as f64) as isize,
+                        );
+                    });
+                } else if p.is_option {
+                    prelude.push(quote! {
+                        let __js = #opts_ident.#field_ident.clone();
+                        let #field_ident: Option<crate::shape::FromJsDim> = crate::js_util::to_option(__js)
+                            .and_then(|v| v.as_f64())
+                            .map(|n| crate::shape::FromJsDim(n as isize));
+                    });
+                    let default = quote! { crate::shape::FromJsDim(0) };
+                    typed_fields.push(quote! { #field_ident.unwrap_or(#default) });
+                    continue;
+                } else {
+                    prelude.push(quote! {
+                        let __js = #opts_ident.#field_ident.clone();
+                        let #field_ident = crate::shape::FromJsDim(
+                            crate::js_util::to_option(__js)
+                                .and_then(|v| v.as_f64())
+                                .unwrap_or(0.0) as isize,
+                        );
+                    });
+                }
+                typed_fields.push(quote! { #field_ident });
+            }
+            ParamKind::Bool
+            | ParamKind::Usize
+            | ParamKind::I32
+            | ParamKind::U32
+            | ParamKind::F32 => {
+                let ty = &p.ty;
+                if p.is_option {
+                    prelude.push(quote! { let #field_ident: #ty = #opts_ident.#field_ident; });
+                } else if let Some(def) = default_expr {
+                    prelude.push(quote! { let #field_ident: #ty = #opts_ident.#field_ident.unwrap_or(#def); });
+                } else {
+                    prelude.push(quote! { let #field_ident: #ty = #opts_ident.#field_ident; });
+                }
+                typed_fields.push(quote! { #field_ident });
+            }
+            ParamKind::DType => {
+                // In options we keep JsDType and convert where needed in call site; here pass through
+                let ty = &p.ty;
+                prelude.push(quote! { let #field_ident: #ty = #opts_ident.#field_ident; });
+                typed_fields.push(quote! { #field_ident });
+            }
+            ParamKind::Device => {
+                let ty = &p.ty;
+                prelude.push(quote! { let #field_ident: #ty = #opts_ident.#field_ident; });
+                typed_fields.push(quote! { #field_ident });
+            }
+            ParamKind::Unknown => {
+                let rhs = if let Some(def) = default_expr {
+                    quote! { #opts_ident.#field_ident.unwrap_or(#def) }
+                } else {
+                    quote! { #opts_ident.#field_ident.unwrap_or_default() }
+                };
+                prelude.push(quote! { let #field_ident = #rhs; });
+                typed_fields.push(quote! { #field_ident });
+            }
+            ParamKind::VecTensor => {
+                // Options struct stores Vec<JsTensor> or Option<...>? We expect Vec<Tensor> requested at call site
+                prelude.push(quote! {
+                    let #field_ident: Vec<piston::Tensor> = if #opts_ident.#field_ident.is_array() {
+                        let array = #opts_ident.#field_ident.dyn_into::<js_sys::Array>().map_err(|_| wasm_bindgen::JsError::new("Expected an array of Tensors"))?;
+                        array
+                            .iter()
+                            .map(|v| crate::tensor::JsTensor::try_from(v.clone()).map(|t| t.inner()))
+                            .collect::<Result<Vec<_>, wasm_bindgen::JsError>>()?
+                    } else {
+                        return Err(wasm_bindgen::JsError::new("Expected an array of Tensors"));
+                    };
+                });
+                typed_fields.push(quote! { #field_ident });
+            }
         }
     }
 
@@ -1094,14 +1166,12 @@ fn build_js_param_list(
     pack_start: usize,
     variant: VariantKind,
     has_options: bool,
-) -> (Vec<Ident>, Vec<TokenStream2>) {
+) -> Vec<Ident> {
     let mut js_param_idents = Vec::<Ident>::new();
-    let mut js_param_attrs = Vec::<TokenStream2>::new();
 
     if matches!(variant, VariantKind::Method | VariantKind::MethodInplace) {
         // Expose the first Rust param (self) as `input` in JS for better ergonomics
         let name = format_ident!("input");
-        js_param_attrs.push(quote! { #[wasm_bindgen(unchecked_param_type = "Tensor")] });
         js_param_idents.push(name);
     }
 
@@ -1123,33 +1193,20 @@ fn build_js_param_list(
         if last_is_tensor_options && idx == params.len() - 1 {
             continue;
         }
-        let name = p.ident.clone();
-        let optional = p.is_option;
-        // Determine unchecked TS type, allowing #[op(type = "...")] override
-        if let Some(ref ts_override) = p.meta.ts_type_override {
-            let lit = syn::LitStr::new(ts_override, Span::call_site());
-            js_param_attrs.push(quote! { #[wasm_bindgen(unchecked_param_type = #lit)] });
-        } else {
-            let ts_type = param_unchecked_ts_type(&p.ty, optional);
-            let ts_lit = syn::LitStr::new(&ts_type, Span::call_site());
-            js_param_attrs.push(quote! { #[wasm_bindgen(unchecked_param_type = #ts_lit)] });
-        }
-        js_param_idents.push(name);
+        js_param_idents.push(p.ident.clone());
     }
 
     if has_options {
         let name = format_ident!("options");
         // The caller will append correct attribute for options param since it needs op_name_pascal.
-        js_param_attrs.push(quote! { /* options param attr filled by caller */ });
         js_param_idents.push(name);
     }
-    (js_param_idents, js_param_attrs)
+    js_param_idents
 }
 
 pub fn process_js_tensor_web_op(attr: JsTensorWebOpAttr, item: ItemFn) -> SynResult<TokenStream2> {
     // Extract simple info
     let op_rust_name = item.sig.ident.clone();
-    let op_method_name_js = to_lower_camel_case_with_underscore(&op_rust_name.to_string());
     let op_name_pascal = attr.name.clone();
     // Determine target (alternative external name) if provided
     let target_name_ident = attr
@@ -1169,27 +1226,18 @@ pub fn process_js_tensor_web_op(attr: JsTensorWebOpAttr, item: ItemFn) -> SynRes
     } else {
         quote! {}
     };
+    let output_is_option = is_return_type_option(&item);
+    let unchecked_ret_ts = if output_is_option {
+        syn::LitStr::new("Tensor | undefined", Span::call_site())
+    } else {
+        syn::LitStr::new("Tensor", Span::call_site())
+    };
 
     // Build Options struct
     let options_struct_tokens = if has_options {
         build_options_struct(&op_name_pascal, &params, pack_start, include_tensor_options)
     } else {
         quote! {}
-    };
-
-    let options_ident = format_ident!("{}Options", op_name_pascal);
-
-    // Prepare common pieces
-    let function_name_non_inplace = if matches!(attr.variants.as_slice(), [VariantKind::Function]) {
-        // For pure function variant, use the export name (lowerCamelCase op name) as the function-mode name
-        attr.name.to_lower_camel_case()
-    } else {
-        op_method_name_js.clone()
-    };
-    let function_name_inplace = if function_name_non_inplace.ends_with('_') {
-        function_name_non_inplace.clone()
-    } else {
-        format!("{function_name_non_inplace}_")
     };
 
     let mut exported_fns = Vec::<TokenStream2>::new();
@@ -1205,8 +1253,7 @@ pub fn process_js_tensor_web_op(attr: JsTensorWebOpAttr, item: ItemFn) -> SynRes
         let is_inplace = matches!(variant, VariantKind::MethodInplace);
 
         // JS parameter list and attributes (skip the first param for method variants, becomes self)
-        let (js_param_idents, js_param_attrs) =
-            build_js_param_list(&params, pack_start, variant, has_options);
+        let js_param_idents = build_js_param_list(&params, pack_start, variant, has_options);
 
         // Early function-mode dispatch setup
         // Build overloaded args slice: positional js args after first (for method) or all (for function), excluding options
@@ -1219,10 +1266,13 @@ pub fn process_js_tensor_web_op(attr: JsTensorWebOpAttr, item: ItemFn) -> SynRes
                 .unwrap_or(false);
             let start_index = if is_method || first_is_tensor { 1 } else { 0 };
             let end_index = js_param_idents.len() - if has_options { 1 } else { 0 };
-            for i in start_index..end_index {
-                let id = &js_param_idents[i];
-                overloaded_js_args.push(quote! { &#id });
-            }
+            js_param_idents
+                .iter()
+                .skip(start_index)
+                .take(end_index)
+                .for_each(|id| {
+                    overloaded_js_args.push(quote! { &#id });
+                });
         }
         // Build local arrays for overloaded args and positional args to avoid borrowing temporaries
         let mut dispatch_prelude = Vec::<TokenStream2>::new();
@@ -1278,33 +1328,23 @@ pub fn process_js_tensor_web_op(attr: JsTensorWebOpAttr, item: ItemFn) -> SynRes
             quote! { &wasm_bindgen::JsValue::UNDEFINED }
         };
 
-        let handle_call = if is_method {
-            quote! {
-                #(#dispatch_prelude)*
-                let overloaded_args = crate::function::get_overloaded_args(&#overloaded_slice_ident);
-                if !overloaded_args.is_empty() || crate::function::is_function_mode_active() {
-                    return crate::function::handle_piston_function(
-                        Some(&input),
-                        #function_name_str,
-                        &overloaded_args,
-                        &#args_array_ident,
-                        #named_arg_tokens,
-                    );
-                }
-            }
+        let self_arg = if is_method {
+            quote! { Some(&input) }
         } else {
-            quote! {
-                #(#dispatch_prelude)*
-                let overloaded_args = crate::function::get_overloaded_args(&#overloaded_slice_ident);
-                if !overloaded_args.is_empty() || crate::function::is_function_mode_active() {
-                    return crate::function::handle_piston_function(
-                        None,
-                        #function_name_str,
-                        &overloaded_args,
-                        &#args_array_ident,
-                        #named_arg_tokens,
-                    );
-                }
+            quote! { None }
+        };
+
+        let handle_call = quote! {
+            #(#dispatch_prelude)*
+            let overloaded_args = crate::function::get_overloaded_args(&#overloaded_slice_ident);
+            if !overloaded_args.is_empty() || crate::function::is_function_mode_active() {
+                return crate::function::handle_piston_function(
+                    #self_arg,
+                    #function_name_str,
+                    &overloaded_args,
+                    &#args_array_ident,
+                    #named_arg_tokens,
+                );
             }
         };
 
@@ -1332,7 +1372,7 @@ pub fn process_js_tensor_web_op(attr: JsTensorWebOpAttr, item: ItemFn) -> SynRes
         }
         typed_args_for_call.extend(typed_options_args.clone());
 
-        let call_tokens = if item.block.stmts.is_empty() {
+        let invocation_tokens = if item.block.stmts.is_empty() {
             // Direct call to core op (method on Tensor)
             let base_ident = target_name_ident.clone();
             let method_ident = if is_inplace {
@@ -1340,44 +1380,48 @@ pub fn process_js_tensor_web_op(attr: JsTensorWebOpAttr, item: ItemFn) -> SynRes
             } else {
                 base_ident
             };
-            if is_method {
-                quote! {
-                    let input = crate::tensor::JsTensor::try_from(input.clone())?.inner.clone();
-                    let result = input.#method_ident( #(#typed_args_for_call),* )
-                        .map_err(|e| e.into_js_error())?;
-                    Ok(crate::tensor::JsTensor { inner: result }.into())
-                }
+
+            let first_ident = if is_method {
+                syn::Ident::new("input", Span::call_site())
             } else {
-                // function variant: call using the already-converted first positional arg (the actual first param name)
-                let first_ident = params
+                params
                     .first()
                     .map(|p| p.ident.clone())
-                    .unwrap_or_else(|| format_ident!("self"));
-                quote! {
-                    let result = #first_ident.#method_ident( #(#typed_args_for_call),* )
-                        .map_err(|e| e.into_js_error())?;
-                    Ok(crate::tensor::JsTensor { inner: result }.into())
-                }
+                    .unwrap_or_else(|| format_ident!("self"))
+            };
+
+            quote! {
+                #first_ident.#method_ident( #(#typed_args_for_call),* )
             }
         } else {
             // Custom body: inline the user's function body with typed params
             let user_block = &item.block;
-            let call_result_binding = quote! {
-                let result_tensor: piston::Tensor = {
-                    #user_block
-                }.map_err(|e| e.into_js_error())?;
-                Ok(crate::tensor::JsTensor { inner: result_tensor }.into())
-            };
-            if is_method {
-                quote! {
-                    let input = crate::tensor::JsTensor::try_from(input.clone())?.inner.clone();
-                    #call_result_binding
-                }
-            } else {
-                quote! {
-                    #call_result_binding
-                }
+            quote! {
+                #user_block
             }
+        };
+
+        let call_result_binding = if output_is_option {
+            quote! {
+                let result_opt = #invocation_tokens;
+                Ok(result_opt
+                    .map(|js_t| js_t.into())
+                    .unwrap_or(wasm_bindgen::JsValue::UNDEFINED))
+            }
+        } else {
+            quote! {
+                let result = #invocation_tokens.map_err(|e| e.into_js_error())?;
+                Ok(crate::tensor::JsTensor::new(result).into())
+            }
+        };
+
+        let call_tokens = if is_method {
+            quote! {
+                let input = crate::tensor::JsTensor::try_from(input.clone())?._clone_weak_js().inner();
+                #call_result_binding
+            }
+        } else {
+            call_result_binding
         };
 
         // Build full exported function
@@ -1395,8 +1439,6 @@ pub fn process_js_tensor_web_op(attr: JsTensorWebOpAttr, item: ItemFn) -> SynRes
             }
         };
         let js_name_lit = syn::LitStr::new(&js_name_effective, Span::call_site());
-        // Note: we use a fixed Rust-name, and set js_name to the specific external name
-        let js_name_str = export_js_name.clone();
         let mut param_decls = Vec::<TokenStream2>::new();
         let last_is_tensor_options = params
             .last()
@@ -1408,18 +1450,11 @@ pub fn process_js_tensor_web_op(attr: JsTensorWebOpAttr, item: ItemFn) -> SynRes
             if matches!(variant, VariantKind::Method | VariantKind::MethodInplace) && i == 0 {
                 param_decls.push(quote! { #[wasm_bindgen(unchecked_param_type = "Tensor")] #ident: &wasm_bindgen::JsValue });
             } else if has_options && i == js_param_idents.len() - 1 {
-                let opt_lit = syn::LitStr::new(&format!("{options_ident}"), Span::call_site());
                 // We need the type name string, not ident token
                 let ts = syn::LitStr::new(&format!("{op_name_pascal}Options?"), Span::call_site());
                 param_decls.push(quote! { #[wasm_bindgen(unchecked_param_type = #ts)] #ident: &wasm_bindgen::JsValue });
             } else {
-                // Determine matching original pre-pack param index
-                let mut param_idx =
-                    if matches!(variant, VariantKind::Method | VariantKind::MethodInplace) {
-                        i - 1
-                    } else {
-                        i
-                    };
+                let mut param_idx = i;
                 if last_is_tensor_options && param_idx >= params.len() - 1 {
                     param_idx = params.len() - 2;
                 }
@@ -1447,7 +1482,7 @@ pub fn process_js_tensor_web_op(attr: JsTensorWebOpAttr, item: ItemFn) -> SynRes
 
         let wasm_fn = {
             quote! {
-                #[wasm_bindgen(js_name = #js_name_lit, unchecked_return_type = "Tensor")]
+                #[wasm_bindgen(js_name = #js_name_lit, unchecked_return_type = #unchecked_ret_ts)]
                 pub #async_token fn #export_ident( #(#param_decls),* ) -> Result<wasm_bindgen::JsValue, wasm_bindgen::JsError> {
                     #handle_call
                     #pos_prelude
@@ -1470,8 +1505,7 @@ pub fn process_js_tensor_web_op(attr: JsTensorWebOpAttr, item: ItemFn) -> SynRes
                 pack_start
             };
             let pre_pack_count = pack_start_positional.min(params.len());
-            for idx in 1..pre_pack_count {
-                let p = &params[idx];
+            params.iter().take(pre_pack_count).skip(1).for_each(|p| {
                 let name = p.ident.clone();
                 // camelCase rename for param if different
                 let name_str = name.to_string();
@@ -1482,16 +1516,15 @@ pub fn process_js_tensor_web_op(attr: JsTensorWebOpAttr, item: ItemFn) -> SynRes
                     attrs.push(quote! { #[wasm_bindgen(js_name = #jsname_lit)] });
                 }
                 // type attr
-                if let Some(ref ts_override) = p.meta.ts_type_override {
-                    let lit = syn::LitStr::new(ts_override, Span::call_site());
-                    attrs.push(quote! { #[wasm_bindgen(unchecked_param_type = #lit)] });
+                let ts_lit = if let Some(ref ts_override) = p.meta.ts_type_override {
+                    syn::LitStr::new(ts_override, Span::call_site())
                 } else {
                     let ts = param_unchecked_ts_type(&p.ty, p.is_option);
-                    let ts_lit = syn::LitStr::new(&ts, Span::call_site());
-                    attrs.push(quote! { #[wasm_bindgen(unchecked_param_type = #ts_lit)] });
-                }
+                    syn::LitStr::new(&ts, Span::call_site())
+                };
+                attrs.push(quote! { #[wasm_bindgen(unchecked_param_type = #ts_lit)] });
                 wrapper_param_decls.push(quote! { #(#attrs)* #name: &wasm_bindgen::JsValue });
-            }
+            });
             if has_options {
                 let ts = syn::LitStr::new(&format!("{op_name_pascal}Options?"), Span::call_site());
                 wrapper_param_decls.push(quote! { #[wasm_bindgen(unchecked_param_type = #ts)] options: &wasm_bindgen::JsValue });
@@ -1511,31 +1544,38 @@ pub fn process_js_tensor_web_op(attr: JsTensorWebOpAttr, item: ItemFn) -> SynRes
                 js_method_name.push('_');
             }
             let js_method_name_lit = syn::LitStr::new(&js_method_name, Span::call_site());
+
             // Choose attribute key: js_name (normal) or getter/setter when set
-            let method_name_attr = if attr.getter {
-                quote! { #[wasm_bindgen(getter = #js_method_name_lit, unchecked_return_type = "Tensor")] }
-            } else if attr.setter {
-                quote! { #[wasm_bindgen(setter = #js_method_name_lit, unchecked_return_type = "Tensor")] }
-            } else {
-                quote! { #[wasm_bindgen(js_name = #js_method_name_lit, unchecked_return_type = "Tensor")] }
-            };
+            let method_name_key = syn::Ident::new(
+                if attr.getter {
+                    "getter"
+                } else if attr.setter {
+                    "setter"
+                } else {
+                    "js_name"
+                },
+                Span::call_site(),
+            );
+            let method_name_attr = quote! { #[wasm_bindgen(#method_name_key = #js_method_name_lit, unchecked_return_type = #unchecked_ret_ts)] };
 
             // Build call to exported free function
             let free_fn_ident = format_ident!("{}", export_js_name);
             let mut call_args: Vec<TokenStream2> = Vec::new();
             call_args.push(quote! { &input_js });
-            for idx in 1..pre_pack_count {
-                let id = &params[idx].ident;
+            params.iter().take(pre_pack_count).skip(1).for_each(|p| {
+                let id = &p.ident;
                 call_args.push(quote! { #id });
-            }
+            });
             if has_options {
                 call_args.push(quote! { options });
             }
-            let call_tokens = if is_async {
-                quote! { #free_fn_ident( #(#call_args),* ).await }
+
+            let maybe_async_await = if is_async {
+                quote! { .await }
             } else {
-                quote! { #free_fn_ident( #(#call_args),* ) }
+                quote! {}
             };
+            let call_tokens = quote! { #free_fn_ident( #(#call_args),* ) #maybe_async_await };
 
             // Name the Rust method after the original Rust function ident to avoid collisions (e.g., `T_upper`),
             // and append '_' for inplace variants.
