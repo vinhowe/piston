@@ -7,10 +7,10 @@ use js_sys::{Object, Reflect};
 use piston::Device;
 use piston::OpTensor;
 use piston::Tensor;
-use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsValue;
-use wasm_bindgen_futures::future_to_promise;
+use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::JsFuture;
+use wasm_bindgen_futures::future_to_promise;
 use web_sys::Blob;
 use web_sys::Url;
 
