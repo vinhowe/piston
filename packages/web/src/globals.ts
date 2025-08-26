@@ -1,11 +1,10 @@
 import { Parameter } from "@/nn/parameter";
 import { Tensor } from "@/tensor";
 import {
-  FullInitConfig,
   NestedNumberList,
   OptionalShapeConfig,
-  RequiresGradConfig,
   ShapeType,
+  TensorOptions,
 } from "@/types";
 import {
   arange as arange_wasm,
@@ -64,8 +63,11 @@ export let ones: typeof ones_wasm;
 export let onesLike: typeof onesLike_wasm;
 
 export let tensor: {
-  (data: CreateTensorData, config: RequiresGradConfig & OptionalShapeConfig): Parameter;
-  (data: CreateTensorData, config?: FullInitConfig & OptionalShapeConfig): Tensor;
+  (
+    data: CreateTensorData,
+    config: TensorOptions & OptionalShapeConfig,
+  ): Parameter;
+  (data: CreateTensorData, config?: TensorOptions & OptionalShapeConfig): Tensor;
 };
 
 type CreateTensorData =
@@ -108,52 +110,10 @@ function parseDType(dtype?: DType | string | undefined): DType {
   return (dtype ?? float32)._clone();
 }
 
-function tensorCreationArgs(config?: FullInitConfig): TensorOptions {
-  return {
-    dtype: parseDType(config?.dtype),
-    device: parseDevice(config?.device),
-    requiresGrad: config?.requiresGrad ?? false,
-  };
-}
-
-function unwrapFullConfigArgs<Args extends unknown[]>(
-  fn: (...args: [...Args, DType, Device, boolean]) => Tensor_wasm,
-): (...args: [...Args, FullInitConfig?]) => Tensor_wasm {
-  return (...args: [...Args, FullInitConfig?]) => {
-    let configArg = args[args.length - 1] as FullInitConfig | undefined;
-    let restArgs;
-    if (
-      (configArg &&
-        Object.prototype.hasOwnProperty.call(configArg as Record<string, unknown>, "device")) ||
-      Object.prototype.hasOwnProperty.call(configArg as Record<string, unknown>, "dtype") ||
-      Object.prototype.hasOwnProperty.call(configArg as Record<string, unknown>, "requiresGrad")
-    ) {
-      // We have a config argument, so we need to remove it from the rest of the
-      // arguments
-      restArgs = args.slice(0, args.length - 1) as Args;
-    } else {
-      restArgs = args as unknown as Args;
-      configArg = undefined;
-    }
-
-    const tensor = fn(
-      ...restArgs,
-      configArg?.dtype?._clone() ?? float32._clone(),
-      parseDevice(configArg?.device),
-      configArg?.requiresGrad ?? false,
-    );
-    return tensor;
-  };
-}
-
 function wrapWithLibTensor<Args extends unknown[]>(
   fn: (...args: Args) => Tensor_wasm,
 ): (...args: Args) => Tensor {
   return (...args: Args) => {
-    // // console.log(JSON.stringify(args));
-    // if (args[0] instanceof Parameter) {
-    //   console.log(args[0]);
-    // }
     return Tensor._wrap(fn(...args));
   };
 }
@@ -161,10 +121,10 @@ function wrapWithLibTensor<Args extends unknown[]>(
 function wrapWithParam<Args extends unknown[], O extends TensorOptions>(
   fn: (...args: [...Args, O?]) => Tensor,
 ): {
-  (...args: [...Args, O & RequiresGradConfig]): Parameter;
+  (...args: [...Args, O & TensorOptions]): Parameter;
   (...args: [...Args, O?]): Tensor;
 } {
-  function wrapped(...args: [...Args, O & RequiresGradConfig]): Parameter;
+  function wrapped(...args: [...Args, O & TensorOptions]): Parameter;
   function wrapped(...args: [...Args, O?]): Tensor;
   function wrapped(...args: [...Args, O?]): Tensor | Parameter {
     const maybeCfg = args[args.length - 1] as O | undefined;
