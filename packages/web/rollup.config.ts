@@ -68,9 +68,14 @@ const createConfig = ({
       // Export individual named exports in ES format
       exports: "named",
     },
-    // Make sure we externalize the @piston/piston-web dependency
-    // so it's loaded at runtime via dynamic import
-    external: ["@piston/piston-web"],
+    // Make sure we externalize the @piston-ml/piston-web dependency, and the CodeMirror/Lezer
+    // packages.
+    external: [
+      "@piston-ml/piston-web-wasm",
+      /@codemirror\/[^/]+/,
+      // /@lezer\/[^/]+/,
+      "codemirror"
+    ],
     plugins,
     // Ensure WASM imports are properly handled
     onwarn(warning, warn) {
@@ -79,7 +84,7 @@ const createConfig = ({
       // Ignore dynamic import warnings
       if (
         warning.code === "UNRESOLVED_IMPORT" &&
-        warning.source?.includes("@piston/piston-web")
+        warning.source?.includes("@piston-ml/piston-web-wasm")
       )
         return;
       warn(warning);
