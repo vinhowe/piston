@@ -1,7 +1,7 @@
 use encase::ShaderType;
 use piston_macros::{IrFields, WgslMetadata};
 
-use crate::{prelude::*, OpGuards, OperationError, StorageView, Stride};
+use crate::{OpGuards, OperationError, StorageView, Stride, prelude::*};
 use crate::{Operation, RVec};
 use std::ops::Range;
 
@@ -72,7 +72,7 @@ impl Operation for Slice {
 mod tests {
     use std::ops::Range;
 
-    use crate::{test_util::run_py_prg, Device, DeviceRequest, OpTensor};
+    use crate::{Device, DeviceRequest, Tensor, randn, test_util::run_py_prg};
     use crate::{Shape, Slice};
     use proptest::prelude::*;
     use test_strategy::proptest;
@@ -134,8 +134,10 @@ mod tests {
                         let indices = sub_slices.into_iter().map(|sub| sub.0).collect();
                         SliceProblem {
                             op: Slice::new(
-                                OpTensor::randn::<f32, _>(0., 1., shape.clone(), Device::CPU, false)
-                                    .unwrap(),
+                                randn(shape.clone(), None, None, Default::default())
+                                    .unwrap()
+                                    .inner_or_source()
+                                    .clone(),
                                 indices,
                             ),
                         }
@@ -145,24 +147,23 @@ mod tests {
         }
     }
 
-    fn ground_truth(a: &OpTensor, args: &str) -> anyhow::Result<OpTensor> {
+    fn ground_truth(a: &Tensor, args: &str) -> anyhow::Result<Tensor> {
         let prg = format!(
             r#"
 import torch
 import numpy as np
 def slice(a):
     torch_a = torch.from_numpy(a)
-    return np.ascontiguousarray(torch_a{})
+    return np.ascontiguousarray(torch_a{args}).numpy()
 "#,
-            args
         );
         run_py_prg(prg.to_string(), &[a], &[], a.dtype())
     }
 
     fn run_reindex_trial(prob: SliceProblem, device: Device) -> anyhow::Result<()> {
         let SliceProblem { op } = prob;
-        println!("SLICE PROBLEM: {:?}", op);
-        let a = op.src.clone();
+        println!("SLICE PROBLEM: {op:?}");
+        let a = op.src.clone().wrap();
 
         let a_gpu = a.to(&device)?;
         let ground = ground_truth(&a, &op.as_torch())?;

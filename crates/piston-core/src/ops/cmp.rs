@@ -1,15 +1,15 @@
 use derive_new::new;
-use encase::ShaderType;
 use half::f16;
 use inline_wgsl::wgsl;
-use piston_macros::{IrFields, WgslMetadata};
+use piston_macros::IrFields;
 
 use crate::{
-    gpu::{dtype::WgslDType, BindGroupLayoutDescriptor},
-    rvec, Array, BindingMode, BuiltIn, DType, GPUOperation, InvariantError, Kernel, KernelElement,
-    KernelRenderable, KernelSource, OpGuards, Operation, OperationError, RVec, Scalar, Shape,
-    StorageView, Stride, OpTensor, Vec2, Vec4, WgslKernelBuilder, WgslPrimitive, WorkgroupSize,
-    Workload,
+    Array, BindingMode, BuiltIn, DType, DynKernelMetadata, GPUOperation, InvariantError, Kernel,
+    KernelElement, KernelRenderable, KernelSource, OpGuards, OpTensor, Operation, OperationError,
+    RVec, Scalar, Shape, StorageView, Stride, TensorTypeOrScalarEnum, Vec2, Vec4,
+    WgslKernelBuilder, WgslPrimitive, WorkgroupSize, Workload,
+    gpu::{BindGroupLayoutDescriptor, dtype::WgslDType},
+    rvec,
 };
 #[cfg(test)]
 use test_strategy::Arbitrary;
@@ -52,7 +52,7 @@ impl CmpOp {
 #[derive(new, Debug, Clone, IrFields)]
 pub struct Cmp {
     pub lhs: OpTensor,
-    pub rhs: OpTensor,
+    pub rhs: TensorTypeOrScalarEnum<OpTensor>,
     pub op: CmpOp,
 }
 
@@ -63,7 +63,10 @@ impl KernelRenderable for CmpKernels {
         _: bool,
     ) -> Result<(), OperationError> {
         builder.register_storage("A", BindingMode::ReadOnly, Array::<P>::default());
-        builder.register_storage("B", BindingMode::ReadOnly, Array::<P>::default());
+        let CmpKernels::Standard(inner) = self;
+        if let TensorTypeOrScalarEnum::Tensor(_) = &inner.rhs {
+            builder.register_storage("B", BindingMode::ReadOnly, Array::<P>::default());
+        }
         let CmpKernels::Standard(inner) = self;
         match self.kernel_element(&inner.lhs) {
             KernelElement::Scalar => {
@@ -116,12 +119,32 @@ impl KernelRenderable for CmpKernels {
         let CmpKernels::Standard(inner) = self;
 
         let N = (P::W as u32).render();
-        let dtype = match self.kernel_element(dst) {
+        let out_dtype = match self.kernel_element(dst) {
             KernelElement::Scalar => "i32",
             KernelElement::Vec2 => "vec2<i32>",
             KernelElement::Vec4 => "vec4<i32>",
         };
         let op = inner.op.op_str();
+
+        let assignment_expr = match &inner.rhs {
+            TensorTypeOrScalarEnum::Tensor(_) => wgsl! {
+                'out_dtype(A[index] 'op B[index])
+            },
+            TensorTypeOrScalarEnum::Scalar(_) => {
+                let casted_scalar_dtype = match self.kernel_element(dst) {
+                    KernelElement::Scalar => inner.lhs.dtype().as_wgsl().to_string(),
+                    KernelElement::Vec2 => {
+                        format!("vec2<{}>", inner.lhs.dtype().as_wgsl())
+                    }
+                    KernelElement::Vec4 => {
+                        format!("vec4<{}>", inner.lhs.dtype().as_wgsl())
+                    }
+                };
+                wgsl! {
+                    'out_dtype(A[index] 'op 'casted_scalar_dtype(metadata.value))
+                }
+            }
+        };
 
         kernel_builder.write_main(wgsl! {
             let x_offset = workgroup_id.x * 64u;
@@ -130,7 +153,7 @@ impl KernelRenderable for CmpKernels {
                 return;
             }
 
-            Y[index] = 'dtype(A[index] 'op B[index]);
+            Y[index] = 'assignment_expr;
         });
 
         Ok(kernel_builder.build()?)
@@ -143,20 +166,19 @@ impl Cmp {
     }
 }
 
-#[derive(Debug, ShaderType, WgslMetadata)]
-pub struct CmpMeta {
-    numel: u32,
-}
-
 impl OpGuards for Cmp {
     fn check_shapes(&self) {
-        let shapes = [self.lhs.shape(), self.rhs.shape()];
-        let broadcasted = Shape::multi_broadcast(&shapes);
-        assert!(broadcasted.is_some());
+        if let TensorTypeOrScalarEnum::Tensor(rhs) = &self.rhs {
+            let shapes = [self.lhs.shape(), rhs.shape()];
+            let broadcasted = Shape::multi_broadcast(&shapes);
+            assert!(broadcasted.is_some());
+        }
     }
 
     fn check_dtypes(&self) {
-        assert_eq!(self.lhs.dtype(), self.rhs.dtype());
+        if let TensorTypeOrScalarEnum::Tensor(rhs) = &self.rhs {
+            assert_eq!(self.lhs.dtype(), rhs.dtype());
+        }
     }
 }
 
@@ -166,26 +188,32 @@ impl Operation for Cmp {
     }
 
     fn compute_view(&self) -> Result<StorageView, OperationError> {
-        let lhs = &self.lhs;
-        let rhs = &self.rhs;
-        let shapes = &[lhs.shape(), rhs.shape()];
-        if lhs.is_scalar() || rhs.is_scalar() {
-            let other = if lhs.is_scalar() { rhs } else { lhs };
-            return Ok(other.storage_view().clone());
+        if let TensorTypeOrScalarEnum::Tensor(rhs) = &self.rhs {
+            let shapes = &[self.lhs.shape(), rhs.shape()];
+            if self.lhs.is_scalar() || rhs.is_scalar() {
+                let other = if self.lhs.is_scalar() { rhs } else { &self.lhs };
+                return Ok(other.storage_view().clone());
+            }
+            let broadcasted = Shape::multi_broadcast(shapes);
+            if broadcasted.is_none() {
+                let failed = shapes.iter().map(|s| (*s).clone()).collect::<Vec<_>>();
+                return Err(InvariantError::BroadcastingFailed(failed).into());
+            }
+            let broadcasted = broadcasted.unwrap();
+            let ostride = Stride::from(&broadcasted);
+            Ok(StorageView::new(broadcasted, crate::DType::I32, ostride))
+        } else {
+            Ok(self.lhs.storage_view().clone())
         }
-        let broadcasted = Shape::multi_broadcast(shapes);
-        if broadcasted.is_none() {
-            let failed = shapes.iter().map(|s| (*s).clone()).collect::<Vec<_>>();
-            return Err(InvariantError::BroadcastingFailed(failed).into());
-        }
-        let broadcasted = broadcasted.unwrap();
-        let ostride = Stride::from(&broadcasted);
-        Ok(StorageView::new(broadcasted, crate::DType::I32, ostride))
     }
 
     #[inline]
     fn srcs(&self) -> RVec<&OpTensor> {
-        rvec![&self.lhs, &self.rhs]
+        if let TensorTypeOrScalarEnum::Tensor(rhs) = &self.rhs {
+            rvec![&self.lhs, rhs]
+        } else {
+            rvec![&self.lhs]
+        }
     }
 }
 
@@ -202,7 +230,7 @@ impl GPUOperation for Cmp {
 }
 
 impl Kernel for CmpKernels {
-    type Metadata = CmpMeta;
+    type Metadata = DynKernelMetadata;
 
     fn kernel_name(&self) -> String {
         match self {
@@ -213,9 +241,9 @@ impl Kernel for CmpKernels {
     fn kernel_element(&self, dst: &OpTensor) -> KernelElement {
         let numel = dst.shape().numel();
 
-        if numel % 4 == 0 {
+        if numel.is_multiple_of(4) {
             KernelElement::Vec4
-        } else if numel % 2 == 0 {
+        } else if numel.is_multiple_of(2) {
             KernelElement::Vec2
         } else {
             KernelElement::Scalar
@@ -233,12 +261,30 @@ impl Kernel for CmpKernels {
         if inplace {
             panic!("Cmp cannot be done in place");
         }
-        Ok(BindGroupLayoutDescriptor::binary())
+        let CmpKernels::Standard(inner) = self;
+        if let TensorTypeOrScalarEnum::Tensor(_) = &inner.rhs {
+            Ok(BindGroupLayoutDescriptor::binary())
+        } else {
+            Ok(BindGroupLayoutDescriptor::unary())
+        }
     }
 
-    fn metadata(&self, dst: &OpTensor, _: &KernelElement) -> Result<Self::Metadata, OperationError> {
-        let numel = dst.shape().numel() as _;
-        Ok(CmpMeta { numel })
+    fn metadata(
+        &self,
+        dst: &OpTensor,
+        _: &KernelElement,
+    ) -> Result<Self::Metadata, OperationError> {
+        let CmpKernels::Standard(inner) = self;
+        let mut dyn_meta = DynKernelMetadata::new();
+        dyn_meta.add_field("numel", dst.shape().numel() as u32);
+        if let TensorTypeOrScalarEnum::Scalar(value) = &inner.rhs {
+            if inner.lhs.dtype().is_float() {
+                dyn_meta.add_field("value", *value);
+            } else {
+                dyn_meta.add_field("value", *value as i32);
+            }
+        }
+        Ok(dyn_meta)
     }
 
     fn build_kernel(
@@ -288,8 +334,9 @@ impl Kernel for CmpKernels {
 
 #[cfg(all(test, feature = "pyo3"))]
 mod tests {
-    use crate::{test_util::run_py_prg, CmpOp, DType, Device, DeviceRequest, Shape, OpTensor};
-    use test_strategy::{proptest, Arbitrary};
+    use crate::{CmpOp, DType, Device, DeviceRequest, Shape, Tensor, randn, test_util::run_py_prg};
+    use proptest::arbitrary::any;
+    use test_strategy::{Arbitrary, proptest};
 
     #[derive(Arbitrary, Debug)]
     struct BinaryProblem {
@@ -298,25 +345,45 @@ mod tests {
         shape: Shape,
     }
 
-    fn ground_truth(a: &OpTensor, b: &OpTensor, op: &CmpOp) -> anyhow::Result<OpTensor> {
+    #[derive(Arbitrary, Debug)]
+    struct CmpScalarProblem {
+        op: CmpOp,
+        #[any(vec![1..=4, 1..=4, 1..=1, 1..=256])]
+        shape: Shape,
+        #[strategy(any::<f32>())]
+        scalar: f32,
+    }
+
+    fn ground_truth(a: &Tensor, b: &Tensor, op: &CmpOp) -> anyhow::Result<Tensor> {
         let kn = op.kernel_name();
         let prg = format!(
             r#"
 import torch
 import numpy as np
-def {}(a, b):
-    return torch.{}(torch.from_numpy(a), torch.from_numpy(b)).numpy().astype(np.int32)
+def {kn}(a, b):
+    return torch.{kn}(torch.from_numpy(a), torch.from_numpy(b)).numpy().astype(np.int32)
 "#,
-            kn, kn
         );
         run_py_prg(prg.to_string(), &[a, b], &[], DType::I32)
     }
 
+    fn ground_truth_scalar(a: &Tensor, scalar: f32, op: &CmpOp) -> anyhow::Result<Tensor> {
+        let kn = op.kernel_name();
+        let prg = format!(
+            r#"
+import torch
+import numpy as np
+def {kn}(a, scalar):
+    return torch.{kn}(torch.from_numpy(a), scalar).numpy().astype(np.int32)
+"#,
+        );
+        run_py_prg(prg.to_string(), &[a], &[&scalar], DType::I32)
+    }
+
     fn run_cmp_trial(prob: BinaryProblem, device: Device) -> anyhow::Result<()> {
-        let cpu_device = Device::request_device(DeviceRequest::CPU)?;
         let BinaryProblem { op, shape } = prob;
-        let a = OpTensor::randn::<f32, _>(0., 1., shape.clone(), cpu_device.clone(), false)?;
-        let b = OpTensor::randn::<f32, _>(0., 1., shape, cpu_device.clone(), false)?;
+        let a = randn(shape.clone(), None, None, Default::default())?;
+        let b = randn(shape, None, None, Default::default())?;
         let ground = ground_truth(&a, &b, &op)?.cast(DType::F32)?;
 
         let a_gpu = a.to(&device)?;
@@ -335,9 +402,35 @@ def {}(a, b):
         Ok(())
     }
 
+    fn run_cmp_scalar_trial(prob: CmpScalarProblem, device: Device) -> anyhow::Result<()> {
+        let CmpScalarProblem { op, shape, scalar } = prob;
+        let a = randn(shape, None, None, Default::default())?;
+        let ground = ground_truth_scalar(&a, scalar, &op)?.cast(DType::F32)?;
+
+        let a_gpu = a.to(&device)?;
+        let c_gpu = match op {
+            CmpOp::Eq => a_gpu.eq(scalar)?,
+            CmpOp::Ne => a_gpu.ne(scalar)?,
+            CmpOp::Le => a_gpu.le(scalar)?,
+            CmpOp::Ge => a_gpu.ge(scalar)?,
+            CmpOp::Lt => a_gpu.lt(scalar)?,
+            CmpOp::Gt => a_gpu.gt(scalar)?,
+        };
+
+        let d_gpu = c_gpu.to(&Device::CPU)?.cast(DType::F32)?;
+        ground.all_close(&d_gpu, 1e-4, 1e-4)?;
+        Ok(())
+    }
+
     #[proptest(cases = 8)]
     fn test_binary(prob: BinaryProblem) {
         let device = Device::request_device(DeviceRequest::GPU).unwrap();
         run_cmp_trial(prob, device).unwrap();
+    }
+
+    #[proptest(cases = 8)]
+    fn test_scalar(prob: CmpScalarProblem) {
+        let device = Device::request_device(DeviceRequest::GPU).unwrap();
+        run_cmp_scalar_trial(prob, device).unwrap();
     }
 }

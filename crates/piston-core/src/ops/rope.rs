@@ -5,10 +5,11 @@ use piston_macros::{IrFields, WgslMetadata};
 
 use crate::gpu::dtype::WgslDType;
 use crate::{
+    Array, BindingMode, BuiltIn, DType, KernelElement, KernelSource, OpGuards, OpTensor, Operation,
+    OperationError, RVec, Scalar, StorageView, Stride, Vec2, Vec4, WgslKernelBuilder,
+    WgslPrimitive, WorkgroupSize, Workload,
     gpu::{BindGroupLayoutDescriptor, WorkgroupCount},
-    rvec, wgc, wgs, Array, BindingMode, BuiltIn, DType, KernelElement, KernelSource, OpGuards,
-    Operation, OperationError, RVec, Scalar, StorageView, Stride, OpTensor, Vec2, Vec4,
-    WgslKernelBuilder, WgslPrimitive, WorkgroupSize, Workload,
+    rvec, wgc, wgs,
 };
 use crate::{GPUOperation, Kernel, KernelRenderable};
 use inline_wgsl::wgsl;
@@ -60,9 +61,9 @@ impl OpGuards for RoPE {
     fn check_shapes(&self) {
         let input = &self.input;
         //TODO: overly restrictive
-        assert!(input.rank() == 4);
+        assert!(input.dim() == 4);
         assert!(input.shape()[3] >= self.dim);
-        assert!(self.dim % 8 == 0);
+        assert!(self.dim.is_multiple_of(8));
     }
 
     fn check_dtypes(&self) {
@@ -127,11 +128,13 @@ impl KernelRenderable for RoPEKernels {
         builder: &mut WgslKernelBuilder,
         inplace: bool,
     ) -> Result<(), OperationError> {
-        if !inplace {
-            panic!("Only inplace rope is supported");
-        }
         let arr = Array::<P>::default();
-        builder.register_storage("in", BindingMode::ReadWrite, arr);
+        if inplace {
+            builder.register_storage("in", BindingMode::ReadWrite, arr);
+        } else {
+            builder.register_storage("in", BindingMode::ReadOnly, arr);
+            builder.register_storage("out", BindingMode::ReadWrite, arr);
+        }
         builder.register_uniform();
         Ok(())
     }
@@ -164,6 +167,18 @@ impl KernelRenderable for RoPEKernels {
         let body_code = rope_body(is_backward);
 
         let dtype = P::T::DT;
+        let write_operations = if inplace {
+            wgsl! {
+                in[out_index_1] = rx1;
+                in[out_index_2] = rx2;
+            }
+        } else {
+            wgsl! {
+                out[out_index_1] = rx1;
+                out[out_index_2] = rx2;
+            }
+        };
+
         kernel_builder.write_main(wgsl! {
             if(global_invocation_id.y >= metadata.seq_len) {
               return;
@@ -189,8 +204,7 @@ impl KernelRenderable for RoPEKernels {
 
             'body_code
 
-            in[out_index_1] = rx1;
-            in[out_index_2] = rx2;
+            'write_operations
         });
 
         Ok(kernel_builder.build()?)
@@ -212,12 +226,17 @@ impl Kernel for RoPEKernels {
         inplace: bool,
     ) -> Result<BindGroupLayoutDescriptor, OperationError> {
         if inplace {
-            return Ok(BindGroupLayoutDescriptor::unary_inplace());
+            Ok(BindGroupLayoutDescriptor::unary_inplace())
+        } else {
+            Ok(BindGroupLayoutDescriptor::unary())
         }
-        panic!("RoPE does not support out-of-place operation");
     }
 
-    fn metadata(&self, dst: &OpTensor, _: &KernelElement) -> Result<Self::Metadata, OperationError> {
+    fn metadata(
+        &self,
+        dst: &OpTensor,
+        _: &KernelElement,
+    ) -> Result<Self::Metadata, OperationError> {
         let inner = match self {
             RoPEKernels::Forward(x) => x,
             RoPEKernels::Backward(x) => x,
@@ -312,12 +331,12 @@ impl Kernel for RoPEKernels {
 
 #[cfg(all(test, feature = "pyo3", target_os = "macos"))]
 mod tests {
-    use test_strategy::{proptest, Arbitrary};
+    use test_strategy::{Arbitrary, proptest};
 
     use crate::test_util::run_py_prg;
-    use crate::{Device, DeviceRequest, OpTensor};
+    use crate::{Device, DeviceRequest, Tensor, randn};
 
-    fn ground_truth(a: &OpTensor, dim: usize, offset: usize) -> anyhow::Result<OpTensor> {
+    fn ground_truth(a: &Tensor, dim: usize, offset: usize) -> anyhow::Result<Tensor> {
         let prg = r#"
 import mlx.core as mx
 import mlx.nn as nn
@@ -343,11 +362,11 @@ def mlx_rope(input, dim, offset):
             offset,
         } = problem;
         let shape = (BS, NH, SL, HD);
-        let a = OpTensor::randn::<f32, _>(0., 1., shape, Device::CPU, false).unwrap();
+        let a = randn(shape, None, None, Default::default()).unwrap();
         let ground = ground_truth(&a, dim, offset).unwrap();
 
         let a = a.to(&device).unwrap();
-        let b = a.rope(dim, 10000.0, offset).unwrap();
+        let b = a.rope_(dim, 10000.0, offset).unwrap();
 
         let ours = b.to(&Device::CPU).unwrap();
         //println!("ours = \n{:#?}\n", ours.to_ndarray_view::<f32>());
@@ -365,10 +384,10 @@ def mlx_rope(input, dim, offset):
         #[strategy(1..=256usize)]
         SL: usize,
         #[strategy(32..=128usize)]
-        #[filter(#HD % 16 == 0)]
+        #[filter(#HD.is_multiple_of(16))]
         HD: usize,
         #[strategy(32..=#HD)]
-        #[filter(#dim % 32 == 0)]
+        #[filter(#dim.is_multiple_of(32))]
         dim: usize,
         #[strategy(0..=#SL)]
         offset: usize,
@@ -384,10 +403,7 @@ def mlx_rope(input, dim, offset):
             dim,
             offset,
         } = prob;
-        println!(
-            "BS = {}, NH = {}, SL = {}, HD = {}, rope_dim = {}, offset = {}",
-            BS, NH, SL, HD, dim, offset
-        );
+        println!("BS = {BS}, NH = {NH}, SL = {SL}, HD = {HD}, rope_dim = {dim}, offset = {offset}");
 
         let device = Device::request_device(DeviceRequest::GPU).unwrap();
         run_rope_trial(prob, device);
@@ -403,10 +419,7 @@ def mlx_rope(input, dim, offset):
             dim,
             offset,
         } = prob;
-        println!(
-            "BS = {}, NH = {}, SL = {}, HD = {}, rope_dim = {}, offset = {}",
-            BS, NH, SL, HD, dim, offset
-        );
+        println!("BS = {BS}, NH = {NH}, SL = {SL}, HD = {HD}, rope_dim = {dim}, offset = {offset}");
 
         let device = Device::request_device(DeviceRequest::CPU).unwrap();
         run_rope_trial(prob, device);

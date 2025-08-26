@@ -1,15 +1,15 @@
 #[cfg(feature = "debug")]
+use crate::MIN_STORAGE_BUFFER_SIZE;
+#[cfg(feature = "debug")]
 use crate::gpu::BufferUsagesExt;
 use crate::gpu::{
     BindGroupLayoutDescriptor, ComputePipelineDescriptor, CpuUniform, PipelineLayoutDescriptor,
     PoolError, WgpuDevice,
 };
-#[cfg(feature = "debug")]
-use crate::MIN_STORAGE_BUFFER_SIZE;
 use crate::{
-    ops::*, rvec, CompiledOp, DType, HashMap, InvariantError, Kernel, KernelBuildError,
-    KernelMetadata, KernelModuleDesc, OpTensor, RVec, Shape, StorageView, TensorId, WgslFragment,
-    WorkgroupSize, Workload,
+    CompiledOp, DType, HashMap, InvariantError, Kernel, KernelBuildError, KernelMetadata,
+    KernelModuleDesc, OpTensor, RVec, Shape, StorageView, TensorId, TensorTypeOrScalarEnum,
+    WgslFragment, WorkgroupSize, Workload, ops::*, rvec,
 };
 #[cfg(feature = "debug")]
 use slotmap::Key;
@@ -44,6 +44,7 @@ pub enum LazyOp {
     Reduce(Reduce),
     Gather(Gather),
     Ternary(Ternary),
+    Lerp(Lerp),
     // ---- Everything below this line shouldn't exist ----
     FillConstant(FillConstant),
     FillRandn(FillRandn),
@@ -82,6 +83,7 @@ impl LazyOp {
             LazyOp::Gather(g) => g.name(),
             LazyOp::Conv(c) => c.name(),
             LazyOp::Ternary(t) => t.name(),
+            LazyOp::Lerp(l) => l.name(),
             LazyOp::Select(s) => s.name(),
             LazyOp::IndexWrite(iw) => iw.name(),
             LazyOp::IndexAdd(ia) => ia.name(),
@@ -122,6 +124,7 @@ impl LazyOp {
             LazyOp::Gather(g) => g.srcs(),
             LazyOp::Conv(c) => c.srcs(),
             LazyOp::Ternary(t) => t.srcs(),
+            LazyOp::Lerp(l) => l.srcs(),
             LazyOp::Select(s) => s.srcs(),
             LazyOp::IndexWrite(iw) => iw.srcs(),
             LazyOp::IndexAdd(ia) => ia.srcs(),
@@ -158,6 +161,7 @@ impl LazyOp {
             LazyOp::Gather(g) => g.supports_inplace(),
             LazyOp::Conv(c) => c.supports_inplace(),
             LazyOp::Ternary(t) => t.supports_inplace(),
+            LazyOp::Lerp(l) => l.supports_inplace(),
             LazyOp::Select(s) => s.supports_inplace(),
             LazyOp::IndexWrite(iw) => iw.supports_inplace(),
             LazyOp::IndexAdd(ia) => ia.supports_inplace(),
@@ -204,6 +208,7 @@ impl LazyOp {
             LazyOp::Gather(g) => g.check_invariants(),
             LazyOp::Conv(c) => c.check_invariants(),
             LazyOp::Ternary(t) => t.check_invariants(),
+            LazyOp::Lerp(l) => l.check_invariants(),
             LazyOp::Select(s) => s.check_invariants(),
             LazyOp::IndexWrite(iw) => iw.check_invariants(),
             LazyOp::IndexAdd(ia) => ia.check_invariants(),
@@ -241,6 +246,7 @@ impl LazyOp {
             LazyOp::Gather(g) => g.ir(),
             LazyOp::Conv(c) => c.ir(),
             LazyOp::Ternary(t) => t.ir(),
+            LazyOp::Lerp(l) => l.ir(),
             LazyOp::Select(s) => s.ir(),
             LazyOp::IndexWrite(iw) => iw.ir(),
             LazyOp::IndexAdd(ia) => ia.ir(),
@@ -442,7 +448,7 @@ fn hash_ir_value<H: Hasher>(
         // to be true...
         IrValue::Vec(vec) => {
             for (i, value) in vec.iter().enumerate() {
-                hash_key(&format!("{}", i), state);
+                hash_key(&format!("{i}"), state);
                 hash_ir_value(value, state, tensor_hashes, compile_key);
             }
         }
@@ -649,6 +655,15 @@ impl<T: IrFields + 'static> From<T> for IrValue {
     }
 }
 
+impl<T: Into<IrValue>> From<TensorTypeOrScalarEnum<T>> for IrValue {
+    fn from(value: TensorTypeOrScalarEnum<T>) -> Self {
+        match value {
+            TensorTypeOrScalarEnum::Tensor(tensor) => tensor.into(),
+            TensorTypeOrScalarEnum::Scalar(scalar) => scalar.into(),
+        }
+    }
+}
+
 pub struct ComputeCompileKey<'a> {
     pub dst: &'a OpTensor,
     pub workload: Workload,
@@ -756,8 +771,8 @@ pub trait GPUOperation: Operation {
         let metadata = kernel.metadata(dst, &kernel_element)?;
         let offset = metadata.write(uniform)?;
 
-        log::debug!("Kernel key: {}", key);
-        log::debug!("Can inplace: {}", can_inplace);
+        log::debug!("Kernel key: {key}");
+        log::debug!("Can inplace: {can_inplace}");
 
         Ok(ComputeCompileKey {
             dst,
@@ -845,7 +860,8 @@ pub trait GPUOperation: Operation {
                 {
                     if bind_group_entry.handle == other_bind_group_entry.handle {
                         assert_eq!(
-                            layout_entry.read_only, other_layout_entry.read_only,
+                            layout_entry.read_only,
+                            other_layout_entry.read_only,
                             "Found conflicting read_only values for the same buffer handle: {:?} at index {} has read_only={} but {:?} at index {} has read_only={} ({:?})",
                             bind_group_entry.handle,
                             i,
@@ -853,7 +869,12 @@ pub trait GPUOperation: Operation {
                             other_bind_group_entry.handle,
                             j,
                             other_layout_entry.read_only,
-                            storage_bind_group.descriptor().entries.iter().map(|e| e.handle.data()).collect::<RVec<_>>()
+                            storage_bind_group
+                                .descriptor()
+                                .entries
+                                .iter()
+                                .map(|e| e.handle.data())
+                                .collect::<RVec<_>>()
                         );
                     }
                 }

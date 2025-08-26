@@ -1,8 +1,8 @@
 use crate::{
-    gpu::BindGroupLayoutDescriptor, rvec, Array, BindingMode, BuiltIn, DType, GPUOperation, Kernel,
-    KernelElement, KernelRenderable, KernelSource, OpGuards, OpTensor, Operation, OperationError,
-    RVec, Scalar, StorageView, Vec2, Vec4, WgslKernelBuilder, WgslPrimitive, WorkgroupSize,
-    Workload,
+    Array, BindingMode, BuiltIn, DType, GPUOperation, Kernel, KernelElement, KernelRenderable,
+    KernelSource, OpGuards, OpTensor, Operation, OperationError, RVec, Scalar, StorageView, Vec2,
+    Vec4, WgslKernelBuilder, WgslPrimitive, WorkgroupSize, Workload,
+    gpu::BindGroupLayoutDescriptor, rvec,
 };
 use derive_new::new;
 use encase::ShaderType;
@@ -29,8 +29,8 @@ pub struct IndexAddMeta {
 impl OpGuards for IndexAdd {
     fn check_shapes(&self) {
         let (input, indices) = (&self.src, &self.ids);
-        assert_eq!(input.rank(), 2);
-        assert_eq!(indices.rank(), 1);
+        assert_eq!(input.dim(), 2);
+        assert_eq!(indices.dim(), 1);
     }
 
     fn check_dtypes(&self) {
@@ -216,7 +216,7 @@ mod tests {
     use test_strategy::proptest;
 
     use crate::test_util::run_py_prg;
-    use crate::{Device, DeviceRequest, OpTensor, Shape};
+    use crate::{Device, DeviceRequest, Shape, Tensor, randint, randn};
 
     impl Arbitrary for IndexAddProblem {
         type Parameters = ();
@@ -226,14 +226,8 @@ mod tests {
             Shape::arbitrary_with(vec![1..=512usize, 1..=16usize])
                 .prop_flat_map(|input_shape| (Just(input_shape), 1..64usize))
                 .prop_map(|(input_shape, num_indices)| {
-                    let indices = OpTensor::randint(
-                        0,
-                        input_shape[0] as i32,
-                        num_indices,
-                        Device::CPU,
-                        false,
-                    )
-                    .unwrap();
+                    let indices =
+                        randint(0, input_shape[0] as i32, num_indices, Default::default()).unwrap();
                     IndexAddProblem {
                         input_shape,
                         indices,
@@ -244,18 +238,17 @@ mod tests {
     }
 
     fn ground_truth(
-        input: &OpTensor,
-        source: &OpTensor,
-        indices: &OpTensor,
+        input: &Tensor,
+        source: &Tensor,
+        indices: &Tensor,
         dim: usize,
-    ) -> anyhow::Result<OpTensor> {
+    ) -> anyhow::Result<Tensor> {
         let prg = format!(
             r#"
 import torch
 def index_add(input, source, indices):
-    return torch.index_add(torch.from_numpy(input),{},torch.from_numpy(indices),torch.from_numpy(source)).numpy()
-"#,
-            dim
+    return torch.index_add(torch.from_numpy(input),{dim},torch.from_numpy(indices),torch.from_numpy(source)).numpy()
+"#
         );
         run_py_prg(
             prg.to_string(),
@@ -273,12 +266,12 @@ def index_add(input, source, indices):
         let mut source_shape = input_shape.clone();
         source_shape[0] = indices.shape()[0];
 
-        let input = OpTensor::randn::<f32, _>(0., 1., input_shape.clone(), device.clone(), false)
+        let input = randn(input_shape.clone(), None, None, Default::default())
             .unwrap()
             .to(&Device::CPU)
             .unwrap();
 
-        let source = OpTensor::randn::<f32, _>(0., 1., source_shape.clone(), device.clone(), false)
+        let source = randn(source_shape.clone(), None, None, Default::default())
             .unwrap()
             .to(&Device::CPU)
             .unwrap();
@@ -292,19 +285,21 @@ def index_add(input, source, indices):
 
         let ground_truth = ground_truth(&input, &source, &indices, 0).unwrap();
 
-        log::debug!("input = {:?}", input);
-        log::debug!("source = {:?}", source);
-        log::debug!("ground_truth = {:?}", ground_truth);
-        log::debug!("indices = {:?}", indices);
+        log::debug!("input = {input:?}");
+        log::debug!("source = {source:?}");
+        log::debug!("ground_truth = {ground_truth:?}");
+        log::debug!("indices = {indices:?}");
 
         let input = input.to(&device).unwrap();
         let indices = indices.to(&device).unwrap();
         let source = source.to(&device).unwrap();
 
-        let result = input.index_add(indices.clone(), source.clone(), 0).unwrap();
+        let result = input
+            .index_add_(indices.clone(), source.clone(), 0)
+            .unwrap();
         let x = result.to(&Device::CPU).unwrap();
 
-        log::debug!("x = {:?}", x);
+        log::debug!("x = {x:?}");
 
         ground_truth.all_close(&x, 1e-1, 1e-1).unwrap();
     }
@@ -312,7 +307,7 @@ def index_add(input, source, indices):
     #[derive(Debug, Clone)]
     struct IndexAddProblem {
         input_shape: Shape,
-        indices: OpTensor,
+        indices: Tensor,
     }
 
     #[proptest(cases = 16)]

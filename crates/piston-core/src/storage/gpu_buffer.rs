@@ -137,7 +137,7 @@ impl GPUBuffer {
     }
 
     pub fn trim_id(id: wgpu::Id<wgpu::Buffer>) -> Option<String> {
-        let id = format!("{:?}", id);
+        let id = format!("{id:?}");
         let trimmed = id.trim_start_matches("Id(").trim_end_matches(')');
         if trimmed.len() > 12 && trimmed.chars().all(|c| c.is_numeric()) {
             Some(trimmed[12..].to_string())
@@ -179,7 +179,7 @@ impl DeviceStorage for GPUBuffer {
     fn dump(&self, _: DType, _: bool) -> String {
         let mut result = String::new();
         let id_string = Self::trim_id(self.inner().global_id()).unwrap_or_default();
-        result.push_str(&format!("GPU Buffer #{}\n", id_string));
+        result.push_str(&format!("GPU Buffer #{id_string}\n"));
         result.push_str(&format!("Size: {} bytes\n", self.inner.size()));
         result
     }

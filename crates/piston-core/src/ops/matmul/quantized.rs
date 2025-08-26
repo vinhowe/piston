@@ -4,8 +4,8 @@ use piston_macros::WgslMetadata;
 
 use crate::{
     rvec, Array, BindGroupLayoutDescriptor, BindingMode, BuiltIn, DType, InvariantError, Kernel,
-    KernelElement, KernelRenderable, KernelSource, Matmul, MatmulSpec, OperationError, Scalar,
-    OpTensor, WgslKernelBuilder, WgslPrimitive, WorkgroupSize, Workload,
+    KernelElement, KernelRenderable, KernelSource, Matmul, MatmulSpec, OpTensor, OperationError,
+    Scalar, WgslKernelBuilder, WgslPrimitive, WorkgroupSize, Workload,
 };
 use inline_wgsl::wgsl;
 
@@ -273,7 +273,7 @@ impl KernelRenderable for QMatMul {
         });
 
         let x = kernel_builder.build()?;
-        println!("{}", x);
+        println!("{x}");
         Ok(x)
     }
 }

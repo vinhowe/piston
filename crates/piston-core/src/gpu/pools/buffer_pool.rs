@@ -3,8 +3,8 @@ use std::sync::Arc;
 // Adapted from https://github.com/rerun-io/rerun MIT licensed
 use super::{DynamicResource, DynamicResourcePool, DynamicResourcesDesc, PoolError};
 use crate::{
-    gpu::{WgpuDevice, MIN_STORAGE_BUFFER_SIZE},
     RawGPUBuffer,
+    gpu::{MIN_STORAGE_BUFFER_SIZE, WgpuDevice},
 };
 
 #[derive(Clone, Hash, PartialEq, Eq, Debug, derive_new::new)]
@@ -78,6 +78,7 @@ impl BufferPool {
         desc: &BufferDescriptor,
         device: &WgpuDevice,
         immediate: bool,
+        vram_limit: Option<u64>,
     ) -> PooledGPUBuffer {
         let size = if (desc.size as usize) < MIN_STORAGE_BUFFER_SIZE {
             //All buffers must be minimum 16 bytes
@@ -85,7 +86,7 @@ impl BufferPool {
         } else {
             //Round all buffers to 4 bytes, as any buffer may be read back to the CPU, which
             //requires a copy
-            if desc.size % wgpu::COPY_BUFFER_ALIGNMENT == 0 {
+            if desc.size.is_multiple_of(wgpu::COPY_BUFFER_ALIGNMENT) {
                 desc.size
             } else {
                 desc.size + wgpu::COPY_BUFFER_ALIGNMENT - (desc.size % wgpu::COPY_BUFFER_ALIGNMENT)
@@ -100,6 +101,14 @@ impl BufferPool {
 
         PooledGPUBuffer(self.inner.get_or_create(&descriptor, |descriptor| {
             let (size, usage, mapped_at_creation) = descriptor.fields();
+            let total_size = self.inner.total_resource_size_in_bytes();
+            if let Some(vram_limit) = vram_limit
+                && total_size + size > vram_limit {
+                    panic!(
+                        "VRAM limit exceeded: attempted to allocate buffer of size {size} bytes, \
+                        which would exceed the VRAM limit of {vram_limit} bytes (current usage: {total_size} bytes)"
+                    );
+                }
             let buf = device.create_buffer(&wgpu::BufferDescriptor {
                 label: None,
                 size,

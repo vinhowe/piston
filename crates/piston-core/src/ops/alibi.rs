@@ -4,10 +4,11 @@ use inline_wgsl::wgsl;
 use piston_macros::{IrFields, WgslMetadata};
 
 use crate::{
+    Array, BindingMode, BuiltIn, DType, GPUOperation, Kernel, KernelElement, KernelRenderable,
+    KernelSource, OpGuards, OpTensor, Operation, OperationError, RVec, Scalar, StorageView,
+    WgslKernelBuilder, WgslPrimitive, WorkgroupSize, Workload,
     gpu::{BindGroupLayoutDescriptor, WorkgroupCount},
-    rvec, wgc, wgs, Array, BindingMode, BuiltIn, DType, GPUOperation, Kernel, KernelElement,
-    KernelRenderable, KernelSource, OpGuards, Operation, OperationError, RVec, Scalar, StorageView,
-    OpTensor, WgslKernelBuilder, WgslPrimitive, WorkgroupSize, Workload,
+    rvec, wgc, wgs,
 };
 
 /// Implements "alibi" (Attention Linear Bias)
@@ -24,8 +25,7 @@ impl OpGuards for Alibi {
         let shape = self.input.shape();
         assert!(
             shape.len() == 3,
-            "Alibi expects a 3D shape [B, n_head, seq], got shape={:?}",
-            shape
+            "Alibi expects a 3D shape [B, n_head, seq], got shape={shape:?}"
         );
     }
 
@@ -275,8 +275,8 @@ impl Kernel for AlibiKernels {
 
 #[cfg(all(test, feature = "pyo3"))]
 mod tests {
-    use crate::{test_util::run_py_prg, Device, DeviceRequest, OpTensor};
-    use test_strategy::{proptest, Arbitrary};
+    use crate::{Device, DeviceRequest, Tensor, test_util::run_py_prg, zeros};
+    use test_strategy::{Arbitrary, proptest};
 
     /// Ground truth reference, computed by a Python snippet:
     ///
@@ -287,7 +287,7 @@ mod tests {
     ///   - m1 = 2^(-(max_bias / 2.0) / n_heads_log2_floor)
     ///   - for each head in 0..n_head, offset = head - n_heads_log2_floor if head >= that
     ///     then out[b, head, col] += col * factor
-    fn ground_truth_alibi(a: &OpTensor, max_bias: f32) -> anyhow::Result<OpTensor> {
+    fn ground_truth_alibi(a: &Tensor, max_bias: f32) -> anyhow::Result<Tensor> {
         let prg = r#"
 import numpy as np
 import math
@@ -345,7 +345,7 @@ def alibi(input, max_bias):
         // shape = [B, n_head, seq]
         let shape = (b, n_head, seq);
         // let a_cpu = Tensor::randn::<f32, _>(0.0, 1.0, shape, Device::CPU).unwrap();
-        let a_cpu = OpTensor::zeros::<f32, _>(shape, &Device::CPU, false).unwrap();
+        let a_cpu = zeros(shape, Default::default()).unwrap();
 
         let ground = ground_truth_alibi(&a_cpu, max_bias).unwrap();
         let a_gpu = a_cpu.to(&device).unwrap();
@@ -353,11 +353,17 @@ def alibi(input, max_bias):
 
         let out_cpu = out_gpu.to(&Device::CPU).unwrap();
 
-        println!("Problem: {:?}", problem);
+        println!("Problem: {problem:?}");
         println!("Ground truth shape: {:?}", ground.shape());
         println!("Output shape: {:?}", out_cpu.shape());
-        println!("Ground truth: {:?}", ground.to_ndarray_view::<f32>());
-        println!("Output: {:?}", out_cpu.to_ndarray_view::<f32>());
+        println!(
+            "Ground truth: {:?}",
+            ground.inner().read().to_ndarray_view::<f32>()
+        );
+        println!(
+            "Output: {:?}",
+            out_cpu.inner().read().to_ndarray_view::<f32>()
+        );
 
         // Compare
         ground.all_close(&out_cpu, 1e-4, 1e-4).unwrap();

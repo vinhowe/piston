@@ -1,7 +1,7 @@
 use piston::HashMap;
 use std::sync::{Arc, Mutex};
 
-use piston::{Device, OpTensor, Shape, Tensor};
+use piston::{Device, Shape, Tensor};
 
 #[cfg(target_arch = "wasm32")]
 use {
@@ -63,6 +63,7 @@ impl VarMap {
         &self,
         data: Vec<(String, Tensor)>,
     ) -> anyhow::Result<String, JsValue> {
+        use piston::OpTensor;
         // Convert (String, Tensor) -> (&String, &Tensor) for serialization
 
         let data_ref: Vec<(&String, OpTensor)> = data

@@ -1,34 +1,38 @@
 use derive_new::new;
-use encase::ShaderType;
 use half::f16;
 use inline_wgsl::wgsl;
-use piston_macros::{IrFields, WgslMetadata};
+use piston_macros::IrFields;
 
 use crate::{
-    gpu::{dtype::WgslDType, BindGroupLayoutDescriptor},
-    rvec, Array, BindingMode, BuiltIn, DType, GPUOperation, Kernel, KernelElement,
-    KernelRenderable, KernelSource, OpGuards, Operation, OperationError, RVec, Scalar, StorageView,
-    OpTensor, Vec2, Vec4, WgslKernelBuilder, WgslPrimitive, WorkgroupSize, Workload,
+    Array, BindingMode, BuiltIn, DType, DynKernelMetadata, GPUOperation, InvariantError, Kernel,
+    KernelElement, KernelRenderable, KernelSource, OpGuards, OpTensor, Operation, OperationError,
+    RVec, Scalar, Shape, StorageView, Stride, TensorTypeOrScalarEnum, Vec2, Vec4,
+    WgslKernelBuilder, WgslPrimitive, WorkgroupSize, Workload,
+    gpu::{BindGroupLayoutDescriptor, dtype::WgslDType},
+    rvec,
 };
 
 #[derive(new, Debug, Clone, IrFields)]
 pub struct Powf {
     pub src: OpTensor,
-    pub e: f32,
-}
-
-#[derive(Debug, ShaderType, WgslMetadata)]
-pub struct PowfMeta {
-    numel: u32,
-    e: f32,
+    pub e: TensorTypeOrScalarEnum<OpTensor>,
 }
 
 impl OpGuards for Powf {
-    fn check_shapes(&self) {}
+    fn check_shapes(&self) {
+        if let TensorTypeOrScalarEnum::Tensor(e) = &self.e {
+            let shapes = [self.src.shape(), e.shape()];
+            let broadcasted = Shape::multi_broadcast(&shapes);
+            assert!(broadcasted.is_some());
+        }
+    }
 
     fn check_dtypes(&self) {
         let a = &self.src;
         assert!(matches!(a.dtype(), crate::DType::F32));
+        if let TensorTypeOrScalarEnum::Tensor(e) = &self.e {
+            assert_eq!(self.src.dtype(), e.dtype());
+        }
     }
 }
 
@@ -38,12 +42,32 @@ impl Operation for Powf {
     }
 
     fn compute_view(&self) -> Result<StorageView, OperationError> {
-        Ok(self.src.storage_view().clone())
+        if let TensorTypeOrScalarEnum::Tensor(e) = &self.e {
+            let shapes = &[self.src.shape(), e.shape()];
+            if self.src.is_scalar() || e.is_scalar() {
+                let other = if self.src.is_scalar() { e } else { &self.src };
+                return Ok(other.storage_view().clone());
+            }
+            let broadcasted = Shape::multi_broadcast(shapes);
+            if broadcasted.is_none() {
+                let failed = shapes.iter().map(|s| (*s).clone()).collect::<Vec<_>>();
+                return Err(InvariantError::BroadcastingFailed(failed).into());
+            }
+            let broadcasted = broadcasted.unwrap();
+            let ostride = Stride::from(&broadcasted);
+            Ok(StorageView::new(broadcasted, self.src.dtype(), ostride))
+        } else {
+            Ok(self.src.storage_view().clone())
+        }
     }
 
     #[inline]
     fn srcs(&self) -> RVec<&OpTensor> {
-        rvec![&self.src]
+        if let TensorTypeOrScalarEnum::Tensor(e) = &self.e {
+            rvec![&self.src, e]
+        } else {
+            rvec![&self.src]
+        }
     }
 
     fn supports_inplace(&self) -> bool {
@@ -70,12 +94,22 @@ impl KernelRenderable for PowfKernels {
         inplace: bool,
     ) -> Result<(), OperationError> {
         let arr = Array::<P>::default();
+        let PowfKernels::Standard(inner) = self;
+
         if inplace {
             builder.register_storage("X", BindingMode::ReadWrite, arr);
         } else {
             builder.register_storage("X", BindingMode::ReadOnly, arr);
+        }
+
+        if let TensorTypeOrScalarEnum::Tensor(_) = &inner.e {
+            builder.register_storage("E", BindingMode::ReadOnly, arr);
+        }
+
+        if !inplace {
             builder.register_storage("Y", BindingMode::ReadWrite, arr);
         }
+
         builder.register_uniform();
         Ok(())
     }
@@ -113,18 +147,25 @@ impl KernelRenderable for PowfKernels {
             let val = X[index];
         });
 
+        let PowfKernels::Standard(inner) = self;
+
         // pow(x, e) is undefined for x < 0 in Dawn, but apparently not in wgpu,
         // but only when the compiler doesn't have enough information to coerce
         // e into an integer. We supply e through the metadata, so, at compile-time,
         // its type is unknown.
         //
         // Multiplying by the sign is a fix to make this shader work correctly in Chrome.
+        let exponent_expr = match &inner.e {
+            TensorTypeOrScalarEnum::Tensor(_) => "E[index]".to_string(),
+            TensorTypeOrScalarEnum::Scalar(_) => wgsl! { 'dtype(metadata.e) },
+        };
+
         let apply = if inplace {
             wgsl! {
-                X[index] = sign(val) * pow(abs(val), 'dtype(metadata.e));
+                X[index] = sign(val) * pow(abs(val), 'exponent_expr);
             }
         } else {
-            wgsl! { Y[index] = sign(val) * pow(abs(val), 'dtype(metadata.e)); }
+            wgsl! { Y[index] = sign(val) * pow(abs(val), 'exponent_expr); }
         };
 
         kernel_builder.write_main(apply);
@@ -133,7 +174,7 @@ impl KernelRenderable for PowfKernels {
 }
 
 impl Kernel for PowfKernels {
-    type Metadata = PowfMeta;
+    type Metadata = DynKernelMetadata;
 
     fn kernel_name(&self) -> String {
         match self {
@@ -142,42 +183,59 @@ impl Kernel for PowfKernels {
     }
 
     fn calculate_dispatch(&self, dst: &OpTensor) -> Result<Workload, OperationError> {
-        let PowfKernels::Standard(inner) = self;
-        Ok(Workload::std(
-            inner.src.shape().numel(),
-            self.kernel_element(dst),
-        ))
+        let PowfKernels::Standard(_) = self;
+        Ok(Workload::std(dst.shape().numel(), self.kernel_element(dst)))
     }
 
     fn storage_bind_group_layout(
         &self,
         inplace: bool,
     ) -> Result<BindGroupLayoutDescriptor, OperationError> {
-        if inplace {
-            Ok(BindGroupLayoutDescriptor::unary_inplace())
-        } else {
-            Ok(BindGroupLayoutDescriptor::unary())
+        let PowfKernels::Standard(inner) = self;
+        match &inner.e {
+            TensorTypeOrScalarEnum::Tensor(_) => {
+                if inplace {
+                    Ok(BindGroupLayoutDescriptor::binary_inplace())
+                } else {
+                    Ok(BindGroupLayoutDescriptor::binary())
+                }
+            }
+            TensorTypeOrScalarEnum::Scalar(_) => {
+                if inplace {
+                    Ok(BindGroupLayoutDescriptor::unary_inplace())
+                } else {
+                    Ok(BindGroupLayoutDescriptor::unary())
+                }
+            }
         }
     }
 
-    fn metadata(&self, _: &OpTensor, _: &KernelElement) -> Result<Self::Metadata, OperationError> {
+    fn metadata(
+        &self,
+        dst: &OpTensor,
+        _: &KernelElement,
+    ) -> Result<Self::Metadata, OperationError> {
         let PowfKernels::Standard(inner) = self;
-        let numel = inner.src.shape().numel() as u32;
-        Ok(PowfMeta { numel, e: inner.e })
+        let mut dyn_meta = DynKernelMetadata::new();
+        dyn_meta.add_field("numel", dst.shape().numel() as u32);
+        if let TensorTypeOrScalarEnum::Scalar(value) = &inner.e {
+            dyn_meta.add_field("e", *value);
+        }
+        Ok(dyn_meta)
     }
 
     fn kernel_element(&self, _dst: &OpTensor) -> KernelElement {
         let PowfKernels::Standard(inner) = self;
-        let a_rank = inner.src.shape().rank();
+        let a_rank = inner.src.shape().dim();
         let N = if a_rank > 0 {
             inner.src.shape()[a_rank - 1]
         } else {
             1
         };
 
-        if N % 4 == 0 {
+        if N.is_multiple_of(4) {
             KernelElement::Vec4
-        } else if N % 2 == 0 {
+        } else if N.is_multiple_of(2) {
             KernelElement::Vec2
         } else {
             KernelElement::Scalar
@@ -222,12 +280,12 @@ impl Kernel for PowfKernels {
 
 #[cfg(all(test, feature = "pyo3"))]
 mod tests {
-    use test_strategy::{proptest, Arbitrary};
+    use test_strategy::{Arbitrary, proptest};
 
     use crate::test_util::run_py_prg;
-    use crate::{Device, DeviceRequest, OpTensor};
+    use crate::{Device, DeviceRequest, Tensor, randn};
 
-    fn ground_truth(a: &OpTensor, e: f32) -> anyhow::Result<OpTensor> {
+    fn ground_truth(a: &Tensor, e: f32) -> anyhow::Result<Tensor> {
         let func_prg = r#"
 import torch
 def powf(a, e):
@@ -242,9 +300,25 @@ def powf(a, e):
         run_py_prg(prg.to_string(), &[a], &[&e], a.dtype())
     }
 
+    fn ground_truth_tensor(a: &Tensor, e: &Tensor) -> anyhow::Result<Tensor> {
+        let func_prg = r#"
+import torch
+def powf(a, e):
+    a_tensor = torch.from_numpy(a)
+    e_tensor = torch.from_numpy(e)
+    sign = torch.sign(a_tensor)
+    return (torch.pow(torch.abs(a_tensor), e_tensor) * sign).numpy()
+"#
+        .to_string();
+
+        let prg = func_prg;
+
+        run_py_prg(prg.to_string(), &[a, e], &[], a.dtype())
+    }
+
     fn run_powf_trial(problem: PowfProblem, device: Device) {
         let PowfProblem { B, M, N, e } = problem;
-        let a = OpTensor::randn::<f32, _>(0., 1., (B, M, N), Device::CPU, false).unwrap();
+        let a = randn((B, M, N), None, None, Default::default()).unwrap();
         let ground = ground_truth(&a, e).unwrap();
 
         let a_gpu = a.to(&device).unwrap();
@@ -267,11 +341,44 @@ def powf(a, e):
         e: f32,
     }
 
+    #[derive(Arbitrary, Debug)]
+    struct PowfTensorProblem {
+        #[strategy(1..=32usize)]
+        B: usize,
+        #[strategy(1..=32usize)]
+        M: usize,
+        #[strategy(1..=32usize)]
+        N: usize,
+    }
+
+    fn run_powf_tensor_trial(problem: PowfTensorProblem, device: Device) {
+        let PowfTensorProblem { B, M, N } = problem;
+        let a = randn((B, M, N), None, None, Default::default()).unwrap();
+        let e = randn((B, M, N), None, None, Default::default()).unwrap();
+        let ground = ground_truth_tensor(&a, &e).unwrap();
+
+        let a_gpu = a.to(&device).unwrap();
+        let e_gpu = e.to(&device).unwrap();
+        let b = a_gpu.pow(e_gpu).unwrap();
+
+        let ours = b.to(&Device::CPU).unwrap();
+
+        ground.all_close(&ours, 1e-4, 1e-4).unwrap();
+    }
+
     #[proptest(cases = 16)]
-    fn test_powf(prob: PowfProblem) {
+    fn test_powf_scalar(prob: PowfProblem) {
         let PowfProblem { B, M, N, e } = prob;
-        println!("B = {}, M = {}, N = {}, e = {}", B, M, N, e);
+        println!("B = {B}, M = {M}, N = {N}, e = {e}");
         let device = Device::request_device(DeviceRequest::GPU).unwrap();
         run_powf_trial(prob, device);
+    }
+
+    #[proptest(cases = 8)]
+    fn test_powf_tensor(prob: PowfTensorProblem) {
+        let PowfTensorProblem { B, M, N } = prob;
+        println!("B = {B}, M = {M}, N = {N}");
+        let device = Device::request_device(DeviceRequest::GPU).unwrap();
+        run_powf_tensor_trial(prob, device);
     }
 }

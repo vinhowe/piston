@@ -16,6 +16,6 @@ pub(crate) fn log_init() {
         .apply();
     match logger {
         Ok(_) => log::info!("Logging initialized."),
-        Err(error) => eprintln!("Error initializing logging: {:?}", error),
+        Err(error) => eprintln!("Error initializing logging: {error:?}"),
     }
 }

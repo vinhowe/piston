@@ -1,8 +1,9 @@
 use crate::{
-    gpu::{dtype::WgslDType, BindGroupLayoutDescriptor},
-    rvec, Array, BindingMode, BuiltIn, DType, GPUOperation, Kernel, KernelElement,
-    KernelRenderable, KernelSource, OpGuards, Operation, OperationError, RVec, Scalar, StorageView,
-    OpTensor, Vec2, Vec4, WgslKernelBuilder, WgslPrimitive, WorkgroupSize, Workload,
+    Array, BindingMode, BuiltIn, DType, GPUOperation, Kernel, KernelElement, KernelRenderable,
+    KernelSource, OpGuards, OpTensor, Operation, OperationError, RVec, Scalar, StorageView, Vec2,
+    Vec4, WgslKernelBuilder, WgslPrimitive, WorkgroupSize, Workload,
+    gpu::{BindGroupLayoutDescriptor, dtype::WgslDType},
+    rvec,
 };
 use derive_new::new;
 use encase::ShaderType;
@@ -28,7 +29,7 @@ pub struct GatherMeta {
 
 impl OpGuards for Gather {
     fn check_shapes(&self) {
-        assert!(self.src.rank() >= 1);
+        assert!(self.src.dim() >= 1);
     }
 
     fn check_dtypes(&self) {
@@ -215,19 +216,18 @@ impl Kernel for GatherKernels {
 
 #[cfg(all(test, feature = "pyo3"))]
 mod tests {
-    use test_strategy::{proptest, Arbitrary};
+    use test_strategy::{Arbitrary, proptest};
 
     use crate::test_util::run_py_prg;
-    use crate::{rvec, DType, Device, DeviceRequest, OpTensor};
+    use crate::{DType, Device, DeviceRequest, Tensor, randint, randn, rvec};
 
-    fn ground_truth(src: &OpTensor, ids: &OpTensor, dim: usize) -> anyhow::Result<OpTensor> {
+    fn ground_truth(src: &Tensor, ids: &Tensor, dim: usize) -> anyhow::Result<Tensor> {
         let prg = format!(
             r#"
 import torch
 def gather(src, ids, dim):
-    return torch.gather(torch.from_numpy(src), {}, torch.from_numpy(ids).long()).numpy()
+    return torch.gather(torch.from_numpy(src), {dim}, torch.from_numpy(ids).long()).numpy()
 "#,
-            dim
         );
         run_py_prg(prg.to_string(), &[src, ids], &[&dim], src.dtype())
     }
@@ -235,27 +235,25 @@ def gather(src, ids, dim):
     fn run_gather_trial(problem: GatherProblem, device: Device) {
         let GatherProblem { B, M, N, dim } = problem;
 
-        let src = OpTensor::randn::<f32, _>(0., 1., (B, M, N), Device::CPU, false).unwrap();
+        let src = randn((B, M, N), None, None, Default::default()).unwrap();
 
         // Create the shape for ids tensor
         let mut ids_shape = rvec![B, M, N];
         ids_shape[dim] = 1;
-        let ids =
-            OpTensor::randint::<i32, _>(0, src.shape()[dim] as i32, ids_shape, Device::CPU, false)
-                .unwrap();
+        let ids = randint(0, src.shape()[dim] as i32, ids_shape, Default::default()).unwrap();
 
         let ground = ground_truth(&src, &ids, dim).unwrap();
 
         let src_gpu = src.to(&device).unwrap();
         let ids_gpu = ids.to(&device).unwrap();
 
-        let result = src_gpu.gather(ids_gpu, dim).unwrap();
+        let result = src_gpu.gather(dim, ids_gpu).unwrap();
 
         let ours = result.to(&Device::CPU).unwrap();
-        log::debug!("src = {:?}", src);
-        log::debug!("ids = {:?}", ids);
-        log::debug!("ours = {:?}", ours);
-        log::debug!("ground = {:?}", ground);
+        log::debug!("src = {src:?}");
+        log::debug!("ids = {ids:?}");
+        log::debug!("ours = {ours:?}");
+        log::debug!("ground = {ground:?}");
         ground.all_close(&ours, 1e-5, 1e-5).unwrap();
     }
 
@@ -275,7 +273,7 @@ def gather(src, ids, dim):
     fn test_gather(prob: GatherProblem) {
         let _ = env_logger::builder().is_test(true).try_init();
         let GatherProblem { B, M, N, dim } = prob;
-        log::info!("B = {}, M = {}, N = {}, dim = {}", B, M, N, dim);
+        log::info!("B = {B}, M = {M}, N = {N}, dim = {dim}");
         let device = Device::request_device(DeviceRequest::GPU).unwrap();
         run_gather_trial(prob, device);
     }
@@ -292,18 +290,17 @@ def gather(src, ids, dim):
         dim: usize,
     }
 
-    fn ground_truth_backward(src: &OpTensor, ids: &OpTensor, dim: usize) -> anyhow::Result<OpTensor> {
+    fn ground_truth_backward(src: &Tensor, ids: &Tensor, dim: usize) -> anyhow::Result<Tensor> {
         let prg = format!(
             r#"
 import torch
 def gather_backward(src, ids):
     src_tensor = torch.tensor(torch.from_numpy(src), requires_grad=True)
     ids_tensor = torch.from_numpy(ids).long()
-    result = torch.gather(src_tensor, {}, ids_tensor)
+    result = torch.gather(src_tensor, {dim}, ids_tensor)
     result.backward(torch.ones_like(result))
     return src_tensor.grad.numpy()
-"#,
-            dim
+"#
         );
         run_py_prg(prg.to_string(), &[src, ids], &[], DType::F32)
     }
@@ -311,20 +308,19 @@ def gather_backward(src, ids):
     fn run_gather_backward_trial(problem: GatherBackwardProblem) -> anyhow::Result<()> {
         let device = Device::request_device(DeviceRequest::GPU).unwrap();
         let GatherBackwardProblem { B, M, N, dim } = problem;
-        let src = OpTensor::randn::<f32, _>(0., 1., (B, M, N), Device::CPU, false)?;
+        let src = randn((B, M, N), None, None, Default::default())?;
 
         // Create the shape for ids tensor
         let mut ids_shape = rvec![B, M, N];
         ids_shape[dim] = 1;
-        let ids =
-            OpTensor::randint::<i32, _>(0, src.shape()[dim] as i32, ids_shape, Device::CPU, false)?;
+        let ids = randint(0, src.shape()[dim] as i32, ids_shape, Default::default())?;
 
         let ground = ground_truth_backward(&src, &ids, dim)?;
 
         let src_gpu = src.to(&device)?;
         let ids_gpu = ids.to(&device)?;
         let src_var = src_gpu.requires_grad_(true)?;
-        let result_gpu = src_var.clone().gather(ids_gpu, dim)?;
+        let result_gpu = src_var.clone().gather(dim, ids_gpu)?;
 
         result_gpu.backward()?;
         device.try_gpu()?.mark_step()?;
@@ -335,10 +331,10 @@ def gather_backward(src, ids):
         let src_cpu = src.to(&Device::CPU)?;
         let ids_cpu = ids.to(&Device::CPU)?;
 
-        println!("src = {:?}", src_cpu);
-        println!("ids = {:?}", ids_cpu);
-        println!("ours = {:?}", ours);
-        println!("ground = {:?}", ground);
+        println!("src = {src_cpu:?}");
+        println!("ids = {ids_cpu:?}");
+        println!("ours = {ours:?}");
+        println!("ground = {ground:?}");
         ground.all_close(&ours, 1e-5, 1e-5)?;
         Ok(())
     }
@@ -347,7 +343,7 @@ def gather_backward(src, ids):
     fn test_gather_backward(prob: GatherBackwardProblem) {
         let _ = env_logger::builder().is_test(true).try_init();
         let GatherBackwardProblem { B, M, N, dim } = prob;
-        println!("B = {}, M = {}, N = {}, dim = {}", B, M, N, dim);
+        println!("B = {B}, M = {M}, N = {N}, dim = {dim}");
         run_gather_backward_trial(prob).unwrap();
     }
 }

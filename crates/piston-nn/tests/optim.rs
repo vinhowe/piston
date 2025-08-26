@@ -1,6 +1,7 @@
 use piston::{
+    Device, DeviceRequest, Tensor, TensorOptions,
     test_utils::{to_vec0_round, to_vec1_round},
-    Device, DeviceRequest, Tensor,
+    zeros,
 };
 use piston_nn::{AdamW, Linear, Module, Optimizer, ParamsAdamW, SGD};
 
@@ -9,27 +10,26 @@ type OptimizerFactory<O> = fn(Vec<Tensor>) -> anyhow::Result<O>;
 fn run_linear_regression<O: Optimizer>(optimizer: OptimizerFactory<O>) -> anyhow::Result<()> {
     let _ = env_logger::builder().is_test(true).try_init();
     let device = Device::request_device(DeviceRequest::GPU).unwrap();
-    let w_gen = Tensor::from_data(vec![3f32, 1.], (1, 2), Device::CPU, false).to(&device)?;
-    let b_gen = Tensor::from_data(vec![-2f32], (1, 1), Device::CPU, false).to(&device)?;
-    let gen = Linear::new(w_gen, Some(b_gen));
+    let w_gen = Tensor::from_data(vec![3f32, 1.], (1, 2), TensorOptions::new()).to(&device)?;
+    let b_gen = Tensor::from_data(vec![-2f32], (1, 1), TensorOptions::new()).to(&device)?;
+    let r#gen = Linear::new(w_gen, Some(b_gen));
     let sample_xs = Tensor::from_data(
         vec![2f32, 1., 7., 4., -4., 12., 5., 8.],
         (4, 2),
-        Device::CPU,
-        false,
+        TensorOptions::new(),
     );
     let sample_xs = sample_xs.to(&device)?;
-    let sample_ys = gen.schedule(sample_xs.clone())?;
+    let sample_ys = r#gen.schedule(sample_xs.clone())?;
 
     // Now use backprop to run a linear regression between samples and get the coefficients back.
-    let w = Tensor::zeros::<f32, _>((1, 2), &device, true)?;
-    let b = Tensor::zeros::<f32, _>((1, 1), &device, true)?;
+    let w = zeros((1, 2), TensorOptions::new().device(device.clone()))?;
+    let b = zeros((1, 1), TensorOptions::new().device(device.clone()))?;
     let mut opt = optimizer(vec![w.clone(), b.clone()])?;
     let lin = Linear::new(w.clone(), Some(b.clone()));
 
     for _step in 0..100 {
         let ys = lin.schedule(sample_xs.clone())?;
-        let loss = ys.sub(sample_ys.clone())?.square()?.sum(0)?;
+        let loss = ys.sub(sample_ys.clone())?.square()?.sum(0, false)?;
         loss.backward()?;
         opt.backward_step(&device)?;
         // device.try_gpu().unwrap().mark_step().unwrap();
@@ -73,10 +73,10 @@ fn gradient_descent(optimizer: OptimizerFactory<impl Optimizer>) -> anyhow::Resu
     let _ = env_logger::builder().is_test(true).try_init();
 
     let device = Device::request_device(DeviceRequest::GPU).unwrap();
-    let target = Tensor::from_data(vec![5.0], 1, Device::CPU, false).to(&device)?;
+    let target = Tensor::from_data(vec![5.0], 1, TensorOptions::new()).to(&device)?;
 
     // Initialize variable at 0.0 (shape is scalar)
-    let w = Tensor::from_data(vec![0.0], 1, Device::CPU, true).to(&device)?;
+    let w = Tensor::from_data(vec![0.0], 1, TensorOptions::new()).to(&device)?;
 
     let mut opt = optimizer(vec![w.clone()])?;
 
@@ -135,22 +135,21 @@ fn adamw_gradient_descent() -> anyhow::Result<()> {
 #[test]
 fn test_intermediate() -> anyhow::Result<()> {
     let device = Device::request_device(DeviceRequest::GPU).unwrap();
-    let w_gen = Tensor::from_data(vec![3f32, 1.], (1, 2), Device::CPU, false).to(&device)?;
-    let b_gen = Tensor::from_data(vec![-2f32], (1, 1), Device::CPU, false).to(&device)?;
-    let gen = Linear::new(w_gen.clone(), Some(b_gen.clone()));
+    let w_gen = Tensor::from_data(vec![3f32, 1.], (1, 2), TensorOptions::new()).to(&device)?;
+    let b_gen = Tensor::from_data(vec![-2f32], (1, 1), TensorOptions::new()).to(&device)?;
+    let r#gen = Linear::new(w_gen.clone(), Some(b_gen.clone()));
     let sample_xs = Tensor::from_data(
         vec![2f32, 1., 7., 4., -4., 12., 5., 8.],
         (4, 2),
-        Device::CPU,
-        false,
+        TensorOptions::new(),
     );
     let sample_xs = sample_xs.to(&device)?;
-    let sample_ys = gen.schedule(sample_xs.clone())?;
+    let sample_ys = r#gen.schedule(sample_xs.clone())?;
 
     // Now use backprop to run a linear regression between samples and get the coefficients back.
-    let w = Tensor::from_data(vec![0f32, 0.], (1, 2), Device::CPU, false).to(&device)?;
+    let w = Tensor::from_data(vec![0f32, 0.], (1, 2), TensorOptions::new()).to(&device)?;
     // let b = Parameter::from_data(vec![0f32], 1, Device::CPU);
-    let b = Tensor::from_data(vec![0f32], (1, 1), Device::CPU, false).to(&device)?;
+    let b = Tensor::from_data(vec![0f32], (1, 1), TensorOptions::new()).to(&device)?;
     let lin = Linear::new(w.clone(), Some(b.clone()));
 
     let ys = lin.schedule(sample_xs.clone())?;

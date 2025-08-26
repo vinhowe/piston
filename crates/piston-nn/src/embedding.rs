@@ -1,6 +1,6 @@
 use crate::Module;
 use maybe_async::maybe_async;
-use piston::{Shape, Tensor};
+use piston::{AllDims, D, DType, Shape, Tensor};
 use piston_macros::scoped_module;
 
 /// # Embedding
@@ -29,9 +29,10 @@ impl Module for Embedding {
     type Output = Tensor;
 
     fn schedule(&self, input: Self::Input) -> anyhow::Result<Self::Output> {
+        assert_eq!(input.dtype(), DType::I32);
         let mut final_dims = input.shape().to_vec();
         final_dims.push(self.hidden_size);
-        let indexes = input.flatten_all()?;
+        let indexes = input.flatten(0, D::Minus1)?;
         let values = self.weight.clone().index_select(indexes.clone(), 0)?;
         let values = values.view(Shape::from(final_dims))?;
         Ok(values)
@@ -66,7 +67,7 @@ mod tests {
     use tokenizers::Tokenizer;
 
     use piston::test_util::run_py_prg;
-    use piston::{rvec, shape, Device, DeviceRequest, Shape, Tensor};
+    use piston::{Device, DeviceRequest, Shape, Tensor, rvec, shape};
 
     use crate::{Embedding, Module};
 

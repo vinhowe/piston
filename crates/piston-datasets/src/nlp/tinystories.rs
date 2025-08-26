@@ -1,7 +1,7 @@
 //! Helper functions for the tinystories dataset. This uses the pre-tokenized version as generated
 //! by the tools from https://github.com/karpathy/llama2.c
 use anyhow::Result;
-use piston::{Device, Tensor};
+use piston::{Device, Tensor, TensorOptions};
 
 pub struct Dataset {
     valid_tokens: Vec<memmap2::Mmap>,
@@ -20,10 +20,10 @@ impl Dataset {
         let mut bin_files = vec![];
         for file in std::fs::read_dir(dir)?.flatten() {
             let file = file.path();
-            if let Some(extension) = file.extension() {
-                if extension == "bin" {
-                    bin_files.push(file)
-                }
+            if let Some(extension) = file.extension()
+                && extension == "bin"
+            {
+                bin_files.push(file)
             }
         }
         if bin_files.len() < 2 {
@@ -119,8 +119,16 @@ impl Iterator for DatasetRandomIter<'_> {
             return Some(Err(err.into()));
         }
         let tokens = tokens.into_iter().map(|v| v as i32).collect::<Vec<_>>();
-        let inputs = Tensor::from_data(&tokens[..seq_len], (seq_len,), self.device.clone(), false);
-        let targets = Tensor::from_data(&tokens[1..], (seq_len,), self.device.clone(), false);
+        let inputs = Tensor::from_data(
+            &tokens[..seq_len],
+            (seq_len,),
+            TensorOptions::new().device(self.device.clone()),
+        );
+        let targets = Tensor::from_data(
+            &tokens[1..],
+            (seq_len,),
+            TensorOptions::new().device(self.device.clone()),
+        );
         Some(Ok((inputs, targets)))
     }
 }

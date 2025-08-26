@@ -2,7 +2,9 @@ use derive_new::new;
 use encase::ShaderType;
 use piston_macros::WgslMetadata;
 
-use crate::{rvec, OpGuards, Operation, OperationError, RVec, Shape, StorageView, Stride, OpTensor};
+use crate::{
+    OpGuards, OpTensor, Operation, OperationError, RVec, Shape, StorageView, Stride, rvec,
+};
 use piston_macros::IrFields;
 
 #[derive(Debug, WgslMetadata, ShaderType, derive_new::new)]
@@ -33,13 +35,10 @@ impl OpGuards for Broadcast {
         let src_shape = self.src.shape();
         let to_shape = &self.to;
 
-        let sr = src_shape.rank();
-        let dr = to_shape.rank();
+        let sr = src_shape.dim();
+        let dr = to_shape.dim();
         if sr > dr {
-            panic!(
-                "Source shape cannot have more dimensions than target shape: {} > {}",
-                sr, dr
-            );
+            panic!("Source shape cannot have more dimensions than target shape: {sr} > {dr}");
         }
 
         let src_iter = src_shape.iter().rev();
@@ -48,8 +47,7 @@ impl OpGuards for Broadcast {
         for (src_dim, to_dim) in src_iter.zip(to_iter) {
             if *src_dim != 1 && *src_dim != *to_dim {
                 panic!(
-                    "Invalid broadcast: source dimension {} cannot be broadcast to {}",
-                    src_dim, to_dim
+                    "Invalid broadcast: source dimension {src_dim} cannot be broadcast to {to_dim}"
                 );
             }
         }
@@ -90,7 +88,9 @@ mod tests {
     };
     use test_strategy::proptest;
 
-    use crate::{shape, test_util::run_py_prg, Broadcast, Device, DeviceRequest, Shape, OpTensor};
+    use crate::{
+        Broadcast, Device, DeviceRequest, Shape, Tensor, randn, shape, test_util::run_py_prg,
+    };
 
     impl Arbitrary for BroadcastProblem {
         type Parameters = ();
@@ -117,8 +117,10 @@ mod tests {
                 })
                 .prop_map(|(original_shape, to)| BroadcastProblem {
                     op: Broadcast::new(
-                        OpTensor::randn::<f32, _>(0., 1., original_shape, Device::CPU, false)
-                            .unwrap(),
+                        randn(original_shape, None, None, Default::default())
+                            .unwrap()
+                            .inner_or_source()
+                            .clone(),
                         to,
                     ),
                 })
@@ -131,24 +133,23 @@ mod tests {
         op: Broadcast,
     }
 
-    fn ground_truth(a: &OpTensor, args: &str) -> anyhow::Result<OpTensor> {
+    fn ground_truth(a: &Tensor, args: &str) -> anyhow::Result<Tensor> {
         let prg = format!(
             r#"
 import torch
 import numpy as np
 def slice(a):
     torch_a = torch.from_numpy(a)
-    return np.ascontiguousarray(torch_a.broadcast_to({}).numpy())
+    return np.ascontiguousarray(torch_a.broadcast_to({args}).numpy())
 "#,
-            args
         );
         run_py_prg(prg.to_string(), &[a], &[], a.dtype())
     }
 
     fn run_reindex_trial(prob: BroadcastProblem, device: Device) -> anyhow::Result<()> {
-        println!("\n\nBroadcast problem: {:?}", prob);
+        println!("\n\nBroadcast problem: {prob:?}");
         let BroadcastProblem { op } = prob;
-        let a = op.src.clone();
+        let a = op.src.wrap();
 
         let a_gpu = a.to(&device)?;
         let ground = ground_truth(&a, &op.to.as_torch())?;
@@ -175,7 +176,10 @@ def slice(a):
         let device = Device::request_device(DeviceRequest::GPU).unwrap();
         let prob = BroadcastProblem {
             op: Broadcast::new(
-                OpTensor::randn::<f32, _>(0., 1., 1, Device::CPU, false).unwrap(),
+                randn(1, None, None, Default::default())
+                    .unwrap()
+                    .inner_or_source()
+                    .clone(),
                 shape![4, 32, 128, 128],
             ),
         };

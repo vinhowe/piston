@@ -1,6 +1,6 @@
-use crate::{current_module_mode, Module, ModuleMode};
+use crate::{Module, ModuleMode, current_module_mode};
 use derive_new::new;
-use piston::Tensor;
+use piston::{Tensor, TensorOptions};
 use piston_macros::scoped_module;
 
 /// Dropout layer that randomly zeroes some of the elements of the input tensor with probability `p`
@@ -25,7 +25,11 @@ impl Module for Dropout {
 
         // Create a tensor of probabilities (1-p) to keep elements
         let keep_prob = 1.0 - self.p;
-        let probs = Tensor::full::<f32, _>(input.shape(), keep_prob, &input.device(), false)?;
+        let probs = Tensor::full::<f32, _>(
+            input.shape(),
+            keep_prob,
+            TensorOptions::new().device(input.device()),
+        )?;
 
         // Apply bernoulli sampling to get binary mask
         let mask = probs.bernoulli()?;

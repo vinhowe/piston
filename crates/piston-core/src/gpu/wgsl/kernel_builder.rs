@@ -173,7 +173,7 @@ impl WgslKernelBuilder {
         mode: BindingMode,
         array: Array<P>,
     ) {
-        self.register_binding(BindingType::Storage, mode, name, format!("{}", array));
+        self.register_binding(BindingType::Storage, mode, name, format!("{array}"));
     }
 
     /// Cast kernel requires this

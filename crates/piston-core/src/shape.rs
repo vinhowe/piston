@@ -1,4 +1,4 @@
-use crate::{rvec, shape, RVec, Stride};
+use crate::{RVec, Stride, rvec, shape};
 use anyhow::Result;
 use encase::impl_wrapper;
 use smallvec::ToSmallVec;
@@ -17,6 +17,11 @@ pub struct Shape(RVec<usize>);
 impl_wrapper!(Shape; using);
 
 impl Shape {
+    pub fn scalar() -> Self {
+        // TODO(vinhowe): Move to an empty scalar shape, once I have time to debug
+        Self(rvec![1])
+    }
+
     pub fn new(shape: RVec<usize>) -> Self {
         Self(shape)
     }
@@ -57,7 +62,7 @@ impl Shape {
         self.len() == 0
     }
 
-    pub fn rank(&self) -> usize {
+    pub fn dim(&self) -> usize {
         self.len()
     }
 
@@ -76,7 +81,7 @@ impl Shape {
     pub fn is_vector(&self) -> bool {
         let mut shape = self.clone();
         shape.squeeze(None);
-        shape.rank() <= 1
+        shape.dim() <= 1
     }
 
     #[inline]
@@ -143,12 +148,12 @@ impl Shape {
     }
 
     pub fn multi_broadcast(shapes: &[&Shape]) -> Option<Shape> {
-        let max_rank = shapes.iter().map(|shape| shape.rank()).max()?;
+        let max_rank = shapes.iter().map(|shape| shape.dim()).max()?;
         let mut shape: Shape = shape![];
         for i in 0..max_rank {
             let mut current_dim_size = 1;
             for shape in shapes {
-                let len = shape.rank();
+                let len = shape.dim();
                 let dim = if i < len { &shape[len - i - 1] } else { &1 };
                 if dim != &1 {
                     if current_dim_size != 1 && dim != &current_dim_size {
@@ -179,7 +184,7 @@ impl Shape {
     }
 
     pub fn transpose(&mut self) {
-        let rank = self.rank();
+        let rank = self.dim();
         if rank < 2 {
             return;
         }
@@ -198,9 +203,9 @@ impl std::fmt::Debug for Shape {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut shape = format!("[{}", self.0.first().unwrap_or(&0));
         for dim in self.0.iter().skip(1) {
-            shape.push_str(&format!("x{}", dim));
+            shape.push_str(&format!("x{dim}"));
         }
-        write!(f, "{}]", shape)
+        write!(f, "{shape}]")
     }
 }
 
@@ -427,7 +432,7 @@ mod tests {
         pub fn as_torch(&self) -> String {
             let mut shape = format!("({}", self[0]);
             for dim in self.iter().skip(1) {
-                shape.push_str(&format!(", {}", dim));
+                shape.push_str(&format!(", {dim}"));
             }
             shape.push(')');
             shape
@@ -442,7 +447,7 @@ pub trait Dim {
 
 impl Dim for usize {
     fn to_index(&self, shape: &Shape, op: &'static str) -> Result<usize> {
-        let rank = shape.rank();
+        let rank = shape.dim();
         if *self >= rank {
             Err(anyhow::anyhow!("Dimension out of range for op: {}", op))
         } else {
@@ -451,7 +456,7 @@ impl Dim for usize {
     }
 
     fn to_index_plus_one(&self, shape: &Shape, op: &'static str) -> Result<usize> {
-        let rank = shape.rank();
+        let rank = shape.dim();
         if *self > rank {
             Err(anyhow::anyhow!("Dimension out of range for op: {}", op))
         } else {
@@ -481,7 +486,7 @@ impl D {
 
 impl Dim for D {
     fn to_index(&self, shape: &Shape, op: &'static str) -> Result<usize> {
-        let rank = shape.rank();
+        let rank = shape.dim();
         match self {
             Self::Minus1 if rank >= 1 => Ok(rank - 1),
             Self::Minus2 if rank >= 2 => Ok(rank - 2),
@@ -491,7 +496,7 @@ impl Dim for D {
     }
 
     fn to_index_plus_one(&self, shape: &Shape, op: &'static str) -> Result<usize> {
-        let rank = shape.rank();
+        let rank = shape.dim();
         match self {
             Self::Minus1 => Ok(rank),
             Self::Minus2 if rank >= 1 => Ok(rank - 1),
@@ -510,7 +515,7 @@ pub trait Dims: Sized {
             if dims[..i].contains(&dim) {
                 anyhow::bail!("Duplicate dimension index: {}", dim)
             }
-            if dim >= shape.rank() {
+            if dim >= shape.dim() {
                 anyhow::bail!("Dimension out of range: {}", dim)
             }
         }
@@ -606,6 +611,14 @@ impl<D1: Dim, D2: Dim, D3: Dim, D4: Dim, D5: Dim, D6: Dim> Dims for (D1, D2, D3,
     }
 }
 
+pub struct AllDims;
+
+impl Dims for AllDims {
+    fn to_indexes_internal(self, shape: &Shape, _: &'static str) -> Result<RVec<usize>> {
+        Ok((0..shape.dim()).collect())
+    }
+}
+
 extract_dims!(dims0, 0, |_: &[usize]| (), ());
 extract_dims!(dims1, 1, |d: &[usize]| d[0], usize);
 extract_dims!(dims2, 2, |d: &[usize]| (d[0], d[1]), (usize, usize));
@@ -648,8 +661,8 @@ pub fn hole_size(el_count: usize, prod_d: usize, s: &dyn std::fmt::Debug) -> Res
     if prod_d == 0 {
         anyhow::bail!("cannot reshape tensor of {el_count} elements to {s:?}")
     }
-    if el_count % prod_d != 0 {
-        anyhow::bail!("cannot reshape tensor with {el_count} elements to {s:?}")
+    if !el_count.is_multiple_of(prod_d) {
+        anyhow::bail!("shape.hole_size: cannot reshape tensor with {el_count} elements to {s:?}")
     }
     Ok(el_count / prod_d)
 }

@@ -5,10 +5,10 @@ use inline_wgsl::wgsl;
 use piston_macros::{IrFields, WgslMetadata};
 
 use crate::{
-    gpu::BindGroupLayoutDescriptor, rvec, Array, BindingMode, BuiltIn, DType, GPUOperation, Kernel,
-    KernelElement, KernelRenderable, KernelSource, OpGuards, Operation, OperationError, RVec,
-    Scalar, StorageView, OpTensor, Vec2, Vec4, WgslKernelBuilder, WgslPrimitive, WorkgroupSize,
-    Workload,
+    Array, BindingMode, BuiltIn, DType, GPUOperation, Kernel, KernelElement, KernelRenderable,
+    KernelSource, OpGuards, OpTensor, Operation, OperationError, RVec, Scalar, StorageView, Vec2,
+    Vec4, WgslKernelBuilder, WgslPrimitive, WorkgroupSize, Workload,
+    gpu::BindGroupLayoutDescriptor, rvec,
 };
 
 #[derive(new, Debug, Clone, IrFields)]
@@ -29,7 +29,7 @@ pub struct ScatterAddMeta {
 
 impl OpGuards for ScatterAdd {
     fn check_shapes(&self) {
-        assert!(self.src.rank() >= 1);
+        assert!(self.src.dim() >= 1);
         assert_eq!(self.src.shape().len(), self.ids.shape().len());
         assert_eq!(self.src.shape().len(), self.dst.shape().len());
     }
@@ -215,17 +215,17 @@ impl Kernel for ScatterAddKernels {
 mod tests {
     use std::cmp::max;
 
-    use test_strategy::{proptest, Arbitrary};
+    use test_strategy::{Arbitrary, proptest};
 
     use crate::test_util::run_py_prg;
-    use crate::{shape, Device, DeviceRequest, OpTensor};
+    use crate::{Device, DeviceRequest, Tensor, ones, randint, shape, zeros};
 
     fn ground_truth(
-        dst: &OpTensor,
-        src: &OpTensor,
-        ids: &OpTensor,
+        dst: &Tensor,
+        src: &Tensor,
+        ids: &Tensor,
         dim: usize,
-    ) -> anyhow::Result<OpTensor> {
+    ) -> anyhow::Result<Tensor> {
         let prg = format!(
             r#"
 import torch
@@ -233,10 +233,9 @@ def scatter_add(dst, src, ids):
     dst_tensor = torch.from_numpy(dst)
     src_tensor = torch.from_numpy(src)
     ids_tensor = torch.from_numpy(ids).to(torch.long)
-    result = dst_tensor.scatter_add({}, ids_tensor, src_tensor)
+    result = dst_tensor.scatter_add({dim}, ids_tensor, src_tensor)
     return result.numpy()
 "#,
-            dim
         );
         run_py_prg(prg.to_string(), &[dst, src, ids], &[], src.dtype())
     }
@@ -248,16 +247,15 @@ def scatter_add(dst, src, ids):
         let mut src_shape = vec![B, M, N];
         src_shape[dim] = max(M.min(N) / 2, 1); // Make src dimension smaller than dst
 
-        let dst = OpTensor::zeros::<f32, _>(&dst_shape, &Device::CPU, false).unwrap();
-        let src = OpTensor::ones::<f32, _>(src_shape, &Device::CPU, false).unwrap();
+        let dst = zeros(dst_shape.clone(), Default::default()).unwrap();
+        let src = ones(src_shape, Default::default()).unwrap();
 
         // Create ids tensor with the same shape as src, but with values in range [0, dst_shape[dim])
-        let ids = OpTensor::randint(
+        let ids = randint(
             0,
             dst_shape[dim] as i32,
             src.shape().clone(),
-            Device::CPU,
-            false,
+            Default::default(),
         )
         .unwrap();
 

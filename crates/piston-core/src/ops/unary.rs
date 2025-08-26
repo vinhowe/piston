@@ -9,10 +9,11 @@ use piston_macros::{IrFields, WgslMetadata};
 use strum_macros::EnumIter;
 
 use crate::{
-    gpu::{dtype::WgslDType, BindGroupLayoutDescriptor},
-    rvec, Array, BindingMode, BuiltIn, DType, GPUOperation, Kernel, KernelElement,
-    KernelRenderable, KernelSource, OpGuards, Operation, OperationError, RVec, Scalar, StorageView,
-    OpTensor, Vec2, Vec4, WgslKernelBuilder, WgslPrimitive, WorkgroupSize, Workload,
+    Array, BindingMode, BuiltIn, DType, GPUOperation, Kernel, KernelElement, KernelRenderable,
+    KernelSource, OpGuards, OpTensor, Operation, OperationError, RVec, Scalar, StorageView, Vec2,
+    Vec4, WgslKernelBuilder, WgslPrimitive, WorkgroupSize, Workload,
+    gpu::{BindGroupLayoutDescriptor, dtype::WgslDType},
+    rvec,
 };
 
 #[cfg(test)]
@@ -358,12 +359,12 @@ impl Kernel for UnaryKernels {
     fn kernel_element(&self, _dst: &OpTensor) -> KernelElement {
         let UnaryKernels::Standard(inner) = self;
 
-        let a_rank = &inner.input.shape().rank();
+        let a_rank = &inner.input.shape().dim();
         let N = &inner.input.shape()[a_rank - 1];
 
-        if N % 4 == 0 {
+        if N.is_multiple_of(4) {
             KernelElement::Vec4
-        } else if N % 2 == 0 {
+        } else if N.is_multiple_of(2) {
             KernelElement::Vec2
         } else {
             KernelElement::Scalar
@@ -408,7 +409,11 @@ impl Kernel for UnaryKernels {
         }
     }
 
-    fn metadata(&self, dst: &OpTensor, _: &KernelElement) -> Result<Self::Metadata, OperationError> {
+    fn metadata(
+        &self,
+        dst: &OpTensor,
+        _: &KernelElement,
+    ) -> Result<Self::Metadata, OperationError> {
         Ok(UnaryMeta {
             numel: dst.shape().numel() as u32,
         })
@@ -417,9 +422,9 @@ impl Kernel for UnaryKernels {
 
 #[cfg(all(test, feature = "pyo3"))]
 mod tests {
-    use test_strategy::{proptest, Arbitrary};
+    use test_strategy::{Arbitrary, proptest};
 
-    use crate::{test_util::run_py_prg, Device, DeviceRequest, OpTensor, UnaryOp};
+    use crate::{Device, DeviceRequest, Tensor, UnaryOp, randn, test_util::run_py_prg};
 
     #[derive(Arbitrary, Debug)]
     struct UnaryProblem {
@@ -430,25 +435,23 @@ mod tests {
         M: usize,
     }
 
-    fn ground_truth(a: &OpTensor, op: &UnaryOp, args: &str) -> anyhow::Result<OpTensor> {
+    fn ground_truth(a: &Tensor, op: &UnaryOp, args: &str) -> anyhow::Result<Tensor> {
         let kn = op.kernel_name();
         let func_prg = format!(
             r#"
 import torch
 import torch.nn.functional as F
-def {}(a):
-    return F.{}(torch.from_numpy(a), {}).numpy()
+def {kn}(a):
+    return F.{kn}(torch.from_numpy(a), {args}).numpy()
 "#,
-            kn, kn, args,
         );
 
         let imp_prg = format!(
             r#"
 import torch
-def {}(a):
-    return torch.{}(torch.from_numpy(a), {}).numpy()
+def {kn}(a):
+    return torch.{kn}(torch.from_numpy(a), {args}).numpy()
 "#,
-            kn, kn, args,
         );
 
         let prg = match op {
@@ -461,7 +464,7 @@ def {}(a):
 
     fn run_unary_trial(prob: UnaryProblem, device: Device) -> anyhow::Result<()> {
         let UnaryProblem { op, B, M } = prob;
-        let a = OpTensor::randn::<f32, _>(0., 1., (B, M), Device::CPU, false)?;
+        let a = randn((B, M), None, None, Default::default())?;
 
         let args = match op {
             UnaryOp::Gelu => "approximate=\"tanh\"",

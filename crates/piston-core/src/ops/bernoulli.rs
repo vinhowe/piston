@@ -5,10 +5,10 @@ use inline_wgsl::wgsl;
 use piston_macros::{IrFields, WgslMetadata};
 
 use crate::{
-    gpu::BindGroupLayoutDescriptor, rvec, Array, BindingMode, BuiltIn, DType, GPUOperation, Kernel,
-    KernelElement, KernelRenderable, KernelSource, OpGuards, Operation, OperationError, RVec,
-    Scalar, StorageView, Stride, OpTensor, Vec2, Vec4, WgslKernelBuilder, WgslPrimitive,
-    WorkgroupSize, Workload,
+    Array, BindingMode, BuiltIn, DType, GPUOperation, Kernel, KernelElement, KernelRenderable,
+    KernelSource, OpGuards, OpTensor, Operation, OperationError, RVec, Scalar, StorageView, Stride,
+    Vec2, Vec4, WgslKernelBuilder, WgslPrimitive, WorkgroupSize, Workload,
+    gpu::BindGroupLayoutDescriptor, rvec,
 };
 
 #[derive(new, Debug, Clone, IrFields)]
@@ -157,7 +157,11 @@ impl Kernel for BernoulliKernels {
         Ok(BindGroupLayoutDescriptor::unary())
     }
 
-    fn metadata(&self, dst: &OpTensor, _: &KernelElement) -> Result<Self::Metadata, OperationError> {
+    fn metadata(
+        &self,
+        dst: &OpTensor,
+        _: &KernelElement,
+    ) -> Result<Self::Metadata, OperationError> {
         let BernoulliKernels::Standard(inner) = self;
         Ok(BernoulliMeta {
             numel: dst.shape().numel() as u32,
@@ -202,9 +206,9 @@ impl Kernel for BernoulliKernels {
 
 #[cfg(all(test, feature = "pyo3", feature = "rand"))]
 mod tests {
-    use test_strategy::{proptest, Arbitrary};
+    use test_strategy::{Arbitrary, proptest};
 
-    use crate::{Device, DeviceRequest, OpTensor};
+    use crate::{Device, DeviceRequest, randn};
 
     fn run_bernoulli_trial(problem: BernoulliProblem, device: Device) {
         let BernoulliProblem { B, M, N, seed } = problem;
@@ -212,7 +216,7 @@ mod tests {
         device.set_seed(seed as u64);
 
         // Create a tensor with random probabilities between 0 and 1
-        let probs = OpTensor::rand::<f32, _>(0f32, 1f32, (B, M, N), Device::CPU, false).unwrap();
+        let probs = randn((B, M, N), None, None, Default::default()).unwrap();
         let probs_gpu = probs.to(&device).unwrap();
 
         // Apply Bernoulli sampling to the probabilities tensor
@@ -247,8 +251,7 @@ mod tests {
 
         if (mean - expected_mean).abs() < 0.1 && (std - expected_std).abs() < 0.1 {
             println!(
-                "\x1b[1;32mDistribution approximately bernoulli\x1b[0m - mean={} std={}",
-                mean, std
+                "\x1b[1;32mDistribution approximately bernoulli\x1b[0m - mean={mean} std={std}"
             );
         } else {
             (|| -> anyhow::Result<()> {
@@ -277,7 +280,7 @@ mod tests {
     #[proptest(cases = 8)]
     fn test_bernoulli(prob: BernoulliProblem) {
         let BernoulliProblem { B, M, N, seed } = prob;
-        println!("B = {}, M = {}, N = {}, seed = {}", B, M, N, seed);
+        println!("B = {B}, M = {M}, N = {N}, seed = {seed}");
         let device = Device::request_device(DeviceRequest::GPU).unwrap();
         run_bernoulli_trial(prob, device);
     }

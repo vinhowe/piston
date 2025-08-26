@@ -1,5 +1,5 @@
-use crate::{gpu::*, DType, GpuCompileKey, OpTensor, TensorId};
-use crate::{HashMap, TensorError};
+use crate::HashMap;
+use crate::{DType, GpuCompileKey, OpTensor, TensorId, gpu::*};
 use maybe_async::maybe_async;
 use parking_lot::RwLock;
 use std::collections::BTreeMap;
@@ -64,8 +64,8 @@ impl WgpuDevice {
         let adapter = Self::select_adapter().await?;
         #[cfg(not(target_arch = "wasm32"))]
         let adapter = Self::select_adapter()?;
-        log::info!("Adapter: {:?}", adapter.get_info());
-        log::info!("Active GPU: {}", adapter.get_info().name);
+        log::debug!("Adapter: {:?}", adapter.get_info());
+        log::debug!("Active GPU: {}", adapter.get_info().name);
 
         #[allow(unused_mut)]
         let mut required_features = wgpu::Features::default();
@@ -86,14 +86,14 @@ impl WgpuDevice {
         };
         let device_request = adapter.request_device(&device_descriptor, None).await;
         let (device, queue) = if let Err(e) = device_request {
-            log::error!("Failed to acq. device, trying with reduced limits: {:?}", e);
+            log::error!("Failed to acq. device, trying with reduced limits: {e:?}");
             device_descriptor.required_limits = adapter.limits();
             device_descriptor.required_features = adapter.features();
             adapter.request_device(&device_descriptor, None).await
         } else {
             device_request
         }?;
-        log::info!("Device: {:?}", device.limits());
+        log::debug!("Device: {:?}", device.limits());
 
         let limits = DeviceLimits::from(device.limits());
         let mut features = DeviceFeatures::from(device.features());
@@ -107,7 +107,7 @@ impl WgpuDevice {
             features.SUBGROUP = false;
         }
 
-        log::warn!("Device features: {:?}", features);
+        log::debug!("Device features: {features:?}");
 
         let buffer_allocator = Arc::new(BufferAllocator::new());
 
@@ -350,6 +350,10 @@ impl WgpuDevice {
 
     pub fn inplace_support(&self) -> bool {
         self.lazy_graph_executor.read().inplace_support()
+    }
+
+    pub fn set_vram_limit(&self, vram_limit: Option<u64>) {
+        self.buffer_allocator.set_vram_limit(vram_limit);
     }
 
     pub fn begin_pass(&self, pass_index: u64) {

@@ -1,5 +1,6 @@
 use crate::{
-    dtype::Quantized, gpu::STORAGE_BUFFER_ALIGN, DType, Device, OpTensor, Q4_KF, Q4_KH, Q8_0F, Q8_0H,
+    DType, Device, Q4_KF, Q4_KH, Q8_0F, Q8_0H, Tensor, TensorOptions, dtype::Quantized,
+    gpu::STORAGE_BUFFER_ALIGN,
 };
 use maybe_async::maybe_async;
 use num::integer::div_floor;
@@ -9,7 +10,7 @@ use num_traits::{AsPrimitive, Float, FromPrimitive, Zero};
 fn storage_align<T>(n: usize) -> usize {
     let size_t = core::mem::size_of::<T>();
     let nbytes = n * size_t;
-    let aligned = if nbytes % STORAGE_BUFFER_ALIGN != 0 {
+    let aligned = if !nbytes.is_multiple_of(STORAGE_BUFFER_ALIGN) {
         nbytes + STORAGE_BUFFER_ALIGN - nbytes % STORAGE_BUFFER_ALIGN
     } else {
         nbytes
@@ -29,7 +30,7 @@ pub fn quantize_inner<Q: Quantized>(matrix: &[Q::FP], elements: usize) -> Vec<u3
     let mut d = Q::FP::zero();
 
     for i in (0..elements).step_by(Q::PACK_SIZE) {
-        if i % Q::GROUP_SIZE == 0 {
+        if i.is_multiple_of(Q::GROUP_SIZE) {
             d = matrix[i..i + Q::GROUP_SIZE]
                 .iter()
                 .fold(Q::FP::zero(), |acc, &x| acc.max(x.abs()))
@@ -50,11 +51,11 @@ pub fn quantize_inner<Q: Quantized>(matrix: &[Q::FP], elements: usize) -> Vec<u3
 }
 
 #[maybe_async]
-pub async fn quantize<Q: Quantized>(tensor: &OpTensor) -> OpTensor {
+pub async fn quantize<Q: Quantized>(tensor: &Tensor) -> Tensor {
     match (tensor.dtype(), Q::dtype()) {
         (DType::F32, DType::Q8_0F(_)) => {
             let matrix = tensor.to_vec::<Q::FP>().await.unwrap();
-            OpTensor::from_quantized(
+            Tensor::from_quantized(
                 quantize_inner::<Q>(&matrix, tensor.shape().numel()),
                 DType::Q8_0F(Q8_0F::default()),
                 tensor.shape().clone(),
@@ -63,7 +64,7 @@ pub async fn quantize<Q: Quantized>(tensor: &OpTensor) -> OpTensor {
         }
         (DType::F32, DType::Q4_KF(_)) => {
             let matrix = tensor.to_vec::<Q::FP>().await.unwrap();
-            OpTensor::from_quantized(
+            Tensor::from_quantized(
                 quantize_inner::<Q>(&matrix, tensor.shape().numel()),
                 DType::Q4_KF(Q4_KF::default()),
                 tensor.shape().clone(),
@@ -72,7 +73,7 @@ pub async fn quantize<Q: Quantized>(tensor: &OpTensor) -> OpTensor {
         }
         (DType::F16, DType::Q8_0H(_)) => {
             let matrix = tensor.to_vec::<Q::FP>().await.unwrap();
-            OpTensor::from_quantized(
+            Tensor::from_quantized(
                 quantize_inner::<Q>(&matrix, tensor.shape().numel()),
                 DType::Q8_0H(Q8_0H::default()),
                 tensor.shape().clone(),
@@ -81,7 +82,7 @@ pub async fn quantize<Q: Quantized>(tensor: &OpTensor) -> OpTensor {
         }
         (DType::F16, DType::Q4_KH(_)) => {
             let matrix = tensor.to_vec::<Q::FP>().await.unwrap();
-            OpTensor::from_quantized(
+            Tensor::from_quantized(
                 quantize_inner::<Q>(&matrix, tensor.shape().numel()),
                 DType::Q4_KH(Q4_KH::default()),
                 tensor.shape().clone(),
@@ -123,7 +124,7 @@ pub fn dequantize_inner<Q: Quantized>(quantized: &[u8], elements: usize) -> Vec<
     dequantized
 }
 
-pub fn dequantize(quantized: OpTensor) -> OpTensor {
+pub fn dequantize(quantized: Tensor) -> Tensor {
     let quantized_requires_grad = quantized.requires_grad();
     match quantized.dtype() {
         DType::Q8_0F(_) => {
@@ -131,11 +132,10 @@ pub fn dequantize(quantized: OpTensor) -> OpTensor {
             let original_shape = quantized.shape().clone();
             let raw_bytes = quantized.into_bytes().unwrap();
             let dequantized = dequantize_inner::<Q8_0F>(&raw_bytes, elements);
-            OpTensor::from_data(
+            Tensor::from_data(
                 &dequantized,
                 original_shape,
-                Device::CPU,
-                quantized_requires_grad,
+                TensorOptions::new().requires_grad(quantized_requires_grad),
             )
         }
         DType::Q4_KF(_) => {
@@ -143,11 +143,10 @@ pub fn dequantize(quantized: OpTensor) -> OpTensor {
             let original_shape = quantized.shape().clone();
             let raw_bytes = quantized.into_bytes().unwrap();
             let dequantized = dequantize_inner::<Q4_KF>(&raw_bytes, elements);
-            OpTensor::from_data(
+            Tensor::from_data(
                 &dequantized,
                 original_shape,
-                Device::CPU,
-                quantized_requires_grad,
+                TensorOptions::new().requires_grad(quantized_requires_grad),
             )
         }
         DType::Q8_0H(_) => {
@@ -155,11 +154,10 @@ pub fn dequantize(quantized: OpTensor) -> OpTensor {
             let original_shape = quantized.shape().clone();
             let raw_bytes = quantized.into_bytes().unwrap();
             let dequantized = dequantize_inner::<Q8_0H>(&raw_bytes, elements);
-            OpTensor::from_data(
+            Tensor::from_data(
                 &dequantized,
                 original_shape,
-                Device::CPU,
-                quantized_requires_grad,
+                TensorOptions::new().requires_grad(quantized_requires_grad),
             )
         }
         DType::Q4_KH(_) => {
@@ -167,11 +165,10 @@ pub fn dequantize(quantized: OpTensor) -> OpTensor {
             let original_shape = quantized.shape().clone();
             let raw_bytes = quantized.into_bytes().unwrap();
             let dequantized = dequantize_inner::<Q4_KH>(&raw_bytes, elements);
-            OpTensor::from_data(
+            Tensor::from_data(
                 &dequantized,
                 original_shape,
-                Device::CPU,
-                quantized_requires_grad,
+                TensorOptions::new().requires_grad(quantized_requires_grad),
             )
         }
         dtype => panic!("Unsupported dtype {dtype}"),
@@ -180,18 +177,17 @@ pub fn dequantize(quantized: OpTensor) -> OpTensor {
 
 #[cfg(test)]
 mod tests {
-    use crate::{dequantize, quantize, Device, Quantized, OpTensor, Q4_KF, Q4_KH, Q8_0F, Q8_0H};
+    use crate::{
+        Q4_KF, Q4_KH, Q8_0F, Q8_0H, Quantized, TensorOptions, dequantize, quantize, randn,
+    };
     use half::f16;
-    use num_traits::{One, Zero};
 
     // Verify that quantize -> dequantize is a (lossy) identity operation
     fn check_qd_reflexive<Q: Quantized>(atol: Q::FP, rtol: Q::FP)
     where
         Q::FP: std::fmt::Display + num_traits::Float + Default,
     {
-        let ground =
-            OpTensor::randn::<Q::FP, _>(Q::FP::zero(), Q::FP::one(), (4, 64), Device::CPU, false)
-                .unwrap();
+        let ground = randn((4, 64), None, None, TensorOptions::new().dtype(Q::dtype())).unwrap();
         let q = quantize::<Q>(&ground);
         let dq = dequantize(q);
         ground.all_close(&dq, atol, rtol).unwrap();

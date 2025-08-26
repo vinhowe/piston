@@ -1,10 +1,11 @@
+#![allow(clippy::doc_overindented_list_items)]
 use super::TensorUsageRecord;
 use crate::{
+    DeviceError, GpuCompileKey, OpTensor, TensorId,
     gpu::{
         BufferDescriptor, BufferPool, BufferUsagesExt, CpuUniform, GpuBufferHandle,
-        PooledGPUBuffer, TensorUsageRecords, WgpuDevice, UNIFORM_ALIGN,
+        PooledGPUBuffer, TensorUsageRecords, UNIFORM_ALIGN, WgpuDevice,
     },
-    DeviceError, GpuCompileKey, OpTensor, TensorId,
 };
 use crate::{HashMap, LazyOp};
 use parking_lot::RwLock;
@@ -20,6 +21,7 @@ pub enum AllocatorError {
 
 pub struct BufferAllocator {
     pool: RwLock<BufferPool>,
+    vram_limit: RwLock<Option<u64>>,
 }
 
 impl Default for BufferAllocator {
@@ -32,7 +34,12 @@ impl BufferAllocator {
     pub fn new() -> Self {
         Self {
             pool: BufferPool::new().into(),
+            vram_limit: RwLock::new(None),
         }
+    }
+
+    pub fn set_vram_limit(&self, vram_limit: Option<u64>) {
+        *self.vram_limit.write() = vram_limit;
     }
 
     pub fn begin_pass(&self, pass_index: u64) {
@@ -49,7 +56,9 @@ impl BufferAllocator {
         device: &WgpuDevice,
         immediate: bool,
     ) -> PooledGPUBuffer {
-        self.pool.write().get_or_create(desc, device, immediate)
+        self.pool
+            .write()
+            .get_or_create(desc, device, immediate, *self.vram_limit.read())
     }
 
     pub fn create_buffer_init(
@@ -67,7 +76,10 @@ impl BufferAllocator {
             contents
         };
 
-        let buf = self.pool.write().get_or_create(desc, device, false);
+        let buf = self
+            .pool
+            .write()
+            .get_or_create(desc, device, false, *self.vram_limit.read());
         let mut buffer_view = device.queue().write_buffer_with(
             &buf.inner,
             0,
@@ -93,7 +105,10 @@ impl BufferAllocator {
             false,
         );
 
-        let resource = self.pool.write().get_or_create(&desc, device, false);
+        let resource =
+            self.pool
+                .write()
+                .get_or_create(&desc, device, false, *self.vram_limit.read());
         let mut buffer_view = device.queue().write_buffer_with(
             &resource.inner,
             0,
@@ -159,7 +174,7 @@ impl BufferAllocator {
     ) -> &'a OpTensor {
         let old_source_id = source.id();
         let mut candidate = source;
-        log::trace!("Determining source for {:?}", old_source_id);
+        log::trace!("Determining source for {old_source_id:?}");
 
         // If we start on a view, we need to iterate unconditionally
         // until we find a non-view operation
@@ -325,10 +340,10 @@ impl BufferAllocator {
             }
             for source in t.op().srcs() {
                 let true_source = Self::determine_tensor_source(source, gpu_compile_keys);
-                if true_source.id() != source.id() {
-                    if let Some(buf) = assignments.get(&true_source.id()) {
-                        assignments.insert(source.id(), buf.clone());
-                    }
+                if true_source.id() != source.id()
+                    && let Some(buf) = assignments.get(&true_source.id())
+                {
+                    assignments.insert(source.id(), buf.clone());
                 }
             }
         }
@@ -344,7 +359,7 @@ impl BufferAllocator {
     ///
     /// Simple greedy algorithm
     /// 1. Iterate over all tensors in reverse order (leaf -> root)
-    /// 2. For each tensor, loop through it's input values.
+    /// 2. For each tensor, loop through its input values.
     ///     a. Assign a buffer for each input value, if it is not already assigned
     ///     b. If the input value is an inplace operation, traverse upwards until we find
     ///        the "true" buffer source (i.e the first non-inplace operation).
@@ -362,7 +377,11 @@ impl BufferAllocator {
         let mut assignments =
             HashMap::with_capacity_and_hasher(execution_order.len(), Default::default());
         //Assignments already needs all of the constants in it.
-        for t in execution_order.iter().rev().filter(|t| t.resolved()) {
+        for t in execution_order
+            .iter()
+            .rev()
+            .filter(|t| t.resolved() && !t.invalidated())
+        {
             //Consts are immediately resolved
             let storage_guard = t.storage();
             let pooled = storage_guard

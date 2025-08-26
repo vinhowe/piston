@@ -5,10 +5,10 @@ use inline_wgsl::wgsl;
 use piston_macros::IrFields;
 
 use crate::{
-    gpu::BindGroupLayoutDescriptor, rvec, Array, BindingMode, BuiltIn, DType, DynKernelMetadata,
-    GPUOperation, Kernel, KernelElement, KernelRenderable, KernelSource, OpGuards, Operation,
-    OperationError, RVec, Scalar, Shape, StorageView, Stride, OpTensor, Vec2, Vec4,
-    WgslKernelBuilder, WgslPrimitive, WorkgroupSize, Workload,
+    Array, BindingMode, BuiltIn, DType, DynKernelMetadata, GPUOperation, Kernel, KernelElement,
+    KernelRenderable, KernelSource, OpGuards, OpTensor, Operation, OperationError, RVec, Scalar,
+    Shape, StorageView, Stride, Vec2, Vec4, WgslKernelBuilder, WgslPrimitive, WorkgroupSize,
+    Workload, gpu::BindGroupLayoutDescriptor, rvec,
 };
 
 #[derive(new, Debug, Clone, IrFields)]
@@ -42,7 +42,7 @@ impl KernelRenderable for ConcatKernels {
         let ConcatKernels::Standard(inner) = self;
 
         for i in 0..inner.inputs.len() {
-            builder.register_storage(format!("X{}", i).as_str(), BindingMode::ReadOnly, arr);
+            builder.register_storage(format!("X{i}").as_str(), BindingMode::ReadOnly, arr);
         }
         builder.register_storage("Y", BindingMode::ReadWrite, arr);
         builder.register_uniform();
@@ -93,9 +93,9 @@ impl KernelRenderable for ConcatKernels {
 
         for i in 1..inner.inputs.len() {
             let prevcum = format!("metadata.cum{}", i - 1);
-            let cum = format!("metadata.cum{}", i);
-            let stride = format!("metadata.x{}_stride", i);
-            let src = format!("X{}", i);
+            let cum = format!("metadata.cum{i}");
+            let stride = format!("metadata.x{i}_stride");
+            let src = format!("X{i}");
 
             kernel_builder.write_main(wgsl! {
                 if(dst_index[dim] < 'cum) {
@@ -136,31 +136,35 @@ impl OpGuards for Concat {
         assert!(self.inputs.len() > 1);
         assert!(self.inputs.len() <= MAX_INPUTS); //We only generate kernels for up to 8 inputs
         let first = &self.inputs[0];
-        assert!(self
-            .inputs
-            .iter()
-            .all(|x| x.rank() == first.rank() && x.rank() <= 4));
-        assert!(self.inputs.iter().all(|x| self.dim < x.rank()));
+        assert!(
+            self.inputs
+                .iter()
+                .all(|x| x.dim() == first.dim() && x.dim() <= 4)
+        );
+        assert!(self.inputs.iter().all(|x| self.dim < x.dim()));
         //All tensors must have same shape, sans the concatenation dimension
         for axis in 0..self.dim {
-            assert!(self
-                .inputs
-                .iter()
-                .all(|x| x.shape()[axis] == first.shape()[axis]));
+            assert!(
+                self.inputs
+                    .iter()
+                    .all(|x| x.shape()[axis] == first.shape()[axis])
+            );
         }
-        for axis in (self.dim + 1)..first.rank() {
-            assert!(self
-                .inputs
-                .iter()
-                .all(|x| x.shape()[axis] == first.shape()[axis]));
+        for axis in (self.dim + 1)..first.dim() {
+            assert!(
+                self.inputs
+                    .iter()
+                    .all(|x| x.shape()[axis] == first.shape()[axis])
+            );
         }
     }
 
     fn check_dtypes(&self) {
-        assert!(self
-            .inputs
-            .iter()
-            .all(|x| x.dtype() == self.inputs[0].dtype()));
+        assert!(
+            self.inputs
+                .iter()
+                .all(|x| x.dtype() == self.inputs[0].dtype())
+        );
     }
 }
 
@@ -185,10 +189,14 @@ impl Kernel for ConcatKernels {
         }
     }
 
-    fn metadata(&self, dst: &OpTensor, _: &KernelElement) -> Result<Self::Metadata, OperationError> {
+    fn metadata(
+        &self,
+        dst: &OpTensor,
+        _: &KernelElement,
+    ) -> Result<Self::Metadata, OperationError> {
         let ConcatKernels::Standard(inner) = self;
 
-        let original_rank = inner.inputs[0].rank();
+        let original_rank = inner.inputs[0].dim();
         let promotion = 4 - original_rank;
         let input_shapes: Vec<Shape> = inner
             .inputs
@@ -212,14 +220,14 @@ impl Kernel for ConcatKernels {
             .collect::<Vec<u32>>();
 
         for (si, stride) in input_stride.iter().enumerate() {
-            dyn_meta.add_field(format!("x{}_stride", si), UVec4::from(stride));
+            dyn_meta.add_field(format!("x{si}_stride"), UVec4::from(stride));
         }
 
         dyn_meta.add_field("dst_stride", UVec4::from(&dst_stride));
         dyn_meta.add_field("dst_numel", dst_shape.numel() as u32);
 
         for (ci, c) in cumsum.iter().enumerate() {
-            dyn_meta.add_field(format!("cum{}", ci), *c);
+            dyn_meta.add_field(format!("cum{ci}"), *c);
         }
 
         dyn_meta.add_field("dim", promoted_dim as u32);
@@ -288,15 +296,15 @@ impl GPUOperation for Concat {
 
 #[cfg(all(test, feature = "pyo3"))]
 mod tests {
-    use crate::{test_util::run_py_prg, Device, DeviceRequest, RVec, OpTensor};
+    use crate::{Device, DeviceRequest, RVec, Tensor, cat, randn, test_util::run_py_prg};
 
     #[derive(Debug)]
     struct ConcatProblem {
-        tensors: Vec<OpTensor>,
+        tensors: Vec<Tensor>,
         dim: usize,
     }
 
-    fn ground_truth(to_cat: &[&OpTensor], args: &str) -> anyhow::Result<OpTensor> {
+    fn ground_truth(to_cat: &[&Tensor], args: &str) -> anyhow::Result<Tensor> {
         let prg = format!(
             r#"
 import torch
@@ -305,9 +313,8 @@ def permute(*tensors):
     numpy_tensors = []
     for t in tensors:
         numpy_tensors.append(torch.from_numpy(t))
-    return np.ascontiguousarray(torch.cat(numpy_tensors, dim={}).numpy())
+    return np.ascontiguousarray(torch.cat(numpy_tensors, dim={args}).numpy())
 "#,
-            args
         );
         run_py_prg(prg.to_string(), to_cat, &[], to_cat[0].dtype())
     }
@@ -315,9 +322,9 @@ def permute(*tensors):
     fn run_concat_trial(prob: ConcatProblem, device: Device) -> anyhow::Result<()> {
         let ConcatProblem { tensors, dim } = prob;
 
-        let arg_str = format!("{}", dim);
+        let arg_str = format!("{dim}");
         let ground = ground_truth(
-            tensors.iter().collect::<Vec<&OpTensor>>().as_slice(),
+            tensors.iter().collect::<Vec<&Tensor>>().as_slice(),
             arg_str.as_str(),
         )?;
 
@@ -325,21 +332,21 @@ def permute(*tensors):
             t.to(&device)?;
         }
         let t_rvec = RVec::from(tensors);
-        let ours = OpTensor::cat(t_rvec, dim)?;
+        let ours = cat(t_rvec, dim)?;
         let result = ours.to(&Device::CPU)?;
-        println!("Ground: {:?}\n", ground);
-        println!("Ours: {:?}", result);
+        println!("Ground: {ground:?}");
+        println!("Ours: {result:?}");
         ground.all_close(&result, 1e-5, 1e-5)?;
         Ok(())
     }
 
     #[test]
     fn test_concat_gpu() {
-        let t0 = OpTensor::randn::<f32, _>(0., 1., (4, 2, 50, 128), Device::CPU, false).unwrap();
-        let t1 = OpTensor::randn::<f32, _>(0., 1., (4, 2, 13, 128), Device::CPU, false).unwrap();
-        let t2 = OpTensor::randn::<f32, _>(0., 1., (4, 2, 77, 128), Device::CPU, false).unwrap();
-        let t3 = OpTensor::randn::<f32, _>(0., 1., (4, 2, 55, 128), Device::CPU, false).unwrap();
-        let t4 = OpTensor::randn::<f32, _>(0., 1., (4, 2, 11, 128), Device::CPU, false).unwrap();
+        let t0 = randn((4, 2, 50, 128), None, None, Default::default()).unwrap();
+        let t1 = randn((4, 2, 13, 128), None, None, Default::default()).unwrap();
+        let t2 = randn((4, 2, 77, 128), None, None, Default::default()).unwrap();
+        let t3 = randn((4, 2, 55, 128), None, None, Default::default()).unwrap();
+        let t4 = randn((4, 2, 11, 128), None, None, Default::default()).unwrap();
 
         let dim = 2;
         let device = Device::request_device(DeviceRequest::GPU).unwrap();
@@ -355,11 +362,11 @@ def permute(*tensors):
 
     #[test]
     fn test_concat_cpu() {
-        let t0 = OpTensor::randn::<f32, _>(0., 1., (4, 2, 50, 128), Device::CPU, false).unwrap();
-        let t1 = OpTensor::randn::<f32, _>(0., 1., (4, 2, 13, 128), Device::CPU, false).unwrap();
-        let t2 = OpTensor::randn::<f32, _>(0., 1., (4, 2, 77, 128), Device::CPU, false).unwrap();
-        let t3 = OpTensor::randn::<f32, _>(0., 1., (4, 2, 55, 128), Device::CPU, false).unwrap();
-        let t4 = OpTensor::randn::<f32, _>(0., 1., (4, 2, 11, 128), Device::CPU, false).unwrap();
+        let t0 = randn((4, 2, 50, 128), None, None, Default::default()).unwrap();
+        let t1 = randn((4, 2, 13, 128), None, None, Default::default()).unwrap();
+        let t2 = randn((4, 2, 77, 128), None, None, Default::default()).unwrap();
+        let t3 = randn((4, 2, 55, 128), None, None, Default::default()).unwrap();
+        let t4 = randn((4, 2, 11, 128), None, None, Default::default()).unwrap();
 
         let dim = 2;
         let device = Device::request_device(DeviceRequest::CPU).unwrap();

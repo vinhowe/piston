@@ -5,10 +5,10 @@ use inline_wgsl::wgsl;
 use piston_macros::{IrFields, WgslMetadata};
 
 use crate::{
-    gpu::BindGroupLayoutDescriptor, rvec, Array, BindingMode, BuiltIn, DType, GPUOperation, Kernel,
-    KernelElement, KernelRenderable, KernelSource, OpGuards, Operation, OperationError, RVec,
-    Scalar, StorageView, Stride, OpTensor, Vec2, Vec4, WgslKernelBuilder, WgslPrimitive,
-    WorkgroupSize, Workload,
+    Array, BindingMode, BuiltIn, DType, GPUOperation, Kernel, KernelElement, KernelRenderable,
+    KernelSource, OpGuards, OpTensor, Operation, OperationError, RVec, Scalar, StorageView, Stride,
+    Vec2, Vec4, WgslKernelBuilder, WgslPrimitive, WorkgroupSize, Workload,
+    gpu::BindGroupLayoutDescriptor, rvec,
 };
 
 #[derive(new, Debug, Clone, IrFields)]
@@ -46,7 +46,7 @@ impl KernelRenderable for CastKernels {
             builder.register_storage_raw(
                 "Y",
                 BindingMode::ReadWrite,
-                format!("array<{}>", dst_accessor),
+                format!("array<{dst_accessor}>"),
             )
         };
         builder.register_uniform();
@@ -163,7 +163,11 @@ impl Kernel for CastKernels {
         }
     }
 
-    fn metadata(&self, dst: &OpTensor, _: &KernelElement) -> Result<Self::Metadata, OperationError> {
+    fn metadata(
+        &self,
+        dst: &OpTensor,
+        _: &KernelElement,
+    ) -> Result<Self::Metadata, OperationError> {
         let numel = dst.shape().numel() as u32;
         Ok(CastMeta { numel })
     }
@@ -174,9 +178,9 @@ impl Kernel for CastKernels {
 
     fn kernel_element(&self, dst: &OpTensor) -> KernelElement {
         let numel = dst.shape().numel();
-        if numel % 4 == 0 {
+        if numel.is_multiple_of(4) {
             KernelElement::Vec4
-        } else if numel % 2 == 0 {
+        } else if numel.is_multiple_of(2) {
             KernelElement::Vec2
         } else {
             KernelElement::Scalar
@@ -231,9 +235,9 @@ impl Kernel for CastKernels {
 #[cfg(all(test, feature = "pyo3"))]
 mod tests {
     use half::f16;
-    use test_strategy::{proptest, Arbitrary};
+    use test_strategy::{Arbitrary, proptest};
 
-    use crate::{test_util::run_py_prg, DType, Device, DeviceRequest, OpTensor};
+    use crate::{DType, Device, DeviceRequest, Tensor, randn, test_util::run_py_prg};
 
     #[derive(Arbitrary, Debug)]
     struct CastProblem {
@@ -246,7 +250,7 @@ mod tests {
         N: usize,
     }
 
-    fn ground_truth(input: &OpTensor, dst_dtype: DType) -> anyhow::Result<OpTensor> {
+    fn ground_truth(input: &Tensor, dst_dtype: DType) -> anyhow::Result<Tensor> {
         let prg = format!(
             r#"
 import torch
@@ -265,7 +269,7 @@ def cast(a):
             return Ok(());
         }
         let CastProblem { dst_dtype, B, M, N } = prob;
-        let input = OpTensor::randn::<f32, _>(0., 1., (B, M, N), Device::CPU, false)?;
+        let input = randn((B, M, N), None, None, Default::default())?;
         let ground = ground_truth(&input, dst_dtype)?;
 
         let input = input.to(&device)?;

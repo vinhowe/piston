@@ -23,7 +23,7 @@ impl<'a> TensorIterator<'a> {
             block_size *= dim;
             contiguous_dims += 1;
         }
-        let index_dims = shape.rank() - contiguous_dims;
+        let index_dims = shape.dim() - contiguous_dims;
         if index_dims == 0 {
             Self::Contiguous(offset..block_size)
         } else {

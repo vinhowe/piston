@@ -13,6 +13,7 @@ mod fill_randn;
 mod gather;
 mod index_add;
 mod index_write;
+mod lerp;
 mod matmul;
 mod norm;
 mod powf;
@@ -45,6 +46,7 @@ pub use fill_randn::*;
 pub use gather::*;
 pub use index_add::*;
 pub use index_write::*;
+pub use lerp::*;
 pub use matmul::*;
 pub use norm::*;
 use piston_macros::IrFields;
@@ -144,7 +146,7 @@ impl TensorCopy {
         )))
     }
 
-    pub fn create_gpu_compile_key(&self) -> CopyCompileKey {
+    pub fn create_gpu_compile_key(&self) -> CopyCompileKey<'_> {
         CopyCompileKey {
             src: &self.src,
             dst: &self.dst,
@@ -155,7 +157,7 @@ impl TensorCopy {
 impl OpGuards for TensorCopy {
     fn check_shapes(&self) {
         let (src_shape, dst_shape) = (self.src.shape(), self.dst.shape());
-        assert_eq!(src_shape.rank(), dst_shape.rank());
+        assert_eq!(src_shape.dim(), dst_shape.dim());
         assert_eq!(src_shape.numel(), dst_shape.numel());
     }
 

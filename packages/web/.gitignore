@@ -1,0 +1,11 @@
+node_modules
+coverage
+.DS_Store
+*.log
+.vscode
+.idea
+
+dist
+
+pnpm-lock.yaml
+yarn.lock

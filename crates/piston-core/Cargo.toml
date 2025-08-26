@@ -1,7 +1,7 @@
 [package]
 name = "piston"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 
 [features]
 default = ["rand", "testing"]
@@ -14,7 +14,7 @@ debug = []                                      #dump every node
 
 [dependencies]
 piston-macros = { path = "../piston-macros" }
-inline-wgsl = { git = "https://github.com/FL33TW00D/inline-wgsl.git", branch = "master" }
+inline-wgsl = { git = "https://github.com/vinhowe/inline-wgsl.git", branch = "master" }
 wgpu = { workspace = true }
 bytemuck = { workspace = true }
 half = { workspace = true }
@@ -56,6 +56,9 @@ numpy = { workspace = true, optional = true, features = ["half"] }
 gemm = { version = "0.18.0", features = ["nightly", "wasm-simd128-enable"] }
 bitvec = { workspace = true }
 paste = { workspace = true }
+bitflags = "2.9.1"
+inventory = "0.3.20"
+once_cell = "1.21.3"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 maybe-async = { workspace = true, features = ["is_sync"] }

@@ -12,10 +12,11 @@ pub use workgroup_gemv::*;
 use std::{cmp::Ordering, mem};
 
 use crate::{
+    DType, Device, GPUOperation, Kernel, KernelElement, KernelKey, KernelMetadata,
+    KernelRenderable, KernelSource, OpGuards, OpTensor, Operation, OperationError, Q4_KF, Q4_KH,
+    Q8_0F, Q8_0H, RVec, Shape, StorageView, Stride, WorkgroupSize, Workload,
     gpu::{BindGroupLayoutDescriptor, CpuUniform},
-    rvec, DType, Device, GPUOperation, Kernel, KernelElement, KernelKey, KernelMetadata,
-    KernelRenderable, KernelSource, OpGuards, Operation, OperationError, RVec, Shape, StorageView,
-    Stride, OpTensor, WorkgroupSize, Workload, Q4_KF, Q4_KH, Q8_0F, Q8_0H,
+    rvec,
 };
 
 //https://link.springer.com/chapter/10.1007/978-3-642-29737-3_42
@@ -90,16 +91,16 @@ impl MatmulSpec {
         let lhs_dtype = LHS.dtype();
         let rhs_dtype = RHS.dtype();
 
-        if (lhs_shape.rank() < 2) || (rhs_shape.rank() < 2) {
+        if (lhs_shape.dim() < 2) || (rhs_shape.dim() < 2) {
             panic!("MatMul: inputs must be at least 2D");
         }
 
-        match lhs_shape.rank().cmp(&rhs_shape.rank()) {
+        match lhs_shape.dim().cmp(&rhs_shape.dim()) {
             Ordering::Less => {
-                lhs_shape.left_pad_to(1, rhs_shape.rank());
+                lhs_shape.left_pad_to(1, rhs_shape.dim());
             }
             Ordering::Greater => {
-                rhs_shape.left_pad_to(1, lhs_shape.rank());
+                rhs_shape.left_pad_to(1, lhs_shape.dim());
             }
             _ => {}
         };
@@ -108,7 +109,7 @@ impl MatmulSpec {
             Matmul::compute_dst_shape(&lhs_shape, &rhs_shape, trans_lhs, trans_rhs, trans_dst)
                 .unwrap();
 
-        let stack_dims = dst_shape.rank() - 2;
+        let stack_dims = dst_shape.dim() - 2;
         let stack_shape = dst_shape.slice(0..stack_dims);
 
         let lhs_stack = lhs_shape.drain(0..stack_dims).product();
@@ -121,11 +122,11 @@ impl MatmulSpec {
             assert!(lhs_stack == rhs_stack && rhs_stack == dst_stack);
         }
 
-        if lhs_shape.rank() == 1 {
+        if lhs_shape.dim() == 1 {
             lhs_shape.insert(0, 1);
         }
 
-        if rhs_shape.rank() == 1 {
+        if rhs_shape.dim() == 1 {
             rhs_shape.insert(0, 1);
         }
 
@@ -201,7 +202,7 @@ impl MatmulSpec {
             self.dst_shape.numel(),
         ];
 
-        if checks.iter().all(|&x| x % 4 == 0) {
+        if checks.iter().all(|&x| x.is_multiple_of(4)) {
             KernelElement::Vec4
         } else {
             KernelElement::Scalar
@@ -372,9 +373,9 @@ impl MatmulSpec {
         let dim_rhs_outer = self.dim_rhs_outer();
         let dim_inner = self.dim_inner();
 
-        let lhs_fit = dim_lhs_outer % Self::TILE_DIM == 0;
-        let rhs_fit = dim_rhs_outer % Self::TILE_DIM == 0;
-        let dst_fit = dim_inner % Self::TILE_DIM == 0;
+        let lhs_fit = dim_lhs_outer.is_multiple_of(Self::TILE_DIM);
+        let rhs_fit = dim_rhs_outer.is_multiple_of(Self::TILE_DIM);
+        let dst_fit = dim_inner.is_multiple_of(Self::TILE_DIM);
         (lhs_fit, rhs_fit, dst_fit)
     }
 }
@@ -400,8 +401,8 @@ impl Matmul {
         let mut lhs_shape = lhs_shape.clone();
         let mut rhs_shape = rhs_shape.clone();
 
-        let implicit_m = lhs_shape.rank() < 2;
-        let implicit_n = rhs_shape.rank() < 2;
+        let implicit_m = lhs_shape.dim() < 2;
+        let implicit_n = rhs_shape.dim() < 2;
         if implicit_m {
             lhs_shape.insert(trans_lhs as usize, 1);
         }
@@ -410,15 +411,15 @@ impl Matmul {
         }
 
         let equalize_rank = |shape: &mut Shape, target_rank: usize| {
-            while shape.rank() < target_rank {
+            while shape.dim() < target_rank {
                 shape.insert(0, 1);
             }
         };
-        equalize_rank(&mut lhs_shape, rhs_shape.rank());
-        equalize_rank(&mut rhs_shape, lhs_shape.rank());
+        equalize_rank(&mut lhs_shape, rhs_shape.dim());
+        equalize_rank(&mut rhs_shape, lhs_shape.dim());
 
-        let lhs_rank = lhs_shape.rank();
-        let rhs_rank = rhs_shape.rank();
+        let lhs_rank = lhs_shape.dim();
+        let rhs_rank = rhs_shape.dim();
         let (lhs_prefix, rhs_prefix) = (&lhs_shape[..lhs_rank - 2], &rhs_shape[..rhs_rank - 2]);
         let dst_broadcasted_prefix =
             Shape::multi_broadcast(&[&lhs_prefix.into(), &rhs_prefix.into()]).ok_or_else(|| {
@@ -535,14 +536,14 @@ impl OpGuards for Matmul {
             );
         }
 
-        if let Some(bias) = &self.bias {
-            if bias.dtype() != self.rhs.dtype() {
-                panic!(
-                    "DType mismatch: bias: {:?}, rhs: {:?}",
-                    bias.dtype(),
-                    self.rhs.dtype()
-                );
-            }
+        if let Some(bias) = &self.bias
+            && bias.dtype() != self.rhs.dtype()
+        {
+            panic!(
+                "DType mismatch: bias: {:?}, rhs: {:?}",
+                bias.dtype(),
+                self.rhs.dtype()
+            );
         }
     }
 }
@@ -752,22 +753,22 @@ impl GPUOperation for Matmul {
 
 #[cfg(all(test, feature = "pyo3"))]
 mod tests {
-    use test_strategy::{proptest, Arbitrary};
+    use test_strategy::{Arbitrary, proptest};
 
     use crate::test_util::run_py_prg;
 
-    use crate::{quantize, Device, DeviceRequest};
+    use crate::{Device, DeviceRequest, Tensor, quantize, randn};
 
     use super::*;
 
     fn ground_truth(
-        a: &OpTensor,
-        b: &OpTensor,
-        bias: Option<&OpTensor>,
+        a: &Tensor,
+        b: &Tensor,
+        bias: Option<&Tensor>,
         trans_lhs: bool,
         trans_rhs: bool,
         trans_dst: bool,
-    ) -> anyhow::Result<OpTensor> {
+    ) -> anyhow::Result<Tensor> {
         let a_op = if trans_lhs {
             "torch.permute(torch.from_numpy(a), [0, 2, 1])"
         } else {
@@ -781,21 +782,15 @@ mod tests {
         };
 
         let inner = if bias.is_some() {
-            format!(
-                "torch.add(torch.matmul({}, {}), torch.from_numpy(bias))",
-                a_op, b_op
-            )
+            format!("torch.add(torch.matmul({a_op}, {b_op}), torch.from_numpy(bias))")
         } else {
-            format!("torch.matmul({}, {})", a_op, b_op)
+            format!("torch.matmul({a_op}, {b_op})")
         };
 
         let result_op = if trans_dst {
-            format!(
-                "np.ascontiguousarray(torch.permute({}, [0, 2, 1]).numpy())",
-                inner
-            )
+            format!("np.ascontiguousarray(torch.permute({inner}, [0, 2, 1]).numpy())")
         } else {
-            format!("{}.numpy()", inner)
+            format!("{inner}.numpy()")
         };
 
         let prg = format!(
@@ -866,8 +861,7 @@ def matmul(a, b{}):
             ref transpose,
         } = prob;
         println!(
-            "Running sgemm: B={} M={} N={} K={} has_bias={} transpose={:?}",
-            B, M, N, K, has_bias, transpose
+            "Running sgemm: B={B} M={M} N={N} K={K} has_bias={has_bias} transpose={transpose:?}"
         );
         run_matmul_trial(&device, prob).unwrap();
     }
@@ -884,14 +878,12 @@ def matmul(a, b{}):
             ref transpose,
         } = prob;
         println!(
-            "Running sgemm: B={} M={} N={} K={} has_bias={} transpose={:?}",
-            B, M, N, K, has_bias, transpose
+            "Running sgemm: B={B} M={M} N={N} K={K} has_bias={has_bias} transpose={transpose:?}"
         );
         run_matmul_trial(&device, prob).unwrap();
     }
 
     fn run_matmul_trial(device: &Device, prob: SGEMMProblem) -> anyhow::Result<()> {
-        let cpu_device = Device::request_device(DeviceRequest::CPU)?;
         let SGEMMProblem {
             B,
             M,
@@ -912,23 +904,17 @@ def matmul(a, b{}):
         let rhs_shape = if trans_rhs { (B, N, K) } else { (B, K, N) };
 
         let bias = if has_bias {
-            Some(OpTensor::randn::<f32, _>(
-                0.0,
-                1.0,
-                N,
-                cpu_device.clone(),
-                false,
-            )?)
+            Some(randn(N, None, None, Default::default())?)
         } else {
             None
         };
 
-        println!("LHS shape: {:?}", lhs_shape);
-        println!("RHS shape: {:?}", rhs_shape);
+        println!("LHS shape: {lhs_shape:?}");
+        println!("RHS shape: {rhs_shape:?}");
         println!("Bias: {:?}", bias.as_ref().map(|b| b.shape()));
 
-        let a = OpTensor::randn::<f32, _>(0.0, 1.0, lhs_shape, cpu_device.clone(), false)?;
-        let b = OpTensor::randn::<f32, _>(0.0, 1.0, rhs_shape, cpu_device.clone(), false)?;
+        let a = randn(lhs_shape, None, None, Default::default())?;
+        let b = randn(rhs_shape, None, None, Default::default())?;
         let ground = ground_truth(&a, &b, bias.as_ref(), trans_lhs, trans_rhs, trans_dst)?;
         println!("Ground shape: {:?}", ground.shape());
 
@@ -938,8 +924,8 @@ def matmul(a, b{}):
         let c_gpu = a_gpu.gemm(b_gpu, bias_gpu, trans_lhs, trans_rhs, trans_dst)?;
 
         let d_gpu = c_gpu.to(&Device::CPU)?;
-        println!("PISTON SGEMM\n{:?}\n", d_gpu);
-        println!("PYTORCH FP32:\n{:?}", ground);
+        println!("PISTON SGEMM\n{d_gpu:?}\n");
+        println!("PYTORCH FP32:\n{ground:?}");
 
         ground.all_close(&d_gpu, 1e-4, 1e-4)?;
         Ok(())
@@ -948,9 +934,8 @@ def matmul(a, b{}):
     #[test]
     fn test_qgemm() -> anyhow::Result<()> {
         let device = Device::request_device(DeviceRequest::GPU).unwrap();
-        let cpu_device = Device::request_device(DeviceRequest::CPU)?;
-        let a = OpTensor::randn::<f32, _>(0.0, 1.0, (6, 1500, 64), cpu_device.clone(), false)?;
-        let b = OpTensor::randn::<f32, _>(0.0, 1.0, (6, 64, 1500), cpu_device.clone(), false)?;
+        let a = randn((6, 1500, 64), None, None, Default::default())?;
+        let b = randn((6, 64, 1500), None, None, Default::default())?;
         let ground = ground_truth(&a, &b, None, false, false, false)?;
 
         let aq = quantize::<Q8_0F>(&a);
@@ -959,8 +944,8 @@ def matmul(a, b{}):
         let c_gpu = a_gpu.matmul(b_gpu, false, false)?;
         let ours = c_gpu.to(&Device::CPU)?;
 
-        println!("PISTON QUANT\n{:?}\n", ours);
-        println!("PYTORCH FP32:\n{:?}", ground);
+        println!("PISTON QUANT\n{ours:?}\n");
+        println!("PYTORCH FP32:\n{ground:?}");
 
         ground.all_close(&ours, 1e1, 1e-1)?;
 
@@ -972,16 +957,9 @@ def matmul(a, b{}):
         let _ = env_logger::builder().is_test(true).try_init();
 
         let device = Device::request_device(DeviceRequest::GPU).unwrap();
-        let cpu_device = Device::request_device(DeviceRequest::CPU)?;
-        let a = OpTensor::randn::<f32, _>(0.0, 1.0, (2, 175, 240), cpu_device.clone(), false)?;
-        let b = OpTensor::randn::<f32, _>(0.0, 1.0, (2, 240, 182), cpu_device.clone(), false)?;
-        let bias = Some(OpTensor::randn::<f32, _>(
-            0.0,
-            1.0,
-            182,
-            cpu_device.clone(),
-            false,
-        )?);
+        let a = randn((2, 175, 240), None, None, Default::default())?;
+        let b = randn((2, 240, 182), None, None, Default::default())?;
+        let bias = Some(randn(182, None, None, Default::default())?);
 
         let TRANS_LHS = false;
         let TRANS_RHS = false;
@@ -1002,8 +980,14 @@ def matmul(a, b{}):
         let c_gpu = a_gpu.gemm(b_gpu, bias_gpu, TRANS_LHS, TRANS_RHS, TRANS_DST)?;
         let ours = c_gpu.to(&Device::CPU)?;
 
-        println!("PISTON\n{:?}\n", ours.to_ndarray_view::<f32>());
-        println!("PYTORCH:\n{:?}", ground.to_ndarray_view::<f32>());
+        println!(
+            "PISTON\n{:?}\n",
+            ours.inner().read().to_ndarray_view::<f32>()
+        );
+        println!(
+            "PYTORCH:\n{:?}",
+            ground.inner().read().to_ndarray_view::<f32>()
+        );
 
         ground.all_close(&ours, 1e-3, 1e-3)?;
         Ok(())
@@ -1015,9 +999,8 @@ def matmul(a, b{}):
         let _ = env_logger::builder().is_test(true).try_init();
 
         let device = Device::request_device(DeviceRequest::GPU).unwrap();
-        let cpu_device = Device::request_device(DeviceRequest::CPU)?;
-        let a = OpTensor::randn::<f32, _>(0.0, 1.0, (1, 51865, 384), cpu_device.clone(), false)?;
-        let b = OpTensor::randn::<f32, _>(0.0, 1.0, (1, 1, 384), cpu_device.clone(), false)?;
+        let a = randn((1, 51865, 384), None, None, Default::default())?;
+        let b = randn((1, 1, 384), None, None, Default::default())?;
 
         let TRANS_LHS = false;
         let TRANS_RHS = true;
@@ -1037,8 +1020,14 @@ def matmul(a, b{}):
         let c_gpu = a_gpu.gemm(b_gpu, None, TRANS_LHS, TRANS_RHS, TRANS_DST)?;
         let ours = c_gpu.to(&Device::CPU)?;
 
-        println!("PISTON\n{:?}\n", ours.to_ndarray_view::<f32>());
-        println!("PYTORCH:\n{:?}", ground.to_ndarray_view::<f32>());
+        println!(
+            "PISTON\n{:?}\n",
+            ours.inner().read().to_ndarray_view::<f32>()
+        );
+        println!(
+            "PYTORCH:\n{:?}",
+            ground.inner().read().to_ndarray_view::<f32>()
+        );
 
         ground.all_close(&ours, 1e-3, 1e-3)?;
         Ok(())

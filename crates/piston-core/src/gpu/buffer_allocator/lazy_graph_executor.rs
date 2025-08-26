@@ -1,7 +1,7 @@
 use crate::{
-    reset_scope_context, Compiled, CpuUniform, DebugSelection, Executable, ExecutionError,
-    ExecutionResult, GPUBuffer, HashMap, HashSet, Hasher as HasherType, Inner, LazyOp, StepLog,
-    StepLogConfig, Storage, TensorError, WgpuDevice,
+    Compiled, CpuUniform, DebugSelection, Executable, ExecutionError, ExecutionResult, GPUBuffer,
+    HashMap, HashSet, Hasher as HasherType, Inner, LazyOp, StepLog, StepLogConfig, Storage,
+    TensorError, WgpuDevice, reset_scope_context,
 };
 #[cfg(feature = "debug")]
 use crate::{DebugTensor, Device, DeviceStorage};
@@ -14,7 +14,9 @@ use std::sync::{Arc, Weak};
 
 #[derive(Debug, thiserror::Error)]
 pub enum LazyGraphExecutorError {
-    #[error("one of the variables needed for gradient computation has been modified by an inplace operation.")]
+    #[error(
+        "one of the variables needed for gradient computation has been modified by an inplace operation."
+    )]
     InplaceError,
     #[error(transparent)]
     TensorError(#[from] crate::TensorError),
@@ -49,8 +51,7 @@ pub struct LazyGraphExecutor {
 
 fn panic_cycle(id: TensorId) {
     panic!(
-        "Cycle detected whilst computing topological order: {:?}. Try plotting with feature `plotting`.",
-        id
+        "Cycle detected whilst computing topological order: {id:?}. Try plotting with feature `plotting`."
     );
 }
 
@@ -100,7 +101,7 @@ fn compute_post_order(tensor: &OpTensor) -> Vec<&OpTensor> {
     post_order
 }
 
-fn compute_post_order_from_nodes(roots: Vec<&OpTensor>) -> PostOrderData {
+fn compute_post_order_from_nodes(roots: Vec<&OpTensor>) -> PostOrderData<'_> {
     let mut post_order = Vec::new();
     for root in roots {
         post_order.extend(compute_post_order(root));
@@ -134,7 +135,7 @@ impl LazyGraphExecutor {
 
     /// Unregisters a tensor by its `TensorId`.
     pub fn unregister_tensor(&self, id: TensorId) {
-        log::trace!("Unregistering tensor {:?}", id);
+        log::trace!("Unregistering tensor {id:?}");
         self.tensors.write().remove(&id);
     }
 
@@ -358,8 +359,8 @@ impl LazyGraphExecutor {
                 }
                 let hash = hasher.finish();
                 tensor_hashes.insert(tensor.id(), hash);
-                log::debug!("IR: {:?}", ir);
-                log::debug!("Tensor hash: {:#x} (op: {:?})", hash, tensor.op().name());
+                log::debug!("IR: {ir:?}");
+                log::debug!("Tensor hash: {hash:#x} (op: {:?})", tensor.op().name());
                 for src in tensor.op().srcs() {
                     used_as_src.insert(src.id());
                 }
@@ -410,7 +411,7 @@ impl LazyGraphExecutor {
         }
         let hash = hasher.finish();
 
-        log::debug!("Shape hash: {:?}", hash);
+        log::debug!("Shape hash: {hash:?}");
 
         #[cfg(feature = "debug")]
         let mut cpu_bufs = HashMap::default();
@@ -421,7 +422,7 @@ impl LazyGraphExecutor {
             let storage_guard = tensor.storage();
             match storage_guard.as_ref() {
                 Some(Storage::GPU(gpu_buf)) => {
-                    log::trace!("Getting CPU buffer for {:?}", tensor.id());
+                    log::trace!("Getting CPU buffer for {tensor.id():?}");
                     cpu_bufs.insert(
                         tensor.id(),
                         gpu_buf.to_cpu(&Device::GPU(gpu_device.clone()))?,
@@ -472,14 +473,25 @@ impl LazyGraphExecutor {
         };
 
         #[cfg(debug_assertions)]
-        log::debug!(
-            "Resolved tensors in post order: {:?}",
-            post_order
-                .iter()
-                .filter(|t| t.resolved())
-                .map(|t| t.id())
-                .collect::<Vec<_>>()
-        );
+        {
+            let resolved_tensors = post_order.iter().filter(|t| t.resolved()).count();
+            let resolved_tensors_len = post_order.len();
+            log::trace!(
+                "Post order: {:?}",
+                post_order.iter().map(|t| t.id()).collect::<Vec<_>>()
+            );
+            log::trace!(
+                "Resolved tensors: {:?}",
+                post_order
+                    .iter()
+                    .filter(|t| t.resolved())
+                    .map(|t| t.id())
+                    .collect::<Vec<_>>()
+            );
+            log::debug!(
+                "Length of resolved tensors in post order: {resolved_tensors} / {resolved_tensors_len}"
+            );
+        }
 
         #[cfg(feature = "debug")]
         let mut compute_dsts = Vec::new();
@@ -618,14 +630,14 @@ impl LazyGraphExecutor {
                 let storage_guard = tensor.storage();
                 match storage_guard.as_ref() {
                     Some(Storage::GPU(gpu_buf)) => {
-                        log::trace!("Getting CPU buffer for {:?}", tensor.id());
+                        log::trace!("Getting CPU buffer for {tensor.id():?}");
                         cpu_bufs.insert(
                             tensor.id(),
                             gpu_buf.to_cpu(&Device::GPU(gpu_device.clone()))?,
                         );
                     }
                     Some(Storage::CPU(cpu_buf)) => {
-                        log::trace!("Using existing CPU buffer for {:?}", tensor.id());
+                        log::trace!("Using existing CPU buffer for {tensor.id():?}");
                         cpu_bufs.insert(tensor.id(), cpu_buf.clone());
                     }
                     None => {}

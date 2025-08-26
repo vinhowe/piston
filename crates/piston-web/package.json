@@ -1,0 +1,17 @@
+{
+    "name": "@piston-ml/piston-web-wasm",
+    "type": "module",
+    "description": "Train small neural networks in your browser with WebGPU",
+    "version": "0.0.0",
+    "license": "MIT",
+    "files": [
+      "piston-web_bg.wasm",
+      "piston-web.js",
+      "piston-web.d.ts"
+    ],
+    "main": "piston-web.js",
+    "types": "piston-web.d.ts",
+    "sideEffects": [
+      "./snippets/*"
+    ]
+  }

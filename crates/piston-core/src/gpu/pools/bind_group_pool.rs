@@ -1,5 +1,5 @@
 use super::*;
-use crate::{gpu::WgpuDevice, RVec};
+use crate::{RVec, gpu::WgpuDevice};
 use std::sync::Arc;
 
 slotmap::new_key_type! { pub struct GpuBindGroupHandle; }

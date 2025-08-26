@@ -8,10 +8,9 @@ mod unary;
 mod utils;
 
 use crate::{
-    dequantize, Cast, Concat, DType, IndexSelect, InvariantError, LazyOp, Operation,
-    OperationError, RVec, Shape, OpTensor, TensorDType,
+    Cast, Concat, DType, IndexSelect, InvariantError, LazyOp, OpTensor, Operation, OperationError,
+    RVec, Shape, TensorDType, dequantize,
 };
-use anyhow::anyhow;
 use half::{bf16, f16};
 use maybe_async::maybe_async;
 use rope::cpu_rope;
@@ -33,6 +32,7 @@ pub async fn apply_operation(op: LazyOp, dst: OpTensor) -> Result<OpTensor, Oper
         LazyOp::Concat(c) => cpu_concat(c, dst).await,
         LazyOp::Norm(n) => n.apply_cpu(dst).await,
         LazyOp::Affine(_a) => todo!(),
+        LazyOp::Lerp(_l) => todo!(),
         LazyOp::Cmp(_c) => todo!(),
         LazyOp::Powf(_p) => todo!(),
         LazyOp::Conv(_c) => todo!(),
@@ -116,14 +116,14 @@ async fn qindex_select(op: IndexSelect, dst: OpTensor) -> Result<OpTensor, Opera
     // Because of borrowing rules dequantizing also requires a deep clone of the input tensor, which is less than ideal.
     // In the future we would rather directly index the raw buffer of the quantized tensor and dequantize only what is required.
     // TODO: Add support for direct indexing + partial dequantization
-    let src = op.src().deep_clone().await;
+    let src = op.src().deep_clone().await.wrap();
 
     // NOTE: Support for other quantization types is dependent on the corresponding dequantization functions.
     let src = dequantize(src);
     let indices = op.indices().clone();
     let dim = op.dim();
 
-    index_select::<f32>(IndexSelect::new(src, indices, dim), dst).await
+    index_select::<f32>(IndexSelect::new(src.into(), indices, dim), dst).await
 }
 
 #[maybe_async]
@@ -135,18 +135,6 @@ pub async fn cpu_index_select(i: IndexSelect, dst: OpTensor) -> Result<OpTensor,
         DType::Q8_0F(_) => qindex_select(i, dst).await,
         dtype => Err(InvariantError::UnsupportedDType(dtype).into()),
     }
-}
-
-#[maybe_async]
-async fn direct_cast<T: TensorDType, U: TensorDType>(
-    input: &OpTensor,
-    dst: &OpTensor,
-) -> Result<(), OperationError> {
-    let input = input.to_vec::<T>().await?;
-    let result =
-        bytemuck::try_cast_slice::<T, U>(&input).map_err(|_| anyhow!("Failed direct cast"))?;
-    cpu_store_result(dst, result);
-    Ok(())
 }
 
 #[maybe_async]
@@ -162,8 +150,12 @@ pub async fn cpu_cast(cast: Cast, dst: OpTensor) -> Result<OpTensor, OperationEr
         (DType::F32, DType::BF16) => {
             unary_apply_fn::<f32, bf16>(cast.input(), &dst, bf16::from_f32).await?
         }
-        (DType::F32, DType::I32) => direct_cast::<f32, i32>(cast.input(), &dst).await?,
-        (DType::F32, DType::U32) => direct_cast::<f32, u32>(cast.input(), &dst).await?,
+        (DType::F32, DType::I32) => {
+            unary_apply_fn::<f32, i32>(cast.input(), &dst, |x| x as i32).await?
+        }
+        (DType::F32, DType::U32) => {
+            unary_apply_fn::<f32, u32>(cast.input(), &dst, |x| x as u32).await?
+        }
 
         // F16 ->
         (DType::F16, DType::F32) => {
@@ -176,10 +168,14 @@ pub async fn cpu_cast(cast: Cast, dst: OpTensor) -> Result<OpTensor, OperationEr
         }
 
         // I32 ->
-        (DType::I32, DType::F32) => direct_cast::<i32, f32>(cast.input(), &dst).await?,
+        (DType::I32, DType::F32) => {
+            unary_apply_fn::<i32, f32>(cast.input(), &dst, |x| x as f32).await?
+        }
 
         // U32 ->
-        (DType::U32, DType::F32) => direct_cast::<u32, f32>(cast.input(), &dst).await?,
+        (DType::U32, DType::F32) => {
+            unary_apply_fn::<u32, f32>(cast.input(), &dst, |x| x as f32).await?
+        }
 
         _ => unimplemented!(
             "Cannot cast {:?} -> {:?}",

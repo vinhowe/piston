@@ -5,10 +5,10 @@ use inline_wgsl::wgsl;
 use piston_macros::{IrFields, WgslMetadata};
 
 use crate::{
-    gpu::BindGroupLayoutDescriptor, rvec, Array, BindingMode, BuiltIn, DType, GPUOperation, Kernel,
-    KernelElement, KernelRenderable, KernelSource, OpGuards, Operation, OperationError, RVec,
-    Scalar, Shape, StorageView, Stride, OpTensor, Vec2, Vec4, WgslKernelBuilder, WgslPrimitive,
-    WorkgroupSize, Workload,
+    Array, BindingMode, BuiltIn, DType, GPUOperation, Kernel, KernelElement, KernelRenderable,
+    KernelSource, OpGuards, OpTensor, Operation, OperationError, RVec, Scalar, Shape, StorageView,
+    Stride, Vec2, Vec4, WgslKernelBuilder, WgslPrimitive, WorkgroupSize, Workload,
+    gpu::BindGroupLayoutDescriptor, rvec,
 };
 
 #[derive(new, Debug, Clone, IrFields)]
@@ -211,11 +211,11 @@ impl Kernel for FillRandnKernels {
 
 #[cfg(all(test, feature = "pyo3"))]
 mod tests {
-    use test_strategy::{proptest, Arbitrary};
+    use test_strategy::{Arbitrary, proptest};
 
-    use crate::{test_util::run_py_prg, DType, Device, DeviceRequest, OpTensor};
+    use crate::{DType, Device, DeviceRequest, Tensor, randn, test_util::run_py_prg};
 
-    fn normal_parameters(output: &OpTensor) -> anyhow::Result<OpTensor> {
+    fn normal_parameters(output: &Tensor) -> anyhow::Result<Tensor> {
         let prg = r#"
 import numpy as np
 
@@ -232,7 +232,7 @@ def check_normal(output):
     fn run_fill_randn_trial(problem: FillRandnProblem, device: Device) {
         let FillRandnProblem { B, M, N } = problem;
 
-        let a = OpTensor::randn::<f32, _>(0f32, 1f32, (B, M, N), device.clone(), false)
+        let a = randn((B, M, N), None, None, Default::default())
             .unwrap()
             .to(&Device::CPU)
             .unwrap();
@@ -252,10 +252,7 @@ def check_normal(output):
         // Check if the distribution is approximately normal
         // We use a tolerance of 0.1 for both mean and standard deviation
         if (mean - 0.0).abs() < 0.1 && (std - 1.0).abs() < 0.1 {
-            println!(
-                "\x1b[1;32mDistribution approximately normal\x1b[0m - mean={} std={}",
-                mean, std
-            );
+            println!("\x1b[1;32mDistribution approximately normal\x1b[0m - mean={mean} std={std}");
         } else {
             (|| -> anyhow::Result<()> {
                 {
@@ -283,7 +280,7 @@ def check_normal(output):
     #[proptest(cases = 8)]
     fn test_fill_randn(prob: FillRandnProblem) {
         let FillRandnProblem { B, M, N } = prob;
-        println!("B = {}, M = {}, N = {}", B, M, N);
+        println!("B = {B}, M = {M}, N = {N}");
         let device = Device::request_device(DeviceRequest::GPU).unwrap();
         run_fill_randn_trial(prob, device);
     }

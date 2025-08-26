@@ -5,7 +5,7 @@ use encase::ShaderType;
 use piston_macros::{IrFields, WgslMetadata};
 
 use crate::{
-    rvec, InvariantError, OpGuards, Operation, OperationError, RVec, StorageView, Stride, OpTensor,
+    InvariantError, OpGuards, OpTensor, Operation, OperationError, RVec, StorageView, Stride, rvec,
 };
 
 #[derive(Debug, derive_new::new, WgslMetadata, ShaderType)]
@@ -51,7 +51,7 @@ impl Operation for Permute {
         }
 
         let mut output_shape = input_shape.clone();
-        for i in 0..input_shape.rank() {
+        for i in 0..input_shape.dim() {
             output_shape[i] = input_shape[self.dims[i]];
         }
         let stride = Stride::from(&output_shape);
@@ -65,7 +65,7 @@ impl Operation for Permute {
 
 impl OpGuards for Permute {
     fn check_shapes(&self) {
-        assert!(self.src.shape().rank() == self.dims.len());
+        assert!(self.src.shape().dim() == self.dims.len());
         assert!(self.dims.iter().all(|&x| x < 4)); //Only support 4D for now
     }
 
@@ -74,9 +74,9 @@ impl OpGuards for Permute {
 
 #[cfg(all(test, feature = "pyo3"))]
 mod tests {
-    use crate::{test_util::run_py_prg, Device, DeviceRequest, Permute, Shape, OpTensor};
+    use crate::{Device, DeviceRequest, Permute, Shape, Tensor, randn, test_util::run_py_prg};
     use proptest::prelude::*;
-    use test_strategy::{proptest, Arbitrary};
+    use test_strategy::{Arbitrary, proptest};
 
     impl Arbitrary for Permute {
         type Parameters = ();
@@ -88,7 +88,10 @@ mod tests {
                 .prop_flat_map(|shape| (Just(shape.clone()), Just(vec![0, 1, 2, 3]).prop_shuffle()))
                 .prop_map(|(shape, perm)| {
                     Permute::new(
-                        OpTensor::randn::<f32, _>(0., 1., shape, Device::CPU, false).unwrap(),
+                        randn(shape, None, None, Default::default())
+                            .unwrap()
+                            .inner_or_source()
+                            .clone(),
                         perm.into(),
                     )
                 })
@@ -101,22 +104,21 @@ mod tests {
         op: Permute,
     }
 
-    fn ground_truth(a: &OpTensor, args: &str) -> anyhow::Result<OpTensor> {
+    fn ground_truth(a: &Tensor, args: &str) -> anyhow::Result<Tensor> {
         let prg = format!(
             r#"
 import torch
 import numpy as np
 def permute(a):
-    return np.ascontiguousarray(torch.permute(torch.from_numpy(a), {}).numpy())
+    return np.ascontiguousarray(torch.permute(torch.from_numpy(a), {args}).numpy())
 "#,
-            args
         );
         run_py_prg(prg.to_string(), &[a], &[], a.dtype())
     }
 
     fn run_reindex_trial(prob: PermuteProblem, device: Device) -> anyhow::Result<()> {
         let PermuteProblem { op } = prob;
-        let a = op.src.clone();
+        let a = op.src.wrap();
 
         let a_gpu = a.to(&device)?;
         let ground = ground_truth(&a, format!("{:?}", op.dims).as_str())?;

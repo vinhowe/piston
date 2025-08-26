@@ -4,10 +4,11 @@ use inline_wgsl::wgsl;
 use piston_macros::{IrFields, WgslMetadata};
 
 use crate::{
-    gpu::{dtype::WgslDType, BindGroupLayoutDescriptor},
-    rvec, wgc, wgs, Array, BindingMode, BuiltIn, DType, GPUOperation, Kernel, KernelElement,
-    KernelRenderable, KernelSource, OpGuards, OpTensor, Operation, OperationError, RVec, Scalar,
-    Shape, StorageView, Stride, WgslKernelBuilder, WgslPrimitive, WorkgroupSize, Workload,
+    Array, BindingMode, BuiltIn, DType, GPUOperation, Kernel, KernelElement, KernelRenderable,
+    KernelSource, OpGuards, OpTensor, Operation, OperationError, RVec, Scalar, Shape, StorageView,
+    Stride, WgslKernelBuilder, WgslPrimitive, WorkgroupSize, Workload,
+    gpu::{BindGroupLayoutDescriptor, dtype::WgslDType},
+    rvec, wgc, wgs,
 };
 
 #[cfg(test)]
@@ -21,6 +22,7 @@ pub enum ReduceOp {
     Max,
     ArgMin,
     ArgMax,
+    Norm2,
 }
 
 impl ReduceOp {
@@ -31,6 +33,7 @@ impl ReduceOp {
             ReduceOp::Max => "max",
             ReduceOp::ArgMin => "argmin",
             ReduceOp::ArgMax => "argmax",
+            ReduceOp::Norm2 => "norm2",
         }
     }
 }
@@ -108,7 +111,7 @@ impl Reduce {
         };
 
         let smem_update = match self.op {
-            ReduceOp::Sum => wgsl! {
+            ReduceOp::Sum | ReduceOp::Norm2 => wgsl! {
                 smem[index] += smem[index + stride];
             },
             ReduceOp::ArgMax | ReduceOp::ArgMin => wgsl! {
@@ -174,7 +177,7 @@ pub struct ReduceMeta {
 impl OpGuards for Reduce {
     fn check_shapes(&self) {
         let input = &self.input;
-        let rank = input.rank();
+        let rank = input.dim();
         for &dim in self.reduce_dims.iter() {
             assert!(dim < rank);
         }
@@ -193,6 +196,7 @@ impl Operation for Reduce {
             ReduceOp::Max => "Max",
             ReduceOp::ArgMin => "Argmin",
             ReduceOp::ArgMax => "Argmax",
+            ReduceOp::Norm2 => "Norm2",
         }
     }
 
@@ -206,7 +210,7 @@ impl Operation for Reduce {
         }
 
         let output_dtype = match self.op {
-            ReduceOp::Sum | ReduceOp::Min | ReduceOp::Max => DType::F32,
+            ReduceOp::Sum | ReduceOp::Min | ReduceOp::Max | ReduceOp::Norm2 => DType::F32,
             ReduceOp::ArgMin | ReduceOp::ArgMax => DType::I32,
         };
 
@@ -253,7 +257,7 @@ impl Kernel for ReduceKernels {
 
     fn kernel_element(&self, _dst: &OpTensor) -> KernelElement {
         // let input = self.srcs()[0];
-        // let rank = input.rank();
+        // let rank = input.dim();
         // let shape = input.shape();
         // let mut min_N = 4;
         // for &dim in self.sum_dims.iter() {
@@ -431,7 +435,7 @@ impl KernelRenderable for ReduceKernels {
         });
 
         let smem_initialize = match inner.op {
-            ReduceOp::Sum => wgsl! {
+            ReduceOp::Sum | ReduceOp::Norm2 => wgsl! {
                 smem[thread_id] = 'dtype(0.0);
             },
             ReduceOp::Max | ReduceOp::ArgMax => wgsl! {
@@ -463,6 +467,9 @@ impl KernelRenderable for ReduceKernels {
         let smem_update = match inner.op {
             ReduceOp::Sum => wgsl! {
                 smem[thread_id] += X[strided_i];
+            },
+            ReduceOp::Norm2 => wgsl! {
+                smem[thread_id] += X[strided_i] * X[strided_i];
             },
             ReduceOp::Max | ReduceOp::Min => wgsl! {
                 smem[thread_id] = 'op(smem[thread_id], X[strided_i]);
@@ -506,6 +513,9 @@ impl KernelRenderable for ReduceKernels {
             ReduceOp::ArgMax | ReduceOp::ArgMin => wgsl! {
                 Y[destination_id] = smem_index[0];
             },
+            ReduceOp::Norm2 => wgsl! {
+                Y[destination_id] = sqrt(smem[0]);
+            },
             _ => wgsl! {
                 Y[destination_id] = smem[0];
             },
@@ -523,42 +533,40 @@ impl KernelRenderable for ReduceKernels {
 
 #[cfg(all(test, feature = "pyo3"))]
 mod tests {
-    use proptest::prelude::Just;
-    use proptest::prop_oneof;
-    use test_strategy::{proptest, Arbitrary};
+    use test_strategy::{Arbitrary, proptest};
 
     use crate::test_util::run_py_prg;
-    use crate::{DType, Device, DeviceRequest, OpTensor};
+    use crate::{AllDims, DType, Device, DeviceRequest, NormOrd, Tensor, randn};
 
     use super::ReduceOp;
 
     fn ground_truth_forward(
-        a: &OpTensor,
+        a: &Tensor,
         op: &ReduceOp,
         dim: Option<usize>,
-    ) -> anyhow::Result<OpTensor> {
+    ) -> anyhow::Result<Tensor> {
         let dim_str = match dim {
-            Some(d) => format!(", dim={}", d),
+            Some(d) => format!(", dim={d}"),
             None => "".to_string(),
+        };
+        let kernel_name = match op {
+            ReduceOp::Norm2 => "norm",
+            _ => op.kernel_name(),
         };
         let prg = match op {
             ReduceOp::Max | ReduceOp::Min => format!(
                 r#"
 import torch
 def reduce(a):
-    return torch.{}(torch.from_numpy(a){}).values.float().numpy()
+    return torch.{kernel_name}(torch.from_numpy(a){dim_str}).values.float().numpy()
 "#,
-                op.kernel_name(),
-                dim_str
             ),
             _ => format!(
                 r#"
 import torch
 def reduce(a):
-    return torch.{}(torch.from_numpy(a){}).float().numpy()
+    return torch.{kernel_name}(torch.from_numpy(a){dim_str}).float().numpy()
 "#,
-                op.kernel_name(),
-                dim_str
             ),
         };
         // let out_dtype = match op {
@@ -576,7 +584,7 @@ def reduce(a):
         dim: Option<usize>,
         device: Device,
     ) -> anyhow::Result<()> {
-        let a = OpTensor::randn::<f32, _>(0., 1., (B, M, N), Device::CPU, false)?;
+        let a = randn((B, M, N), None, None, Default::default())?;
         let mut ground = ground_truth_forward(&a, op, dim)?;
 
         if dim.is_none() {
@@ -586,35 +594,33 @@ def reduce(a):
         let a_gpu = a.to(&device)?;
         let b_gpu = match dim {
             Some(dim) => match op {
-                ReduceOp::Sum => a_gpu.sum(dim),
-                ReduceOp::Min => a_gpu.min(dim),
-                ReduceOp::Max => a_gpu.max(dim),
-                ReduceOp::ArgMin => a_gpu.argmin(dim)?.cast(DType::I32),
-                ReduceOp::ArgMax => a_gpu.argmax(dim)?.cast(DType::I32),
+                ReduceOp::Sum => a_gpu.sum(dim, false),
+                ReduceOp::Min => a_gpu.min(dim, false),
+                ReduceOp::Max => a_gpu.max(dim, false),
+                ReduceOp::ArgMin => a_gpu.argmin(dim, false),
+                ReduceOp::ArgMax => a_gpu.argmax(dim, false),
+                ReduceOp::Norm2 => a_gpu.norm(Some(NormOrd::Frobenius), dim, false),
             },
             None => match op {
-                ReduceOp::Sum => a_gpu.sum_all(),
+                ReduceOp::Sum => a_gpu.sum(AllDims, false),
+                ReduceOp::Norm2 => a_gpu.norm(Some(NormOrd::Frobenius), AllDims, false),
                 _ => panic!("All * not supported"),
             },
         }?;
 
-        let ours = b_gpu.to(&Device::CPU)?.cast(DType::F32)?;
-        // println!("input = {:?}", a);
+        let ours = b_gpu.cast(DType::F32)?.to(&Device::CPU)?;
+        // println!("input = {a:?}");
         // println!("input stride = {:?}", a.stride());
-        // println!("ours = {:?}", ours);
-        // println!("ground = {:?}", ground);
-        ground.all_close(&ours, 1e-5, 1e-5)?;
+        // println!("ours = {ours:?}");
+        // println!("ground = {ground:?}");
+        ground.all_close(&ours, 3e-5, 1e-5)?;
         Ok(())
     }
 
     #[derive(Arbitrary, Debug)]
     struct ReduceProblem {
-        // argmin and argmax don't seem to work right now, and the reason why is probably subtle
-        #[strategy(prop_oneof![
-            Just(ReduceOp::Sum),
-            Just(ReduceOp::Min),
-            Just(ReduceOp::Max)
-        ])]
+        #[strategy(0..=2usize)]
+        dim: usize,
         op: ReduceOp,
         #[strategy(1..=3usize)]
         B: usize,
@@ -622,8 +628,6 @@ def reduce(a):
         M: usize,
         #[strategy(1..=256usize)]
         N: usize,
-        #[strategy(0..=2usize)]
-        dim: usize,
     }
 
     #[proptest(cases = 256)]
@@ -660,7 +664,7 @@ def reduce(a):
     #[proptest(cases = 16)]
     fn test_sum_all(prob: SumAllProblem) {
         let SumAllProblem { B, M, N } = prob;
-        println!("B = {}, M = {}, N = {}", B, M, N);
+        println!("B = {B}, M = {M}, N = {N}");
         let device = Device::request_device(DeviceRequest::GPU).unwrap();
         run_reduce_forward_trial(B, M, N, &ReduceOp::Sum, None, device).unwrap();
     }
@@ -675,7 +679,7 @@ def reduce(a):
         N: usize,
     }
 
-    fn ground_truth_backward(a: &OpTensor) -> anyhow::Result<OpTensor> {
+    fn ground_truth_backward(a: &Tensor) -> anyhow::Result<Tensor> {
         let prg = r#"
 import torch
 def reduce_backward(a):
@@ -694,19 +698,19 @@ def reduce_backward(a):
     ) -> anyhow::Result<()> {
         let ReduceBackwardProblem { B, M, N } = problem;
         let gpu_device = device.try_gpu()?;
-        let a = OpTensor::randn::<f32, _>(0., 1., (B, M, N), Device::CPU, false)?;
+        let a = randn((B, M, N), None, None, Default::default())?;
         let ground = ground_truth_backward(&a)?;
 
         let a_gpu = a.to(&device)?.requires_grad_(true)?;
-        let b_gpu = a_gpu.clone().sum_all()?;
+        let b_gpu = a_gpu.clone().sum(AllDims, false)?;
 
         b_gpu.backward()?;
         gpu_device.mark_step()?;
         let a_grad = a_gpu.grad().unwrap().clone();
 
         let ours = a_grad.to(&Device::CPU)?;
-        println!("ours = {:?}", ours);
-        println!("ground = {:?}", ground);
+        println!("ours = {ours:?}");
+        println!("ground = {ground:?}");
         ground.all_close(&ours, 1e-5, 1e-5)?;
         Ok(())
     }
@@ -714,7 +718,7 @@ def reduce_backward(a):
     #[proptest(cases = 8)]
     fn test_reduce_backward(prob: ReduceBackwardProblem) {
         let ReduceBackwardProblem { B, M, N } = prob;
-        println!("B = {}, M = {}, N = {}", B, M, N);
+        println!("B = {B}, M = {M}, N = {N}");
         let device = Device::request_device(DeviceRequest::GPU).unwrap();
         run_sum_backward_trial(prob, device).unwrap();
     }

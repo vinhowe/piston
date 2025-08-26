@@ -4,7 +4,7 @@ use crate::cpu::unary::unary_map_inplace;
 use crate::cpu::utils::cpu_store_result;
 use crate::reindex::broadcast_vector;
 use crate::{
-    CPUOperation, DType, GroupNorm, InvariantError, Norm, NormOp, OperationError, Shape, OpTensor,
+    CPUOperation, DType, GroupNorm, InvariantError, Norm, NormOp, OpTensor, OperationError, Shape,
     TensorDType,
 };
 use core::iter::Sum;
@@ -36,27 +36,29 @@ async fn apply_layer_norm(
     }: &Norm,
     dst: OpTensor,
 ) -> Result<OpTensor, OperationError> {
-    if input.dtype() != scale.dtype() {
+    if let Some(scale) = scale
+        && input.dtype() != scale.dtype()
+    {
         return Err(InvariantError::DTypeMismatch {
             expected: input.dtype(),
             actual: scale.dtype(),
         }
         .into());
     }
-    if let Some(b) = bias {
-        if b.dtype() != input.dtype() {
-            return Err(InvariantError::DTypeMismatch {
-                expected: input.dtype(),
-                actual: b.dtype(),
-            }
-            .into());
+    if let Some(b) = bias
+        && b.dtype() != input.dtype()
+    {
+        return Err(InvariantError::DTypeMismatch {
+            expected: input.dtype(),
+            actual: b.dtype(),
         }
+        .into());
     }
 
     match input.dtype() {
-        DType::F32 => layer_norm::<f32>(input, scale, bias, *eps, &dst).await?,
-        DType::F16 => layer_norm::<f16>(input, scale, bias, *eps, &dst).await?,
-        DType::BF16 => layer_norm::<bf16>(input, scale, bias, *eps, &dst).await?,
+        DType::F32 => layer_norm::<f32>(input, scale.as_ref(), bias, *eps, &dst).await?,
+        DType::F16 => layer_norm::<f16>(input, scale.as_ref(), bias, *eps, &dst).await?,
+        DType::BF16 => layer_norm::<bf16>(input, scale.as_ref(), bias, *eps, &dst).await?,
         _ => todo!(),
     };
 
@@ -96,7 +98,7 @@ where
 #[maybe_async]
 async fn layer_norm<T>(
     input: &OpTensor,
-    scale: &OpTensor,
+    scale: Option<&OpTensor>,
     bias: &Option<OpTensor>,
     eps: f32,
     dst: &OpTensor,
@@ -105,12 +107,15 @@ where
     T: TensorDType + Float + NumOps + for<'a> Sum<&'a T>,
 {
     let src_shape = input.shape();
-    let rank = input.rank();
+    let rank = input.dim();
     let N = src_shape[rank - 1];
     let norm_shape = N;
 
     let input = input.to_vec::<T>().await?;
-    let scale = scale.to_vec::<T>().await?;
+    let scale = match scale {
+        Some(s) => Some(s.to_vec::<T>().await?),
+        None => None,
+    };
     let bias = match bias {
         Some(b) => Some(b.to_vec::<T>().await?),
         None => None,
@@ -139,8 +144,10 @@ where
     broadcast_vector(&x2, &mut v);
     mul(&mut x, &v);
 
-    let scale_b = broadcast(&scale, norm_shape, src_shape);
-    mul(&mut x, &scale_b);
+    if let Some(scale) = scale {
+        let scale_b = broadcast(&scale, norm_shape, src_shape);
+        mul(&mut x, &scale_b);
+    }
 
     if let Some(bias) = bias {
         let bias_b = broadcast(&bias, norm_shape, src_shape);
@@ -162,27 +169,29 @@ async fn apply_rms_norm(
     }: &Norm,
     dst: OpTensor,
 ) -> Result<OpTensor, OperationError> {
-    if input.dtype() != scale.dtype() {
+    if let Some(scale) = scale
+        && input.dtype() != scale.dtype()
+    {
         return Err(InvariantError::DTypeMismatch {
             expected: input.dtype(),
             actual: scale.dtype(),
         }
         .into());
     }
-    if let Some(b) = bias {
-        if b.dtype() != input.dtype() {
-            return Err(InvariantError::DTypeMismatch {
-                expected: input.dtype(),
-                actual: b.dtype(),
-            }
-            .into());
+    if let Some(b) = bias
+        && b.dtype() != input.dtype()
+    {
+        return Err(InvariantError::DTypeMismatch {
+            expected: input.dtype(),
+            actual: b.dtype(),
         }
+        .into());
     }
 
     match input.dtype() {
-        DType::F32 => rms_norm::<f32>(input, scale, *eps, &dst).await?,
-        DType::F16 => rms_norm::<f16>(input, scale, *eps, &dst).await?,
-        DType::BF16 => rms_norm::<bf16>(input, scale, *eps, &dst).await?,
+        DType::F32 => rms_norm::<f32>(input, scale.as_ref(), *eps, &dst).await?,
+        DType::F16 => rms_norm::<f16>(input, scale.as_ref(), *eps, &dst).await?,
+        DType::BF16 => rms_norm::<bf16>(input, scale.as_ref(), *eps, &dst).await?,
         _ => todo!(),
     };
 
@@ -192,7 +201,7 @@ async fn apply_rms_norm(
 #[maybe_async]
 async fn rms_norm<T>(
     input: &OpTensor,
-    scale: &OpTensor,
+    scale: Option<&OpTensor>,
     eps: f32,
     dst: &OpTensor,
 ) -> Result<(), OperationError>
@@ -200,11 +209,14 @@ where
     T: TensorDType + Float + NumOps + for<'a> Sum<&'a T>,
 {
     let src_shape = input.shape();
-    let rank = input.rank();
+    let rank = input.dim();
     let N = src_shape[rank - 1];
 
     let mut x = input.to_vec::<T>().await?;
-    let scale = scale.to_vec::<T>().await?;
+    let scale = match scale {
+        Some(s) => Some(s.to_vec::<T>().await?),
+        None => None,
+    };
 
     let mut x2 = x.clone();
     square(&mut x2);
@@ -217,8 +229,10 @@ where
     broadcast_vector(&x2, &mut v);
     mul(&mut x, &v);
 
-    let scale_b = broadcast(&scale, (N,), src_shape);
-    mul(&mut x, &scale_b);
+    if let Some(scale) = scale {
+        let scale_b = broadcast(&scale, (N,), src_shape);
+        mul(&mut x, &scale_b);
+    }
 
     cpu_store_result(dst, &x);
 

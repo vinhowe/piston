@@ -5,10 +5,10 @@ use inline_wgsl::wgsl;
 use piston_macros::{IrFields, WgslMetadata};
 
 use crate::{
-    gpu::BindGroupLayoutDescriptor, rvec, Array, BindingMode, BuiltIn, DType, GPUOperation, Kernel,
-    KernelElement, KernelRenderable, KernelSource, OpGuards, Operation, OperationError, RVec,
-    Scalar, Shape, StorageView, Stride, OpTensor, Vec2, Vec4, WgslKernelBuilder, WgslPrimitive,
-    WorkgroupSize, Workload,
+    Array, BindingMode, BuiltIn, DType, GPUOperation, Kernel, KernelElement, KernelRenderable,
+    KernelSource, OpGuards, OpTensor, Operation, OperationError, RVec, Scalar, Shape, StorageView,
+    Stride, Vec2, Vec4, WgslKernelBuilder, WgslPrimitive, WorkgroupSize, Workload,
+    gpu::BindGroupLayoutDescriptor, rvec,
 };
 
 #[derive(new, Debug, Clone, IrFields)]
@@ -131,7 +131,11 @@ impl Kernel for IndexWriteKernels {
         }
     }
 
-    fn metadata(&self, dst: &OpTensor, _: &KernelElement) -> Result<Self::Metadata, OperationError> {
+    fn metadata(
+        &self,
+        dst: &OpTensor,
+        _: &KernelElement,
+    ) -> Result<Self::Metadata, OperationError> {
         let IndexWriteKernels::Standard(inner) = self;
         let padder = |mut shape: Shape| {
             shape.left_pad_to(1, 4);
@@ -204,23 +208,31 @@ impl Kernel for IndexWriteKernels {
 
 #[cfg(test)]
 mod tests {
-    use crate::{rvec, Device, DeviceRequest, OpTensor};
+    use crate::{Device, DeviceRequest, Tensor, TensorOptions, rvec};
 
     #[test]
     fn test_index_write() {
         let device = Device::request_device(DeviceRequest::GPU).unwrap();
 
-        let dst = OpTensor::from_data(vec![1., 2., 3., 4., 5., 6.], (3, 2), device.clone(), false);
-        let src = OpTensor::from_data(vec![7., 8.], (1, 2), device.clone(), false);
+        let dst = Tensor::from_data(
+            vec![1., 2., 3., 4., 5., 6.],
+            (3, 2),
+            TensorOptions::new().device(device.clone()),
+        );
+        let src = Tensor::from_data(
+            vec![7., 8.],
+            (1, 2),
+            TensorOptions::new().device(device.clone()),
+        );
         let write_start = rvec![2, 0];
         let b = dst.index_write(src, write_start).unwrap();
 
         let result = b.to(&Device::CPU).unwrap();
 
         let ground_truth =
-            OpTensor::from_data(vec![1., 2., 3., 4., 7., 8.], (3, 2), Device::CPU, false);
-        println!("result: {:?}", result);
-        println!("ground_truth: {:?}", ground_truth);
+            Tensor::from_data(vec![1., 2., 3., 4., 7., 8.], (3, 2), TensorOptions::new());
+        println!("result: {result:?}");
+        println!("ground_truth: {ground_truth:?}");
         ground_truth.all_close(&result, 1e-8, 1e-8).unwrap();
     }
 }

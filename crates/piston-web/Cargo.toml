@@ -1,7 +1,8 @@
 [package]
 name = "piston-web"
+description = "Train small neural networks in your browser with WebGPU"
 version = "0.0.0"
-edition = "2021"
+edition = "2024"
 license = "MIT"
 repository = "https://github.com/vinhowe/piston"
 
@@ -32,8 +33,12 @@ wasm-opt = [
 piston-models = { path = "../piston-models" }
 piston-nn = { path = "../piston-nn" }
 piston-datasets = { path = "../piston-datasets" }
+piston-macros = { path = "../piston-macros" }
 piston = { path = "../piston-core" }
+half = { workspace = true }
+wgpu = { workspace = true }
 wasm-bindgen = { workspace = true }
+safetensors = { workspace = true }
 wasm-bindgen-futures = { workspace = true }
 js-sys = { workspace = true }
 thiserror.workspace = true
@@ -42,7 +47,8 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 serde-wasm-bindgen = { workspace = true }
 console_error_panic_hook = { workspace = true }
-console_log = { workspace = true, features = ["color"] }
+console_log = { workspace = true }
+parking_lot = { workspace = true }
 log.workspace = true
 chrono = { workspace = true }
 fern = { workspace = true }
@@ -51,6 +57,9 @@ tokenizers = { version = "0.19.1", default-features = false, features = [
 ] }
 futures = "0.3.30"
 async-trait = { workspace = true }
+paste = { workspace = true }
+tsify = { workspace = true }
+smallvec = { workspace = true }
 [dependencies.web-sys]
 features = ['console', 'Window', 'Navigator']
 workspace = true

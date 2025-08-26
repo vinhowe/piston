@@ -1,3 +1,4 @@
+#![allow(clippy::doc_overindented_list_items)]
 use derive_new::new;
 use encase::ShaderType;
 use half::f16;
@@ -5,10 +6,10 @@ use inline_wgsl::wgsl;
 use piston_macros::{IrFields, WgslMetadata};
 
 use crate::{
-    gpu::BindGroupLayoutDescriptor, rvec, Array, BindingMode, BuiltIn, DType, GPUOperation, Kernel,
-    KernelElement, KernelRenderable, KernelSource, OpGuards, Operation, OperationError, RVec,
-    Scalar, Shape, StorageView, Stride, OpTensor, Vec2, Vec4, WgslKernelBuilder, WgslPrimitive,
-    WorkgroupSize, Workload,
+    Array, BindingMode, BuiltIn, DType, GPUOperation, Kernel, KernelElement, KernelRenderable,
+    KernelSource, OpGuards, OpTensor, Operation, OperationError, RVec, Scalar, Shape, StorageView,
+    Stride, Vec2, Vec4, WgslKernelBuilder, WgslPrimitive, WorkgroupSize, Workload,
+    gpu::BindGroupLayoutDescriptor, rvec,
 };
 
 #[derive(new, Debug, Clone, IrFields)]
@@ -228,9 +229,11 @@ impl Kernel for TriluKernels {
 
 #[cfg(all(test, feature = "pyo3"))]
 mod tests {
-    use crate::{shape, test_util::run_py_prg, DType, Device, DeviceRequest, OpTensor};
+    use crate::{
+        DType, Device, DeviceRequest, Tensor, TensorOptions, ones, shape, test_util::run_py_prg,
+    };
     use proptest::prelude::any;
-    use test_strategy::{proptest, Arbitrary};
+    use test_strategy::{Arbitrary, proptest};
 
     /// Generates the ground truth tensor using NumPy's triu or tril functions.
     ///
@@ -244,7 +247,7 @@ mod tests {
     /// # Returns
     ///
     /// A `Tensor` containing the ground truth data.
-    fn ground_truth(shape: &[usize], upper: bool, k: Option<i32>) -> anyhow::Result<OpTensor> {
+    fn ground_truth(shape: &[usize], upper: bool, k: Option<i32>) -> anyhow::Result<Tensor> {
         let prg = r#"
 import numpy as np
 def trilu(shape, upper, k):
@@ -313,7 +316,7 @@ def trilu(shape, upper, k):
         // Define the shape of the tensor.
         let shape = shape![B, M, N];
 
-        let src = OpTensor::ones::<f32, _>(shape.clone(), &device, false).unwrap();
+        let src = ones(shape.clone(), TensorOptions::new().device(device)).unwrap();
 
         // Generate the ground truth using NumPy.
         let ground = ground_truth(&shape, upper, Some(k))
@@ -328,8 +331,8 @@ def trilu(shape, upper, k):
         .to(&Device::CPU)
         .unwrap();
 
-        println!("Ours: {:?}", ours);
-        println!("Ground: {:?}", ground);
+        println!("Ours: {ours:?}");
+        println!("Ground: {ground:?}");
 
         // Compare the GPU result with the ground truth.
         ground

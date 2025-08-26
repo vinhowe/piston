@@ -230,10 +230,157 @@ map_type!(u32, U32);
 map_half_type!(f16, F16);
 map_half_type!(bf16, BF16);
 
+/**
+ * Promotes two data types to a common type according to a type hierarchy.
+ * The promotion hierarchy is: uint32 < int32 < float16 < float32
+ *
+ * @param dtype1 - First data type
+ * @param dtype2 - Second data type
+ * @returns The promoted data type that can represent both inputs
+ */
+pub fn promote_types(dtype1: DType, dtype2: DType) -> anyhow::Result<DType> {
+    // If types are the same, no promotion needed
+    if dtype1 == dtype2 {
+        return Ok(dtype1);
+    }
+
+    // Special-case handling when U32 is involved
+    match (dtype1, dtype2) {
+        (a @ DType::U32, b) | (b, a @ DType::U32) => {
+            return if b.is_float() {
+                Ok(b)
+            } else if a.is_float() {
+                Ok(a)
+            } else {
+                Err(anyhow::anyhow!(
+                    "Promotion for uint16, uint32, uint64 types is not supported, attempted to promote {} and {}",
+                    a,
+                    b
+                ))
+            };
+        }
+        _ => {}
+    }
+
+    // Type hierarchy: u32 < i32 < f16 < f32; others fall back to highest precedence
+    fn precedence(dtype: &DType) -> u8 {
+        match *dtype {
+            DType::U32 => 0,
+            DType::I32 => 1,
+            DType::F16 => 2,
+            DType::F32 => 3,
+            _ => 4,
+        }
+    }
+
+    let p1 = precedence(&dtype1);
+    let p2 = precedence(&dtype2);
+    Ok(if p1 >= p2 { dtype1 } else { dtype2 })
+}
+
+pub fn promoted_cast<
+    T1: Into<OpTensor>,
+    T2: Into<OpTensor> + From<OpTensor>,
+    T3: TensorTypeOrScalar<T2> + From<TensorTypeOrScalarEnum<T2>>,
+>(
+    tensor1: T1,
+    tensor2: T3,
+) -> anyhow::Result<(OpTensor, T3)> {
+    let tensor1 = tensor1.into();
+    // let tensor2 = tensor2.map_tensor(|t| t.into()).tensor_or_scalar()?;
+
+    let dtype1 = tensor1.dtype();
+    let dtype2 = match tensor2.map_tensor(|t| t.into()).tensor_or_scalar()? {
+        TensorTypeOrScalarEnum::Tensor(ref t) => t.dtype(),
+        TensorTypeOrScalarEnum::Scalar(_) => DType::F32,
+    };
+
+    let promotedType = promote_types(dtype1, dtype2)?;
+
+    // Cast each tensor only if its type is different from the promoted type
+    let promoted_tensor1 = if dtype1 == promotedType {
+        tensor1
+    } else {
+        cast_kernel(tensor1, promotedType)?
+    };
+    let promoted_tensor2 = if dtype2 == promotedType {
+        tensor2
+    } else {
+        tensor2
+            .map_tensor(|t| cast_kernel(t.into(), promotedType))?
+            .transpose()?
+            .map_tensor(|t| T2::from(t))?
+            .into()
+    };
+
+    Ok((promoted_tensor1, promoted_tensor2))
+}
+
+/// Promotes `tensor1` together with two additional `TensorTypeOrScalar`
+/// arguments to a common dtype, casting as needed.
+///
+/// Mirrors `promoted_cast` (binary) and specializes `promoted_cast_many`
+/// for the common ternary case. Returns the potentially casted `tensor1`
+/// and the two additional arguments, preserving their tensor-or-scalar form.
+pub fn promoted_cast_ternary<
+    T1: Into<OpTensor>,
+    T2: Into<OpTensor> + From<OpTensor>,
+    T3: TensorTypeOrScalar<T2> + From<TensorTypeOrScalarEnum<T2>>,
+>(
+    tensor1: T1,
+    tensor2: T3,
+    tensor3: T3,
+) -> anyhow::Result<(OpTensor, T3, T3)> {
+    let tensor1: OpTensor = tensor1.into();
+
+    let dtype1 = tensor1.dtype();
+    let dtype2 = match tensor2.map_tensor(|t| t.into()).tensor_or_scalar()? {
+        TensorTypeOrScalarEnum::Tensor(ref t) => t.dtype(),
+        TensorTypeOrScalarEnum::Scalar(_) => DType::F32,
+    };
+    let dtype3 = match tensor3.map_tensor(|t| t.into()).tensor_or_scalar()? {
+        TensorTypeOrScalarEnum::Tensor(ref t) => t.dtype(),
+        TensorTypeOrScalarEnum::Scalar(_) => DType::F32,
+    };
+
+    let promoted = promote_types(promote_types(dtype1, dtype2)?, dtype3)?;
+
+    let promoted_tensor1 = if dtype1 == promoted {
+        tensor1
+    } else {
+        cast_kernel(tensor1, promoted)?
+    };
+
+    let promoted_tensor2 = if dtype2 == promoted {
+        tensor2
+    } else {
+        tensor2
+            .map_tensor(|t| cast_kernel(t.into(), promoted))?
+            .transpose()?
+            .map_tensor(|t| T2::from(t))?
+            .into()
+    };
+
+    let promoted_tensor3 = if dtype3 == promoted {
+        tensor3
+    } else {
+        tensor3
+            .map_tensor(|t| cast_kernel(t.into(), promoted))?
+            .transpose()?
+            .map_tensor(|t| T2::from(t))?
+            .into()
+    };
+
+    Ok((promoted_tensor1, promoted_tensor2, promoted_tensor3))
+}
+
 #[cfg(test)]
 use proptest::prelude::*;
 
-use crate::{rvec, Align, RVec, MIN_STORAGE_BUFFER_SIZE};
+use crate::{
+    Align, MIN_STORAGE_BUFFER_SIZE, OpTensor, RVec, TensorTypeOrScalar, TensorTypeOrScalarEnum,
+    cast_kernel, rvec,
+};
 
 #[cfg(test)]
 impl Arbitrary for DType {

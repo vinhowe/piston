@@ -1,14 +1,14 @@
 #[cfg(feature = "debug")]
-use crate::gpu::BindGroupLayoutEntryDescriptor;
-#[cfg(feature = "debug")]
 use crate::TensorId;
-use crate::{drvec, rvec, KernelKey, OperationError, PooledGPUBuffer, RVec, OpTensor};
+#[cfg(feature = "debug")]
+use crate::gpu::BindGroupLayoutEntryDescriptor;
+use crate::{KernelKey, OpTensor, OperationError, PooledGPUBuffer, RVec, drvec, rvec};
 use crate::{
+    TensorId,
     gpu::{
         BindGroupDescriptor, BindGroupLayoutHandle, ComputePipelineHandle, GpuBindGroup,
         WgpuDevice, WorkgroupCount,
     },
-    TensorId,
 };
 use derive_new::new;
 use std::sync::Arc;
@@ -56,6 +56,7 @@ pub struct CompiledOp {
     pub storage_bind_group_layout_entries: RVec<BindGroupLayoutEntryDescriptor>,
 }
 
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug)]
 pub enum Compiled {
     Copy(CompiledCopy),

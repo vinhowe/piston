@@ -5,10 +5,11 @@ use inline_wgsl::wgsl;
 use piston_macros::{IrFields, WgslMetadata};
 
 use crate::{
-    gpu::{dtype::WgslDType, BindGroupLayoutDescriptor},
-    rvec, wgc, wgs, Array, BindingMode, BuiltIn, DType, GPUOperation, Kernel, KernelElement,
-    KernelRenderable, KernelSource, OpGuards, OpTensor, Operation, OperationError, RVec, Scalar,
-    StorageView, Vec2, Vec4, WgslKernelBuilder, WgslPrimitive, WorkgroupSize, Workload,
+    Array, BindingMode, BuiltIn, DType, GPUOperation, Kernel, KernelElement, KernelRenderable,
+    KernelSource, OpGuards, OpTensor, Operation, OperationError, RVec, Scalar, StorageView, Vec2,
+    Vec4, WgslKernelBuilder, WgslPrimitive, WorkgroupSize, Workload,
+    gpu::{BindGroupLayoutDescriptor, dtype::WgslDType},
+    rvec, wgc, wgs,
 };
 
 #[derive(new, Debug, Clone, IrFields)]
@@ -28,8 +29,8 @@ pub struct SoftmaxMeta {
 impl OpGuards for Softmax {
     fn check_shapes(&self) {
         let input = &self.input;
-        assert!(input.rank() >= 2);
-        assert!(self.dim < input.rank());
+        assert!(input.dim() >= 2);
+        assert!(self.dim < input.dim());
     }
 
     fn check_dtypes(&self) {
@@ -106,7 +107,7 @@ impl KernelRenderable for SoftmaxKernels {
             _ => {
                 return Err(OperationError::CompileError(
                     "Invalid dimension".to_string(),
-                ))?
+                ))?;
             }
         };
 
@@ -214,9 +215,9 @@ impl Kernel for SoftmaxKernels {
         };
         let input = &inner.input;
         let N = input.shape()[inner.dim] as u32;
-        if N % 4 == 0 {
+        if N.is_multiple_of(4) {
             KernelElement::Vec4
-        } else if N % 2 == 0 {
+        } else if N.is_multiple_of(2) {
             KernelElement::Vec2
         } else {
             KernelElement::Scalar
@@ -308,12 +309,12 @@ impl GPUOperation for Softmax {
 
 #[cfg(all(test, feature = "pyo3"))]
 mod tests {
-    use test_strategy::{proptest, Arbitrary};
+    use test_strategy::{Arbitrary, proptest};
 
     use crate::test_util::run_py_prg;
-    use crate::{Device, DeviceRequest, OpTensor};
+    use crate::{Device, DeviceRequest, Tensor, randn};
 
-    fn ground_truth(a: &OpTensor) -> anyhow::Result<OpTensor> {
+    fn ground_truth(a: &Tensor) -> anyhow::Result<Tensor> {
         let prg = r#"
 import torch
 import torch.nn.functional as F
@@ -325,7 +326,7 @@ def softmax(a):
 
     fn run_softmax_trial(problem: SoftmaxProblem, device: Device) {
         let SoftmaxProblem { B, M, N } = problem;
-        let a = OpTensor::randn::<f32, _>(0., 1., (B, M, N), Device::CPU, false).unwrap();
+        let a = randn((B, M, N), None, None, Default::default()).unwrap();
         let ground = ground_truth(&a).unwrap();
 
         let a_gpu = a.to(&device).unwrap();

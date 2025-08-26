@@ -5,10 +5,11 @@ use inline_wgsl::wgsl;
 use piston_macros::{IrFields, WgslMetadata};
 
 use crate::{
-    gpu::{dtype::WgslDType, BindGroupLayoutDescriptor},
-    rvec, Array, BindingMode, BuiltIn, DType, GPUOperation, Kernel, KernelElement,
-    KernelRenderable, KernelSource, OpGuards, OpTensor, Operation, OperationError, RVec, Scalar,
-    StorageView, Vec2, Vec4, WgslKernelBuilder, WgslPrimitive, WorkgroupSize, Workload,
+    Array, BindingMode, BuiltIn, DType, GPUOperation, Kernel, KernelElement, KernelRenderable,
+    KernelSource, OpGuards, OpTensor, Operation, OperationError, RVec, Scalar, StorageView, Vec2,
+    Vec4, WgslKernelBuilder, WgslPrimitive, WorkgroupSize, Workload,
+    gpu::{BindGroupLayoutDescriptor, dtype::WgslDType},
+    rvec,
 };
 
 #[derive(new, Debug, Clone, IrFields)]
@@ -177,16 +178,16 @@ impl Kernel for AffineKernels {
 
     fn kernel_element(&self, _dst: &OpTensor) -> KernelElement {
         let AffineKernels::Standard(inner) = self;
-        let a_rank = inner.src.shape().rank();
+        let a_rank = inner.src.shape().dim();
         let N = if a_rank > 0 {
             inner.src.shape()[a_rank - 1]
         } else {
             1
         };
 
-        if N % 4 == 0 {
+        if N.is_multiple_of(4) {
             KernelElement::Vec4
-        } else if N % 2 == 0 {
+        } else if N.is_multiple_of(2) {
             KernelElement::Vec2
         } else {
             KernelElement::Scalar
@@ -232,11 +233,11 @@ impl Kernel for AffineKernels {
 #[cfg(all(test, feature = "pyo3"))]
 mod tests {
     use proptest::arbitrary::any;
-    use test_strategy::{proptest, Arbitrary};
+    use test_strategy::{Arbitrary, proptest};
 
-    use crate::{test_util::run_py_prg, Device, DeviceRequest, OpTensor};
+    use crate::{Device, DeviceRequest, Tensor, randn, test_util::run_py_prg};
 
-    fn ground_truth(a: &OpTensor, mul: f32, add: f32) -> anyhow::Result<OpTensor> {
+    fn ground_truth(a: &Tensor, mul: f32, add: f32) -> anyhow::Result<Tensor> {
         let prg = r#"
 import torch
 def affine(a, mul, add):
@@ -249,15 +250,15 @@ def affine(a, mul, add):
 
     fn run_affine_trial(problem: AffineProblem, device: Device) {
         let AffineProblem { B, M, N, add, mul } = problem;
-        let a = OpTensor::randn::<f32, _>(0., 1., (B, M, N), Device::CPU, false).unwrap();
+        let a = randn((B, M, N), None, None, Default::default()).unwrap();
         let ground = ground_truth(&a, mul, add).unwrap();
 
         let a_gpu = a.to(&device).unwrap();
         let b = a_gpu.affine(mul, add).unwrap();
 
         let ours = b.to(&Device::CPU).unwrap();
-        println!("ours = {:?}", ours);
-        println!("ground = {:?}", ground);
+        println!("ours = {ours:?}");
+        println!("ground = {ground:?}");
         ground.all_close(&ours, 1e-4, 1e-4).unwrap();
     }
 
@@ -278,10 +279,7 @@ def affine(a, mul, add):
     #[proptest(cases = 8)]
     fn test_affine(prob: AffineProblem) {
         let AffineProblem { B, M, N, mul, add } = prob;
-        println!(
-            "B = {}, M = {}, N = {}, mul = {}, add = {}",
-            B, M, N, mul, add
-        );
+        println!("B = {B}, M = {M}, N = {N}, mul = {mul}, add = {add}");
         let device = Device::request_device(DeviceRequest::GPU).unwrap();
         run_affine_trial(prob, device);
     }

@@ -1,14 +1,16 @@
 use anyhow::Result;
 use async_trait::async_trait;
 use js_sys::Function;
-use piston::{reset_scope_context, DType, Device, DeviceRequest, StepLog, Tensor};
+use piston::{
+    AllDims, DType, Device, DeviceRequest, StepLog, Tensor, TensorOptions, reset_scope_context,
+};
 use piston_models::gpt2::generate;
 use piston_models::gpt2::{Config, GPT2Input, PositionalEncoding};
-use piston_models::gpt2::{LayerNormPosition, GPT2};
+use piston_models::gpt2::{GPT2, LayerNormPosition};
 use piston_nn::{
-    label_smoothed_nll, log_softmax, nll_masked, Activation, AdamW, ConstantLR, CosineAnnealingLR,
-    LRScheduler, LRSchedulerCore, LinearLR, Module, Optimizer, ParamsAdamW, VarBuilder, VarMap,
-    SGD,
+    Activation, AdamW, ConstantLR, CosineAnnealingLR, LRScheduler, LRSchedulerCore, LinearLR,
+    Module, Optimizer, ParamsAdamW, SGD, VarBuilder, VarMap, label_smoothed_nll, log_softmax,
+    nll_masked,
 };
 use piston_nn::{ModuleMode, ModuleModeGuard};
 use serde::{Deserialize, Serialize};
@@ -239,6 +241,13 @@ impl Optimizer for OptimizerEnum {
             OptimizerEnum::SGD(opt) => opt.set_learning_rate(lr),
         }
     }
+
+    fn parameters(&self) -> Vec<&Tensor> {
+        match self {
+            OptimizerEnum::AdamW(opt) => opt.parameters(),
+            OptimizerEnum::SGD(opt) => opt.parameters(),
+        }
+    }
 }
 
 #[wasm_bindgen]
@@ -367,8 +376,7 @@ impl Trainer {
         let input_tensor = Tensor::from_data(
             input_flat,
             (batch_size, seq_len),
-            self.device.clone(),
-            false,
+            TensorOptions::new().device(self.device.clone()),
         );
 
         let (logits, attn_masks) = self.model.schedule(GPT2Input {
@@ -432,13 +440,12 @@ impl Trainer {
         let target_tensor = Tensor::from_data(
             target_flat,
             (batch_size, seq_len),
-            self.device.clone(),
-            false,
+            TensorOptions::new().device(self.device.clone()),
         );
 
         // Flatten the logits and targets, compute the cross-entropy loss with label smoothing
-        let logits_flat = logits.clone().flatten_to(1).map_err(|e| e.to_string())?;
-        let target_flat = target_tensor.flatten_to(1).map_err(|e| e.to_string())?;
+        let logits_flat = logits.clone().flatten(0, 1).map_err(|e| e.to_string())?;
+        let target_flat = target_tensor.flatten(0, 1).map_err(|e| e.to_string())?;
         let inp = log_softmax(logits_flat, 1).map_err(|e| e.to_string())?;
 
         let alpha = self.config.label_smoothing;
@@ -449,7 +456,10 @@ impl Trainer {
         };
 
         // We sum the loss outside of x entropy because we want to see per-token loss
-        let loss_summed = loss.clone().sum_all().map_err(|e| e.to_string())?;
+        let loss_summed = loss
+            .clone()
+            .sum(AllDims, false)
+            .map_err(|e| e.to_string())?;
 
         loss_summed.backward().map_err(|e| e.to_string())?;
 

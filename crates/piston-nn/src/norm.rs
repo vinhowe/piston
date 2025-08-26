@@ -59,7 +59,7 @@ impl crate::Module for LayerNorm {
     type Output = Tensor;
 
     fn schedule(&self, input: Self::Input) -> anyhow::Result<Tensor> {
-        input.layer_norm(self.weight.clone(), self.bias.clone(), self.eps)
+        input.layer_norm(Some(self.weight.clone()), self.bias.clone(), self.eps)
     }
 }
 
@@ -107,7 +107,7 @@ impl crate::Module for RMSNorm {
         let src_dtype = input.dtype();
         input
             .float()?
-            .rms_norm(self.weight.clone(), self.eps)?
+            .rms_norm(Some(self.weight.clone()), self.eps)?
             .cast(src_dtype)
     }
 }

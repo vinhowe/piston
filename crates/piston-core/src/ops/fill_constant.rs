@@ -4,11 +4,12 @@ use inline_wgsl::wgsl;
 use piston_macros::IrFields;
 
 use crate::{
-    gpu::{dtype::WgslDType, BindGroupLayoutDescriptor},
-    rvec, Array, BindingMode, BuiltIn, DType, DynKernelMetadata, GPUOperation, Kernel,
-    KernelElement, KernelRenderable, KernelSource, OpGuards, Operation, OperationError, RVec,
-    Scalar, Shape, StorageView, Stride, OpTensor, Vec2, Vec4, WgslKernelBuilder, WgslPrimitive,
-    WorkgroupSize, Workload,
+    Array, BindingMode, BuiltIn, DType, DynKernelMetadata, GPUOperation, Kernel, KernelElement,
+    KernelRenderable, KernelSource, OpGuards, OpTensor, Operation, OperationError, RVec, Scalar,
+    Shape, StorageView, Stride, Vec2, Vec4, WgslKernelBuilder, WgslPrimitive, WorkgroupSize,
+    Workload,
+    gpu::{BindGroupLayoutDescriptor, dtype::WgslDType},
+    rvec,
 };
 
 #[derive(new, Debug, Clone, IrFields)]
@@ -115,12 +116,12 @@ impl Kernel for FillConstantKernels {
     }
 
     fn kernel_element(&self, dst: &OpTensor) -> KernelElement {
-        let rank = dst.shape().rank();
+        let rank = dst.shape().dim();
         let N = if rank > 0 { dst.shape()[rank - 1] } else { 1 };
 
-        if N % 4 == 0 {
+        if N.is_multiple_of(4) {
             KernelElement::Vec4
-        } else if N % 2 == 0 {
+        } else if N.is_multiple_of(2) {
             KernelElement::Vec2
         } else {
             KernelElement::Scalar
@@ -138,7 +139,11 @@ impl Kernel for FillConstantKernels {
         Ok(BindGroupLayoutDescriptor::unary_inplace())
     }
 
-    fn metadata(&self, dst: &OpTensor, _: &KernelElement) -> Result<Self::Metadata, OperationError> {
+    fn metadata(
+        &self,
+        dst: &OpTensor,
+        _: &KernelElement,
+    ) -> Result<Self::Metadata, OperationError> {
         let FillConstantKernels::Standard(op) = self;
         let mut dyn_meta = DynKernelMetadata::new();
         dyn_meta.add_field("numel", dst.shape().numel() as u32);
@@ -196,11 +201,11 @@ impl Kernel for FillConstantKernels {
 
 #[cfg(all(test, feature = "pyo3"))]
 mod tests {
-    use test_strategy::{proptest, Arbitrary};
+    use test_strategy::{Arbitrary, proptest};
 
-    use crate::{test_util::run_py_prg, DType, Device, DeviceRequest, OpTensor};
+    use crate::{DType, Device, DeviceRequest, Tensor, TensorOptions, test_util::run_py_prg};
 
-    fn ground_truth(shape: &[usize], value: f32) -> anyhow::Result<OpTensor> {
+    fn ground_truth(shape: &[usize], value: f32) -> anyhow::Result<Tensor> {
         let prg = r#"
 import torch
 def fill_constant(shape, value):
@@ -213,15 +218,20 @@ def fill_constant(shape, value):
     fn run_fill_constant_trial(problem: FillConstantProblem, device: Device) {
         let FillConstantProblem { B, M, N, value } = problem;
 
-        let a = OpTensor::full((B, M, N), value, &device, false).unwrap();
+        let a = Tensor::full(
+            (B, M, N),
+            value,
+            TensorOptions::new().device(device.clone()),
+        )
+        .unwrap();
         let ground = ground_truth(&[B, M, N], value).unwrap();
 
         let a_gpu = a.to(&device).unwrap();
 
         let ours = a_gpu.to(&Device::CPU).unwrap();
 
-        println!("ours = {:?}", ours);
-        println!("ground = {:?}", ground);
+        println!("ours = {ours:?}");
+        println!("ground = {ground:?}");
 
         // Compare our result with ground truth
         ground.all_close(&ours, 1e-6, 1e-6).unwrap();
@@ -241,7 +251,7 @@ def fill_constant(shape, value):
     #[proptest(cases = 8)]
     fn test_fill_constant(prob: FillConstantProblem) {
         let FillConstantProblem { B, M, N, value } = prob;
-        println!("B = {}, M = {}, N = {}, value = {}", B, M, N, value);
+        println!("B = {B}, M = {M}, N = {N}, value = {value}");
         let device = Device::request_device(DeviceRequest::GPU).unwrap();
         run_fill_constant_trial(prob, device);
     }

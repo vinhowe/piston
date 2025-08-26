@@ -5,10 +5,11 @@ use half::f16;
 use piston_macros::{IrFields, WgslMetadata};
 
 use crate::{
-    gpu::{dtype::WgslDType, BindGroupLayoutDescriptor, WorkgroupCount},
-    rvec, shape, wgc, wgs, Array, BindingMode, BuiltIn, DType, GPUOperation, Kernel, KernelElement,
-    KernelRenderable, KernelSource, OpGuards, Operation, OperationError, RVec, Scalar, StorageView,
-    Stride, OpTensor, Vec2, Vec4, WgslKernelBuilder, WgslPrimitive, WorkgroupSize, Workload,
+    Array, BindingMode, BuiltIn, DType, GPUOperation, Kernel, KernelElement, KernelRenderable,
+    KernelSource, OpGuards, OpTensor, Operation, OperationError, RVec, Scalar, StorageView, Stride,
+    Vec2, Vec4, WgslKernelBuilder, WgslPrimitive, WorkgroupSize, Workload,
+    gpu::{BindGroupLayoutDescriptor, WorkgroupCount, dtype::WgslDType},
+    rvec, shape, wgc, wgs,
 };
 use inline_wgsl::wgsl;
 
@@ -138,8 +139,8 @@ pub struct ConvMeta {
 
 impl OpGuards for Conv {
     fn check_shapes(&self) {
-        assert_eq!(self.input.rank(), 3);
-        assert_eq!(self.weight.rank(), 3);
+        assert_eq!(self.input.dim(), 3);
+        assert_eq!(self.weight.dim(), 3);
         let [_, _, KS]: [usize; 3] = self.weight.shape().try_into().unwrap();
         assert_eq!(KS, 3); //only have 3 kernel size for now
     }
@@ -147,11 +148,12 @@ impl OpGuards for Conv {
     fn check_dtypes(&self) {
         assert!(self.input.dtype().is_float());
         assert!(self.weight.dtype().is_float());
-        assert!(self
-            .bias
-            .as_ref()
-            .map(|t| t.dtype().is_float())
-            .unwrap_or(true));
+        assert!(
+            self.bias
+                .as_ref()
+                .map(|t| t.dtype().is_float())
+                .unwrap_or(true)
+        );
     }
 }
 
@@ -203,7 +205,11 @@ impl Kernel for ConvKernels {
         }
     }
 
-    fn metadata(&self, dst: &OpTensor, _: &KernelElement) -> Result<Self::Metadata, OperationError> {
+    fn metadata(
+        &self,
+        dst: &OpTensor,
+        _: &KernelElement,
+    ) -> Result<Self::Metadata, OperationError> {
         let ConvKernels::Threebythree(inner) = self;
         let [_N, Cin, Lin]: [usize; 3] = inner.input.shape().try_into()?;
         let [_Cout, _, KS]: [usize; 3] = inner.weight.shape().try_into()?;
@@ -288,18 +294,18 @@ impl GPUOperation for Conv {
 
 #[cfg(all(test, feature = "pyo3"))]
 mod tests {
-    use test_strategy::{proptest, Arbitrary};
+    use test_strategy::{Arbitrary, proptest};
 
     use crate::test_util::run_py_prg;
-    use crate::{Device, DeviceRequest, OpTensor};
+    use crate::{Device, DeviceRequest, Tensor, randn};
 
     fn ground_truth(
-        input: &OpTensor,
-        filters: &OpTensor,
-        bias: &OpTensor,
+        input: &Tensor,
+        filters: &Tensor,
+        bias: &Tensor,
         stride: usize,
         padding: usize,
-    ) -> anyhow::Result<OpTensor> {
+    ) -> anyhow::Result<Tensor> {
         let prg = r#"
 import torch
 import torch.nn.functional as F
@@ -324,9 +330,9 @@ def conv(input, filters, bias, stride, padding):
             Cout,
             stride,
         } = problem;
-        let input = OpTensor::randn::<f32, _>(0., 1., (1, Cin, Lin), Device::CPU, false).unwrap();
-        let weight = OpTensor::randn::<f32, _>(0., 1., (Cout, Cin, 3), Device::CPU, false).unwrap();
-        let bias = OpTensor::randn::<f32, _>(0., 1., Cout, Device::CPU, false).unwrap();
+        let input = randn((1, Cin, Lin), None, None, Default::default()).unwrap();
+        let weight = randn((Cout, Cin, 3), None, None, Default::default()).unwrap();
+        let bias = randn(Cout, None, None, Default::default()).unwrap();
         let ground = ground_truth(&input, &weight, &bias, stride, 1).unwrap();
 
         let input = input.to(device).unwrap();
@@ -335,8 +341,8 @@ def conv(input, filters, bias, stride, padding):
         let ours = input.conv1d(weight, Some(bias), stride, 1).unwrap();
         let ours = ours.to(&Device::CPU).unwrap();
 
-        println!("ours = {:?}", ours);
-        println!("ground = {:?}", ground);
+        println!("ours = {ours:?}");
+        println!("ground = {ground:?}");
         ground.all_close(&ours, 5e-3, 5e-3).unwrap();
     }
 
@@ -345,7 +351,7 @@ def conv(input, filters, bias, stride, padding):
         #[strategy(16..=1024usize)]
         Cin: usize,
         #[strategy(16..=1024usize)]
-        #[filter(#Lin % 3 == 0)]
+        #[filter(#Lin.is_multiple_of(3))]
         Lin: usize,
         #[strategy(16..=1024usize)]
         Cout: usize,
@@ -362,10 +368,7 @@ def conv(input, filters, bias, stride, padding):
             Cout,
             stride,
         } = prob;
-        println!(
-            "Cin = {}, Lin = {}, Cout = {}, stride = {}",
-            Cin, Lin, Cout, stride
-        );
+        println!("Cin = {Cin}, Lin = {Lin}, Cout = {Cout}, stride = {stride}");
         run_conv_trial(&device, prob);
     }
 }

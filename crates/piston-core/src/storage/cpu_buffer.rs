@@ -1,7 +1,7 @@
 use bytemuck::{NoUninit, Pod};
 use half::f16;
 
-use crate::{storage::DeviceStorage, DType, Device, DeviceError, GPUBuffer, Shape, TensorDType};
+use crate::{DType, Device, DeviceError, GPUBuffer, Shape, TensorDType, storage::DeviceStorage};
 
 use maybe_async::maybe_async;
 use std::{alloc::Layout, fmt::Debug, mem::MaybeUninit, sync::Arc};
@@ -73,6 +73,7 @@ unsafe impl Sync for CPUBuffer {}
 impl CPUBuffer {
     pub fn new(inner: RawCPUBuffer) -> Self {
         Self {
+            #[allow(clippy::arc_with_non_send_sync)]
             inner: Arc::new(inner),
         }
     }
@@ -183,7 +184,7 @@ impl DeviceStorage for CPUBuffer {
         fn dump_inner<T: TensorDType>(data: &[T], full: bool) -> String {
             let length = if data.len() < 64 { data.len() } else { 64 };
             if full {
-                format!("{:?}", data)
+                format!("{data:?}")
             } else {
                 format!(
                     "{:?} ... {:?}",
@@ -197,7 +198,7 @@ impl DeviceStorage for CPUBuffer {
             DType::I32 => dump_inner(bytemuck::cast_slice::<u8, i32>(bytes), full),
             DType::U32 => dump_inner(bytemuck::cast_slice::<u8, u32>(bytes), full),
             DType::F16 => dump_inner(bytemuck::cast_slice::<u8, f16>(bytes), full),
-            dtype => format!("[{:?} dump not yet supported]", dtype),
+            dtype => format!("[{dtype:?} dump not yet supported]"),
         }
     }
 }

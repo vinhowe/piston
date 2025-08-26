@@ -17,8 +17,8 @@ use slice::SliceMeta;
 use crate::{
     gpu::{BindGroupLayoutDescriptor, CpuUniform},
     rvec, Array, BindingMode, BuiltIn, DType, GPUOperation, Kernel, KernelElement, KernelMetadata,
-    KernelRenderable, KernelSource, OpGuards, Operation, OperationError, RVec, Scalar, Shape,
-    Stride, OpTensor, WgslKernelBuilder, WgslPrimitive, WorkgroupSize, Workload,
+    KernelRenderable, KernelSource, OpGuards, OpTensor, Operation, OperationError, RVec, Scalar,
+    Shape, Stride, WgslKernelBuilder, WgslPrimitive, WorkgroupSize, Workload,
 };
 use glam::UVec4;
 
@@ -167,7 +167,11 @@ impl Kernel for ReindexKernels {
         }
     }
 
-    fn metadata(&self, dst: &OpTensor, _: &KernelElement) -> Result<Self::Metadata, OperationError> {
+    fn metadata(
+        &self,
+        dst: &OpTensor,
+        _: &KernelElement,
+    ) -> Result<Self::Metadata, OperationError> {
         let ReindexKernels::Standard(inner) = self;
         let srcs = inner.srcs();
         let src = srcs.first().unwrap();

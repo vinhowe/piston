@@ -5,11 +5,12 @@ use inline_wgsl::wgsl;
 use piston_macros::{IrFields, WgslMetadata};
 
 use crate::{
-    gpu::{dtype::WgslDType, BindGroupLayoutDescriptor},
-    rvec, Array, BindingMode, BuiltIn, DType, GPUOperation, InvariantError, Kernel, KernelElement,
+    Array, BindingMode, BuiltIn, DType, GPUOperation, InvariantError, Kernel, KernelElement,
     KernelRenderable, KernelSource, OpGuards, OpTensor, Operation, OperationError, RVec, Scalar,
     Shape, StorageView, Stride, Vec2, Vec4, WgslKernelBuilder, WgslPrimitive, WorkgroupSize,
     Workload,
+    gpu::{BindGroupLayoutDescriptor, dtype::WgslDType},
+    rvec,
 };
 #[cfg(test)]
 use test_strategy::Arbitrary;
@@ -251,9 +252,9 @@ impl Kernel for TernaryKernels {
     fn kernel_element(&self, dst: &OpTensor) -> KernelElement {
         let numel = dst.shape().numel();
 
-        if numel % 4 == 0 {
+        if numel.is_multiple_of(4) {
             KernelElement::Vec4
-        } else if numel % 2 == 0 {
+        } else if numel.is_multiple_of(2) {
             KernelElement::Vec2
         } else {
             KernelElement::Scalar
@@ -303,8 +304,8 @@ impl Kernel for TernaryKernels {
 #[cfg(all(test, feature = "pyo3"))]
 #[cfg(test)]
 mod tests {
-    use crate::{test_util::run_py_prg, Device, DeviceRequest, OpTensor, Shape, TernaryOp};
-    use test_strategy::{proptest, Arbitrary};
+    use crate::{Device, DeviceRequest, Shape, Tensor, TernaryOp, randn, test_util::run_py_prg};
+    use test_strategy::{Arbitrary, proptest};
 
     #[derive(Arbitrary, Debug)]
     struct TernaryProblem {
@@ -314,29 +315,27 @@ mod tests {
     }
 
     fn ground_truth(
-        input: &OpTensor,
-        tensor1: &OpTensor,
-        tensor2: &OpTensor,
+        input: &Tensor,
+        tensor1: &Tensor,
+        tensor2: &Tensor,
         value: f32,
         op: &TernaryOp,
-    ) -> anyhow::Result<OpTensor> {
+    ) -> anyhow::Result<Tensor> {
         let kn = op.kernel_name();
         let prg = match op {
             TernaryOp::Addcdiv => format!(
                 r#"
 import torch
-def {}(input, tensor1, tensor2):
-    return torch.addcdiv(torch.from_numpy(input), torch.from_numpy(tensor1), torch.from_numpy(tensor2), value={}).numpy()
+def {kn}(input, tensor1, tensor2):
+    return torch.addcdiv(torch.from_numpy(input), torch.from_numpy(tensor1), torch.from_numpy(tensor2), value={value}).numpy()
 "#,
-                kn, value
             ),
             TernaryOp::Addcmul => format!(
                 r#"
 import torch
-def {}(input, tensor1, tensor2):
-    return torch.addcmul(torch.from_numpy(input), torch.from_numpy(tensor1), torch.from_numpy(tensor2), value={}).numpy()
+def {kn}(input, tensor1, tensor2):
+    return torch.addcmul(torch.from_numpy(input), torch.from_numpy(tensor1), torch.from_numpy(tensor2), value={value}).numpy()
 "#,
-                kn, value
             ),
         };
         run_py_prg(
@@ -348,11 +347,10 @@ def {}(input, tensor1, tensor2):
     }
 
     fn run_ternary_trial(prob: TernaryProblem, device: Device) -> anyhow::Result<()> {
-        let cpu_device = Device::request_device(DeviceRequest::CPU)?;
         let TernaryProblem { op, shape } = prob;
-        let input = OpTensor::randn::<f32, _>(0., 1., shape.clone(), cpu_device.clone(), false)?;
-        let tensor1 = OpTensor::randn::<f32, _>(0., 1., shape.clone(), cpu_device.clone(), false)?;
-        let tensor2 = OpTensor::randn::<f32, _>(0., 1., shape, cpu_device.clone(), false)?;
+        let input = randn(shape.clone(), None, None, Default::default())?;
+        let tensor1 = randn(shape.clone(), None, None, Default::default())?;
+        let tensor2 = randn(shape, None, None, Default::default())?;
         let value = 0.5;
         let ground = ground_truth(&input, &tensor1, &tensor2, value, &op)?;
 
