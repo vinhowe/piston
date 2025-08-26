@@ -1,4 +1,5 @@
 export {
+  __pistonActiveTensors,
   _popFunctionMode,
   _pushFunctionMode,
   _setFunctionModeConstructor,
@@ -25,7 +26,6 @@ export {
   seed as seed_wasm,
   stack,
   Tensor as Tensor_wasm,
-  TensorOptions,
   Trainer as Trainer_wasm,
   uint32 as uint32_wasm,
   default as wasmInit,

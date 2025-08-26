@@ -1,8 +1,10 @@
 use js_sys::Array;
+use js_sys::Promise;
 use js_sys::{Function, Reflect};
 use piston::{RVec, rvec};
 use std::cell::RefCell;
 use wasm_bindgen::JsCast;
+use wasm_bindgen::closure::Closure;
 use wasm_bindgen::prelude::*;
 
 use crate::error::IntoJsError;
@@ -76,6 +78,11 @@ fn check_has_piston_function(mode_obj: &JsValue) -> bool {
 }
 
 pub fn get_overloaded_args<'a, const N: usize>(args: &[&'a JsValue; N]) -> RVec<&'a JsValue> {
+    // If we're currently in subclass dispatch, suppress further subclass-based overloading
+    // to avoid recursive redispatch when the subclass calls the original function.
+    if is_subclass_dispatch_active() {
+        return rvec![];
+    }
     let mut overloaded_args = rvec![];
     for &arg in args {
         if check_has_piston_function(arg) {
@@ -92,7 +99,7 @@ fn dispatch_on_mode(
     js_types: &RVec<JsValue>,
     original_function: &Function,
 ) -> Result<Option<JsValue>, JsError> {
-    let _mode_guard = StashFunctionModeGuard::new();
+    let mut _mode_guard = StashFunctionModeGuard::new();
     let mode_obj = &_mode_guard
         .current_mode
         .as_ref()
@@ -104,7 +111,7 @@ fn dispatch_on_mode(
             .and_then(|v: JsValue| v.dyn_into())
             .map_err(|_| JsError::new("Mode object does not have a _pistonFunction method"))?;
 
-    piston_function_func
+    let ret = piston_function_func
         .apply(
             mode_obj,
             &Array::of4(
@@ -114,14 +121,32 @@ fn dispatch_on_mode(
                 named_args,
             ),
         )
-        .map_err(|e| e.into_js_error())
-        .map(|v| {
-            if v.is_undefined() || v.is_null() {
-                None
-            } else {
-                Some(v)
+        .map_err(|e| e.into_js_error())?;
+
+    // If the handler returned a Promise, keep function-mode disabled until it settles.
+    if let Some(promise) = ret.dyn_ref::<Promise>() {
+        // Prevent Drop from restoring the mode now; it will be restored in the finally callback.
+        let saved_mode = std::rc::Rc::new(std::cell::RefCell::new(_mode_guard.current_mode.take()));
+        let saved_mode_for_cb = saved_mode.clone();
+
+        let finally_cb = Closure::once(move || {
+            if let Some(mode) = saved_mode_for_cb.borrow_mut().take() {
+                push_function_mode(mode);
             }
-        })
+        });
+
+        let new_promise = promise.finally(&finally_cb);
+        // Leak the closure to keep it alive until JS calls it.
+        finally_cb.forget();
+        return Ok(Some(new_promise.unchecked_into()));
+    }
+
+    // Immediate value: let the guard restore on drop; just propagate value/None.
+    if ret.is_undefined() || ret.is_null() {
+        Ok(None)
+    } else {
+        Ok(Some(ret))
+    }
 }
 
 // #[cfg(disable)]
@@ -151,7 +176,9 @@ fn dispatch_on_subclass(
         // torchfunction mode. I don't know what that means, and most of the useful places I see it
         // do call it with torchfunction mode.
 
-        if let Ok(ret_) = piston_function_func
+        // Suppress nested subclass overloading while the original function is called.
+        push_subclass_dispatch();
+        let applied = piston_function_func
             .apply(
                 // This is a static method, so we pass in the type
                 &js_type,
@@ -162,9 +189,28 @@ fn dispatch_on_subclass(
                     named_args,
                 ),
             )
-            .map_err(|e| e.into_js_error())
-        {
-            // We have to separate this from the if statement because we move ret_ into the option.
+            .map_err(|e| e.into_js_error());
+
+        let ret_ = match applied {
+            Ok(v) => v,
+            Err(e) => {
+                pop_subclass_dispatch();
+                return Err(e);
+            }
+        };
+
+        if let Some(promise) = ret_.dyn_ref::<Promise>() {
+            // Keep subclass-dispatch suppression active until the Promise settles.
+            let finally_cb = Closure::once(move || {
+                pop_subclass_dispatch();
+            });
+            let new_promise = promise.finally(&finally_cb);
+            finally_cb.forget();
+            ret = Some(new_promise.unchecked_into());
+            break;
+        } else {
+            // Immediate value: restore suppression now.
+            pop_subclass_dispatch();
             let is_undefined_or_null = ret_.is_undefined() || ret_.is_null();
             ret = Some(ret_);
             if !is_undefined_or_null {
@@ -270,6 +316,29 @@ pub fn pop_function_mode_js() -> JsValue {
 /// Is there at least one active function mode on this thread?
 pub fn is_function_mode_active() -> bool {
     FUNCTION_MODE_STACK.with(|stack| !stack.borrow().is_empty())
+}
+
+// Subclass-dispatch suppression: prevent re-entrant subclass redispatch when a subclass
+// implementation calls the original function. We model this as a depth counter.
+thread_local! {
+    static SUBCLASS_DISPATCH_DEPTH: RefCell<u32> = const { RefCell::new(0) };
+}
+
+fn push_subclass_dispatch() {
+    SUBCLASS_DISPATCH_DEPTH.with(|d| *d.borrow_mut() = d.borrow().saturating_add(1));
+}
+
+fn pop_subclass_dispatch() {
+    SUBCLASS_DISPATCH_DEPTH.with(|d| {
+        let mut b = d.borrow_mut();
+        if *b > 0 {
+            *b -= 1;
+        }
+    });
+}
+
+fn is_subclass_dispatch_active() -> bool {
+    SUBCLASS_DISPATCH_DEPTH.with(|d| *d.borrow() > 0)
 }
 
 /// RAII guard that temporarily removes the active function mode so that nested

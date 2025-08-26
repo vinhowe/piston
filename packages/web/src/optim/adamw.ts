@@ -1,12 +1,12 @@
 import { zerosLike } from "@/globals";
-import { tensorName, withScope } from "@/nn/tracking";
 import { Parameter } from "@/nn/parameter";
 import { Optimizer } from "@/optim/optimizer";
 import { OptimizerParamState, ParamGroup } from "@/optim/optimizer";
 import { Tensor } from "@/tensor";
+import { pin } from "@/utils/weak";
 import { Device } from "@/wasm";
 
-export interface AdamWParamState extends OptimizerParamState {
+interface AdamWParamState extends OptimizerParamState {
   step: number;
   expAvg: Tensor | null;
   expAvgSq: Tensor | null;
@@ -14,11 +14,11 @@ export interface AdamWParamState extends OptimizerParamState {
 }
 
 export interface AdamWParamGroup extends ParamGroup {
-  lr: number;
-  betas: [number, number];
-  eps: number;
-  weightDecay: number;
-  amsgrad: boolean;
+  lr?: number;
+  betas?: [number, number];
+  eps?: number;
+  weightDecay?: number;
+  amsgrad?: boolean;
 }
 
 export interface AdamWConfig {
@@ -102,104 +102,77 @@ export class AdamW extends Optimizer<AdamWParamState> {
     }
 
     // Perform optimization for each parameter group
-    let paramGroupIndex = 0;
     for (const group of this.paramGroups) {
-      withScope(
-        [
-          {
-            type: "optimizer-param-group",
-            optimizer: this,
-            paramGroup: group,
-            name: paramGroupIndex.toString(),
-          },
-        ],
-        () => {
-          paramGroupIndex++;
+      const {
+        lr = this.defaults.lr as number,
+        betas = this.defaults.betas as [number, number],
+        eps = this.defaults.eps as number,
+        weightDecay = this.defaults.weightDecay as number,
+        amsgrad = this.defaults.amsgrad as number,
+      } = group as AdamWParamGroup;
 
-          const {
-            lr = this.defaults.lr as number,
-            betas = this.defaults.betas as [number, number],
-            eps = this.defaults.eps as number,
-            weightDecay = this.defaults.weightDecay as number,
-            amsgrad = this.defaults.amsgrad as number,
-          } = group as AdamWParamGroup;
+      const [beta1, beta2] = betas as [number, number];
 
-          const [beta1, beta2] = betas as [number, number];
+      for (const param of group.params) {
+        if (!param.grad) {
+          continue;
+        }
 
-          for (const param of group.params) {
-            if (!param.grad()) {
-              continue;
-            }
+        const grad = param.grad as Tensor;
 
-            withScope(
-              [
-                {
-                  type: "optimizer-param-update",
-                  optimizer: this,
-                  parameter: param,
-                  name: tensorName(param),
-                },
-              ],
-              () => {
-                const grad = param.grad() as Tensor;
+        // Apply weight decay
+        if (weightDecay !== 0) {
+          param.mul_(1 - lr * weightDecay);
+        }
 
-                // Apply weight decay
-                if (weightDecay !== 0) {
-                  param.mul_(1 - lr * weightDecay);
-                }
+        // Get parameter state
+        let state = this.state.get(param);
+        if (!state) {
+          state = {
+            step: 0,
+            expAvg: pin(zerosLike(param)),
+            expAvgSq: pin(zerosLike(param)),
+          };
 
-                // Get parameter state
-                let state = this.state.get(param);
-                if (!state) {
-                  state = {
-                    step: 0,
-                    expAvg: zerosLike(param),
-                    expAvgSq: zerosLike(param),
-                  };
-
-                  if (amsgrad) {
-                    state.maxExpAvgSq = zerosLike(param);
-                  }
-
-                  this.state.set(param, state);
-                }
-
-                const expAvg = state.expAvg as Tensor;
-                const expAvgSq = state.expAvgSq as Tensor;
-                const maxExpAvgSq = amsgrad ? (state.maxExpAvgSq as Tensor) : null;
-
-                // Increment step counter
-                state.step++;
-
-                // Decay the first and second moment running average coefficient
-                expAvg.mul_(beta1).add_(grad.mul(1 - beta1));
-                expAvgSq.mul_(beta2).addcmul_(grad, grad, 1 - beta2);
-
-                // Compute bias correction terms
-                const biasCorrection1 = 1 - Math.pow(beta1, state.step);
-                const biasCorrection2 = 1 - Math.pow(beta2, state.step);
-
-                // Use the max avg squared if using amsgrad
-                let denom;
-                if (amsgrad) {
-                  // Update max exponential moving average of squared gradient
-                  maxExpAvgSq!.maximum_(expAvgSq);
-                  // Use the max for normalization
-                  denom = maxExpAvgSq!.sqrt().div(Math.sqrt(biasCorrection2)).add(eps);
-                } else {
-                  denom = expAvgSq.sqrt().div(Math.sqrt(biasCorrection2)).add(eps);
-                }
-
-                // Compute step size
-                const stepSize = lr / biasCorrection1;
-
-                // Update parameters
-                param.addcdiv_(expAvg, denom, -stepSize);
-              },
-            );
+          if (amsgrad) {
+            state.maxExpAvgSq = pin(zerosLike(param));
           }
-        },
-      );
+
+          this.state.set(param, state);
+        }
+
+        const expAvg = state.expAvg as Tensor;
+        const expAvgSq = state.expAvgSq as Tensor;
+        const maxExpAvgSq = amsgrad ? (state.maxExpAvgSq as Tensor) : null;
+
+        // Increment step counter
+        state.step++;
+
+        // Decay the first and second moment running average coefficient
+        expAvg.mul_(beta1).add_(grad.mul(1 - beta1));
+        expAvgSq.mul_(beta2).addcmul_(grad, grad, 1 - beta2);
+
+        // Compute bias correction terms
+        const biasCorrection1 = 1 - Math.pow(beta1, state.step);
+        const biasCorrection2 = 1 - Math.pow(beta2, state.step);
+
+        // Use the max avg squared if using amsgrad
+        let denom;
+        if (amsgrad) {
+          // Update max exponential moving average of squared gradient
+          maxExpAvgSq!.maximum_(expAvgSq);
+          // Use the max for normalization
+          denom = maxExpAvgSq!.sqrt().div(Math.sqrt(biasCorrection2)).add(eps);
+        } else {
+          denom = expAvgSq.sqrt().div(Math.sqrt(biasCorrection2)).add(eps);
+        }
+
+        // Compute step size
+        const stepSize = lr / biasCorrection1;
+
+        // Update parameters
+        param.addcdiv_(expAvg, denom, -stepSize);
+      }
     }
 
     await this.device.markStep();

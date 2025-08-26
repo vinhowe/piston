@@ -1,12 +1,12 @@
 import { zerosLike } from "@/globals";
-import { tensorName, withScope } from "@/nn/tracking";
 import { Parameter } from "@/nn/parameter";
 import { Optimizer } from "@/optim/optimizer";
 import { OptimizerParamState, ParamGroup } from "@/optim/optimizer";
 import { Tensor } from "@/tensor";
-import { Device } from "@/wasm";
+import { pin } from "@/utils/weak";
+import { _popFunctionMode, _pushFunctionMode, Device } from "@/wasm";
 
-export interface SGDParamState extends OptimizerParamState {
+interface SGDParamState extends OptimizerParamState {
   momentumBuffer?: Tensor | null;
 }
 
@@ -93,7 +93,6 @@ export class SGD extends Optimizer<SGDParamState> {
     }
 
     // Perform optimization for each parameter group
-    let paramGroupIndex = 0;
     for (const group of this.paramGroups) {
       const {
         lr = this.defaults.lr as number,
@@ -103,70 +102,44 @@ export class SGD extends Optimizer<SGDParamState> {
         nesterov = this.defaults.nesterov as boolean,
       } = group as SGDParamGroup;
 
-      withScope(
-        [
-          {
-            type: "optimizer-param-group",
-            optimizer: this,
-            paramGroup: group,
-            name: paramGroupIndex.toString(),
-          },
-        ],
-        () => {
-          paramGroupIndex++;
+      for (const param of group.params) {
+        if (!param.grad) {
+          continue;
+        }
 
-          for (const param of group.params) {
-            if (!param.grad()) {
-              continue;
-            }
+        let grad = param.grad as Tensor;
 
-            withScope(
-              [
-                {
-                  type: "optimizer-param-update",
-                  optimizer: this,
-                  parameter: param,
-                  name: tensorName(param),
-                },
-              ],
-              () => {
-                let grad = param.grad() as Tensor;
+        // Apply weight decay
+        if (weightDecay !== 0) {
+          grad = grad.add(param.mul(weightDecay));
+        }
 
-                // Apply weight decay
-                if (weightDecay !== 0) {
-                  grad = grad.add(param.mul(weightDecay));
-                }
-
-                // Apply momentum
-                if (momentum !== 0) {
-                  let state = this.state.get(param);
-                  if (!state) {
-                    state = {};
-                    this.state.set(param, state);
-                  }
-
-                  let buf = state.momentumBuffer;
-                  if (!buf) {
-                    buf = zerosLike(grad);
-                    state.momentumBuffer = buf;
-                  } else {
-                    buf.mul_(momentum).add_(grad.mul(1 - dampening));
-                  }
-
-                  if (nesterov) {
-                    grad = grad.add(buf!.mul(momentum));
-                  } else {
-                    grad = buf!;
-                  }
-                }
-
-                // Update parameters
-                param.add_(grad.mul(-lr));
-              },
-            );
+        // Apply momentum
+        if (momentum !== 0) {
+          let state = this.state.get(param);
+          if (!state) {
+            state = {};
+            this.state.set(param, state);
           }
-        },
-      );
+
+          let buf = state.momentumBuffer;
+          if (!buf) {
+            buf = pin(zerosLike(grad));
+            state.momentumBuffer = buf;
+          } else {
+            buf.mul_(momentum).add_(grad.mul(1 - dampening));
+          }
+
+          if (nesterov) {
+            grad = grad.add(buf!.mul(momentum));
+          } else {
+            grad = buf!;
+          }
+        }
+
+        // Update parameters
+        param.add_(grad.mul(-lr));
+      }
     }
 
     await this.device.markStep();

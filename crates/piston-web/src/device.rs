@@ -40,6 +40,11 @@ impl JsDevice {
         Ok(())
     }
 
+    #[wasm_bindgen(js_name = beginPass)]
+    pub fn begin_pass(&self) {
+        self.inner.try_gpu().unwrap().begin_pass(0);
+    }
+
     #[wasm_bindgen(getter)]
     pub fn name(&self) -> String {
         match self.inner {
@@ -88,7 +93,7 @@ pub fn gpu_sync() -> Result<JsDevice, JsError> {
         .ok_or(JsError::new("GPU device not initialized"))
 }
 
-pub async fn cpu() -> JsDevice {
+pub fn cpu() -> JsDevice {
     JsDevice { inner: Device::CPU }
 }
 
@@ -99,7 +104,7 @@ pub async fn gpu_wasm() -> Result<JsDevice, JsValue> {
 
 #[wasm_bindgen(js_name = cpu)]
 pub async fn cpu_wasm() -> Result<JsDevice, JsValue> {
-    Ok(cpu().await)
+    Ok(cpu())
 }
 
 #[wasm_bindgen]
@@ -142,7 +147,16 @@ impl<'de> Deserialize<'de> for JsDevice {
 impl TryFrom<JsValue> for JsDevice {
     type Error = JsError;
     fn try_from(value: JsValue) -> Result<Self, Self::Error> {
-        downcast_from_ptr(&value, "__wbg_piston_device")
-            .ok_or_else(|| JsError::new("Failed to downcast Device from JS value"))
+        if value.is_string() {
+            let s = value.as_string().unwrap();
+            match s.as_str() {
+                "cpu" => Ok(cpu()),
+                "gpu" | "webgpu" => gpu_sync(),
+                _ => Err(JsError::new(&format!("Unsupported device name: {s}"))),
+            }
+        } else {
+            downcast_from_ptr(&value, "__wbg_piston_device", false)
+                .ok_or_else(|| JsError::new("Failed to downcast Device from JS value"))
+        }
     }
 }

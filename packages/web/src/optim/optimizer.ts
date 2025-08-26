@@ -1,7 +1,6 @@
-import { ScopeItem, withScope } from "@/nn/tracking";
 import { zerosLike } from "@/globals";
 import { Parameter } from "@/nn/parameter";
-import { Tensor, TensorHook } from "@/tensor";
+import { Tensor } from "@/tensor";
 import { RemovableHandle } from "@/utils";
 import { Device } from "@/wasm";
 
@@ -19,7 +18,6 @@ export interface ParamGroupConfig {
 export interface ParamGroup {
   params: Parameter[];
   lr?: number;
-  weightDecay?: number;
   [key: string]: unknown;
 }
 
@@ -69,11 +67,8 @@ export class Optimizer<TState extends OptimizerParamState = OptimizerParamState>
   device: Device;
   state: Map<Parameter, TState>;
   paramGroups: ParamGroup[];
-  scope: ScopeItem[] | undefined;
   private _optimizerStepPreHooks: Map<number, OptimizerPreHook>;
   private _optimizerStepPostHooks: Map<number, OptimizerPostHook>;
-  /** @internal Tensor class can access the map on its parent module to execute hooks */
-  _tensorHooks: Map<number, TensorHook>;
 
   /**
    * Creates a new optimizer
@@ -92,7 +87,6 @@ export class Optimizer<TState extends OptimizerParamState = OptimizerParamState>
     this.paramGroups = [];
     this._optimizerStepPreHooks = new Map();
     this._optimizerStepPostHooks = new Map();
-    this._tensorHooks = new Map();
 
     if (params instanceof Parameter) {
       throw new TypeError(
@@ -126,22 +120,13 @@ export class Optimizer<TState extends OptimizerParamState = OptimizerParamState>
             ...args: unknown[]
           ) => Promise<number | undefined>;
 
-          // Return a wrapped async function
+          // Return a wrapped async function that uses hooks
           return async function (...args: unknown[]): Promise<number | undefined> {
-            return withScope(
-              [
-                {
-                  type: "optimizer",
-                  optimizer: target,
-                  name: undefined,
-                },
-                ...(target.scope ?? []),
-              ],
-              () => {
-                return Reflect.apply(originalStep, receiver, args);
-              },
-              { replace: true },
-            );
+            return (target as Optimizer<TState>)._stepWithHooks(
+              (...hookArgs: unknown[]) => Reflect.apply(originalStep, receiver, hookArgs),
+              args,
+              {},
+            ) as Promise<number | undefined>;
           };
         }
 
@@ -174,19 +159,6 @@ export class Optimizer<TState extends OptimizerParamState = OptimizerParamState>
   registerStepPostHook(hook: OptimizerPostHook): RemovableHandle {
     const handle = new RemovableHandle(this._optimizerStepPostHooks);
     this._optimizerStepPostHooks.set(handle.id, hook);
-    return handle;
-  }
-
-  /**
-   * Register a tensor hook
-   * The hook will be called when a tensor is created
-   *
-   * @param hook - Function to call when a tensor is created
-   * @returns A handle that can be used to remove the hook
-   */
-  registerTensorHook(hook: TensorHook): RemovableHandle {
-    const handle = new RemovableHandle(this._tensorHooks);
-    this._tensorHooks.set(handle.id, hook);
     return handle;
   }
 
@@ -386,7 +358,7 @@ export class Optimizer<TState extends OptimizerParamState = OptimizerParamState>
    * @param kwargs - Keyword arguments to pass to step
    * @returns The result of the step function
    */
-  protected _stateWithHooks(
+  protected _stepWithHooks(
     originalStep: (...args: unknown[]) => unknown,
     args: unknown[] = [],
     kwargs: Record<string, unknown> = {},

@@ -48,6 +48,7 @@ serde_json = { workspace = true }
 serde-wasm-bindgen = { workspace = true }
 console_error_panic_hook = { workspace = true }
 console_log = { workspace = true }
+parking_lot = { workspace = true }
 log.workspace = true
 chrono = { workspace = true }
 fern = { workspace = true }

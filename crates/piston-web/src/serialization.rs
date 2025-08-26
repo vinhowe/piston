@@ -40,7 +40,7 @@ pub async fn save(data: JsValue) -> anyhow::Result<String, JsError> {
 
         // Try to extract tensor from the value
         match JsTensor::try_from(value) {
-            Ok(tensor) => tensors.push((key, tensor.inner.clone())),
+            Ok(tensor) => tensors.push((key, tensor.inner().clone())),
             Err(e) => {
                 return Err(JsError::new(&format!(
                     "Error processing key '{key}': {e:?}"

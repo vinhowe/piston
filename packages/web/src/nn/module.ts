@@ -91,12 +91,6 @@ export class Module<Input = unknown, Output = unknown> {
     number,
     (module: Module<Input, Output>, inputs: Input, output: Output) => Output | undefined
   >;
-  /** @internal Tensor class can access the map on its parent module to execute hooks */
-  _tensorHooks: Map<number, TensorHook>;
-  // Name of the property on the parent module that this module is assigned to
-  // Helps us keep track of module scopes
-  nameOnParent: string | undefined;
-  scope: ScopeItem[] | undefined;
 
   constructor() {
     this.training = true;
@@ -106,14 +100,6 @@ export class Module<Input = unknown, Output = unknown> {
     this._nonPersistentBuffersSet = new Set<string>();
     this._forwardPreHooks = new Map();
     this._forwardHooks = new Map();
-    this._tensorHooks = new Map();
-    this.scope = [
-      {
-        type: "module",
-        module: this as Module<unknown, unknown>,
-        name: undefined,
-      },
-    ];
 
     // Use Proxy to intercept property assignments and access
     return new Proxy(this, {
@@ -141,11 +127,7 @@ export class Module<Input = unknown, Output = unknown> {
               }
             }
 
-            const output = withScope(
-              target.scope ?? [],
-              () => Reflect.apply(target.forward, receiver, hookInput),
-              { replace: true },
-            );
+            const output = Reflect.apply(target.forward, receiver, hookInput);
 
             // Apply post-hooks
             let hookOutput = output;
@@ -193,7 +175,7 @@ export class Module<Input = unknown, Output = unknown> {
     // Handle Parameter assignment
     if (value instanceof Parameter) {
       if (!this._parameters) {
-        throw new Error("Cannot assign parameters before Module constructor call");
+        throw new Error("Canot assign parameters before Module constructor call");
       }
       removeFrom(this, this._buffers, this._modules, this._nonPersistentBuffersSet);
       this.registerParameter(name, value as Parameter);
@@ -262,8 +244,15 @@ export class Module<Input = unknown, Output = unknown> {
       this._parameters[name] = param;
     }
 
-    (param as Parameter).scope = [...(this.scope || [])];
-    (param as Parameter).nameOnParent = name;
+    // Call global parameter registration hooks
+    for (const hook of _globalParameterRegistrationHooks.values()) {
+      try {
+        hook(this as Module<unknown, unknown>, name, param);
+      } catch (error) {
+        throw new Error(`Error in parameter registration hook: ${error}`, { cause: error });
+      }
+    }
+
     return this;
   }
 
@@ -295,8 +284,15 @@ export class Module<Input = unknown, Output = unknown> {
       }
     }
 
-    (buffer as Buffer).scope = [...(this.scope || [])];
-    (buffer as Buffer).nameOnParent = name;
+    // Call global buffer registration hooks
+    for (const hook of _globalBufferRegistrationHooks.values()) {
+      try {
+        hook(this as Module<unknown, unknown>, name, buffer);
+      } catch (error) {
+        throw new Error(`Error in buffer registration hook: ${error}`, { cause: error });
+      }
+    }
+
     return this;
   }
 
@@ -325,17 +321,15 @@ export class Module<Input = unknown, Output = unknown> {
     }
 
     this._modules[name] = module as Module;
-    (module!.scope![module!.scope!.length - 1] as ModuleScopeItem).name = name;
-    const thisScope = this.scope || [];
-    module?.parameters().forEach((param) => {
-      (param as Parameter).scope = [...thisScope, ...(param.scope ?? [])];
-    });
-    module?.buffers().forEach((buf) => {
-      (buf as Buffer).scope = [...thisScope, ...(buf.scope ?? [])];
-    });
-    module?.modules().forEach((mod) => {
-      (mod as Module<unknown, unknown>).scope = [...thisScope, ...(mod.scope ?? [])];
-    });
+    // Call global module registration hooks
+    for (const hook of _globalModuleRegistrationHooks.values()) {
+      try {
+        hook(this as Module<unknown, unknown>, name, module as Module<unknown, unknown> | null);
+      } catch (error) {
+        throw new Error(`Error in module registration hook: ${error}`, { cause: error });
+      }
+    }
+
     return this;
   }
 
