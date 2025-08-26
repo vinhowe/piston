@@ -3,7 +3,7 @@ use crate::{HashMap, TensorId};
 use itertools::Itertools;
 use maybe_async::maybe_async;
 #[cfg(feature = "gpu-profiling")]
-use tabled::settings::{object::Rows, Alignment, Modify, Panel, Style};
+use tabled::settings::{Alignment, Modify, Panel, Style, object::Rows};
 #[cfg(feature = "gpu-profiling")]
 use tabled::{Table, Tabled};
 #[cfg(target_arch = "wasm32")]

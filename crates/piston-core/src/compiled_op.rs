@@ -1,14 +1,14 @@
 #[cfg(feature = "debug")]
-use crate::gpu::BindGroupLayoutEntryDescriptor;
-#[cfg(feature = "debug")]
 use crate::TensorId;
-use crate::{drvec, rvec, KernelKey, OpTensor, OperationError, PooledGPUBuffer, RVec};
+#[cfg(feature = "debug")]
+use crate::gpu::BindGroupLayoutEntryDescriptor;
+use crate::{KernelKey, OpTensor, OperationError, PooledGPUBuffer, RVec, drvec, rvec};
 use crate::{
+    TensorId,
     gpu::{
         BindGroupDescriptor, BindGroupLayoutHandle, ComputePipelineHandle, GpuBindGroup,
         WgpuDevice, WorkgroupCount,
     },
-    TensorId,
 };
 use derive_new::new;
 use std::sync::Arc;

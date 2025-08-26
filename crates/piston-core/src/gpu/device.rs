@@ -1,5 +1,5 @@
 use crate::HashMap;
-use crate::{gpu::*, DType, GpuCompileKey, OpTensor, TensorId};
+use crate::{DType, GpuCompileKey, OpTensor, TensorId, gpu::*};
 use maybe_async::maybe_async;
 use parking_lot::RwLock;
 use std::collections::BTreeMap;

@@ -1,7 +1,7 @@
 use crate::{
-    reset_scope_context, Compiled, CpuUniform, DebugSelection, Executable, ExecutionError,
-    ExecutionResult, GPUBuffer, HashMap, HashSet, Hasher as HasherType, Inner, LazyOp, StepLog,
-    StepLogConfig, Storage, TensorError, WgpuDevice,
+    Compiled, CpuUniform, DebugSelection, Executable, ExecutionError, ExecutionResult, GPUBuffer,
+    HashMap, HashSet, Hasher as HasherType, Inner, LazyOp, StepLog, StepLogConfig, Storage,
+    TensorError, WgpuDevice, reset_scope_context,
 };
 #[cfg(feature = "debug")]
 use crate::{DebugTensor, Device, DeviceStorage};
@@ -14,7 +14,9 @@ use std::sync::{Arc, Weak};
 
 #[derive(Debug, thiserror::Error)]
 pub enum LazyGraphExecutorError {
-    #[error("one of the variables needed for gradient computation has been modified by an inplace operation.")]
+    #[error(
+        "one of the variables needed for gradient computation has been modified by an inplace operation."
+    )]
     InplaceError,
     #[error(transparent)]
     TensorError(#[from] crate::TensorError),

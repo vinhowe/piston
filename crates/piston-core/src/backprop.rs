@@ -5,7 +5,7 @@ use crate::ops::{BinaryOp, TernaryOp, UnaryOp};
 use crate::{
     Affine, Alibi, Binary, Broadcast, Cast, Cmp, Concat, Conv, DType, Gather, GroupNorm, IndexAdd,
     IndexSelect, LazyOp, Matmul, Norm, NormOp, OpTensor, Permute, Powf, Reduce, ReduceOp, Reindex,
-    RoPE, ScatterAdd, ScopePusher, Slice, Softmax, Tensor, TensorId, TensorOptions,
+    RoPE, ScatterAdd, ScopePusher, Slice, Softmax, TensorId, Tensor, TensorOptions,
     TensorTypeOrScalar, TensorTypeOrScalarEnum, Ternary, Unary, View, WhereCond, cat, rvec, zeros,
 };
 use crate::{HashMap, HashSet, Trilu};
