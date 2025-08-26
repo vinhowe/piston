@@ -1,6 +1,7 @@
-import { Tensor } from "@/__mocks__/tensor";
 import { MersenneTwister19937, Random } from "random-js";
 import { describe, expect, it, vi } from "vitest";
+
+import { Tensor } from "@/__mocks__/tensor";
 
 import { DataLoader } from "./dataloader";
 import { Dataset, IterableDataset } from "./dataset";

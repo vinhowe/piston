@@ -1,6 +1,7 @@
+import { describe, expect, it, vi } from "vitest";
+
 import { Tensor } from "@/__mocks__/tensor";
 import { tensor } from "@/globals";
-import { describe, expect, it, vi } from "vitest";
 
 import { collate, type CollateFnMap, type CollateOptions, defaultCollate } from "./collate";
 
