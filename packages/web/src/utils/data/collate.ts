@@ -1,4 +1,4 @@
-import { stack, tensor } from "@/globals";
+import { int32, stack, tensor, uint32 } from "@/globals";
 import { Tensor } from "@/tensor";
 
 const defaultCollateErrMsgFormat =
@@ -107,42 +107,42 @@ export function collate(batch: unknown[], options?: CollateOptions): unknown {
 }
 
 function collateTensorFn(batch: unknown[], _options?: CollateOptions): Tensor {
-  return stack(batch as Tensor[], 0);
+  return stack(batch as Tensor[], { dim: 0 });
 }
 
 function collateFloat32ArrayFn(batch: unknown[], _options?: CollateOptions): Tensor {
   const arrays = batch as Float32Array[];
   // Convert each Float32Array to a tensor and stack them
   const tensors = arrays.map((arr) => tensor(arr));
-  return stack(tensors, 0);
+  return stack(tensors, { dim: 0 });
 }
 
 function collateInt32ArrayFn(batch: unknown[], _options?: CollateOptions): Tensor {
   const arrays = batch as Int32Array[];
   // Convert each Int32Array to a tensor and stack them
-  const tensors = arrays.map((arr) => tensor(arr, { dtype: "int32" }));
-  return stack(tensors, 0);
+  const tensors = arrays.map((arr) => tensor(arr, { dtype: int32 }));
+  return stack(tensors, { dim: 0 });
 }
 
 function collateUint32ArrayFn(batch: unknown[], _options?: CollateOptions): Tensor {
   const arrays = batch as Uint32Array[];
   // Convert each Uint32Array to a tensor and stack them
-  const tensors = arrays.map((arr) => tensor(arr, { dtype: "uint32" }));
-  return stack(tensors, 0);
+  const tensors = arrays.map((arr) => tensor(arr, { dtype: uint32 }));
+  return stack(tensors, { dim: 0 });
 }
 
 function collateUint8ArrayFn(batch: unknown[], _options?: CollateOptions): Tensor {
   const arrays = batch as Uint8Array[];
   // Convert Uint8Array to Uint32Array (natural integer upcast)
-  const tensors = arrays.map((arr) => tensor(new Uint32Array(arr), { dtype: "uint32" }));
-  return stack(tensors, 0);
+  const tensors = arrays.map((arr) => tensor(new Uint32Array(arr), { dtype: uint32 }));
+  return stack(tensors, { dim: 0 });
 }
 
 function collateFloat64ArrayFn(batch: unknown[], _options?: CollateOptions): Tensor {
   const arrays = batch as Float64Array[];
   // Convert Float64Array to Float32Array (downcast)
   const tensors = arrays.map((arr) => tensor(new Float32Array(arr)));
-  return stack(tensors, 0);
+  return stack(tensors, { dim: 0 });
 }
 
 function collateNumberFn(batch: unknown[], _options?: CollateOptions): Tensor {
@@ -168,7 +168,7 @@ function collateStringFn(batch: unknown[], _options?: CollateOptions): string[] 
 function collateBooleanFn(batch: unknown[], _options?: CollateOptions): Tensor {
   // Convert booleans to numbers (0/1) and create tensor
   const numbers = (batch as boolean[]).map((b) => (b ? 1 : 0));
-  return tensor(numbers, { dtype: "int32" });
+  return tensor(numbers, { dtype: int32 });
 }
 
 // Helper function to check if an object is a plain object

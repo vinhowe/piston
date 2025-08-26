@@ -1,6 +1,6 @@
-import type { Tensor } from "@/tensor";
-
 import { Random } from "random-js";
+
+import type { Tensor } from "@/tensor";
 
 import { defaultCollate } from "./collate";
 import { Dataset, IterableDataset } from "./dataset";
