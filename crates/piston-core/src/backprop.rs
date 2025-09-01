@@ -5,7 +5,7 @@ use crate::ops::{BinaryOp, TernaryOp, UnaryOp};
 use crate::{
     Affine, Alibi, Binary, Broadcast, Cast, Cmp, Concat, Conv, DType, Gather, GroupNorm, IndexAdd,
     IndexSelect, LazyOp, Matmul, Norm, NormOp, OpTensor, Permute, Powf, Reduce, ReduceOp, Reindex,
-    RoPE, ScatterAdd, ScopePusher, Slice, Softmax, TensorId, Tensor, TensorOptions,
+    RoPE, ScatterAdd, ScopePusher, Slice, Softmax, Tensor, TensorId, TensorOptions,
     TensorTypeOrScalar, TensorTypeOrScalarEnum, Ternary, Unary, View, WhereCond, cat, rvec, zeros,
 };
 use crate::{HashMap, HashSet, Trilu};
@@ -341,9 +341,12 @@ impl Tensor {
             }
             log::trace!("Backwarding {:?}", node.id());
             // This just says that we don't track intermediate gradients.
-            let grad = node
-                .take_grad()
-                .expect("piston internal error - grad not populated");
+            let grad = if node.retains_grad() {
+                node.grad()
+            } else {
+                node.take_grad()
+            }
+            .expect("piston internal error - grad not populated");
             // From candle:
             // https://github.com/huggingface/candle/issues/1241
             // Ideally, we would make these operations in place where possible to ensure that we

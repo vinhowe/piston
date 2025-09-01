@@ -277,6 +277,16 @@ impl JsTensor {
         self.inner().requires_grad()
     }
 
+    #[wasm_bindgen(getter = retainsGrad)]
+    pub fn retains_grad(&self) -> bool {
+        self.inner().retains_grad()
+    }
+
+    #[wasm_bindgen(js_name = retainGrad)]
+    pub fn retain_grad(&self) -> Result<(), JsError> {
+        self.inner().retain_grad().map_err(|e| e.into_js_error())
+    }
+
     #[wasm_bindgen(js_name = storageId)]
     pub fn storage_id(&self) -> Option<usize> {
         self.inner().storage_id()

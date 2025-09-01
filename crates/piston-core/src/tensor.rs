@@ -343,6 +343,7 @@ pub struct Inner {
     device: Device,
     view: StorageView,
     requires_grad: bool,
+    retains_grad: RwLock<bool>,
     storage: ManuallyDrop<Arc<RwLock<Option<Storage>>>>,
     grad: Arc<RwLock<Option<Tensor>>>,
     #[cfg(not(feature = "debug"))]
@@ -374,6 +375,7 @@ impl Inner {
             storage: ManuallyDrop::new(Arc::new(RwLock::new(storage))),
             grad: Arc::new(RwLock::new(None)),
             requires_grad,
+            retains_grad: RwLock::new(false),
             #[cfg(not(feature = "debug"))]
             debug_tensor: Arc::new(RwLock::new(None)),
             inplace: RwLock::new(false),
@@ -397,6 +399,7 @@ impl Inner {
             storage: ManuallyDrop::new(storage),
             grad: Arc::new(RwLock::new(None)),
             requires_grad,
+            retains_grad: RwLock::new(false),
             #[cfg(not(feature = "debug"))]
             debug_tensor: Arc::new(RwLock::new(None)),
             inplace: RwLock::new(false),
@@ -460,6 +463,10 @@ impl OpTensor {
 
     pub fn requires_grad(&self) -> bool {
         self.inner.requires_grad
+    }
+
+    pub fn retains_grad(&self) -> bool {
+        *self.inner.retains_grad.read()
     }
 
     pub fn is_inplace(&self) -> bool {
@@ -2315,6 +2322,11 @@ impl OpTensor {
         }
     }
 
+    pub fn retain_grad(&self) -> Result<()> {
+        *self.inner.retains_grad.write() = true;
+        Ok(())
+    }
+
     /// Returns a new tensor detached from the current graph, gradient are not propagated through
     /// this new node. The storage of this tensor is shared with the initial tensor.
     ///
@@ -3281,6 +3293,14 @@ impl Tensor {
         self.inner_or_source()
             .requires_grad_(requires_grad)
             .map(Self::wrap)
+    }
+
+    pub fn retain_grad(&self) -> Result<()> {
+        self.inner_or_source().retain_grad()
+    }
+
+    pub fn retains_grad(&self) -> bool {
+        self.inner_or_source().retains_grad()
     }
 
     /// Returns a new tensor detached from the current graph, gradient are not propagated through
