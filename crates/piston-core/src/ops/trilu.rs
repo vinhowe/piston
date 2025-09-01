@@ -30,7 +30,7 @@ pub struct TriluMeta {
 
 impl Operation for Trilu {
     fn name(&self) -> &'static str {
-        "Trilu"
+        if self.upper { "Triu" } else { "Tril" }
     }
 
     fn compute_view(&self) -> Result<StorageView, OperationError> {

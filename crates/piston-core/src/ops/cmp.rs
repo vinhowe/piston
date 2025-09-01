@@ -184,7 +184,14 @@ impl OpGuards for Cmp {
 
 impl Operation for Cmp {
     fn name(&self) -> &'static str {
-        "Cmp"
+        match self.op {
+            CmpOp::Eq => "Eq",
+            CmpOp::Ne => "Ne",
+            CmpOp::Le => "Le",
+            CmpOp::Ge => "Ge",
+            CmpOp::Lt => "Lt",
+            CmpOp::Gt => "Gt",
+        }
     }
 
     fn compute_view(&self) -> Result<StorageView, OperationError> {
