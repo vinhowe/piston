@@ -291,6 +291,10 @@ impl JsTensor {
     pub fn storage_id(&self) -> Option<usize> {
         self.inner().storage_id()
     }
+
+    pub fn is_contiguous(&self) -> bool {
+        self.inner().is_contiguous()
+    }
 }
 
 macro_rules! impl_binary_op {
@@ -766,9 +770,13 @@ pub fn promote_types(dtype1: JsDType, dtype2: JsDType) -> Result<JsDType, JsErro
 
 #[wasm_bindgen(js_class = Tensor)]
 impl JsTensor {
-    pub fn is_contiguous(&self) -> bool {
-        self.inner().is_contiguous()
-    }
+    // Skipping copy; the api is not great right now
+
+    // Skipping into_bytes; probably won't work great with reference counting
+
+    // Skipping from_quantized; we don't really have well-rounded quantized support right now
+
+    // Skipping from_disk; not clear what it would represent in the JS API
 
     pub fn detach(&self) -> JsTensor {
         JsTensor::new(self.inner().detach())
@@ -778,17 +786,6 @@ impl JsTensor {
         JsTensor::new(self.inner().detach_())
     }
 
-    // Skipping copy; the api is not great right now
-
-    // Skipping into_bytes; probably won't work great with reference counting
-
-    // Skipping from_quantized; we don't really have well-rounded quantized support right now
-
-    // Skipping from_disk; not clear what it would represent in the JS API
-}
-
-#[wasm_bindgen(js_class = Tensor)]
-impl JsTensor {
     #[wasm_bindgen(js_name = toVec, unchecked_return_type = "Float32Array | Int32Array | Uint32Array")]
     pub async fn to_vec(&self, dtype: Option<JsDType>) -> Result<JsValue, JsError> {
         let dtype = dtype.map(|d| d.dtype).unwrap_or(self.inner().dtype());
