@@ -377,11 +377,7 @@ impl BufferAllocator {
         let mut assignments =
             HashMap::with_capacity_and_hasher(execution_order.len(), Default::default());
         //Assignments already needs all of the constants in it.
-        for t in execution_order
-            .iter()
-            .rev()
-            .filter(|t| t.resolved() && !t.invalidated())
-        {
+        for t in execution_order.iter().rev().filter(|t| t.resolved()) {
             //Consts are immediately resolved
             let storage_guard = t.storage();
             let pooled = storage_guard

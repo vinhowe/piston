@@ -848,10 +848,6 @@ impl JsTensor {
     pub fn backward(&self) -> Result<(), JsError> {
         self.inner().backward().map_err(|e| e.into_js_error())
     }
-
-    pub fn invalidate(&mut self) -> Result<(), JsError> {
-        self.inner().invalidate().map_err(|e| e.into())
-    }
 }
 
 #[js_tensor_web_op(name = "Cat", variants = [function])]
