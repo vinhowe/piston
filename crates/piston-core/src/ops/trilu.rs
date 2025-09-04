@@ -19,6 +19,12 @@ pub struct TriluOp {
     pub k: Option<i32>,
 }
 
+impl TriluOp {
+    fn kernel_name(&self) -> &str {
+        if self.upper { "triu" } else { "tril" }
+    }
+}
+
 #[derive(Debug, derive_new::new, ShaderType, WgslMetadata)]
 pub struct TriluMeta {
     k: i32,
@@ -156,7 +162,7 @@ impl Kernel for TriluKernels {
 
     fn kernel_name(&self) -> String {
         match self {
-            TriluKernels::Standard(_) => "trilu".to_string(),
+            TriluKernels::Standard(inner) => inner.kernel_name().to_string(),
         }
     }
 
