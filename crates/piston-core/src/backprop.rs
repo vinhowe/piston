@@ -8,7 +8,7 @@ use crate::{
     RoPE, ScatterAdd, ScopePusher, Slice, Softmax, Tensor, TensorId, TensorOptions,
     TensorTypeOrScalar, TensorTypeOrScalarEnum, Ternary, Unary, View, WhereCond, cat, rvec, zeros,
 };
-use crate::{HashMap, HashSet, Trilu};
+use crate::{HashMap, HashSet, TriluOp};
 use anyhow::Result;
 
 #[derive(thiserror::Error, Debug)]
@@ -1126,7 +1126,7 @@ impl Tensor {
                     let src_grad = grad.gather(dim, ids.clone())?;
                     ctx.add(&src, src_grad)?;
                 }
-                LazyOp::Trilu(Trilu { src: arg, upper, k }) => {
+                LazyOp::Trilu(TriluOp { src: arg, upper, k }) => {
                     let arg = arg.wrap();
                     let masked_grad = if upper { grad.triu(k)? } else { grad.tril(k)? };
                     ctx.add(&arg, masked_grad)?;

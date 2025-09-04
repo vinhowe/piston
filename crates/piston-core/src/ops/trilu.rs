@@ -13,7 +13,7 @@ use crate::{
 };
 
 #[derive(new, Debug, Clone, IrFields)]
-pub struct Trilu {
+pub struct TriluOp {
     pub src: OpTensor,
     pub upper: bool,
     pub k: Option<i32>,
@@ -28,7 +28,7 @@ pub struct TriluMeta {
     numel: u32,
 }
 
-impl Operation for Trilu {
+impl Operation for TriluOp {
     fn name(&self) -> &'static str {
         if self.upper { "Triu" } else { "Tril" }
     }
@@ -48,17 +48,17 @@ impl Operation for Trilu {
     }
 }
 
-impl OpGuards for Trilu {
+impl OpGuards for TriluOp {
     fn check_shapes(&self) {}
 
     fn check_dtypes(&self) {}
 }
 
 pub enum TriluKernels {
-    Standard(Trilu),
+    Standard(TriluOp),
 }
 
-impl GPUOperation for Trilu {
+impl GPUOperation for TriluOp {
     type KernelEnum = TriluKernels;
 
     fn select_kernel(&self) -> Self::KernelEnum {

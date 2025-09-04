@@ -2199,10 +2199,10 @@ pub fn bernoulli(input: OpTensor) -> Result<OpTensor> {
 fn trilu_kernel<T: Into<OpTensor>>(input: T, upper: bool, k: Option<i32>) -> Result<OpTensor> {
     let input = input.into();
     let device = input.device().clone();
-    let trilu = Trilu::new(input, upper, k);
+    let trilu = TriluOp::new(input, upper, k);
     let new_view = trilu.compute_view()?;
     Ok(OpTensor::lazy(
-        LazyOp::Trilu(trilu),
+        LazyOp::TriluOp(trilu),
         new_view,
         device,
         false,

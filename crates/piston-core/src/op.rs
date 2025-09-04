@@ -58,7 +58,7 @@ pub enum LazyOp {
     Cache(Cache),           //Should be a general class
     IndexAdd(IndexAdd),
     ScatterAdd(ScatterAdd),
-    Trilu(Trilu),
+    Trilu(TriluOp),
     Arange(Arange),
     Copy(TensorCopy),
     Detach(Box<LazyOp>), //Because the entire graph is lazy, you can't actually detach something without computing the graph in parts
