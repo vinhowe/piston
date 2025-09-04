@@ -243,7 +243,7 @@ impl Kernel for CmpKernels {
 
     fn kernel_name(&self) -> String {
         match self {
-            CmpKernels::Standard(_) => "cmp".to_string(),
+            CmpKernels::Standard(k) => k.op.kernel_name().to_string(),
         }
     }
 
