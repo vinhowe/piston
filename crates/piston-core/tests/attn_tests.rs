@@ -62,7 +62,7 @@ def scaled_dot_product_attention(input, qw, kw, vw) -> torch.Tensor:
             [scale_factor as f32],
             1,
             TensorOptions::new().device(device),
-        );
+        )?;
         let kt = k_proj.permute((0, 2, 1))?;
 
         let logits = q_proj.matmul(kt, false, false)?.mul(scale_factor)?;
@@ -137,7 +137,7 @@ def qkv_attention(input, qw, kw, vw, n_heads):
         let n_heads = case.n_heads.unwrap();
         let qdim = q_proj.shape()[2];
         let scale = ((qdim / n_heads) as f32).powf(-0.25);
-        let scale = Tensor::from_data([scale], 1, TensorOptions::new().device(device));
+        let scale = Tensor::from_data([scale], 1, TensorOptions::new().device(device))?;
 
         let hdim = qdim / n_heads;
         let q = q_proj

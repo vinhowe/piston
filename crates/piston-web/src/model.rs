@@ -1,3 +1,4 @@
+use crate::error::IntoJsError;
 use anyhow::Result;
 use async_trait::async_trait;
 use js_sys::Function;
@@ -377,7 +378,7 @@ impl Trainer {
             input_flat,
             (batch_size, seq_len),
             TensorOptions::new().device(self.device.clone()),
-        );
+        )?;
 
         let (logits, attn_masks) = self.model.schedule(GPT2Input {
             x: input_tensor,
@@ -441,7 +442,8 @@ impl Trainer {
             target_flat,
             (batch_size, seq_len),
             TensorOptions::new().device(self.device.clone()),
-        );
+        )
+        .map_err(|e| e.into_js_error())?;
 
         // Flatten the logits and targets, compute the cross-entropy loss with label smoothing
         let logits_flat = logits.clone().flatten(0, 1).map_err(|e| e.to_string())?;

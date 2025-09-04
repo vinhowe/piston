@@ -218,19 +218,21 @@ mod tests {
             vec![1., 2., 3., 4., 5., 6.],
             (3, 2),
             TensorOptions::new().device(device.clone()),
-        );
+        )
+        .unwrap();
         let src = Tensor::from_data(
             vec![7., 8.],
             (1, 2),
             TensorOptions::new().device(device.clone()),
-        );
+        )
+        .unwrap();
         let write_start = rvec![2, 0];
         let b = dst.index_write(src, write_start).unwrap();
 
         let result = b.to(&Device::CPU).unwrap();
 
         let ground_truth =
-            Tensor::from_data(vec![1., 2., 3., 4., 7., 8.], (3, 2), TensorOptions::new());
+            Tensor::from_data(vec![1., 2., 3., 4., 7., 8.], (3, 2), TensorOptions::new()).unwrap();
         println!("result: {result:?}");
         println!("ground_truth: {ground_truth:?}");
         ground_truth.all_close(&result, 1e-8, 1e-8).unwrap();

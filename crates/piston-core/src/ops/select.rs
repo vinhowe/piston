@@ -377,7 +377,8 @@ def index_select(input, indices):
                 vec![64, 192, 255],
                 3,
                 TensorOptions::new().device(Device::CPU),
-            ),
+            )
+            .unwrap(),
         };
         let device = Device::request_device(DeviceRequest::GPU).unwrap();
         run_index_select_trial(prob.clone(), device, true);

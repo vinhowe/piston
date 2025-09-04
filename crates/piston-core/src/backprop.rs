@@ -354,7 +354,7 @@ impl Tensor {
             // the backprop graph of the backprop itself. This would be an issue for second order
             // derivatives but these are out of scope at the moment.
             let do_not_detach = PISTON_GRAD_DO_NOT_DETACH.with(|b| *b);
-            let grad = if do_not_detach { grad } else { grad.detach() };
+            let grad = if do_not_detach { grad } else { grad.detach()? };
             match node.op() {
                 LazyOp::Binary(Binary {
                     lhs,

@@ -719,11 +719,11 @@ pub fn from_data(
             })
             .collect::<Result<Vec<f32>, JsError>>()?;
 
-        Ok::<_, JsError>(Tensor::from_data(data, shape, options))
+        Tensor::from_data(data, shape, options)
     } else if js_sys::Float32Array::instanceof(&data) {
         let array = js_sys::Float32Array::from(data);
         let data = array.to_vec().into_iter().collect::<Vec<_>>();
-        Ok::<_, JsError>(Tensor::from_data(data, shape, options))
+        Tensor::from_data(data, shape, options)
     } else if js_sys::Float64Array::instanceof(&data) {
         let array = js_sys::Float64Array::from(data);
         let data = array
@@ -731,15 +731,15 @@ pub fn from_data(
             .into_iter()
             .map(|v| v as f32)
             .collect::<Vec<_>>();
-        Ok::<_, JsError>(Tensor::from_data(data, shape, options))
+        Tensor::from_data(data, shape, options)
     } else if js_sys::Int32Array::instanceof(&data) {
         let array = js_sys::Int32Array::from(data);
         let data = array.to_vec().into_iter().collect::<Vec<_>>();
-        Ok::<_, JsError>(Tensor::from_data(data, shape, options))
+        Tensor::from_data(data, shape, options)
     } else if js_sys::Uint32Array::instanceof(&data) {
         let array = js_sys::Uint32Array::from(data);
         let data = array.to_vec().into_iter().collect::<Vec<_>>();
-        Ok::<_, JsError>(Tensor::from_data(data, shape, options))
+        Tensor::from_data(data, shape, options)
     } else {
         return Err(JsError::new("Unsupported data type"));
     }
@@ -778,12 +778,16 @@ impl JsTensor {
 
     // Skipping from_disk; not clear what it would represent in the JS API
 
-    pub fn detach(&self) -> JsTensor {
-        JsTensor::new(self.inner().detach())
+    pub fn detach(&self) -> Result<JsTensor, JsError> {
+        Ok(JsTensor::new(
+            self.inner().detach().map_err(|e| e.into_js_error())?,
+        ))
     }
 
-    pub fn detach_(&self) -> JsTensor {
-        JsTensor::new(self.inner().detach_())
+    pub fn detach_(&self) -> Result<JsTensor, JsError> {
+        Ok(JsTensor::new(
+            self.inner().detach_().map_err(|e| e.into_js_error())?,
+        ))
     }
 
     #[wasm_bindgen(js_name = toVec, unchecked_return_type = "Float32Array | Int32Array | Uint32Array")]

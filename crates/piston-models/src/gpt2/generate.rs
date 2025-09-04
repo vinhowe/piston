@@ -45,7 +45,7 @@ pub async fn generate(
             tokens_to_feed,
             (1, tokens_to_feed.len()),
             TensorOptions::new().device(model.device.clone()),
-        );
+        )?;
 
         // The index_pos is the total length of the context so far.
         let (result, attn_probs) = model.schedule(GPT2Input {

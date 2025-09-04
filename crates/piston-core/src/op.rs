@@ -183,6 +183,16 @@ impl LazyOp {
         matches!(self, LazyOp::Const)
     }
 
+    // We have to keep this distinct from is_const, because we use is_const to determine if
+    // something will be excluded from the computation graph. No good for these
+    // shader-generated parameters.
+    pub fn can_be_parameter(&self) -> bool {
+        matches!(
+            self,
+            LazyOp::Const | LazyOp::FillConstant(_) | LazyOp::FillRandn(_) | LazyOp::Arange(_)
+        )
+    }
+
     #[track_caller]
     pub fn check_invariants(&self) {
         match self {

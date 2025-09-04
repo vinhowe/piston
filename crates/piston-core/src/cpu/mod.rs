@@ -116,10 +116,10 @@ async fn qindex_select(op: IndexSelect, dst: OpTensor) -> Result<OpTensor, Opera
     // Because of borrowing rules dequantizing also requires a deep clone of the input tensor, which is less than ideal.
     // In the future we would rather directly index the raw buffer of the quantized tensor and dequantize only what is required.
     // TODO: Add support for direct indexing + partial dequantization
-    let src = op.src().deep_clone().await.wrap();
+    let src = op.src().deep_clone().await?.wrap();
 
     // NOTE: Support for other quantization types is dependent on the corresponding dequantization functions.
-    let src = dequantize(src);
+    let src = dequantize(src)?;
     let indices = op.indices().clone();
     let dim = op.dim();
 

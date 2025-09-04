@@ -123,12 +123,14 @@ impl Iterator for DatasetRandomIter<'_> {
             &tokens[..seq_len],
             (seq_len,),
             TensorOptions::new().device(self.device.clone()),
-        );
+        )
+        .expect("Shouldn't be an error because requires_grad is false");
         let targets = Tensor::from_data(
             &tokens[1..],
             (seq_len,),
             TensorOptions::new().device(self.device.clone()),
-        );
+        )
+        .expect("Shouldn't be an error because requires_grad is false");
         Some(Ok((inputs, targets)))
     }
 }

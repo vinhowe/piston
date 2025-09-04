@@ -52,6 +52,8 @@ pub enum TensorError {
     OperationError(#[from] OperationError),
     #[error(transparent)]
     LazyGraphExecutorError(#[from] Box<LazyGraphExecutorError>),
+    #[error(transparent)]
+    UnknownError(#[from] anyhow::Error),
 }
 
 /// A multi-dimensional array of data.
@@ -115,7 +117,7 @@ impl OpTensor {
         storage: Option<Storage>,
         device: Device,
         requires_grad: bool,
-    ) -> Self {
+    ) -> Result<Self> {
         let _scope_guard = ScopePusher::new(op.name());
         let value = Self {
             inner: Arc::new(Inner::new(
@@ -125,10 +127,10 @@ impl OpTensor {
                 storage,
                 device.clone(),
                 requires_grad,
-            )),
+            )?),
         };
         value.register_with_device();
-        value
+        Ok(value)
     }
 
     pub fn wrap(self) -> Tensor {
@@ -148,7 +150,7 @@ impl OpTensor {
             dtype: T::dtype(),
             stride: Stride::from(&shape.clone()),
         };
-        Ok(Self::new(
+        Self::new(
             LazyOp::FillConstant(FillConstant {
                 shape: shape.clone(),
                 value: value.as_(),
@@ -157,7 +159,7 @@ impl OpTensor {
             None,
             device.clone(),
             requires_grad,
-        ))
+        )
     }
 
     pub fn full<T: TensorDType + num_traits::AsPrimitive<f32>, S: Into<Shape>>(
@@ -170,14 +172,14 @@ impl OpTensor {
         if device.is_cpu() {
             let mut data = Vec::with_capacity(shape.numel());
             data.resize(shape.numel(), value);
-            Ok(Self::from_data(data, shape, options))
+            Self::from_data(data, shape, options)
         } else {
             Self::full_impl::<T, _>(shape, value, options)
         }
     }
 
     #[track_caller]
-    fn lazy(op: LazyOp, meta: StorageView, device: Device, requires_grad: bool) -> Self {
+    fn lazy(op: LazyOp, meta: StorageView, device: Device, requires_grad: bool) -> Result<Self> {
         op.check_invariants();
         Self::new(op, meta, None, device, requires_grad)
     }
@@ -188,7 +190,7 @@ impl OpTensor {
         storage: Arc<RwLock<Option<Storage>>>,
         device: Device,
         requires_grad: bool,
-    ) -> Self {
+    ) -> Result<Self> {
         let _scope_guard = ScopePusher::new(op.name());
         let value = Self {
             inner: Arc::new(Inner::from_shallow(
@@ -198,10 +200,10 @@ impl OpTensor {
                 storage,
                 device,
                 requires_grad,
-            )),
+            )?),
         };
         value.register_with_device();
-        value
+        Ok(value)
     }
 
     pub(crate) fn strong_count(&self) -> usize {
@@ -365,8 +367,12 @@ impl Inner {
         storage: Option<Storage>,
         device: Device,
         requires_grad: bool,
-    ) -> Self {
-        Self {
+    ) -> Result<Self> {
+        if !op.can_be_parameter() && requires_grad {
+            return Err(anyhow::anyhow!("Cannot require grad for non-const tensor"));
+        }
+
+        Ok(Self {
             id: TensorId::new(),
             scope,
             view: meta,
@@ -379,7 +385,7 @@ impl Inner {
             #[cfg(not(feature = "debug"))]
             debug_tensor: Arc::new(RwLock::new(None)),
             inplace: RwLock::new(false),
-        }
+        })
     }
 
     fn from_shallow(
@@ -389,8 +395,12 @@ impl Inner {
         storage: Arc<RwLock<Option<Storage>>>,
         device: Device,
         requires_grad: bool,
-    ) -> Self {
-        Self {
+    ) -> Result<Self> {
+        if !op.can_be_parameter() && requires_grad {
+            return Err(anyhow::anyhow!("Cannot require grad for non-const tensor"));
+        }
+
+        Ok(Self {
             id: TensorId::new(),
             scope,
             view: meta,
@@ -403,7 +413,7 @@ impl Inner {
             #[cfg(not(feature = "debug"))]
             debug_tensor: Arc::new(RwLock::new(None)),
             inplace: RwLock::new(false),
-        }
+        })
     }
 }
 
@@ -545,12 +555,7 @@ macro_rules! impl_binary_op {
             };
             let binary = Binary::new(lhs, rhs, $op);
             let new_view = binary.compute_view()?;
-            Ok(OpTensor::lazy(
-                LazyOp::Binary(binary),
-                new_view,
-                device,
-                false,
-            ))
+            OpTensor::lazy(LazyOp::Binary(binary), new_view, device, false)
         }
     };
 }
@@ -564,12 +569,7 @@ macro_rules! impl_binary_op_tensor_only {
             let (lhs, rhs) = input.broadcast_for_binary_op(other)?;
             let binary = Binary::new(lhs, TensorTypeOrScalarEnum::Tensor(rhs), $op);
             let new_view = binary.compute_view()?;
-            Ok(OpTensor::lazy(
-                LazyOp::Binary(binary),
-                new_view,
-                device,
-                false,
-            ))
+            OpTensor::lazy(LazyOp::Binary(binary), new_view, device, false)
         }
     };
 }
@@ -585,17 +585,13 @@ macro_rules! impl_ternary_op {
         ) -> Result<OpTensor> {
             let device = input.device().clone();
             // Promote dtypes across all three tensors and cast prior to broadcast
-            let (input, t1, t2) =
-                crate::promoted_cast_ternary::<_, OpTensor, OpTensor>(input, tensor1, tensor2)?;
+            let (input, t1, t2) = crate::promoted_cast_ternary::<_, OpTensor, _, OpTensor, _>(
+                input, tensor1, tensor2,
+            )?;
             let (input, t1, t2) = input.broadcast_for_ternary_op(t1, t2)?;
             let ternary = Ternary::new(input, t1, t2, value, $op);
             let new_view = ternary.compute_view()?;
-            Ok(OpTensor::lazy(
-                LazyOp::Ternary(ternary),
-                new_view,
-                device,
-                false,
-            ))
+            OpTensor::lazy(LazyOp::Ternary(ternary), new_view, device, false)
         }
     };
 }
@@ -614,13 +610,13 @@ macro_rules! impl_cmp_op {
                     let (lhs, rhs) = input.broadcast_for_binary_op(other)?;
                     let cmp = Cmp::new(lhs, TensorTypeOrScalarEnum::Tensor(rhs), $op);
                     let new_view = cmp.compute_view()?;
-                    Ok(OpTensor::lazy(LazyOp::Cmp(cmp), new_view, device, false))
+                    OpTensor::lazy(LazyOp::Cmp(cmp), new_view, device, false)
                 }
                 Ok(TensorTypeOrScalarEnum::Scalar(other)) => {
                     let device = input.device.clone();
                     let cmp = Cmp::new(input, TensorTypeOrScalarEnum::Scalar(other), $op);
                     let new_view = cmp.compute_view()?;
-                    Ok(OpTensor::lazy(LazyOp::Cmp(cmp), new_view, device, false))
+                    OpTensor::lazy(LazyOp::Cmp(cmp), new_view, device, false)
                 }
                 Err(e) => Err(e),
             }
@@ -635,12 +631,7 @@ macro_rules! impl_unary_op {
             let device = input.device().clone();
             let unary = Unary::new(input, $op);
             let new_view = unary.compute_view()?;
-            Ok(OpTensor::lazy(
-                LazyOp::Unary(unary),
-                new_view,
-                device,
-                false,
-            ))
+            OpTensor::lazy(LazyOp::Unary(unary), new_view, device, false)
         }
     };
 }
@@ -691,7 +682,7 @@ pub fn cast(input: OpTensor, dst_dtype: DType) -> Result<OpTensor> {
     let device = input.device().clone();
     let cast = Cast::new(input, dst_dtype);
     let new_view = cast.compute_view()?;
-    Ok(OpTensor::lazy(LazyOp::Cast(cast), new_view, device, false))
+    OpTensor::lazy(LazyOp::Cast(cast), new_view, device, false)
 }
 
 /// Cast a tensor to full precision (IEEE 754 32-bit floating point).
@@ -718,12 +709,7 @@ pub fn group_norm(
     let group_norm = GroupNorm::new(Norm::new(input, weight, bias, eps), num_groups);
     let norm_op = NormOp::GroupNorm(group_norm);
     let new_view = norm_op.compute_view()?;
-    Ok(OpTensor::lazy(
-        LazyOp::Norm(norm_op),
-        new_view,
-        device,
-        false,
-    ))
+    OpTensor::lazy(LazyOp::Norm(norm_op), new_view, device, false)
 }
 
 #[tensor_op(variants = [function, method])]
@@ -737,7 +723,7 @@ pub fn layer_norm(
     let layer_norm = Norm::new(input, weight, bias, eps);
     let op = NormOp::LayerNorm(layer_norm);
     let new_view = op.compute_view()?;
-    Ok(OpTensor::lazy(LazyOp::Norm(op), new_view, device, false))
+    OpTensor::lazy(LazyOp::Norm(op), new_view, device, false)
 }
 
 #[tensor_op(variants = [function, method])]
@@ -746,7 +732,7 @@ pub fn rms_norm(input: OpTensor, weight: Option<OpTensor>, eps: f32) -> Result<O
     let rms = Norm::new(input, weight, None, eps);
     let op = NormOp::RMSNorm(rms);
     let new_view = op.compute_view()?;
-    Ok(OpTensor::lazy(LazyOp::Norm(op), new_view, device, false))
+    OpTensor::lazy(LazyOp::Norm(op), new_view, device, false)
 }
 
 #[tensor_op(variants = [function, method])]
@@ -760,7 +746,7 @@ pub fn conv1d(
     let device = input.device().clone();
     let conv = Conv::new(input, weight, bias, stride, padding);
     let new_view = conv.compute_view()?;
-    Ok(OpTensor::lazy(LazyOp::Conv(conv), new_view, device, false))
+    OpTensor::lazy(LazyOp::Conv(conv), new_view, device, false)
 }
 
 #[tensor_op(variants = [function, method])]
@@ -769,12 +755,7 @@ pub fn softmax<D: Dim>(input: OpTensor, dim: D) -> Result<OpTensor> {
     let dim = dim.to_index(input.shape(), "softmax")?;
     let softmax = Softmax::new(input, dim);
     let new_view = softmax.compute_view()?;
-    Ok(OpTensor::lazy(
-        LazyOp::Softmax(softmax),
-        new_view,
-        device,
-        false,
-    ))
+    OpTensor::lazy(LazyOp::Softmax(softmax), new_view, device, false)
 }
 
 fn rope_impl(
@@ -787,7 +768,7 @@ fn rope_impl(
     let device = input.device().clone();
     let rope = RoPE::new(input, dim, base, offset, is_backward);
     let new_view = rope.compute_view()?;
-    Ok(OpTensor::lazy(LazyOp::RoPE(rope), new_view, device, false))
+    OpTensor::lazy(LazyOp::RoPE(rope), new_view, device, false)
 }
 
 #[tensor_op(variants = [function, method_inplace])]
@@ -805,12 +786,7 @@ pub fn alibi(input: OpTensor, max_bias: f32) -> Result<OpTensor> {
     let device = input.device().clone();
     let alibi = Alibi::new(input, max_bias);
     let new_view = alibi.compute_view()?;
-    Ok(OpTensor::lazy(
-        LazyOp::Alibi(alibi),
-        new_view,
-        device,
-        false,
-    ))
+    OpTensor::lazy(LazyOp::Alibi(alibi), new_view, device, false)
 }
 
 //TODO (vinhowe): figure out how to make this interface more like pytorch
@@ -824,12 +800,7 @@ pub fn matmul(
     let device = input.device().clone();
     let matmul = Matmul::new(input, rhs, None, trans_lhs, trans_rhs, false);
     let new_view = matmul.compute_view()?;
-    Ok(OpTensor::lazy(
-        LazyOp::Matmul(matmul),
-        new_view,
-        device,
-        false,
-    ))
+    OpTensor::lazy(LazyOp::Matmul(matmul), new_view, device, false)
 }
 
 #[tensor_op(variants = [function, method])]
@@ -844,12 +815,7 @@ pub fn gemm(
     let device = input.device().clone();
     let gemm = Matmul::new(input, rhs, bias, trans_lhs, trans_rhs, trans_out);
     let new_view = gemm.compute_view()?;
-    Ok(OpTensor::lazy(
-        LazyOp::Matmul(gemm),
-        new_view,
-        device,
-        false,
-    ))
+    OpTensor::lazy(LazyOp::Matmul(gemm), new_view, device, false)
 }
 
 #[tensor_op(variants = [function, method, method_inplace])]
@@ -857,12 +823,7 @@ pub fn affine(input: OpTensor, mul: f32, add: f32) -> Result<OpTensor> {
     let device = input.device().clone();
     let affine = Affine::new(input, mul, add);
     let new_view = affine.compute_view()?;
-    Ok(OpTensor::lazy(
-        LazyOp::Affine(affine),
-        new_view,
-        device,
-        false,
-    ))
+    OpTensor::lazy(LazyOp::Affine(affine), new_view, device, false)
 }
 
 #[tensor_op(variants = [function, method, method_inplace])]
@@ -875,7 +836,7 @@ pub fn lerp<T: TensorTypeOrScalar<OpTensor>>(
     let device = input.device().clone();
     let lerp = Lerp::new(input, end, weight);
     let new_view = lerp.compute_view()?;
-    Ok(OpTensor::lazy(LazyOp::Lerp(lerp), new_view, device, false))
+    OpTensor::lazy(LazyOp::Lerp(lerp), new_view, device, false)
 }
 
 fn reduce_impl(
@@ -887,12 +848,7 @@ fn reduce_impl(
     let device = input.device().clone();
     let reduce = Reduce::new(input, op, dims, keepdim);
     let new_view = reduce.compute_view()?;
-    Ok(OpTensor::lazy(
-        LazyOp::Reduce(reduce),
-        new_view,
-        device,
-        false,
-    ))
+    OpTensor::lazy(LazyOp::Reduce(reduce), new_view, device, false)
 }
 
 #[tensor_op(variants = [function, method])]
@@ -901,7 +857,7 @@ pub fn sum<D: Dims>(input: OpTensor, dim: D, keepdim: bool) -> Result<OpTensor> 
     let device = input.device().clone();
     let sum = Reduce::new(input, ReduceOp::Sum, sum_dims, keepdim);
     let new_view = sum.compute_view()?;
-    Ok(OpTensor::lazy(LazyOp::Reduce(sum), new_view, device, false))
+    OpTensor::lazy(LazyOp::Reduce(sum), new_view, device, false)
 }
 
 #[tensor_op(variants = [function, method])]
@@ -965,12 +921,7 @@ pub fn norm<D: Dims>(
             // Use existing Norm2 reduce operation (sqrt(sum of squares))
             let reduce = Reduce::new(input, ReduceOp::Norm2, dim.clone(), keepdim);
             let new_view = reduce.compute_view()?;
-            Ok(OpTensor::lazy(
-                LazyOp::Reduce(reduce),
-                new_view,
-                device,
-                false,
-            ))
+            OpTensor::lazy(LazyOp::Reduce(reduce), new_view, device, false)
         }
         NormOrd::Inf => {
             // Vector ∞-norm : max(|x|)
@@ -1132,7 +1083,7 @@ pub fn slice<D: std::ops::RangeBounds<usize>>(input: OpTensor, ranges: &[D]) -> 
     let slice = Slice::new(input, resolved_ranges);
     let out_view = slice.compute_view()?;
     let op = LazyOp::Reindex(Reindex::Slice(slice));
-    Ok(OpTensor::lazy(op, out_view, device, false))
+    OpTensor::lazy(op, out_view, device, false)
 }
 
 /// Returns a new tensor that is a narrowed version of the input, the dimension `dim`
@@ -1175,7 +1126,7 @@ pub fn narrow<D: Dim>(input: OpTensor, dim: D, start: usize, len: usize) -> Resu
         let slice = Slice::new(input, ranges);
         let out_view = slice.compute_view()?;
         let op = LazyOp::Reindex(Reindex::Slice(slice));
-        Ok(OpTensor::lazy(op, out_view, device, false))
+        OpTensor::lazy(op, out_view, device, false)
     }
 }
 
@@ -1199,13 +1150,7 @@ pub fn view<S: crate::shape::ShapeWithOneHole>(input: OpTensor, shape: S) -> Res
     let op = View::new(input, shape);
     let out_view = op.compute_view()?;
 
-    Ok(OpTensor::shallow(
-        LazyOp::View(op),
-        out_view,
-        storage,
-        device,
-        false,
-    ))
+    OpTensor::shallow(LazyOp::View(op), out_view, storage, device, false)
 }
 
 // Use view to add a singleton dimension
@@ -1243,7 +1188,7 @@ pub fn cat<D: Dim>(tensors: RVec<OpTensor>, dim: D) -> Result<OpTensor> {
 
     let cat = Concat::new(tensors, dim);
     let new_view = cat.compute_view()?;
-    Ok(OpTensor::lazy(LazyOp::Concat(cat), new_view, device, false))
+    OpTensor::lazy(LazyOp::Concat(cat), new_view, device, false)
 }
 
 fn stack_impl(tensors: RVec<OpTensor>, dim: usize, root: bool) -> Result<OpTensor> {
@@ -1310,7 +1255,7 @@ pub fn permute<D: Dims>(input: OpTensor, dims: D) -> Result<OpTensor> {
     let out_view = permute.compute_view()?;
 
     let op = LazyOp::Reindex(Reindex::Permute(permute));
-    Ok(OpTensor::lazy(op, out_view, device, false))
+    OpTensor::lazy(op, out_view, device, false)
 }
 
 #[tensor_op(variants = [function, method, method_inplace])]
@@ -1366,12 +1311,7 @@ pub fn cache<D: Dim>(input: OpTensor, source: OpTensor, dim: D, offset: usize) -
     let device = input.device().clone();
     let cache = Cache::new(input, source, dim, offset);
     let new_view = cache.compute_view()?;
-    Ok(OpTensor::lazy(
-        LazyOp::Cache(cache),
-        new_view,
-        device,
-        false,
-    ))
+    OpTensor::lazy(LazyOp::Cache(cache), new_view, device, false)
 }
 
 /// Returns a new tensor duplicating data from the original tensor. New dimensions are inserted
@@ -1390,7 +1330,7 @@ pub fn broadcast_to<S: Into<Shape>>(input: OpTensor, shape: S) -> Result<OpTenso
     let new_view = broadcast.compute_view()?;
 
     let op = LazyOp::Reindex(Reindex::Broadcast(broadcast));
-    Ok(OpTensor::lazy(op, new_view, device, false))
+    OpTensor::lazy(op, new_view, device, false)
 }
 
 #[tensor_op(variants = [function, method])]
@@ -1399,12 +1339,7 @@ pub fn index_select<D: Dim>(input: OpTensor, indices: OpTensor, dim: D) -> Resul
     let device = input.device().clone();
     let index_select = IndexSelect::new(input, indices, dim);
     let new_view = index_select.compute_view()?;
-    Ok(OpTensor::lazy(
-        LazyOp::Select(index_select),
-        new_view,
-        device,
-        false,
-    ))
+    OpTensor::lazy(LazyOp::Select(index_select), new_view, device, false)
 }
 
 // TODO(vinhowe): Make this API more like PyTorch's
@@ -1415,7 +1350,7 @@ pub fn index_write<D: Dims>(input: OpTensor, src: OpTensor, write_start: D) -> R
     let index_write = IndexWrite::new(input, src, write_start);
     let new_view = index_write.compute_view()?;
     let op = LazyOp::IndexWrite(index_write);
-    Ok(OpTensor::lazy(op, new_view, device, false))
+    OpTensor::lazy(op, new_view, device, false)
 }
 
 #[tensor_op(variants = [function, method, method_inplace])]
@@ -1427,12 +1362,7 @@ pub fn where_cond<T: TensorTypeOrScalar<OpTensor>>(
     let device = condition.device().clone();
     let where_cond = WhereCond::new(condition, TensorTypeOrScalarEnum::Tensor(input), on_false);
     let new_view = where_cond.compute_view()?;
-    Ok(OpTensor::lazy(
-        LazyOp::WhereCond(where_cond),
-        new_view,
-        device,
-        false,
-    ))
+    OpTensor::lazy(LazyOp::WhereCond(where_cond), new_view, device, false)
 }
 
 #[tensor_op(variants = [function, method, method_inplace])]
@@ -1474,12 +1404,7 @@ pub fn scatter_add<D: Dim>(
     let device = input.device().clone();
     let scatter_add = ScatterAdd::new(input, source, indices, dim);
     let new_view = scatter_add.compute_view()?;
-    Ok(OpTensor::lazy(
-        LazyOp::ScatterAdd(scatter_add),
-        new_view,
-        device,
-        false,
-    ))
+    OpTensor::lazy(LazyOp::ScatterAdd(scatter_add), new_view, device, false)
 }
 
 #[tensor_op(variants = [function, method, method_inplace])]
@@ -1528,12 +1453,7 @@ pub fn index_add<D: Dim>(
     let device = input.device().clone();
     let index_add = IndexAdd::new(input, source, indices, dim);
     let new_view = index_add.compute_view()?;
-    Ok(OpTensor::lazy(
-        LazyOp::IndexAdd(index_add),
-        new_view,
-        device,
-        false,
-    ))
+    OpTensor::lazy(LazyOp::IndexAdd(index_add), new_view, device, false)
 }
 
 #[tensor_op(variants = [function, method, method_inplace])]
@@ -1563,12 +1483,7 @@ pub fn gather<D: Dim>(input: OpTensor, dim: D, index: OpTensor) -> Result<OpTens
     let device = input.device().clone();
     let gather = Gather::new(input, index, dim);
     let new_view = gather.compute_view()?;
-    Ok(OpTensor::lazy(
-        LazyOp::Gather(gather),
-        new_view,
-        device,
-        false,
-    ))
+    OpTensor::lazy(LazyOp::Gather(gather), new_view, device, false)
 }
 
 //
@@ -1718,7 +1633,7 @@ fn arange_impl<T: TensorDType + PartialOrd + AsPrimitive<f32>>(
             }
         }
         let len = data.len();
-        Ok(OpTensor::from_data(data, len, options))
+        OpTensor::from_data(data, len, options)
     } else {
         let arange = Arange::new(start.as_(), end.as_(), step.as_());
         let numel = arange.numel();
@@ -1730,12 +1645,7 @@ fn arange_impl<T: TensorDType + PartialOrd + AsPrimitive<f32>>(
             stride: Stride::from(&Shape::from(numel)),
         };
 
-        Ok(OpTensor::lazy(
-            op,
-            meta,
-            device.clone(),
-            options.requires_grad_or_default(),
-        ))
+        OpTensor::lazy(op, meta, device.clone(), options.requires_grad_or_default())
     }
 }
 
@@ -1805,13 +1715,13 @@ fn randint_impl<T: TensorDType + rand_distr::uniform::SampleUniform + PartialOrd
     let meta = StorageView::new(shape.clone(), T::dtype(), stride);
     let storage = Storage::from_slice(&data, shape, device);
 
-    Ok(OpTensor::new(
+    OpTensor::new(
         LazyOp::Const,
         meta,
         Some(storage),
         device.clone(),
         requires_grad,
-    ))
+    )
 }
 
 #[cfg(feature = "rand")]
@@ -1876,20 +1786,20 @@ fn randn_impl<T: TensorDType + num_traits::Float + AsPrimitive<f32>>(
         let stride = Stride::from(shape);
         let meta = StorageView::new(shape.clone(), T::dtype(), stride);
         let storage = Storage::from_slice(&data, shape, device);
-        Ok(OpTensor::new(
+        OpTensor::new(
             LazyOp::Const,
             meta,
             Some(storage),
             device.clone(),
             requires_grad,
-        ))
+        )
     } else {
         let meta = StorageView {
             shape: shape.clone(),
             dtype: T::dtype(),
             stride: Stride::from(shape),
         };
-        Ok(OpTensor::new(
+        OpTensor::new(
             LazyOp::FillRandn(FillRandn {
                 shape: shape.clone(),
                 mean: mean.as_(),
@@ -1900,7 +1810,7 @@ fn randn_impl<T: TensorDType + num_traits::Float + AsPrimitive<f32>>(
             None,
             device.clone(),
             requires_grad,
-        ))
+        )
     }
 }
 
@@ -1967,13 +1877,13 @@ fn rand_impl<T: TensorDType + num_traits::Float + AsPrimitive<f32>>(
     let meta = StorageView::new(shape.clone(), T::dtype(), stride);
     let storage = Storage::from_slice(&data, shape, device);
 
-    Ok(OpTensor::new(
+    OpTensor::new(
         LazyOp::Const,
         meta,
         Some(storage),
         device.clone(),
         requires_grad,
-    ))
+    )
 }
 
 #[cfg(feature = "rand")]
@@ -2027,7 +1937,7 @@ fn full_impl<T: TensorDType + AsPrimitive<f32>>(
         dtype: T::dtype(),
         stride: Stride::from(shape),
     };
-    Ok(OpTensor::new(
+    OpTensor::new(
         LazyOp::FillConstant(FillConstant {
             shape: shape.clone(),
             value: value.as_(),
@@ -2036,7 +1946,7 @@ fn full_impl<T: TensorDType + AsPrimitive<f32>>(
         None,
         device.clone(),
         requires_grad,
-    ))
+    )
 }
 
 fn full_from_f32_impl<T: TensorDType + NumCast + AsPrimitive<f32>>(
@@ -2076,13 +1986,13 @@ fn zeros_impl<T: TensorDType + AsPrimitive<f32>>(
         let storage = Storage::zeros::<T>(shape, device);
         let stride = Stride::from(shape);
         let meta = StorageView::new(shape.clone(), T::dtype(), stride);
-        Ok(OpTensor::new(
+        OpTensor::new(
             LazyOp::Const,
             meta,
             Some(storage),
             device.clone(),
             requires_grad,
-        ))
+        )
     } else {
         full_impl::<T>(shape, T::zero(), device, requires_grad)
     }
@@ -2126,13 +2036,13 @@ fn ones_impl<T: TensorDType + AsPrimitive<f32>>(
         let storage = Storage::ones::<T>(shape, device);
         let stride = Stride::from(shape);
         let meta = StorageView::new(shape.clone(), T::dtype(), stride);
-        Ok(OpTensor::new(
+        OpTensor::new(
             LazyOp::Const,
             meta,
             Some(storage),
             device.clone(),
             requires_grad,
-        ))
+        )
     } else {
         full_impl::<T>(shape, T::one(), device, requires_grad)
     }
@@ -2186,13 +2096,13 @@ pub fn bernoulli(input: OpTensor) -> Result<OpTensor> {
         stride: Stride::from(shape),
     };
 
-    Ok(OpTensor::new(
+    OpTensor::new(
         LazyOp::Bernoulli(Bernoulli::new(input, Some(seed))),
         meta,
         None,
         device,
         false,
-    ))
+    )
 }
 
 // TODO(vinhowe): Add inplace
@@ -2201,12 +2111,7 @@ fn trilu_kernel<T: Into<OpTensor>>(input: T, upper: bool, k: Option<i32>) -> Res
     let device = input.device().clone();
     let trilu = TriluOp::new(input, upper, k);
     let new_view = trilu.compute_view()?;
-    Ok(OpTensor::lazy(
-        LazyOp::TriluOp(trilu),
-        new_view,
-        device,
-        false,
-    ))
+    OpTensor::lazy(LazyOp::Trilu(trilu), new_view, device, false)
 }
 
 #[tensor_op(variants = [function, method, method_inplace])]
@@ -2221,7 +2126,7 @@ pub fn tril(input: OpTensor, k: Option<i32>) -> Result<OpTensor> {
 
 #[tensor_op(variants = [function, method, method_inplace])]
 pub fn copy(src: OpTensor, dst: OpTensor) -> Result<OpTensor> {
-    Ok(OpTensor::new(
+    OpTensor::new(
         LazyOp::Copy(TensorCopy {
             src: src.clone(),
             dst: dst.clone(),
@@ -2230,7 +2135,7 @@ pub fn copy(src: OpTensor, dst: OpTensor) -> Result<OpTensor> {
         None,
         src.device.clone(),
         false,
-    ))
+    )
 }
 
 /// Returns a tensor that is in row major order. This is the same as the original tensor if it
@@ -2243,13 +2148,13 @@ pub fn contiguous(input: OpTensor) -> Result<OpTensor> {
         let storage_guard = input.storage();
         let storage = storage_guard.as_ref().unwrap();
         let cloned_storage = storage.deep_clone(input.device()).unwrap();
-        Ok(OpTensor::new(
+        OpTensor::new(
             LazyOp::Const,
             input.view.clone(),
             Some(cloned_storage),
             input.device.clone(),
             false,
-        ))
+        )
     }
 }
 
@@ -2273,7 +2178,7 @@ impl OpTensor {
         data: U,
         shape: S,
         options: TensorOptions,
-    ) -> Self {
+    ) -> Result<Self> {
         let shape = shape.into();
         let device = options.device_or_default();
         let requires_grad = options.requires_grad_or_default();
@@ -2295,13 +2200,7 @@ impl OpTensor {
         let storage = Storage::from_bytes(data, dtype.size_of(), &device);
         let stride = Stride::from(&shape);
         let meta = StorageView::new(shape, dtype, stride);
-        Ok(Self::new(
-            LazyOp::Const,
-            meta,
-            Some(storage),
-            device,
-            requires_grad,
-        ))
+        Self::new(LazyOp::Const, meta, Some(storage), device, requires_grad)
     }
 
     /// Create a parameter based on the values currently stored in a tensor. The storage is always
@@ -2312,17 +2211,27 @@ impl OpTensor {
         } else {
             let device = self.device.clone();
             let storage = Arc::clone(&self.storage);
-            Ok(Self::shallow(
+            Self::shallow(
                 self.op().clone(),
                 self.view.clone(),
                 storage,
                 device,
                 requires_grad,
-            ))
+            )
         }
     }
 
     pub fn retain_grad(&self) -> Result<()> {
+        if self.op.can_be_parameter() {
+            if !self.requires_grad {
+                return Err(anyhow::anyhow!(
+                    "can't retain_grad on Tensor that has requires_grad=false"
+                ));
+            }
+            // No-op either way on constant tensor, but if requires_grad is true, we'll
+            // automatically retain the grad anyway
+            return Ok(());
+        }
         *self.inner.retains_grad.write() = true;
         Ok(())
     }
@@ -2331,9 +2240,9 @@ impl OpTensor {
     /// this new node. The storage of this tensor is shared with the initial tensor.
     ///
     /// If the tensor is already detached from the computation graph, the same tensor is returned.
-    pub fn detach(&self) -> Self {
+    pub fn detach(&self) -> Result<Self> {
         match self.op {
-            LazyOp::Const if !self.requires_grad => self.clone(),
+            LazyOp::Const if !self.requires_grad => Ok(self.clone()),
             _ => {
                 let storage_guard = self.storage();
                 let storage = storage_guard.as_ref().cloned();
@@ -2379,6 +2288,7 @@ impl OpTensor {
         let stride = Stride::from(&shape);
         let meta = StorageView::new(shape, dtype, stride);
         Self::new(LazyOp::Const, meta, Some(storage), device, false)
+            .expect("Shouldn't be an error because requires_grad is false")
     }
 
     pub fn from_disk<T: TensorDType, R: BufRead + Seek, S: Into<Shape>>(
@@ -2390,7 +2300,7 @@ impl OpTensor {
         let storage = Storage::from_disk::<T, R>(reader, &shape, &device)?;
         let stride = Stride::from(&shape);
         let meta = StorageView::new(shape, T::dtype(), stride);
-        Ok(Self::new(LazyOp::Const, meta, Some(storage), device, false))
+        Self::new(LazyOp::Const, meta, Some(storage), device, false)
     }
 
     #[maybe_async]
@@ -2646,11 +2556,11 @@ impl OpTensor {
             Some(Storage::GPU(gpu_buf)),
             Device::GPU(wgpu_device.clone()),
             false,
-        ))
+        )?)
     }
 
     #[maybe_async]
-    pub async fn deep_clone(&self) -> Self {
+    pub async fn deep_clone(&self) -> Result<Self> {
         ensure_resolved!(self);
         let storage_guard = self.storage();
         let storage = storage_guard.as_ref().unwrap();
@@ -2684,7 +2594,7 @@ impl OpTensor {
             Some(Storage::CPU(cpu_buf)),
             Device::CPU,
             false,
-        ))
+        )?)
     }
 
     /// Transfers the tensor to the specified device.
@@ -2711,7 +2621,7 @@ impl OpTensor {
             self.device().is_cpu(),
             "Cannot convert non-CPU tensor to numpy array"
         );
-        PyArray::from_owned_array(*py, self.deep_clone().into_ndarray::<T>())
+        PyArray::from_owned_array(*py, self.deep_clone().unwrap().into_ndarray::<T>())
     }
 
     #[cfg(not(feature = "debug"))]
@@ -2746,7 +2656,7 @@ impl OpTensor {
             })),
             Device::GPU(gpu_device.clone()),
             false,
-        );
+        )?;
         *self.debug_tensor.write() = Some(tensor.clone());
         Ok(tensor)
     }
@@ -2950,7 +2860,7 @@ impl OpTensor {
             .map(|&x| x as usize)
             .collect::<RVec<_>>();
         let data = reader.into_vec::<T>()?;
-        Ok(OpTensor::from_data(data, shape, options))
+        OpTensor::from_data(data, shape, options)
     }
 
     pub fn into_ndarray<T: TensorDType>(self) -> ArrayD<T> {
@@ -3054,6 +2964,7 @@ impl<T: TensorDType> From<ArrayD<T>> for OpTensor {
                 Device::CPU,
                 false,
             )
+            .unwrap()
         } else {
             panic!("Cannot convert numpy array with non-contiguous memory layout to tensor");
         }
@@ -3109,8 +3020,8 @@ impl Tensor {
         storage: Arc<RwLock<Option<Storage>>>,
         device: Device,
         requires_grad: bool,
-    ) -> Self {
-        OpTensor::shallow(op, meta, storage, device, requires_grad).into()
+    ) -> Result<Self> {
+        OpTensor::shallow(op, meta, storage, device, requires_grad).map(Self::wrap)
     }
 
     pub fn inner_or_source(&self) -> RwLockWriteGuard<'_, OpTensor> {
@@ -3164,8 +3075,8 @@ impl Tensor {
         storage: Option<Storage>,
         device: Device,
         requires_grad: bool,
-    ) -> Self {
-        OpTensor::new(op, meta, storage, device, requires_grad).into()
+    ) -> Result<Self> {
+        OpTensor::new(op, meta, storage, device, requires_grad).map(Self::wrap)
     }
 
     pub fn full<T: TensorDType + num_traits::AsPrimitive<f32>, S: Into<Shape>>(
@@ -3275,8 +3186,8 @@ impl Tensor {
         data: U,
         shape: S,
         options: TensorOptions,
-    ) -> Self {
-        OpTensor::from_data(data, shape, options).into()
+    ) -> Result<Self> {
+        OpTensor::from_data(data, shape, options).map(Self::wrap)
     }
 
     pub fn from_bytes<S: Into<Shape>>(
@@ -3307,13 +3218,13 @@ impl Tensor {
     /// this new node. The storage of this tensor is shared with the initial tensor.
     ///
     /// If the tensor is already detached from the computation graph, the same tensor is returned.
-    pub fn detach(&self) -> Self {
-        Self::wrap(self.inner_or_source().detach())
+    pub fn detach(&self) -> Result<Self> {
+        self.inner_or_source().detach().map(Self::wrap)
     }
 
-    pub fn detach_(&self) -> Self {
+    pub fn detach_(&self) -> Result<Self> {
         let inner = self.inner_or_source().clone();
-        self.wrap_inplace_untracked(inner.detach())
+        Ok(self.wrap_inplace_untracked(inner.detach()?))
     }
 
     /// # Safety
@@ -3365,9 +3276,9 @@ impl Tensor {
     }
 
     #[maybe_async]
-    pub async fn deep_clone(&self) -> Self {
+    pub async fn deep_clone(&self) -> Result<Self> {
         let inner_clone = self.inner_or_source().clone();
-        Self::wrap(inner_clone.deep_clone().await)
+        Ok(Self::wrap(inner_clone.deep_clone().await?))
     }
 
     /// Transfers the tensor to the specified device.
@@ -3608,19 +3519,20 @@ mod tests {
     use crate::{Device, Tensor, TensorOptions, cat, randn, rvec};
 
     #[test]
-    fn has_nan_works() {
+    fn has_nan_works() -> anyhow::Result<()> {
         let device = Device::request_device(crate::DeviceRequest::GPU).unwrap();
         let rand = randn((1, 1500, 384), None, None, TensorOptions::new()).unwrap();
         let nans = Tensor::from_data(
             vec![f32::NAN; 1500 * 384],
             (1, 1500, 384),
             TensorOptions::new(),
-        );
+        )?;
 
         let bingo = cat(rvec![rand, nans], 2).unwrap();
 
         let result = bingo.to(&Device::CPU).unwrap();
         println!("RESULT: {result:?}");
         assert!(result.has_nan::<f32>());
+        Ok(())
     }
 }

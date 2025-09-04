@@ -2,6 +2,7 @@ use crate::{
     DType, Device, Q4_KF, Q4_KH, Q8_0F, Q8_0H, Tensor, TensorOptions, dtype::Quantized,
     gpu::STORAGE_BUFFER_ALIGN,
 };
+use anyhow::Result;
 use maybe_async::maybe_async;
 use num::integer::div_floor;
 use num_traits::{AsPrimitive, Float, FromPrimitive, Zero};
@@ -124,7 +125,7 @@ pub fn dequantize_inner<Q: Quantized>(quantized: &[u8], elements: usize) -> Vec<
     dequantized
 }
 
-pub fn dequantize(quantized: Tensor) -> Tensor {
+pub fn dequantize(quantized: Tensor) -> Result<Tensor> {
     let quantized_requires_grad = quantized.requires_grad();
     match quantized.dtype() {
         DType::Q8_0F(_) => {
@@ -190,7 +191,7 @@ mod tests {
         let ground = randn((4, 64), None, None, TensorOptions::new().dtype(Q::dtype())).unwrap();
         let q = quantize::<Q>(&ground);
         let dq = dequantize(q);
-        ground.all_close(&dq, atol, rtol).unwrap();
+        ground.all_close(&dq.unwrap(), atol, rtol).unwrap();
     }
 
     #[test]
