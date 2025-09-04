@@ -122,14 +122,14 @@ pub async fn rms_norm(size: usize, eps: f32, vb: crate::VarBuilder<'_>) -> anyho
 
 #[cfg(feature = "pyo3")]
 mod tests {
-    use super::{layer_norm, LayerNorm, LayerNormConfig};
+    use super::{LayerNorm, LayerNormConfig, layer_norm};
     use crate::{Module, VarBuilder, VarMap};
     use piston::{
+        Device, DeviceRequest, Parameter, Tensor,
         prelude::shape,
         test_util::{run_py_prg, run_py_prg_multiple},
-        Device, DeviceRequest, Parameter, Tensor,
     };
-    use test_strategy::{proptest, Arbitrary};
+    use test_strategy::{Arbitrary, proptest};
 
     thread_local! {
         static GPU_DEVICE: Device = Device::request_device(DeviceRequest::GPU).unwrap();

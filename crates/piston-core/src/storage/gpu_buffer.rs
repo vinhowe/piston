@@ -1,8 +1,8 @@
 use crate::{
+    Device, DeviceError, MIN_STORAGE_BUFFER_SIZE, Shape, TensorDType,
     gpu::{BufferDescriptor, WgpuDevice},
     gpu::{BufferUsagesExt, PooledGPUBuffer},
     storage::{CPUBuffer, DeviceStorage},
-    Device, DeviceError, Shape, TensorDType, MIN_STORAGE_BUFFER_SIZE,
 };
 
 use bytemuck::NoUninit;

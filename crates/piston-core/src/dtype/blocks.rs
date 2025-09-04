@@ -3,7 +3,7 @@
 ///
 /// We closely follow the memory layout of the original GGUF implementation,
 /// but often need 2 variants of each block type for devices that don't support f16.
-use crate::{rvec, Align, BufferSegment, DType, RVec, TensorDType};
+use crate::{Align, BufferSegment, DType, RVec, TensorDType, rvec};
 use derive_new::new;
 use half::f16;
 use num_traits::{AsPrimitive, Float, FromPrimitive, NumAssign};
@@ -86,7 +86,7 @@ macro_rules! impl_hash_q {
     ($type:ty) => {
         impl Hash for $type {
             fn hash<H: Hasher>(&self, state: &mut H) {
-                self.0 .0.hash(state);
+                self.0.0.hash(state);
             }
         }
     };

@@ -1,7 +1,7 @@
 use std::ops::{Index, IndexMut, RangeFrom, RangeTo};
 use std::slice::Iter;
 
-use crate::{rvec, RVec, Shape};
+use crate::{RVec, Shape, rvec};
 use encase::impl_wrapper;
 
 #[derive(Clone, PartialEq, Eq, Default, Hash)]

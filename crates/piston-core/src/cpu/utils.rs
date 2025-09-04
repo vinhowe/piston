@@ -1,4 +1,4 @@
-use crate::{CPUBuffer, Shape, Storage, Stride, OpTensor};
+use crate::{CPUBuffer, OpTensor, Shape, Storage, Stride};
 use bytemuck::NoUninit;
 use std::ops::Range;
 
@@ -136,7 +136,7 @@ mod tests {
     use proptest::prelude::*;
     use test_strategy::proptest;
 
-    use crate::{shape, Shape, Stride};
+    use crate::{Shape, Stride, shape};
 
     use super::TensorIterator;
 

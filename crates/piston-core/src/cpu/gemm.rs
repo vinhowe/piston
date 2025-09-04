@@ -1,10 +1,10 @@
 use crate::{
-    cpu::cpu_store_result, CPUOperation, DType, InvariantError, Matmul, MatmulSpec, OperationError,
-    Shape, Stride, OpTensor, TensorDType,
+    CPUOperation, DType, InvariantError, Matmul, MatmulSpec, OpTensor, OperationError, Shape,
+    Stride, TensorDType, cpu::cpu_store_result,
 };
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use core::str::FromStr;
-use gemm::{gemm as gemm_kernel, Parallelism};
+use gemm::{Parallelism, gemm as gemm_kernel};
 use half::{bf16, f16};
 use maybe_async::maybe_async;
 use std::num::NonZeroUsize;

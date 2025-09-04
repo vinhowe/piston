@@ -10,7 +10,7 @@ use half::f16;
 use js_sys::{Array, Function, Object, Reflect};
 use parking_lot::RwLock;
 use piston::{
-    AllDims, DType, Dim, IrScalarValue, IrValue, LazyOp, NormOrd, Tensor, TensorId,
+    AllDims, DType, Dim, IrScalarValue, IrValue, LazyOp, NormOrd, Storage, Tensor, TensorId,
     TensorTypeOrScalar, TensorTypeOrScalarEnum,
 };
 use piston_macros::js_tensor_web_op;

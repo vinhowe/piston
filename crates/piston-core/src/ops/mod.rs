@@ -64,8 +64,8 @@ pub use view::*;
 pub use where_cond::*;
 
 use crate::{
-    rvec, Compiled, CompiledCopy, CopyCompileKey, OpGuards, OpTensor, Operation, OperationError,
-    RVec, Storage, StorageView,
+    Compiled, CompiledCopy, CopyCompileKey, OpGuards, OpTensor, Operation, OperationError, RVec,
+    Storage, StorageView, rvec,
 };
 
 /// # KernelElement

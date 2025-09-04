@@ -1,4 +1,4 @@
-use crate::{Kernel, KernelKey, KernelSource, OperationError, OpTensor, WgpuDevice, WorkgroupSize};
+use crate::{Kernel, KernelKey, KernelSource, OpTensor, OperationError, WgpuDevice, WorkgroupSize};
 
 use super::static_resource_pool::{StaticResourcePool, StaticResourcePoolReadLockAccessor};
 use std::hash::Hash;

@@ -3,10 +3,10 @@ use half::f16;
 use piston_macros::WgslMetadata;
 
 use crate::{
-    gpu::dtype::WgslDType, rvec, wgc, wgs, Array, BindGroupLayoutDescriptor as BGLD, BindingMode,
-    BuiltIn, DType, InvariantError, Kernel, KernelElement, KernelKey, KernelRenderable,
-    KernelSource, Matmul, MatmulSpec, OpTensor, OperationError, Scalar, Stride, Vec2, Vec4,
-    WgslFragment, WgslKernelBuilder, WgslPrimitive, WorkgroupCount, WorkgroupSize, Workload,
+    Array, BindGroupLayoutDescriptor as BGLD, BindingMode, BuiltIn, DType, InvariantError, Kernel,
+    KernelElement, KernelKey, KernelRenderable, KernelSource, Matmul, MatmulSpec, OpTensor,
+    OperationError, Scalar, Stride, Vec2, Vec4, WgslFragment, WgslKernelBuilder, WgslPrimitive,
+    WorkgroupCount, WorkgroupSize, Workload, gpu::dtype::WgslDType, rvec, wgc, wgs,
 };
 use glam::IVec3;
 use inline_wgsl::wgsl;

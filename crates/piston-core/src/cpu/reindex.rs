@@ -1,7 +1,7 @@
 use super::utils::cpu_store_result;
 use crate::{
-    Broadcast, CPUOperation, DType, OperationError, Permute, Reindex, Shape, Slice, Stride, OpTensor,
-    TensorDType,
+    Broadcast, CPUOperation, DType, OpTensor, OperationError, Permute, Reindex, Shape, Slice,
+    Stride, TensorDType,
 };
 use half::{bf16, f16};
 use maybe_async::maybe_async;
@@ -36,7 +36,10 @@ impl CPUOperation for Permute {
 }
 
 #[maybe_async]
-async fn apply_permute<T: TensorDType>(p: &Permute, dst: OpTensor) -> Result<OpTensor, OperationError> {
+async fn apply_permute<T: TensorDType>(
+    p: &Permute,
+    dst: OpTensor,
+) -> Result<OpTensor, OperationError> {
     let perm: [usize; 4] = p.promote().as_slice().try_into().unwrap();
     let Permute { src, dims: _ } = p;
     let result = permute(&src.to_vec::<T>().await?, src.shape(), dst.shape(), perm);

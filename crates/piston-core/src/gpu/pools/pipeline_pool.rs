@@ -1,4 +1,4 @@
-use crate::{gpu::WgpuDevice, KernelKey, KernelModuleHandle};
+use crate::{KernelKey, KernelModuleHandle, gpu::WgpuDevice};
 
 use super::{
     PipelineLayoutHandle, StaticResourcePool, StaticResourcePoolAccessor,

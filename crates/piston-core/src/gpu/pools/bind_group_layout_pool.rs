@@ -2,9 +2,9 @@ use std::hash::Hash;
 #[cfg(feature = "debug")]
 use std::hash::Hasher;
 
-use crate::{gpu::WgpuDevice, rvec, RVec};
+use crate::{RVec, gpu::WgpuDevice, rvec};
 
-use super::{static_resource_pool::StaticResourcePool, StaticResourcePoolReadLockAccessor};
+use super::{StaticResourcePoolReadLockAccessor, static_resource_pool::StaticResourcePool};
 
 pub trait BindGroupLayoutEntryExt {
     fn compute_storage_buffer(binding: u32, read_only: bool) -> Self;

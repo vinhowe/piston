@@ -15,10 +15,11 @@ use inline_wgsl::wgsl;
 use slice::SliceMeta;
 
 use crate::{
-    gpu::{BindGroupLayoutDescriptor, CpuUniform},
-    rvec, Array, BindingMode, BuiltIn, DType, GPUOperation, Kernel, KernelElement, KernelMetadata,
+    Array, BindingMode, BuiltIn, DType, GPUOperation, Kernel, KernelElement, KernelMetadata,
     KernelRenderable, KernelSource, OpGuards, OpTensor, Operation, OperationError, RVec, Scalar,
     Shape, Stride, WgslKernelBuilder, WgslPrimitive, WorkgroupSize, Workload,
+    gpu::{BindGroupLayoutDescriptor, CpuUniform},
+    rvec,
 };
 use glam::UVec4;
 

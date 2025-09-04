@@ -99,7 +99,7 @@ macro_rules! shape {
 }
 
 pub mod prelude {
-    pub use crate::{rvec, shape, Device, DeviceRequest, OpTensor};
+    pub use crate::{Device, DeviceRequest, OpTensor, rvec, shape};
 }
 
 #[cfg(feature = "pyo3")]

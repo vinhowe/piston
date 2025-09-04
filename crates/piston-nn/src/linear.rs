@@ -85,11 +85,11 @@ pub async fn linear_b(
 mod tests {
     use crate::{Module, VarBuilder, VarMap};
 
-    use super::{linear, linear_no_bias, Linear};
+    use super::{Linear, linear, linear_no_bias};
     use piston::{
-        prelude::shape, test_util::run_py_prg_multiple, Device, DeviceRequest, Parameter, Tensor,
+        Device, DeviceRequest, Parameter, Tensor, prelude::shape, test_util::run_py_prg_multiple,
     };
-    use test_strategy::{proptest, Arbitrary};
+    use test_strategy::{Arbitrary, proptest};
 
     thread_local! {
         static GPU_DEVICE: Device = Device::request_device(DeviceRequest::GPU).unwrap();

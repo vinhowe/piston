@@ -1,8 +1,9 @@
 use std::num::NonZeroU64;
 
 use crate::{
+    OperationError,
     gpu::{BindGroupEntry, BindGroupLayoutDescriptor},
-    rvec, OperationError,
+    rvec,
 };
 
 use super::{BindGroupDescriptor, GpuBindGroup, PooledGPUBuffer, WgpuDevice};

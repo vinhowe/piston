@@ -1,7 +1,7 @@
 #[cfg(target_arch = "wasm32")]
 use crate::wgpu_buffer_to_cpu_buffer;
 use crate::{
-    DType, ExportedTensorProfilingEntry, HashMap, PooledGPUBuffer, Shape, OpTensor, TensorId,
+    DType, ExportedTensorProfilingEntry, HashMap, OpTensor, PooledGPUBuffer, Shape, TensorId,
     WgpuDevice,
 };
 use derive_new::new;

@@ -6,9 +6,9 @@ use piston::{Device, Shape, Tensor};
 #[cfg(target_arch = "wasm32")]
 use {
     wasm_bindgen::JsValue,
+    wasm_bindgen_futures::JsFuture,
     wasm_bindgen_futures::future_to_promise,
     wasm_bindgen_futures::js_sys,
-    wasm_bindgen_futures::JsFuture,
     web_sys::{Blob, Url},
 };
 

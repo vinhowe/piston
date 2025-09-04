@@ -1,7 +1,7 @@
 use crate::{
-    concat,
+    DType, OpTensor, OperationError, RoPE, Shape, Stride, concat,
     cpu::{cpu_store_result, gemm::gemm, reindex::slice},
-    shape, DType, OperationError, RoPE, Shape, Stride, OpTensor,
+    shape,
 };
 use maybe_async::maybe_async;
 

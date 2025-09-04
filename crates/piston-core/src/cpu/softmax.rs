@@ -1,5 +1,5 @@
 use crate::cpu::utils::cpu_store_result;
-use crate::{CPUOperation, DType, OperationError, Softmax, OpTensor, TensorDType};
+use crate::{CPUOperation, DType, OpTensor, OperationError, Softmax, TensorDType};
 use half::{bf16, f16};
 use maybe_async::maybe_async;
 use num::Float;

@@ -3,9 +3,9 @@ use half::f16;
 use piston_macros::WgslMetadata;
 
 use crate::{
-    rvec, Array, BindGroupLayoutDescriptor, BindingMode, BuiltIn, DType, InvariantError, Kernel,
+    Array, BindGroupLayoutDescriptor, BindingMode, BuiltIn, DType, InvariantError, Kernel,
     KernelElement, KernelRenderable, KernelSource, Matmul, MatmulSpec, OpTensor, OperationError,
-    Scalar, WgslKernelBuilder, WgslPrimitive, WorkgroupSize, Workload,
+    Scalar, WgslKernelBuilder, WgslPrimitive, WorkgroupSize, Workload, rvec,
 };
 use inline_wgsl::wgsl;
 

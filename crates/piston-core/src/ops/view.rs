@@ -1,4 +1,4 @@
-use crate::{rvec, OpGuards, Operation, Shape, StorageView, Stride, OpTensor};
+use crate::{OpGuards, OpTensor, Operation, Shape, StorageView, Stride, rvec};
 
 use piston_macros::IrFields;
 

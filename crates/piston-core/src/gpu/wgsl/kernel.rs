@@ -2,11 +2,12 @@ use crate::HashMap;
 use std::fmt::Debug;
 
 use crate::{
-    BindGroupLayoutDescriptor, CpuUniform, KernelElement, KernelKey, KernelSource, OperationError,
-    OpTensor, WgslFragment, WgslKernelBuilder, WgslPrimitive, WorkgroupSize, Workload, UNIFORM_ALIGN,
+    BindGroupLayoutDescriptor, CpuUniform, KernelElement, KernelKey, KernelSource, OpTensor,
+    OperationError, UNIFORM_ALIGN, WgslFragment, WgslKernelBuilder, WgslPrimitive, WorkgroupSize,
+    Workload,
 };
 
-use encase::{internal::WriteInto, ShaderType};
+use encase::{ShaderType, internal::WriteInto};
 
 //Every field must be : ShaderType + WriteInto
 #[derive(Debug)]

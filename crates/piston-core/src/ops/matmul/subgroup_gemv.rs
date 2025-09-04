@@ -1,9 +1,9 @@
-use crate::gpu::dtype::WgslDType;
 use crate::gpu::WgslPrimitive;
+use crate::gpu::dtype::WgslDType;
 use crate::{
-    rvec, wgc, wgs, Array, BindGroupLayoutDescriptor, BindingMode, BuiltIn, DType, InvariantError,
-    KernelElement, KernelKey, KernelRenderable, KernelSource, Matmul, MatmulSpec, OperationError,
-    Scalar, OpTensor, Vec4, WgslFragment, WgslKernelBuilder, WorkgroupSize, Workload,
+    Array, BindGroupLayoutDescriptor, BindingMode, BuiltIn, DType, InvariantError, KernelElement,
+    KernelKey, KernelRenderable, KernelSource, Matmul, MatmulSpec, OpTensor, OperationError,
+    Scalar, Vec4, WgslFragment, WgslKernelBuilder, WorkgroupSize, Workload, rvec, wgc, wgs,
 };
 use encase::ShaderType;
 use half::f16;

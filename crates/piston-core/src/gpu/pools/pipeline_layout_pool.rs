@@ -1,10 +1,10 @@
-use crate::{gpu::WgpuDevice, RVec};
+use crate::{RVec, gpu::WgpuDevice};
 
 use super::{
+    BindGroupLayoutHandle,
     static_resource_pool::{
         StaticResourcePool, StaticResourcePoolAccessor as _, StaticResourcePoolReadLockAccessor,
     },
-    BindGroupLayoutHandle,
 };
 
 slotmap::new_key_type! { pub struct PipelineLayoutHandle; }

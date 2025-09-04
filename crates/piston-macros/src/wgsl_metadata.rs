@@ -1,6 +1,6 @@
 use proc_macro2::TokenStream;
 use quote::quote;
-use syn::{parse2, DeriveInput};
+use syn::{DeriveInput, parse2};
 
 pub fn derive(input: TokenStream) -> TokenStream {
     let _input = parse2::<DeriveInput>(input).unwrap();
