@@ -431,13 +431,13 @@ def {kn}(a, scalar):
         Ok(())
     }
 
-    #[proptest(cases = 8)]
+    #[proptest(cases = 16)]
     fn test_binary(prob: BinaryProblem) {
         let device = Device::request_device(DeviceRequest::GPU).unwrap();
         run_cmp_trial(prob, device).unwrap();
     }
 
-    #[proptest(cases = 8)]
+    #[proptest(cases = 16)]
     fn test_scalar(prob: CmpScalarProblem) {
         let device = Device::request_device(DeviceRequest::GPU).unwrap();
         run_cmp_scalar_trial(prob, device).unwrap();
