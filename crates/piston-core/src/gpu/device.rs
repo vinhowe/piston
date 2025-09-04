@@ -380,13 +380,6 @@ impl WgpuDevice {
         self.last_step_log.write().take()
     }
 
-    #[cfg(target_arch = "wasm32")]
-    pub fn as_webgpu_device(&self) -> Option<web_sys::GpuDevice> {
-        JsValue::from(self.device.as_webgpu_device())
-            .dyn_into::<web_sys::GpuDevice>()
-            .ok()
-    }
-
     pub(crate) fn set_last_step_log(&self, log: StepLog) {
         *self.last_step_log.write() = Some(log);
     }

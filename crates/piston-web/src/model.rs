@@ -519,11 +519,6 @@ impl Trainer {
     }
 
     #[wasm_bindgen]
-    pub fn webgpu_device(&self) -> Option<web_sys::GpuDevice> {
-        self.device.try_gpu().unwrap().as_webgpu_device()
-    }
-
-    #[wasm_bindgen]
     pub async fn save_checkpoint(&self) -> Result<String, JsValue> {
         self.varmap.download_url().await
     }

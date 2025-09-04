@@ -790,6 +790,20 @@ impl JsTensor {
         ))
     }
 
+    #[wasm_bindgen(js_name = gpuBuffer, unchecked_return_type = "GPUBuffer|null")]
+    pub fn gpu_buffer(&self) -> Result<JsValue, JsError> {
+        let inner = self.inner();
+        let inner_source = inner.inner_or_source();
+        match inner_source.storage().as_ref() {
+            Some(Storage::GPU(g)) => Ok(g
+                .inner()
+                .as_webgpu_buffer()
+                .map(|b| b.into())
+                .unwrap_or(JsValue::null())),
+            _ => Err(JsError::new("Tensor is not on GPU")),
+        }
+    }
+
     #[wasm_bindgen(js_name = toVec, unchecked_return_type = "Float32Array | Int32Array | Uint32Array")]
     pub async fn to_vec(&self, dtype: Option<JsDType>) -> Result<JsValue, JsError> {
         let dtype = dtype.map(|d| d.dtype).unwrap_or(self.inner().dtype());

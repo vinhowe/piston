@@ -62,6 +62,16 @@ impl JsDevice {
     pub fn set_vram_limit(&self, #[wasm_bindgen(js_name = vramLimit)] vram_limit: Option<u64>) {
         self.inner.try_gpu().unwrap().set_vram_limit(vram_limit);
     }
+
+    #[wasm_bindgen(js_name = asWebGPUDevice)]
+    pub fn as_webgpu_device(&self) -> Option<web_sys::GpuDevice> {
+        match &self.inner {
+            Device::GPU(gpu) => gpu
+                .as_webgpu_device()
+                .map(|d| d.dyn_into::<web_sys::GpuDevice>().unwrap()),
+            Device::CPU => None,
+        }
+    }
 }
 
 thread_local! {
