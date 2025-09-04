@@ -1360,7 +1360,13 @@ pub fn where_cond<T: TensorTypeOrScalar<OpTensor>>(
     on_false: T,
 ) -> Result<OpTensor> {
     let device = condition.device().clone();
-    let where_cond = WhereCond::new(condition, TensorTypeOrScalarEnum::Tensor(input), on_false);
+    // let (input, other) = crate::promoted_cast(input, other)?;
+    let (input, condition, on_false) = crate::promoted_cast_ternary(input, condition, on_false)?;
+    let where_cond = WhereCond::new(
+        condition,
+        TensorTypeOrScalarEnum::Tensor(input),
+        on_false.into(),
+    );
     let new_view = where_cond.compute_view()?;
     OpTensor::lazy(LazyOp::WhereCond(where_cond), new_view, device, false)
 }

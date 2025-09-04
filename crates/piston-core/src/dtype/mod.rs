@@ -326,11 +326,13 @@ pub fn promoted_cast_ternary<
     T1: Into<OpTensor>,
     T2: Into<OpTensor> + From<OpTensor>,
     T3: TensorTypeOrScalar<T2> + From<TensorTypeOrScalarEnum<T2>>,
+    T4: Into<OpTensor> + From<OpTensor>,
+    T5: TensorTypeOrScalar<T4> + From<TensorTypeOrScalarEnum<T4>>,
 >(
     tensor1: T1,
     tensor2: T3,
-    tensor3: T3,
-) -> anyhow::Result<(OpTensor, T3, T3)> {
+    tensor3: T5,
+) -> anyhow::Result<(OpTensor, T3, T5)> {
     let tensor1: OpTensor = tensor1.into();
 
     let dtype1 = tensor1.dtype();
@@ -367,7 +369,7 @@ pub fn promoted_cast_ternary<
         tensor3
             .map_tensor(|t| cast_kernel(t.into(), promoted))?
             .transpose()?
-            .map_tensor(|t| T2::from(t))?
+            .map_tensor(|t| T4::from(t))?
             .into()
     };
 
