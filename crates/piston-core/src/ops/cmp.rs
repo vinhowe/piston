@@ -210,7 +210,9 @@ impl Operation for Cmp {
             let ostride = Stride::from(&broadcasted);
             Ok(StorageView::new(broadcasted, crate::DType::I32, ostride))
         } else {
-            Ok(self.lhs.storage_view().clone())
+            let shape = self.lhs.shape().clone();
+            let stride = Stride::from(&shape);
+            Ok(StorageView::new(shape, crate::DType::I32, stride))
         }
     }
 
