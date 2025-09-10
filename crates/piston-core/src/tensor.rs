@@ -1177,48 +1177,26 @@ pub fn squeeze<D: Dims>(input: OpTensor, dims: D) -> Result<OpTensor> {
     view_kernel(input, new_shape)
 }
 
-#[tensor_op(variants = [function])]
-pub fn cat<D: Dim>(tensors: RVec<OpTensor>, dim: D) -> Result<OpTensor> {
-    let dim = dim.to_index(tensors[0].shape(), "cat")?;
+fn cat_inner(tensors: RVec<OpTensor>, dim: usize) -> Result<OpTensor> {
     let device = tensors[0].device().clone();
-    assert!(
-        tensors.iter().all(|t| t.device == device),
-        "cat: mixed devices"
-    );
-
     let cat = Concat::new(tensors, dim);
     let new_view = cat.compute_view()?;
     OpTensor::lazy(LazyOp::Concat(cat), new_view, device, false)
 }
 
-fn stack_impl(tensors: RVec<OpTensor>, dim: usize, root: bool) -> Result<OpTensor> {
+fn cat_impl(tensors: RVec<OpTensor>, dim: usize) -> Result<OpTensor> {
     match tensors.len() {
-        0 => anyhow::bail!("Cannot stack empty list of tensors"),
-        1 => {
-            if root {
-                Ok(unsqueeze_kernel(tensors[0].clone(), dim)?)
-            } else {
-                Ok(tensors[0].clone())
-            }
-        }
+        0 => anyhow::bail!("Cannot cat empty list of tensors"),
+        1 => Ok(tensors[0].clone()),
         len => {
-            let tensors = if root {
-                tensors
-                    .iter()
-                    .map(|t| unsqueeze_kernel(t.clone(), dim))
-                    .collect::<anyhow::Result<RVec<OpTensor>>>()?
-            } else {
-                tensors
-            };
-
-            let device = tensors[0].device.clone();
+            let device = tensors[0].device().clone();
             assert!(
                 tensors.iter().all(|t| t.device == device),
-                "stack: mixed devices"
+                "cat: mixed devices"
             );
 
             if len <= 4 {
-                return cat_kernel(tensors, dim);
+                return cat_inner(tensors, dim);
             }
 
             // Process tensors in chunks of 4 recursively
@@ -1229,7 +1207,7 @@ fn stack_impl(tensors: RVec<OpTensor>, dim: usize, root: bool) -> Result<OpTenso
 
                 for chunk in current_level.chunks(4) {
                     let chunk_vec = chunk.iter().cloned().collect();
-                    let reduced = stack_impl(chunk_vec, dim, false)?;
+                    let reduced = cat_impl(chunk_vec, dim)?;
                     next_level.push(reduced);
                 }
 
@@ -1242,9 +1220,32 @@ fn stack_impl(tensors: RVec<OpTensor>, dim: usize, root: bool) -> Result<OpTenso
 }
 
 #[tensor_op(variants = [function])]
+pub fn cat<D: Dim>(tensors: RVec<OpTensor>, dim: D) -> Result<OpTensor> {
+    let dim = dim.to_index(tensors[0].shape(), "cat")?;
+    cat_impl(tensors, dim)
+}
+
+#[tensor_op(variants = [function])]
 pub fn stack<D: Dim>(tensors: RVec<OpTensor>, dim: D) -> Result<OpTensor> {
     let dim = dim.to_index_plus_one(tensors[0].shape(), "stack")?;
-    stack_impl(tensors, dim, true)
+    match tensors.len() {
+        0 => anyhow::bail!("Cannot stack empty list of tensors"),
+        1 => Ok(unsqueeze_kernel(tensors[0].clone(), dim)?),
+        _ => {
+            // Preserve stack-specific device error message
+            let device = tensors[0].device().clone();
+            assert!(
+                tensors.iter().all(|t| t.device == device),
+                "stack: mixed devices"
+            );
+
+            let tensors = tensors
+                .iter()
+                .map(|t| unsqueeze_kernel(t.clone(), dim))
+                .collect::<anyhow::Result<RVec<OpTensor>>>()?;
+            cat_impl(tensors, dim)
+        }
+    }
 }
 
 #[tensor_op(variants = [function, method])]
