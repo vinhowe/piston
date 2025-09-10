@@ -1147,9 +1147,27 @@ impl Tensor {
                     let input = input.wrap();
                     ctx.add(&input, grad.cast(input.dtype())?)?;
                 }
+                LazyOp::Concat(Concat { inputs, dim }) => {
+                    // Split the upstream gradient along `dim` and route slices to inputs
+                    let mut offset: usize = 0;
+                    for input in inputs.iter() {
+                        let input = input.clone().wrap();
+                        let mut ranges = rvec![];
+                        for axis in 0..node.dim() {
+                            if axis == dim {
+                                let len = input.shape()[dim];
+                                ranges.push(offset..offset + len);
+                            } else {
+                                ranges.push(0..input.shape()[axis]);
+                            }
+                        }
+                        let input_grad = grad.clone().slice(&ranges)?;
+                        ctx.add(&input, input_grad)?;
+                        offset += input.shape()[dim];
+                    }
+                }
                 LazyOp::Norm(_) => todo!(),
                 LazyOp::Const => panic!("piston internal error - const node in backprop"),
-                LazyOp::Concat(_) => todo!(),
                 LazyOp::Cmp(_) => todo!(),
                 LazyOp::Powf(_) => todo!(),
                 LazyOp::RoPE(RoPE {
