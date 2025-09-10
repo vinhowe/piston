@@ -887,9 +887,14 @@ impl Tensor {
                 }
                 LazyOp::Detach(_) => todo!(),
                 LazyOp::Unary(Unary {
-                    input: _,
+                    input: arg,
                     op: UnaryOp::Sigmoid,
-                }) => todo!(),
+                }) => {
+                    let arg = arg.wrap();
+                    // sigmoid'(x) = sigmoid(x) * (1 - sigmoid(x))
+                    let arg_grad = grad.clone().mul(node.clone())?.mul((1. - node.clone())?)?;
+                    ctx.add(&arg, arg_grad)?;
+                }
                 LazyOp::Unary(Unary {
                     input: _,
                     op: UnaryOp::Floor,
