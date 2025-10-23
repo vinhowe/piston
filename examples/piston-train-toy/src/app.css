@@ -1,8 +1,17 @@
-@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,100..800;1,100..800&display=swap');
+@import url('https://use.typekit.net/ixr7lrv.css');
 @import 'tailwindcss';
 
+@font-face {
+	font-family: 'Berkeley Mono Variable';
+	src: url('/Berkeley Mono Variable.woff2') format('woff2-variations');
+	font-weight: 400 700;
+	font-style: normal;
+	font-display: swap;
+}
+
 @theme {
-	--font-mono: 'JetBrains Mono', monospace;
+	--font-mono: 'Berkeley Mono Variable', monospace;
+	--font-sans: 'neue-haas-unica', sans-serif;
 }
 
 :root {
