@@ -57,6 +57,9 @@
 	/* 72px */
 	--text-9xl: 4.5rem;
 
+	--text-controls-numeric: 0.78125rem;
+	--text-controls-numeric--line-height: calc(1 / 0.78125);
+
 	--color-panel-border-base: var(--color-neutral-300);
 	--color-panel: oklch(0.96 0 0);
 }
