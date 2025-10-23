@@ -65,6 +65,7 @@
 html {
 	/* Base font size for fine pointers (desktop/mouse) */
 	font-size: 16px;
+	overscroll-behavior: none;
 	@apply h-full;
 	@apply w-full;
 }
@@ -84,4 +85,5 @@ html {
 body {
 	@apply h-full;
 	@apply w-full;
+	overscroll-behavior: none;
 }
