@@ -56,6 +56,9 @@
 	--text-8xl--line-height: 1;
 	/* 72px */
 	--text-9xl: 4.5rem;
+
+	--color-panel-border-base: var(--color-neutral-300);
+	--color-panel: oklch(0.96 0 0);
 }
 
 :root {
