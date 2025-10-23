@@ -6,6 +6,7 @@
 	"plugins": [
 		"prettier-plugin-svelte"
 	],
+	"tabWidth": 2,
 	"overrides": [
 		{
 			"files": "*.svelte",
