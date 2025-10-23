@@ -65,6 +65,8 @@
 html {
 	/* Base font size for fine pointers (desktop/mouse) */
 	font-size: 16px;
+	@apply h-full;
+	@apply w-full;
 }
 
 @media (pointer: coarse) {
@@ -77,4 +79,9 @@ html {
 		/* Extra spacing on mobile */
 		--spacing: 0.25rem;
 	}
+}
+
+body {
+	@apply h-full;
+	@apply w-full;
 }
