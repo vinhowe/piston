@@ -1,5 +1,5 @@
 @import url('https://use.typekit.net/ixr7lrv.css');
-@import 'tailwindcss';
+@import 'tailwindcss' source('./');
 
 @font-face {
 	font-family: 'Berkeley Mono Variable';
