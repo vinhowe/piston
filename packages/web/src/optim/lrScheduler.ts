@@ -5,6 +5,7 @@ import { Optimizer } from "./optimizer";
  */
 export type SchedulerStateDict<T> = {
   lastEpoch: number;
+  lastLr?: number[];
 } & T;
 
 /**
@@ -81,7 +82,12 @@ export abstract class LRScheduler<T> {
 
     // Initialize base learning rates
     if (lastEpoch === -1) {
-      this.baseLrs = this.optimizer.paramGroups.map((group) => group.lr!);
+      this.baseLrs = this.optimizer.paramGroups.map((group) => {
+        const initial = group.lr!;
+        // Persist initialLr on the param group for resume consistency
+        group.initialLr = initial;
+        return initial;
+      });
     } else {
       this.baseLrs = this.optimizer.paramGroups.map((group) => {
         if (!group.initialLr) {
@@ -112,11 +118,20 @@ export abstract class LRScheduler<T> {
    * Return the state of the scheduler as a dictionary
    */
   stateDict(): SchedulerStateDict<T> {
-    const state: Record<string, unknown> = { lastEpoch: this.lastEpoch };
+    const state: Record<string, unknown> = {
+      lastEpoch: this.lastEpoch,
+      lastLr: this.lastLr.slice(),
+    };
 
     // Add any additional state from subclasses
     for (const [key, value] of Object.entries(this)) {
-      if (key !== "optimizer" && key !== "baseLrs" && key !== "lastLr") {
+      if (
+        key !== "optimizer" &&
+        key !== "baseLrs" &&
+        key !== "lastLr" &&
+        key !== "_initialized" &&
+        key !== "stepCount"
+      ) {
         state[key] = value;
       }
     }
@@ -130,7 +145,18 @@ export abstract class LRScheduler<T> {
    * @param stateDict - Scheduler state dictionary
    */
   loadStateDict(stateDict: SchedulerStateDict<T>): void {
-    Object.assign(this, stateDict);
+    const { lastLr, ...rest } = stateDict;
+    Object.assign(this, rest);
+
+    // Restore lastLr for correct chainable updates; if missing, sync from optimizer groups
+    if (Array.isArray(lastLr)) {
+      this.lastLr = lastLr.slice();
+    } else {
+      this.lastLr = this.optimizer.paramGroups.map((g) => g.lr!);
+    }
+
+    // Mark initialized to avoid performing an extra initial step after loading state
+    this._initialized = true;
   }
 
   /**
