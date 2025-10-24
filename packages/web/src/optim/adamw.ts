@@ -120,7 +120,7 @@ export class AdamW extends Optimizer<AdamWParamState, AdamWConfig, AdamWParamGro
 
         const grad = param.grad;
 
-        // Apply weight decay
+        // Perform stepweight decay
         if (weightDecay !== 0) {
           param.mul_(1 - lr * weightDecay);
         }
