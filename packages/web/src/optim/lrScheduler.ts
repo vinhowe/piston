@@ -426,3 +426,132 @@ export class CosineAnnealingLR extends LRScheduler<CosineAnnealingConfig> {
     );
   }
 }
+
+/**
+ * Sequentially applies a list of schedulers at specified milestone steps
+ *
+ * Example: warmup for N steps then cosine → milestones: [N]
+ */
+export interface SequentialConfig {
+  milestones: number[];
+  currentIndex: number;
+  inner: SchedulerStateDict<unknown>[];
+}
+
+export class SequentialLR extends LRScheduler<SequentialConfig> {
+  private schedulers: LRScheduler<unknown>[];
+  private milestones: number[];
+  private currentIndex: number = 0;
+
+  constructor(
+    optimizer: Optimizer,
+    schedulers: LRScheduler<unknown>[],
+    milestones: number[],
+    lastEpoch: number = -1,
+  ) {
+    super(optimizer, lastEpoch);
+
+    if (!Array.isArray(schedulers) || schedulers.length === 0) {
+      throw new Error("SequentialLR requires at least one scheduler");
+    }
+    if (!Array.isArray(milestones)) {
+      throw new Error("SequentialLR milestones must be an array");
+    }
+    if (schedulers.length !== milestones.length + 1) {
+      throw new Error("SequentialLR: milestones length must be exactly schedulers.length - 1");
+    }
+    for (let i = 1; i < milestones.length; i++) {
+      if (!(milestones[i] > milestones[i - 1])) {
+        throw new Error("SequentialLR milestones must be strictly increasing");
+      }
+    }
+
+    this.schedulers = schedulers;
+    this.milestones = milestones.slice();
+    this.currentIndex = this.indexForEpoch(this.lastEpoch);
+  }
+
+  private indexForEpoch(epoch: number): number {
+    let idx = 0;
+    for (let i = 0; i < this.milestones.length; i++) {
+      if (epoch >= this.milestones[i]) idx += 1;
+      else break;
+    }
+    return idx;
+  }
+
+  private syncIncomingScheduler(index: number): void {
+    const incoming = this.schedulers[index];
+    // Ensure continuity by seeding the incoming scheduler with current LR
+    const current = this.lastLr?.length
+      ? this.lastLr.slice()
+      : this.optimizer.paramGroups.map((g) => g.lr!);
+    incoming.loadStateDict({ lastEpoch: -1, lastLr: current });
+  }
+
+  step(): void {
+    // Avoid base recursion init path issues
+    // Note: base.ensureInitialized() calls step() once; safe with this override
+    if ((this as unknown as { _initialized?: boolean })._initialized !== true) {
+      (this as unknown as { _initialized: boolean })._initialized = true;
+      this.stepCount = 0;
+    }
+
+    this.stepCount += 1;
+    this.lastEpoch += 1;
+
+    const prevIndex = this.currentIndex;
+    const nextIndex = this.indexForEpoch(this.lastEpoch);
+    if (nextIndex !== prevIndex) {
+      this.syncIncomingScheduler(nextIndex);
+      this.currentIndex = nextIndex;
+    }
+
+    // Step the active scheduler exactly once
+    const active = this.schedulers[this.currentIndex];
+    active.step();
+
+    const values = active.getLastLr().slice();
+    for (let i = 0; i < this.optimizer.paramGroups.length; i++) {
+      this.optimizer.paramGroups[i].lr = values[i];
+    }
+    this.lastLr = values;
+  }
+
+  getLr(): number[] {
+    // No additional computation; delegate to tracked lastLr
+    return this.lastLr.slice();
+  }
+
+  stateDict(): SchedulerStateDict<SequentialConfig> {
+    return {
+      lastEpoch: this.lastEpoch,
+      lastLr: this.lastLr.slice(),
+      milestones: this.milestones.slice(),
+      currentIndex: this.currentIndex,
+      inner: this.schedulers.map((s) => s.stateDict()),
+    };
+  }
+
+  loadStateDict(stateDict: SchedulerStateDict<SequentialConfig>): void {
+    const { lastEpoch, lastLr, milestones, currentIndex, inner } = stateDict;
+
+    // Initialize base epoch/lr and mark initialized; provide full shape to satisfy generic
+    super.loadStateDict({
+      lastEpoch,
+      lastLr,
+      milestones: this.milestones,
+      currentIndex: this.currentIndex,
+      inner: [],
+    });
+
+    this.milestones = Array.isArray(milestones) ? milestones.slice() : [];
+    this.currentIndex = Math.min(Math.max(0, currentIndex | 0), this.schedulers.length - 1);
+
+    if (Array.isArray(inner)) {
+      for (let i = 0; i < Math.min(inner.length, this.schedulers.length); i++) {
+        this.schedulers[i].loadStateDict(inner[i]);
+      }
+    }
+  }
+}
