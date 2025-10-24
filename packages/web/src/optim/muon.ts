@@ -121,7 +121,7 @@ function muonUpdate(
  * Muon is a memory-efficient optimizer that uses Newton-Schulz orthogonalization
  * for preconditioning gradients. It's particularly effective for transformer models.
  */
-export class Muon extends Optimizer<MuonParamState> {
+export class Muon extends Optimizer<MuonParamState, MuonConfig, MuonParamGroup> {
   /**
    * Creates a new Muon optimizer
    *

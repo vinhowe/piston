@@ -35,7 +35,7 @@ export interface AdamWConfig {
  * The original Adam algorithm was proposed in "Adam: A Method for Stochastic Optimization".
  * The AdamW variant was proposed in "Decoupled Weight Decay Regularization".
  */
-export class AdamW extends Optimizer<AdamWParamState> {
+export class AdamW extends Optimizer<AdamWParamState, AdamWConfig, AdamWParamGroup> {
   /**
    * Creates a new AdamW optimizer
    *

@@ -50,8 +50,8 @@ export interface OptimizerParamState {
 /**
  * Type for optimizer state dictionary serialization
  */
-export interface StateDict {
-  state: Record<number, OptimizerParamState>;
+export interface StateDict<TState extends OptimizerParamState = OptimizerParamState> {
+  state: Record<number, TState>;
   paramGroups: ParamGroupConfig[];
 }
 
@@ -62,11 +62,15 @@ export interface StateDict {
  * Subclasses should implement the `step` method which performs the actual
  * parameter updates.
  */
-export class Optimizer<TState extends OptimizerParamState = OptimizerParamState> {
-  defaults: Record<string, unknown>;
+export class Optimizer<
+  TState extends OptimizerParamState = OptimizerParamState,
+  TConfig = unknown,
+  TParamGroup extends ParamGroup = ParamGroup,
+> {
+  defaults: TConfig;
   device: Device;
   state: Map<Parameter, TState>;
-  paramGroups: ParamGroup[];
+  paramGroups: TParamGroup[];
   private _optimizerStepPreHooks: Map<number, OptimizerPreHook>;
   private _optimizerStepPostHooks: Map<number, OptimizerPostHook>;
 
@@ -76,11 +80,7 @@ export class Optimizer<TState extends OptimizerParamState = OptimizerParamState>
    * @param params - Iterable of parameters or parameter groups
    * @param defaults - Default optimization options
    */
-  constructor(
-    params: Parameter[] | ParamGroup[],
-    device: Device,
-    defaults: Record<string, unknown>,
-  ) {
+  constructor(params: Parameter[] | ParamGroup[], device: Device, defaults: TConfig) {
     this.defaults = defaults;
     this.device = device;
     this.state = new Map();
@@ -113,7 +113,11 @@ export class Optimizer<TState extends OptimizerParamState = OptimizerParamState>
 
     // Return a proxy to intercept method calls like 'step'
     return new Proxy(this, {
-      get: (target: Optimizer<TState>, prop: string | symbol, receiver: unknown): unknown => {
+      get: (
+        target: Optimizer<TState, TConfig, TParamGroup>,
+        prop: string | symbol,
+        receiver: unknown,
+      ): unknown => {
         // Intercept the 'step' method
         if (prop === "step" && typeof target.step === "function") {
           const originalStep = Reflect.get(target, prop, receiver) as (
@@ -133,7 +137,7 @@ export class Optimizer<TState extends OptimizerParamState = OptimizerParamState>
         // Default behavior for other properties and methods
         return Reflect.get(target, prop, receiver);
       },
-    }) as Optimizer<TState>;
+    }) as Optimizer<TState, TConfig, TParamGroup>;
   }
 
   /**
@@ -178,7 +182,11 @@ export class Optimizer<TState extends OptimizerParamState = OptimizerParamState>
     }
 
     // Create a new parameter group with defaults
-    const group: ParamGroup = { ...this.defaults, ...paramGroup, params: [] };
+    const group = {
+      ...this.defaults,
+      ...paramGroup,
+      params: [],
+    } as unknown as TParamGroup;
 
     // Check parameters
     for (const param of params) {
@@ -208,7 +216,7 @@ export class Optimizer<TState extends OptimizerParamState = OptimizerParamState>
    *
    * @returns State dictionary
    */
-  stateDict(): StateDict {
+  stateDict(): StateDict<TState> {
     // Map parameters to indices
     const paramMappings = new Map<Parameter, number>();
     let startIndex = 0;
@@ -292,7 +300,7 @@ export class Optimizer<TState extends OptimizerParamState = OptimizerParamState>
       const savedGroup = savedGroups[i];
       for (const key of Object.keys(savedGroup)) {
         if (key !== "params") {
-          group[key] = savedGroup[key];
+          (group as Record<string, unknown>)[key] = savedGroup[key];
         }
       }
     });

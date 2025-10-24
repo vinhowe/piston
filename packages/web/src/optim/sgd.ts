@@ -32,7 +32,7 @@ export interface SGDConfig {
  * Nesterov momentum is based on the paper "On the importance of initialization and momentum in deep
  * learning".
  */
-export class SGD extends Optimizer<SGDParamState> {
+export class SGD extends Optimizer<SGDParamState, SGDConfig, SGDParamGroup> {
   /**
    * Creates a new SGD optimizer
    *
