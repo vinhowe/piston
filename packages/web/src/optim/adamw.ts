@@ -143,26 +143,26 @@ export class AdamW extends Optimizer<AdamWParamState, AdamWConfig, AdamWParamGro
 
         const expAvg = state.expAvg as Tensor;
         const expAvgSq = state.expAvgSq as Tensor;
-        const maxExpAvgSq = amsgrad ? (state.maxExpAvgSq as Tensor) : null;
 
         // Increment step counter
         state.step++;
-
-        // Decay the first and second moment running average coefficient
-        expAvg.mul_(beta1).add_(grad.mul(1 - beta1));
-        expAvgSq.mul_(beta2).addcmul_(grad, grad, 1 - beta2);
 
         // Compute bias correction terms
         const biasCorrection1 = 1 - Math.pow(beta1, state.step);
         const biasCorrection2 = 1 - Math.pow(beta2, state.step);
 
+        // Decay the first and second moment running average coefficient
+        expAvg.mul_(beta1).add_(grad.mul(1 - beta1));
+        expAvgSq.mul_(beta2).addcmul_(grad, grad, 1 - beta2);
+
         // Use the max avg squared if using amsgrad
         let denom;
         if (amsgrad) {
+          const maxExpAvgSq = state.maxExpAvgSq as Tensor;
           // Update max exponential moving average of squared gradient
-          maxExpAvgSq!.maximum_(expAvgSq);
+          maxExpAvgSq.maximum_(expAvgSq);
           // Use the max for normalization
-          denom = maxExpAvgSq!.sqrt().div(Math.sqrt(biasCorrection2)).add(eps);
+          denom = maxExpAvgSq.sqrt().div(Math.sqrt(biasCorrection2)).add(eps);
         } else {
           denom = expAvgSq.sqrt().div(Math.sqrt(biasCorrection2)).add(eps);
         }
