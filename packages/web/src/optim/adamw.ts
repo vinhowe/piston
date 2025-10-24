@@ -104,21 +104,21 @@ export class AdamW extends Optimizer<AdamWParamState, AdamWConfig, AdamWParamGro
     // Perform optimization for each parameter group
     for (const group of this.paramGroups) {
       const {
-        lr = this.defaults.lr as number,
-        betas = this.defaults.betas as [number, number],
-        eps = this.defaults.eps as number,
-        weightDecay = this.defaults.weightDecay as number,
-        amsgrad = this.defaults.amsgrad as number,
-      } = group as AdamWParamGroup;
+        lr = this.defaults.lr,
+        betas = this.defaults.betas,
+        eps = this.defaults.eps,
+        weightDecay = this.defaults.weightDecay,
+        amsgrad = this.defaults.amsgrad,
+      } = group;
 
-      const [beta1, beta2] = betas as [number, number];
+      const [beta1, beta2] = betas;
 
       for (const param of group.params) {
         if (!param.grad) {
           continue;
         }
 
-        const grad = param.grad as Tensor;
+        const grad = param.grad;
 
         // Apply weight decay
         if (weightDecay !== 0) {

@@ -21,11 +21,11 @@ export interface MuonParamGroup extends ParamGroup {
 }
 
 export interface MuonConfig {
-  lr?: number;
-  weightDecay?: number;
-  momentum?: number;
-  nsSteps?: number;
-  nesterov?: boolean;
+  lr: number;
+  weightDecay: number;
+  momentum: number;
+  nsSteps: number;
+  nesterov: boolean;
 }
 
 export type MuonWithAdamWParamGroup =
@@ -181,12 +181,12 @@ export class Muon extends Optimizer<MuonParamState, MuonConfig, MuonParamGroup> 
     // Perform optimization for each parameter group
     for (const group of this.paramGroups) {
       const {
-        lr = this.defaults.lr as number,
-        weightDecay = this.defaults.weightDecay as number,
-        momentum = this.defaults.momentum as number,
-        nsSteps = this.defaults.nsSteps as number,
-        nesterov = this.defaults.nesterov as boolean,
-      } = group as MuonParamGroup;
+        lr = this.defaults.lr,
+        weightDecay = this.defaults.weightDecay,
+        momentum = this.defaults.momentum,
+        nsSteps = this.defaults.nsSteps,
+        nesterov = this.defaults.nesterov,
+      } = group;
 
       for (const param of group.params) {
         if (!param.grad) {
@@ -194,7 +194,7 @@ export class Muon extends Optimizer<MuonParamState, MuonConfig, MuonParamGroup> 
           param.grad = pin(zerosLike(param));
         }
 
-        const grad = param.grad as Tensor;
+        const grad = param.grad;
 
         // Get parameter state
         let state = this.state.get(param);
@@ -205,7 +205,7 @@ export class Muon extends Optimizer<MuonParamState, MuonConfig, MuonParamGroup> 
           this.state.set(param, state);
         }
 
-        const update = muonUpdate(grad, state.momentumBuffer!, momentum, nsSteps, nesterov);
+        const update = muonUpdate(grad, state.momentumBuffer as Tensor, momentum, nsSteps, nesterov);
 
         // Apply weight decay
         if (weightDecay !== 0) {

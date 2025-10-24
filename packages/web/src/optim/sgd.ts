@@ -95,19 +95,19 @@ export class SGD extends Optimizer<SGDParamState, SGDConfig, SGDParamGroup> {
     // Perform optimization for each parameter group
     for (const group of this.paramGroups) {
       const {
-        lr = this.defaults.lr as number,
-        momentum = this.defaults.momentum as number,
-        dampening = this.defaults.dampening as number,
-        weightDecay = this.defaults.weightDecay as number,
-        nesterov = this.defaults.nesterov as boolean,
-      } = group as SGDParamGroup;
+        lr = this.defaults.lr,
+        momentum = this.defaults.momentum,
+        dampening = this.defaults.dampening,
+        weightDecay = this.defaults.weightDecay,
+        nesterov = this.defaults.nesterov,
+      } = group;
 
       for (const param of group.params) {
         if (!param.grad) {
           continue;
         }
 
-        let grad = param.grad as Tensor;
+        let grad = param.grad;
 
         // Apply weight decay
         if (weightDecay !== 0) {
