@@ -281,12 +281,6 @@ export class LinearLR extends LRScheduler<LinearConfig> {
 
   getLr(): number[] {
     if (this.lastEpoch === 0) {
-      console.log(
-        "startFactor",
-        this.startFactor,
-        this.getLastLr(),
-        this.getLastLr().map((lr) => lr * this.startFactor),
-      );
       return this.getLastLr().map((lr) => lr * this.startFactor);
     }
 
