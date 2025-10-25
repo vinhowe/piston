@@ -1,5 +1,7 @@
 import { Buffer, Parameter } from "@/nn/parameter";
+import { Tensor } from "@/tensor";
 import { RemovableHandle } from "@/utils";
+import { Device } from "@/wasm";
 
 /**
  * Type definitions for registration hooks
@@ -726,6 +728,68 @@ export class Module<Input = unknown, Output = unknown> {
     }
 
     return this;
+  }
+
+  /**
+   * Load parameters and buffers from a flat state dict with dotted keys.
+   * Returns missing and unexpected keys; throws if strict and either is non-empty.
+   */
+  loadStateDict(
+    state: Record<string, Tensor>,
+    options?: { strict?: boolean },
+  ): { missingKeys: string[]; unexpectedKeys: string[] } {
+    const strict = options?.strict ?? true;
+
+    const expectedParamNames = this.namedParameters("", true, true).map(([n]) => n);
+    const expectedBufferNames = this.namedBuffers("", true, true).map(([n]) => n);
+    const expected = new Set([...expectedParamNames, ...expectedBufferNames]);
+
+    const incoming = Object.keys(state);
+    const unexpectedKeys = incoming.filter((k) => !expected.has(k)).sort();
+    const missingKeys = Array.from(expected)
+      .filter((k) => !(k in state))
+      .sort();
+
+    if (strict && (unexpectedKeys.length > 0 || missingKeys.length > 0)) {
+      throw new Error(
+        `loadStateDict(strict=true) found mismatched keys: missing=[${missingKeys.join(", ")}] unexpected=[${unexpectedKeys.join(", ")}]`,
+      );
+    }
+
+    // Helper to fetch a module by a dotted path
+    const getModuleByPath = (root: Module, path: string[]): Module => {
+      let cursor: Module = root;
+      for (const seg of path) {
+        const next = cursor._modules[seg];
+        if (!next) {
+          throw new Error(`loadStateDict: missing submodule at path '${path.join(".")}'`);
+        }
+        cursor = next;
+      }
+      return cursor;
+    };
+
+    for (const [fullName, tensor] of Object.entries(state)) {
+      if (!expected.has(fullName)) continue; // skip unexpected in non-strict mode
+      const parts = fullName.split(".");
+      const leaf = parts.pop() as string;
+      const target = getModuleByPath(this as Module, parts);
+
+      const hasParam = Object.prototype.hasOwnProperty.call(target._parameters, leaf);
+      const hasBuffer = Object.prototype.hasOwnProperty.call(target._buffers, leaf);
+
+      if (hasParam) {
+        // Replace parameter
+        target.registerParameter(leaf, new Parameter(tensor));
+      } else if (hasBuffer) {
+        // Replace buffer (persistent by default)
+        target.registerBuffer(leaf, new Buffer(tensor), true);
+      } else if (strict) {
+        throw new Error(`loadStateDict: '${fullName}' does not match a parameter or buffer`);
+      }
+    }
+
+    return { missingKeys, unexpectedKeys };
   }
 }
 
