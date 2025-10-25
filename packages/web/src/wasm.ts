@@ -46,6 +46,7 @@ export {
   isinf,
   isnan,
   le,
+  load as load_wasm,
   log,
   logicalAnd,
   logicalNot,

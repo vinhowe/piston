@@ -50,7 +50,7 @@ export { debugBufferHook } from "@/nn/moduleUtils";
 export { Buffer, Parameter } from "@/nn/parameter";
 export * as optim from "@/optim";
 export * from "@/optim";
-export { save } from "@/serialization";
+export { load, save } from "@/serialization";
 export { init };
 export { Tensor } from "@/tensor";
 export * from "@/utils";

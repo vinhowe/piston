@@ -1,10 +1,11 @@
 use std::sync::Arc;
 
+use crate::device::JsDevice;
 use crate::error::IntoJsError;
 use crate::tensor::JsTensor;
 use futures::lock::Mutex;
 use js_sys::{Object, Reflect};
-use piston::{Device, OpTensor, Tensor};
+use piston::{DType, Device, OpTensor, Tensor, TensorOptions};
 use std::collections::HashMap;
 use wasm_bindgen::JsValue;
 use wasm_bindgen::prelude::*;
@@ -95,4 +96,85 @@ pub async fn save(
 
     // Create an ArrayBuffer from the serialized data
     Ok(js_sys::Uint8Array::from(&serialized[..]))
+}
+
+/// Loads tensors from a safetensors byte buffer and returns a JavaScript object
+/// mapping tensor names to Tensor objects.
+#[wasm_bindgen(unchecked_return_type = "{ state: Record<string, Tensor>; extra?: unknown }")]
+pub fn load(
+    bytes: js_sys::Uint8Array,
+    #[wasm_bindgen(js_name = mapDevice)] map_device: Option<JsDevice>,
+) -> Result<JsValue, JsError> {
+    let device = map_device.unwrap_or_else(|| JsDevice { inner: Device::CPU });
+
+    // Copy bytes from the Uint8Array into a Rust Vec<u8>
+    let mut buf = vec![0u8; bytes.length() as usize];
+    bytes.copy_to(&mut buf[..]);
+
+    // Deserialize safetensors from bytes
+    let st = safetensors::SafeTensors::deserialize(&buf)
+        .map_err(|e| JsError::new(&format!("Failed to deserialize safetensors: {e}")))?;
+
+    let obj = js_sys::Object::new();
+
+    for name in st.names() {
+        let view = st
+            .tensor(&name)
+            .map_err(|e| JsError::new(&format!("Failed to read tensor '{name}': {e}")))?;
+
+        // Map safetensors dtype to piston dtype
+        let dtype = match view.dtype() {
+            safetensors::Dtype::F32 => DType::F32,
+            safetensors::Dtype::F16 => DType::F16,
+            safetensors::Dtype::BF16 => DType::BF16,
+            safetensors::Dtype::I32 => DType::I32,
+            safetensors::Dtype::U32 => DType::U32,
+            other => {
+                return Err(JsError::new(&format!(
+                    "Unsupported dtype in safetensors: {:?}",
+                    other
+                )));
+            }
+        };
+
+        let shape = view.shape();
+        let data = view.data();
+
+        let tensor = Tensor::from_bytes(
+            data,
+            shape,
+            TensorOptions::new()
+                .dtype(dtype)
+                .device(device.inner.clone())
+                .requires_grad(false),
+        )
+        .map_err(|e| JsError::new(&format!("Failed to construct tensor '{name}': {e}")))?;
+
+        // Wrap as a JS-visible Tensor
+        let js_tensor = JsTensor::new(tensor);
+        js_sys::Reflect::set(&obj, &JsValue::from_str(&name), &JsValue::from(js_tensor))
+            .map_err(|e| JsError::new(&format!("Failed to set property '{name}': {e:?}")))?;
+    }
+
+    // Build return object: { state, extra }
+    let out = js_sys::Object::new();
+
+    // state
+    js_sys::Reflect::set(&out, &JsValue::from_str("state"), &obj)
+        .map_err(|e| JsError::new(&format!("Failed to set state on return object: {e:?}")))?;
+
+    // extra (parse JSON if present)
+    let extra_js = safetensors::SafeTensors::read_metadata(&buf)
+        .ok()
+        .and_then(|(_, meta)| {
+            meta.metadata().as_ref().and_then(|map| {
+                map.get("piston_extra")
+                    .and_then(|s| js_sys::JSON::parse(s).ok())
+            })
+        })
+        .unwrap_or(JsValue::UNDEFINED);
+    js_sys::Reflect::set(&out, &JsValue::from_str("extra"), &extra_js)
+        .map_err(|e| JsError::new(&format!("Failed to set extra on return object: {e:?}")))?;
+
+    Ok(out.into())
 }
