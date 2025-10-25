@@ -703,7 +703,7 @@ export class Module<Input = unknown, Output = unknown> {
    * @param device - The device to move to (e.g., "cpu", "gpu")
    * @returns The module instance for chaining
    */
-  async to(device: string): Promise<Module<Input, Output>> {
+  async to(device: Device | "cpu" | "gpu" | "webgpu"): Promise<Module<Input, Output>> {
     // Move all parameters to the new device
     for (const [name, param] of Object.entries(this._parameters)) {
       if (param !== null) {
