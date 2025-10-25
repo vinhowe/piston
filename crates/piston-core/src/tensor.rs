@@ -1539,6 +1539,14 @@ impl TensorOptions {
         }
     }
 
+    pub fn from_tensor(tensor: &Tensor) -> Self {
+        Self {
+            device: Some(tensor.device()),
+            dtype: Some(tensor.dtype()),
+            requires_grad: Some(tensor.requires_grad()),
+        }
+    }
+
     /// Set the device for tensor creation
     pub fn device(mut self, device: Device) -> Self {
         self.device = Some(device);
