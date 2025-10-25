@@ -22,9 +22,9 @@ export type ModuleRegistrationHook = (
   submodule: Module<unknown, unknown> | null,
 ) => void;
 
-const _globalParameterRegistrationHooks = new Map<number, ParameterRegistrationHook>();
-const _globalBufferRegistrationHooks = new Map<number, BufferRegistrationHook>();
-const _globalModuleRegistrationHooks = new Map<number, ModuleRegistrationHook>();
+const globalParameterRegistrationHooks = new Map<number, ParameterRegistrationHook>();
+const globalBufferRegistrationHooks = new Map<number, BufferRegistrationHook>();
+const globalModuleRegistrationHooks = new Map<number, ModuleRegistrationHook>();
 
 /**
  * Register a global parameter registration hook.
@@ -36,8 +36,8 @@ const _globalModuleRegistrationHooks = new Map<number, ModuleRegistrationHook>()
 export function registerModuleParameterRegistrationHook(
   hook: ParameterRegistrationHook,
 ): RemovableHandle {
-  const handle = new RemovableHandle(_globalParameterRegistrationHooks);
-  _globalParameterRegistrationHooks.set(handle.id, hook);
+  const handle = new RemovableHandle(globalParameterRegistrationHooks);
+  globalParameterRegistrationHooks.set(handle.id, hook);
   return handle;
 }
 
@@ -51,8 +51,8 @@ export function registerModuleParameterRegistrationHook(
 export function registerModuleBufferRegistrationHook(
   hook: BufferRegistrationHook,
 ): RemovableHandle {
-  const handle = new RemovableHandle(_globalBufferRegistrationHooks);
-  _globalBufferRegistrationHooks.set(handle.id, hook);
+  const handle = new RemovableHandle(globalBufferRegistrationHooks);
+  globalBufferRegistrationHooks.set(handle.id, hook);
   return handle;
 }
 
@@ -66,8 +66,8 @@ export function registerModuleBufferRegistrationHook(
 export function registerModuleModuleRegistrationHook(
   hook: ModuleRegistrationHook,
 ): RemovableHandle {
-  const handle = new RemovableHandle(_globalModuleRegistrationHooks);
-  _globalModuleRegistrationHooks.set(handle.id, hook);
+  const handle = new RemovableHandle(globalModuleRegistrationHooks);
+  globalModuleRegistrationHooks.set(handle.id, hook);
   return handle;
 }
 
@@ -111,7 +111,7 @@ export class Module<Input = unknown, Output = unknown> {
         }
 
         // Handle attribute setting through _setAttr
-        return target._setAttr(prop.toString(), value);
+        return target.setAttr(prop.toString(), value);
       },
 
       get: (target: Module<Input, Output>, prop: string | symbol, receiver: unknown): unknown => {
@@ -158,7 +158,7 @@ export class Module<Input = unknown, Output = unknown> {
     }) as Module<Input, Output>;
   }
 
-  _setAttr(name: string, value: unknown): boolean {
+  private setAttr(name: string, value: unknown): boolean {
     // Helper function to remove attribute from various collections
     const removeFrom = (
       ...containers: Array<Record<string, unknown> | Set<string> | object>
@@ -245,7 +245,7 @@ export class Module<Input = unknown, Output = unknown> {
     }
 
     // Call global parameter registration hooks
-    for (const hook of _globalParameterRegistrationHooks.values()) {
+    for (const hook of globalParameterRegistrationHooks.values()) {
       try {
         hook(this as Module<unknown, unknown>, name, param);
       } catch (error) {
@@ -285,7 +285,7 @@ export class Module<Input = unknown, Output = unknown> {
     }
 
     // Call global buffer registration hooks
-    for (const hook of _globalBufferRegistrationHooks.values()) {
+    for (const hook of globalBufferRegistrationHooks.values()) {
       try {
         hook(this as Module<unknown, unknown>, name, buffer);
       } catch (error) {
@@ -322,7 +322,7 @@ export class Module<Input = unknown, Output = unknown> {
 
     this._modules[name] = module as Module;
     // Call global module registration hooks
-    for (const hook of _globalModuleRegistrationHooks.values()) {
+    for (const hook of globalModuleRegistrationHooks.values()) {
       try {
         hook(this as Module<unknown, unknown>, name, module as Module<unknown, unknown> | null);
       } catch (error) {
@@ -336,7 +336,7 @@ export class Module<Input = unknown, Output = unknown> {
   /**
    * Helper method that returns an iterator over named members of the module.
    */
-  private *_namedMembers<SubmoduleInput, SubmoduleOutput, MemberType>(
+  private *namedMembers<SubmoduleInput, SubmoduleOutput, MemberType>(
     getMembersFn: (
       module: Module<SubmoduleInput, SubmoduleOutput>,
     ) => Iterable<[string, MemberType]>,
@@ -368,7 +368,7 @@ export class Module<Input = unknown, Output = unknown> {
         const submodulePrefix = prefix + (prefix ? "." : "") + name;
 
         // Create a generator from the child module's named members
-        const submoduleGen = module._namedMembers(
+        const submoduleGen = module.namedMembers(
           getMembersFn,
           submodulePrefix,
           recurse,
@@ -414,7 +414,7 @@ export class Module<Input = unknown, Output = unknown> {
     recurse: boolean = true,
     removeDuplicate: boolean = true,
   ): Generator<[string, Parameter]> {
-    const gen = this._namedMembers<unknown, unknown, Parameter>(
+    const gen = this.namedMembers<unknown, unknown, Parameter>(
       (module) => Object.entries(module._parameters),
       prefix,
       recurse,
@@ -471,7 +471,7 @@ export class Module<Input = unknown, Output = unknown> {
     recurse: boolean = true,
     removeDuplicate: boolean = true,
   ): Generator<[string, Buffer]> {
-    const gen = this._namedMembers<unknown, unknown, Buffer>(
+    const gen = this.namedMembers<unknown, unknown, Buffer>(
       (module) => Object.entries(module._buffers),
       prefix,
       recurse,
@@ -486,14 +486,14 @@ export class Module<Input = unknown, Output = unknown> {
    *
    * @param prefix - Prefix to prepend to all buffer names
    * @param recurse - If true, recurses into child modules
-   * @param remove_duplicate - If true, removes duplicate buffers
+   * @param removeDuplicate - If true, removes duplicate buffers
    */
   namedBuffers(
     prefix: string = "",
     recurse: boolean = true,
-    remove_duplicate: boolean = true,
+    removeDuplicate: boolean = true,
   ): Array<[string, Buffer]> {
-    return Array.from(this.namedBuffersIter(prefix, recurse, remove_duplicate));
+    return Array.from(this.namedBuffersIter(prefix, recurse, removeDuplicate));
   }
 
   /**
@@ -554,15 +554,15 @@ export class Module<Input = unknown, Output = unknown> {
    *
    * @param memo - Set used to track already seen modules
    * @param prefix - Prefix to prepend to all module names
-   * @param remove_duplicate - If true, removes duplicate modules
+   * @param removeDuplicate - If true, removes duplicate modules
    */
   *namedModulesIter(
     memo: Set<Module> = new Set<Module>(),
     prefix: string = "",
-    remove_duplicate: boolean = true,
+    removeDuplicate: boolean = true,
   ): Generator<[string, Module]> {
-    if (!memo.has(this as unknown as Module) || !remove_duplicate) {
-      if (remove_duplicate) {
+    if (!memo.has(this as unknown as Module) || !removeDuplicate) {
+      if (removeDuplicate) {
         memo.add(this as unknown as Module);
       }
 
@@ -576,7 +576,7 @@ export class Module<Input = unknown, Output = unknown> {
         const submodulePrefix = prefix + (prefix ? "." : "") + name;
 
         // Get generator from submodule's named modules
-        yield* module.namedModulesIter(memo, submodulePrefix, remove_duplicate);
+        yield* module.namedModulesIter(memo, submodulePrefix, removeDuplicate);
       }
     }
   }
@@ -586,14 +586,14 @@ export class Module<Input = unknown, Output = unknown> {
    *
    * @param memo - Set used to track already seen modules
    * @param prefix - Prefix to prepend to all module names
-   * @param remove_duplicate - If true, removes duplicate modules
+   * @param removeDuplicate - If true, removes duplicate modules
    */
   namedModules(
     memo: Set<Module> = new Set<Module>(),
     prefix: string = "",
-    remove_duplicate: boolean = true,
+    removeDuplicate: boolean = true,
   ): Array<[string, Module]> {
-    return Array.from(this.namedModulesIter(memo, prefix, remove_duplicate));
+    return Array.from(this.namedModulesIter(memo, prefix, removeDuplicate));
   }
 
   /**
@@ -726,13 +726,13 @@ export class Module<Input = unknown, Output = unknown> {
  * This is similar to torch.nn.ModuleList in PyTorch.
  */
 export class ModuleList<Input = unknown, Output = unknown> extends Module<Input, Output> {
-  private _modules_list: Module[];
-  private _proxy: ModuleList<Input, Output>;
+  private modulesList: Module[];
+  private _proxy: ModuleList<ListType>;
   [key: number]: Module;
 
   constructor(modules: Module[] = []) {
     super();
-    this._modules_list = [];
+    this.modulesList = [];
 
     // Add modules if provided in constructor
     if (modules && modules.length > 0) {
@@ -785,9 +785,9 @@ export class ModuleList<Input = unknown, Output = unknown> extends Module<Input,
    * @returns The ModuleList instance for chaining
    */
   append(module: Module): ModuleList<Input, Output> {
-    const idx = this._modules_list.length;
+    const idx = this.modulesList.length;
     this.addModule(idx.toString(), module);
-    this._modules_list.push(module);
+    this.modulesList.push(module);
     return this;
   }
 
@@ -813,14 +813,14 @@ export class ModuleList<Input = unknown, Output = unknown> extends Module<Input,
    */
   insert(index: number, module: Module): ModuleList<Input, Output> {
     if (index < 0) {
-      index = Math.max(0, this._modules_list.length + index + 1);
+      index = Math.max(0, this.modulesList.length + index + 1);
     }
 
     // Insert the module in our list
-    this._modules_list.splice(index, 0, module);
+    this.modulesList.splice(index, 0, module);
 
     // Re-register all modules with updated indices
-    this._recreateModules();
+    this.recreateModules();
 
     return this;
   }
@@ -832,11 +832,11 @@ export class ModuleList<Input = unknown, Output = unknown> extends Module<Input,
    * @returns The ModuleList instance for chaining
    */
   remove(module: Module): ModuleList<Input, Output> {
-    const index = this._modules_list.indexOf(module);
+    const index = this.modulesList.indexOf(module);
     if (index !== -1) {
-      this._modules_list.splice(index, 1);
+      this.modulesList.splice(index, 1);
       // Re-register all modules with updated indices
-      this._recreateModules();
+      this.recreateModules();
     }
     return this;
   }
@@ -847,7 +847,7 @@ export class ModuleList<Input = unknown, Output = unknown> extends Module<Input,
    * @returns The ModuleList instance for chaining
    */
   clear(): ModuleList<Input, Output> {
-    this._modules_list = [];
+    this.modulesList = [];
     // Get all registered module keys using named modules iterator
     const moduleKeys = Array.from(this.namedChildrenIter()).map(([key]) => key);
     for (const key of moduleKeys) {
@@ -860,7 +860,7 @@ export class ModuleList<Input = unknown, Output = unknown> extends Module<Input,
    * Get the number of modules in the ModuleList
    */
   get length(): number {
-    return this._modules_list.length;
+    return this.modulesList.length;
   }
 
   /**
@@ -871,9 +871,9 @@ export class ModuleList<Input = unknown, Output = unknown> extends Module<Input,
    */
   at(index: number): Module | undefined {
     if (index < 0) {
-      index = this._modules_list.length + index;
+      index = this.modulesList.length + index;
     }
-    return this._modules_list[index];
+    return this.modulesList[index];
   }
 
   /**
@@ -885,17 +885,17 @@ export class ModuleList<Input = unknown, Output = unknown> extends Module<Input,
    */
   set(index: number, module: Module): ModuleList<Input, Output> {
     if (index < 0) {
-      index = this._modules_list.length + index;
+      index = this.modulesList.length + index;
     }
 
-    if (index >= 0 && index < this._modules_list.length) {
+    if (index >= 0 && index < this.modulesList.length) {
       // Remove old module registration
       this.addModule(index.toString(), null);
       // Add new module
       this.addModule(index.toString(), module);
       // Update in the array
-      this._modules_list[index] = module;
-    } else if (index === this._modules_list.length) {
+      this.modulesList[index] = module;
+    } else if (index === this.modulesList.length) {
       // If appending to the end, use append
       this.append(module);
     } else {
@@ -909,7 +909,7 @@ export class ModuleList<Input = unknown, Output = unknown> extends Module<Input,
    * Helper method to recreate the numbered module references after insertion or deletion
    * @private
    */
-  private _recreateModules(): void {
+  private recreateModules(): void {
     // Get all registered module keys using named modules iterator
     const moduleKeys = Array.from(this.namedChildrenIter()).map(([key]) => key);
 
@@ -919,8 +919,8 @@ export class ModuleList<Input = unknown, Output = unknown> extends Module<Input,
     }
 
     // Re-add all modules with correct indices
-    for (let i = 0; i < this._modules_list.length; i++) {
-      this.addModule(i.toString(), this._modules_list[i]);
+    for (let i = 0; i < this.modulesList.length; i++) {
+      this.addModule(i.toString(), this.modulesList[i]);
     }
   }
 
@@ -938,7 +938,7 @@ export class ModuleList<Input = unknown, Output = unknown> extends Module<Input,
    * Get the list of modules in the ModuleList
    */
   get list(): Module[] {
-    return this._modules_list;
+    return this.modulesList;
   }
 
   /**
