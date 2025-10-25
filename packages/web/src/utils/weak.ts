@@ -103,6 +103,11 @@ export class WeakTensorFunctionMode extends PistonFunctionMode {
     return input;
   }
 
+  markWeak<T>(input: T) {
+    forEachTensorDeep(input, (tensor) => {
+      this.weakTensors.set((tensor as unknown as { __wbg_ptr: number }).__wbg_ptr, tensor);
+    });
+    return input;
   }
 
   [Symbol.dispose]() {
@@ -120,6 +125,14 @@ export function pin<T>(input: T): T {
   }
   // Fine to silently ignore; default "strong" mode will pin anyway
   return input;
+}
+
+export function markWeak<T>(input: T) {
+  using guard = new FunctionModeGuard();
+  const mode = guard.mode;
+  if (mode instanceof WeakTensorFunctionMode) {
+    mode.markWeak(input);
+  }
 }
 
 export async function weak<T>(
