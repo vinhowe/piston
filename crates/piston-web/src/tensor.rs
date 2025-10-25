@@ -300,21 +300,21 @@ impl JsTensor {
 macro_rules! impl_binary_op {
     ($op:ident, $Name:ident) => {
         // Web free-function exports for method and inplace (place outside paste!)
-        #[js_tensor_web_op(name = $Name, variants = [method, method_inplace])]
+        #[js_tensor_web_op(name = $Name, variants = [method, method_inplace, function])]
         pub fn $op(input: Tensor, other: TensorOrScalar) -> anyhow::Result<Tensor> {}
     };
 }
 
 macro_rules! impl_binary_op_tensor_only {
     ($op:ident, $Name:ident) => {
-        #[js_tensor_web_op(name = $Name, variants = [method, method_inplace])]
+        #[js_tensor_web_op(name = $Name, variants = [method, method_inplace, function])]
         pub fn $op(input: Tensor, other: Tensor) -> anyhow::Result<Tensor> {}
     };
 }
 
 macro_rules! impl_ternary_op {
     ($op:ident, $Name:ident) => {
-        #[js_tensor_web_op(name = $Name, variants = [method, method_inplace])]
+        #[js_tensor_web_op(name = $Name, variants = [method, method_inplace, function])]
         pub fn $op(
             input: Tensor,
             tensor1: Tensor,
@@ -327,14 +327,14 @@ macro_rules! impl_ternary_op {
 
 macro_rules! impl_cmp_op {
     ($op:ident, $Name:ident) => {
-        #[js_tensor_web_op(name = $Name, variants = [method, method_inplace])]
+        #[js_tensor_web_op(name = $Name, variants = [method, method_inplace, function])]
         pub fn $op(input: Tensor, other: TensorOrScalar) -> anyhow::Result<Tensor> {}
     };
 }
 
 macro_rules! impl_unary_op {
     ($op:ident, $Name:ident) => {
-        #[js_tensor_web_op(name = $Name, variants = [method, method_inplace])]
+        #[js_tensor_web_op(name = $Name, variants = [method, method_inplace, function])]
         pub fn $op(input: Tensor) -> anyhow::Result<Tensor> {}
     };
 }
@@ -575,7 +575,7 @@ pub fn norm(
     }
 }
 
-#[js_tensor_web_op(name = Flatten, variants = [method])]
+#[js_tensor_web_op(name = Flatten, variants = [method, function])]
 pub fn flatten(
     input: Tensor,
     #[op(default = 0)] start_dim: Dim,
@@ -609,10 +609,10 @@ pub fn slice(
 #[js_tensor_web_op(name = View, variants = [method])]
 pub fn view(input: Tensor, shape: ShapeWithOneHole) -> JsTensorResult {}
 
-#[js_tensor_web_op(name = Unsqueeze, variants = [method])]
+#[js_tensor_web_op(name = Unsqueeze, variants = [method, function])]
 pub fn unsqueeze(input: Tensor, dim: Dim) -> JsTensorResult {}
 
-#[js_tensor_web_op(name = Squeeze, variants = [method])]
+#[js_tensor_web_op(name = Squeeze, variants = [method, function])]
 pub fn squeeze(input: Tensor, dim: Option<Dims>) -> JsTensorResult {
     match dim {
         Some(dims) => input.squeeze(dims),
@@ -620,13 +620,13 @@ pub fn squeeze(input: Tensor, dim: Option<Dims>) -> JsTensorResult {
     }
 }
 
-#[js_tensor_web_op(name = Permute, variants = [method])]
+#[js_tensor_web_op(name = Permute, variants = [method, function])]
 pub fn permute(input: Tensor, dims: Dims) -> JsTensorResult {}
 
-#[js_tensor_web_op(name = Transpose, variants = [method])]
+#[js_tensor_web_op(name = Transpose, variants = [method, function])]
 pub fn transpose(input: Tensor, dim0: Dim, dim1: Dim) -> JsTensorResult {}
 
-#[js_tensor_web_op(name = t, variants = [method])]
+#[js_tensor_web_op(name = t, variants = [method, function])]
 pub fn t(input: Tensor) -> JsTensorResult {}
 
 #[js_tensor_web_op(getter, name = TUpper, variants = [method], target = T)]
@@ -652,25 +652,25 @@ pub fn index_select(input: Tensor, indices: Tensor, dim: Dim) -> JsTensorResult 
 #[js_tensor_web_op(name = IndexWrite, variants = [method])]
 pub fn index_write(input: Tensor, src: Tensor, write_start: Dims) -> JsTensorResult {}
 
-#[js_tensor_web_op(name = Where, variants = [method], js_name = "where")]
+#[js_tensor_web_op(name = Where, variants = [method, function], js_name = "where")]
 pub fn where_cond(input: Tensor, condition: Tensor, on_false: TensorOrScalar) -> JsTensorResult {}
 
-#[js_tensor_web_op(name = ScatterAdd, variants = [method])]
+#[js_tensor_web_op(name = ScatterAdd, variants = [method, function])]
 pub fn scatter_add(input: Tensor, indices: Tensor, source: Tensor, dim: Dim) -> JsTensorResult {}
 
-#[js_tensor_web_op(name = IndexAdd, variants = [method_inplace])]
+#[js_tensor_web_op(name = IndexAdd, variants = [method_inplace, function])]
 pub fn index_add(input: Tensor, indices: Tensor, source: Tensor, dim: Dim) -> JsTensorResult {}
 
-#[js_tensor_web_op(name = Gather, variants = [method])]
+#[js_tensor_web_op(name = Gather, variants = [method, function])]
 pub fn gather(input: Tensor, dim: Dim, index: Tensor) -> JsTensorResult {}
 
-#[js_tensor_web_op(name = Triu, variants = [method, method_inplace])]
+#[js_tensor_web_op(name = Triu, variants = [method, method_inplace, function])]
 pub fn triu(input: Tensor, k: Option<i32>) -> JsTensorResult {}
 
-#[js_tensor_web_op(name = Tril, variants = [method, method_inplace])]
+#[js_tensor_web_op(name = Tril, variants = [method, method_inplace, function])]
 pub fn tril(input: Tensor, k: Option<i32>) -> JsTensorResult {}
 
-#[js_tensor_web_op(name = Lerp, variants = [method, method_inplace])]
+#[js_tensor_web_op(name = Lerp, variants = [method, method_inplace, function])]
 pub fn lerp(input: Tensor, end: Tensor, weight: TensorOrScalar) -> JsTensorResult {}
 
 #[js_tensor_web_op(name = Bernoulli, variants = [function, method, method_inplace])]
