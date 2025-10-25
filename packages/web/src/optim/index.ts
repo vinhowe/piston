@@ -1,3 +1,4 @@
+export * from "./adam";
 export * from "./adamw";
 export * from "./lrScheduler";
 export * from "./muon";
