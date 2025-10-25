@@ -59,7 +59,7 @@ macro_rules! rvec {
         $crate::RVec::from_elem($elem, $n)
     });
     ($($x:expr),*$(,)*) => ({
-        let count = 0usize $(+ rvec![@one $x])*;
+        let count = 0usize $(+ $crate::rvec![@one $x])*;
         #[allow(unused_mut)]
         let mut vec = $crate::RVec::new();
         if count <= vec.inline_size() {
