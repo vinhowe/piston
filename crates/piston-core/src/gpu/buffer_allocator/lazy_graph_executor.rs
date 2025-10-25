@@ -303,7 +303,7 @@ impl LazyGraphExecutor {
 
                         if tensor.is_inplace() {
                             true
-                        } else if !self.inplace_support {
+                        } else {
                             // TODO(vinhowe): This really is horrible; we should be able to just
                             // check if the op supports inplace.
                             match tensor.op() {
@@ -318,35 +318,43 @@ impl LazyGraphExecutor {
                                             | LazyOp::IndexAdd(_)
                                     )
                                 }
-                                _ => false,
-                            }
-                        } else if !tensor.op().supports_inplace()
-                            // vinhowe: we need to check if the src is a parameter, because we can't
-                            // inplace parameters unless we've disabled gradient tracking.
-                            || to_modify_src.requires_grad()
-                        {
-                            false
-                        } else {
-                            // Typical references:
-                            // 1. Its original consumer. Whatever scope it was created in.
-                            // 2. `tensors`, as passed into this method, if it wasn't resolved and we
-                            //    upgraded its weak reference. This happens when we do a sync of live
-                            //    tensors, say, in an optimizer step, but a one-off sync won't do this.
-                            //    This is why we have the optional `owned_tensors`.
-                            // If these two are the only references, then we can inplace. Usually,
-                            // additional references include, not in any particular order:
-                            // 3. The optimizer, if it is a parameter. We'll also check if the src is a
-                            //    parameter.
-                            // 4+ Any other Tensor consumers in the post-order. If it's not a parameter,
-                            //    these are the references we're concerned about messing with.
-                            //
-                            // If we own a copy, 2, otherwise 1.
-                            let expected_strong = owned_tensors
-                                .as_ref()
-                                .and_then(|ot| ot.contains(&to_modify_src.id()).then_some(2))
-                                .unwrap_or(1);
+                                _ => {
+                                    // vinhowe: we need to check if the src is a parameter, because
+                                    // we can't inplace parameters unless we've disabled gradient tracking.
+                                    if !tensor.op().supports_inplace()
+                                        || to_modify_src.requires_grad()
+                                    {
+                                        false
+                                    } else {
+                                        // Typical references:
+                                        // 1. Its original consumer. Whatever scope it was created
+                                        //    in.
+                                        // 2. `tensors`, as passed into this method, if it wasn't
+                                        //    resolved and we upgraded its weak reference. This
+                                        //    happens when we do a sync of live tensors, say, in an
+                                        //    optimizer step, but a one-off sync won't do this. This
+                                        //    is why we have the optional `owned_tensors`.
+                                        // If these two are the only references, then we can
+                                        // inplace. Usually, additional references include, not in
+                                        // any particular order:
+                                        // 3. The optimizer, if it is a parameter. We'll also check
+                                        //    if the src is a parameter.
+                                        // 4+ Any other Tensor consumers in the post-order. If it's
+                                        //    not a parameter, these are the references we're
+                                        //    concerned about messing with.
+                                        //
+                                        // If we own a copy, 2, otherwise 1.
+                                        let expected_strong = owned_tensors
+                                            .as_ref()
+                                            .and_then(|ot| {
+                                                ot.contains(&to_modify_src.id()).then_some(2)
+                                            })
+                                            .unwrap_or(1);
 
-                            to_modify_src.strong_count() == expected_strong
+                                        to_modify_src.strong_count() <= expected_strong
+                                    }
+                                }
+                            }
                         }
                     }
                     None => false,
