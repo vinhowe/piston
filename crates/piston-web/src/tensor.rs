@@ -10,8 +10,8 @@ use half::f16;
 use js_sys::{Array, Function, Object, Reflect};
 use parking_lot::RwLock;
 use piston::{
-    AllDims, DType, Dim, IrScalarValue, IrValue, LazyOp, NormOrd, Storage, Tensor, TensorId,
-    TensorTypeOrScalar, TensorTypeOrScalarEnum,
+    AllDims, DType, Dim, IrScalarValue, IrValue, KaimingFan, KaimingNonLinearity, LazyOp, NormOrd,
+    NormalOrUniform, Storage, Tensor, TensorId, TensorTypeOrScalar, TensorTypeOrScalarEnum,
 };
 use piston_macros::js_tensor_web_op;
 use std::cell::RefCell;
@@ -1018,6 +1018,106 @@ pub fn zeros(shape: Shape, options: TensorOptions) -> anyhow::Result<Tensor> {
 #[js_tensor_web_op(name = "Ones", variants = [function])]
 pub fn ones(shape: Shape, options: TensorOptions) -> anyhow::Result<Tensor> {
     piston::ones(shape, options)
+}
+
+#[js_tensor_web_op(name = "InitUniform", variants = [function])]
+pub fn init_uniform_(input: Tensor, low: Option<f32>, high: Option<f32>) -> anyhow::Result<Tensor> {
+    piston::init_uniform_(&input, low, high)
+}
+
+#[js_tensor_web_op(name = "InitNormal", variants = [function])]
+pub fn init_normal_(input: Tensor, mean: Option<f32>, std: Option<f32>) -> anyhow::Result<Tensor> {
+    piston::init_normal_(&input, mean, std)
+}
+
+#[js_tensor_web_op(name = "InitConstant", variants = [function])]
+pub fn init_constant_(input: Tensor, value: f32) -> anyhow::Result<Tensor> {
+    piston::init_constant_(&input, value)
+}
+
+#[js_tensor_web_op(name = "InitOnes", variants = [function])]
+pub fn init_ones_(input: Tensor) -> anyhow::Result<Tensor> {
+    piston::init_ones_(&input)
+}
+
+#[js_tensor_web_op(name = "InitZeros", variants = [function])]
+pub fn init_zeros_(input: Tensor) -> anyhow::Result<Tensor> {
+    piston::init_zeros_(&input)
+}
+
+#[js_tensor_web_op(name = "InitEye", variants = [function])]
+pub fn init_eye_(input: Tensor) -> anyhow::Result<Tensor> {
+    piston::init_eye_(&input)
+}
+
+#[js_tensor_web_op(name = "InitXavierUniform", variants = [function])]
+pub fn init_xavier_uniform_(input: Tensor, gain: Option<f32>) -> anyhow::Result<Tensor> {
+    piston::init_xavier_uniform_(&input, gain)
+}
+
+#[js_tensor_web_op(name = "InitXavierNormal", variants = [function])]
+pub fn init_xavier_normal_(input: Tensor, gain: Option<f32>) -> anyhow::Result<Tensor> {
+    piston::init_xavier_normal_(&input, gain)
+}
+
+fn init_kaiming_impl(
+    input: Tensor,
+    dist: NormalOrUniform,
+    a: Option<f32>,
+    mode: String,
+    nonlinearity: String,
+) -> anyhow::Result<Tensor> {
+    let mode = match mode.as_ref() {
+        "fan_in" => KaimingFan::FanIn,
+        "fan_out" => KaimingFan::FanOut,
+        _ => return Err(anyhow::anyhow!("Invalid mode: {:?}", mode)),
+    };
+    let nonlinearity = match nonlinearity.as_ref() {
+        "relu" => KaimingNonLinearity::ReLU,
+        "linear" => KaimingNonLinearity::Linear,
+        "sigmoid" => KaimingNonLinearity::Sigmoid,
+        "tanh" => KaimingNonLinearity::Tanh,
+        "selu" => KaimingNonLinearity::SELU,
+        "leaky_relu" => KaimingNonLinearity::LeakyReLU,
+        _ => return Err(anyhow::anyhow!("Invalid nonlinearity: {:?}", nonlinearity)),
+    };
+    match dist {
+        NormalOrUniform::Uniform => piston::init_kaiming_uniform_(&input, a, mode, nonlinearity),
+        NormalOrUniform::Normal => piston::init_kaiming_normal_(&input, a, mode, nonlinearity),
+    }
+}
+
+#[js_tensor_web_op(name = "InitKaimingUniform", variants = [function])]
+pub fn init_kaiming_uniform_(
+    input: Tensor,
+    a: Option<f32>,
+    #[op(default = "fan_in".to_string(), unchecked_type = "'fan_in' | 'fan_out'")] mode: String,
+    #[op(
+        default = "leaky_relu".to_string(),
+        unchecked_type = "'relu' | 'linear' | 'sigmoid' | 'tanh' | 'selu' | 'leaky_relu'"
+    )]
+    nonlinearity: String,
+) -> anyhow::Result<Tensor> {
+    init_kaiming_impl(input, NormalOrUniform::Uniform, a, mode, nonlinearity)
+}
+
+#[js_tensor_web_op(name = "InitKaimingNormal", variants = [function])]
+pub fn init_kaiming_normal_(
+    input: Tensor,
+    a: Option<f32>,
+    #[op(default = "fan_in".to_string(), unchecked_type = "'fan_in' | 'fan_out'")] mode: String,
+    #[op(
+        default = "leaky_relu".to_string(),
+        unchecked_type = "'relu' | 'linear' | 'sigmoid' | 'tanh' | 'selu' | 'leaky_relu'"
+    )]
+    nonlinearity: String,
+) -> anyhow::Result<Tensor> {
+    init_kaiming_impl(input, NormalOrUniform::Normal, a, mode, nonlinearity)
+}
+
+#[js_tensor_web_op(name = "InitOrthogonal", variants = [function])]
+pub fn init_orthogonal_(input: Tensor, gain: Option<f32>) -> anyhow::Result<Tensor> {
+    piston::init_orthogonal_(&input, gain)
 }
 
 #[wasm_bindgen(js_class = Tensor)]

@@ -32,6 +32,17 @@ import {
   gelu as gelu_wasm,
   gpu_wasm,
   gt as gt_wasm,
+  initConstant as initConstant_wasm,
+  initEye as initEye_wasm,
+  initKaimingNormal as initKaimingNormal_wasm,
+  initKaimingUniform as initKaimingUniform_wasm,
+  initNormal as initNormal_wasm,
+  initOnes as initOnes_wasm,
+  initOrthogonal as initOrthogonal_wasm,
+  initUniform as initUniform_wasm,
+  initXavierNormal as initXavierNormal_wasm,
+  initXavierUniform as initXavierUniform_wasm,
+  initZeros as initZeros_wasm,
   int32_wasm,
   isinf as isinf_wasm,
   isnan as isnan_wasm,
@@ -137,6 +148,17 @@ export let oneHot: typeof oneHot_wasm;
 export let topk: typeof topk_wasm;
 export let split: typeof split_wasm;
 export let chunk: typeof chunk_wasm;
+export let initConstant_: typeof initConstant_wasm;
+export let initEye_: typeof initEye_wasm;
+export let initKaimingNormal_: typeof initKaimingNormal_wasm;
+export let initKaimingUniform_: typeof initKaimingUniform_wasm;
+export let initNormal_: typeof initNormal_wasm;
+export let initOnes_: typeof initOnes_wasm;
+export let initOrthogonal_: typeof initOrthogonal_wasm;
+export let initUniform_: typeof initUniform_wasm;
+export let initXavierNormal_: typeof initXavierNormal_wasm;
+export let initXavierUniform_: typeof initXavierUniform_wasm;
+export let initZeros_: typeof initZeros_wasm;
 
 export let tensor: {
   (
@@ -330,6 +352,17 @@ export async function initGlobals() {
   zerosLike = wrapWithParam(wrapWithLibTensor(zerosLike_wasm));
   ones = wrapWithParam(wrapWithLibTensor(ones_wasm));
   onesLike = wrapWithParam(wrapWithLibTensor(onesLike_wasm));
+  initConstant_ = wrapWithLibTensor(initConstant_wasm);
+  initEye_ = wrapWithLibTensor(initEye_wasm);
+  initKaimingNormal_ = wrapWithLibTensor(initKaimingNormal_wasm);
+  initKaimingUniform_ = wrapWithLibTensor(initKaimingUniform_wasm);
+  initNormal_ = wrapWithLibTensor(initNormal_wasm);
+  initOnes_ = wrapWithLibTensor(initOnes_wasm);
+  initOrthogonal_ = wrapWithLibTensor(initOrthogonal_wasm);
+  initUniform_ = wrapWithLibTensor(initUniform_wasm);
+  initXavierNormal_ = wrapWithLibTensor(initXavierNormal_wasm);
+  initXavierUniform_ = wrapWithLibTensor(initXavierUniform_wasm);
+  initZeros_ = wrapWithLibTensor(initZeros_wasm);
   tensor = wrapWithParam(
     wrapWithLibTensor(
       (

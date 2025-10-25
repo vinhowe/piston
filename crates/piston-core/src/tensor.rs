@@ -2125,6 +2125,262 @@ pub fn rand<S: Into<Shape>>(
     )
 }
 
+#[derive(Debug, Clone)]
+pub enum NormalOrUniform {
+    Normal,
+    Uniform,
+}
+
+#[derive(Debug, Clone)]
+pub enum KaimingFan {
+    FanIn,
+    FanOut,
+}
+
+#[derive(Debug, Clone)]
+pub enum KaimingNonLinearity {
+    ReLU,
+    Linear,
+    Sigmoid,
+    Tanh,
+    SELU,
+    LeakyReLU,
+    ExplicitGain(f32),
+}
+
+pub fn calculate_fan_in_out(shape: &Shape) -> (usize, usize) {
+    let dims = shape.to_vec();
+    let receptive_field_size: usize = dims.iter().skip(2).product();
+
+    let fan_in = if dims.len() < 2 {
+        1
+    } else {
+        dims[1] * receptive_field_size
+    };
+
+    let fan_out = if dims.is_empty() {
+        1
+    } else {
+        dims[0] * receptive_field_size
+    };
+
+    (fan_in, fan_out)
+}
+
+pub fn xavier_impl<S: Into<Shape>>(
+    shape: S,
+    dist: NormalOrUniform,
+    gain: Option<f32>,
+    options: TensorOptions,
+) -> Result<OpTensor> {
+    let shape = shape.into();
+    let dtype = options.dtype_or_default();
+    let gain = gain.unwrap_or(1.0);
+
+    if !dtype.is_float() {
+        return Err(anyhow::anyhow!(
+            "xavier_init: dtype {:?} is not floating point",
+            dtype
+        ));
+    }
+
+    let (fan_in, fan_out) = calculate_fan_in_out(&shape);
+    let denom = (fan_in + fan_out) as f32;
+
+    match dist {
+        NormalOrUniform::Uniform => {
+            let bound = (6.0f32).sqrt() * gain / denom.sqrt();
+            rand_kernel(shape, Some(-bound), Some(bound), options)
+        }
+        NormalOrUniform::Normal => {
+            let std = (2.0f32 / denom).sqrt() * gain;
+            randn_kernel(shape, Some(0.0), Some(std), options)
+        }
+    }
+}
+
+#[tensor_op(variants = [function])]
+pub fn xavier_uniform<S: Into<Shape>>(
+    shape: S,
+    gain: Option<f32>,
+    options: TensorOptions,
+) -> Result<OpTensor> {
+    xavier_impl(shape, NormalOrUniform::Uniform, gain, options)
+}
+
+#[tensor_op(variants = [function])]
+pub fn xavier_normal<S: Into<Shape>>(
+    shape: S,
+    gain: Option<f32>,
+    options: TensorOptions,
+) -> Result<OpTensor> {
+    xavier_impl(shape, NormalOrUniform::Normal, gain, options)
+}
+
+pub fn kaiming_impl<S: Into<Shape>>(
+    shape: S,
+    dist: NormalOrUniform,
+    fan: KaimingFan,
+    non_linearity: KaimingNonLinearity,
+    a: Option<f32>,
+    options: TensorOptions,
+) -> Result<OpTensor> {
+    let shape = shape.into();
+    let dtype = options.dtype_or_default();
+
+    if !dtype.is_float() {
+        return Err(anyhow::anyhow!(
+            "kaiming_init: dtype {:?} is not floating point",
+            dtype
+        ));
+    }
+
+    // Compute params on CPU and fall back to rand/randn
+    let (fan_in, fan_out) = calculate_fan_in_out(&shape);
+    let fan_val = match fan {
+        KaimingFan::FanIn => fan_in as f32,
+        KaimingFan::FanOut => fan_out as f32,
+    };
+    let gain = match non_linearity {
+        KaimingNonLinearity::ReLU => 2f32.sqrt(),
+        KaimingNonLinearity::Tanh => 5.0 / 3.0,
+        KaimingNonLinearity::Linear | KaimingNonLinearity::Sigmoid => 1.0,
+        KaimingNonLinearity::SELU => 0.75,
+        KaimingNonLinearity::LeakyReLU => (2. / (1. + a.unwrap_or(0.01).powi(2))).sqrt(),
+        KaimingNonLinearity::ExplicitGain(g) => g,
+    };
+    let std = gain / fan_val.sqrt();
+
+    match dist {
+        NormalOrUniform::Uniform => {
+            let bound = std * 3f32.sqrt();
+            rand_kernel(shape, Some(-bound), Some(bound), options)
+        }
+        NormalOrUniform::Normal => randn_kernel(shape, Some(0.0), Some(std), options),
+    }
+}
+
+#[tensor_op(variants = [function])]
+pub fn kaiming_uniform<S: Into<Shape>>(
+    shape: S,
+    a: Option<f32>,
+    mode: KaimingFan,
+    nonlinearity: KaimingNonLinearity,
+    options: TensorOptions,
+) -> Result<OpTensor> {
+    kaiming_impl(
+        shape,
+        NormalOrUniform::Uniform,
+        mode,
+        nonlinearity,
+        a,
+        options,
+    )
+}
+
+#[tensor_op(variants = [function])]
+pub fn kaiming_normal<S: Into<Shape>>(
+    shape: S,
+    a: Option<f32>,
+    mode: KaimingFan,
+    nonlinearity: KaimingNonLinearity,
+    options: TensorOptions,
+) -> Result<OpTensor> {
+    kaiming_impl(
+        shape,
+        NormalOrUniform::Normal,
+        mode,
+        nonlinearity,
+        a,
+        options,
+    )
+}
+
+#[tensor_op(variants = [function])]
+pub fn orthogonal<S: Into<Shape>>(
+    shape: S,
+    gain: Option<f32>,
+    options: TensorOptions,
+) -> Result<OpTensor> {
+    const EPS: f32 = 1e-6;
+    const STEPS: usize = 6;
+    let gain = gain.unwrap_or(1.0);
+
+    let shape = shape.into();
+    let dtype = options.dtype_or_default();
+
+    if !dtype.is_float() {
+        return Err(anyhow::anyhow!(
+            "orthogonal: dtype {:?} is not floating point",
+            dtype
+        ));
+    }
+
+    if shape.dim() != 2 {
+        anyhow::bail!(
+            "orthogonal: expected 2D shape, got {}D: {:?}",
+            shape.dim(),
+            shape
+        );
+    }
+
+    let m = shape[0];
+    let n = shape[1];
+
+    // A ~ N(0, 1)
+    let a = randn_kernel(shape.clone(), Some(0.0), Some(1.0), options.clone())?;
+
+    // Build symmetric Gram matrix G and set identity size
+    let (g, d): (OpTensor, usize) = if m >= n {
+        // G = A^T A  (n x n)
+        let g_raw = matmul_kernel(a.clone(), a.clone(), true, false)?;
+        let g_sym = mul_kernel::<_, _, OpTensor>(
+            add_kernel(g_raw.clone(), t_kernel(g_raw.clone())?)?,
+            0.5,
+        )?;
+        (g_sym, n)
+    } else {
+        // G = A A^T  (m x m)
+        let g_raw = matmul_kernel(a.clone(), a.clone(), false, true)?;
+        let g_sym = mul_kernel::<_, _, OpTensor>(
+            add_kernel(g_raw.clone(), t_kernel(g_raw.clone())?)?,
+            0.5,
+        )?;
+        (g_sym, m)
+    };
+
+    // mu = ||G||_F + eps
+    let mu = add_kernel::<_, _, OpTensor>(
+        norm_kernel(g.clone(), Some(NormOrd::Frobenius), crate::AllDims, false)?,
+        EPS,
+    )?;
+
+    let i = eye_kernel(d, None, options)?;
+
+    // X0 = I / sqrt(mu)
+    let inv_sqrt_mu = recip_kernel(sqrt_kernel(mu.clone())?)?;
+    let mut x = mul_kernel(i.clone(), inv_sqrt_mu)?;
+
+    // Newton–Schulz iteration (6 iters)
+    // X <- 0.5 * X @ (3I - G @ (X @ X))
+    let three_i = mul_kernel::<_, _, OpTensor>(i.clone(), 3.0)?;
+    for _ in 0..STEPS {
+        let x2 = matmul_kernel(x.clone(), x.clone(), false, false)?;
+        let gx2 = matmul_kernel(g.clone(), x2, false, false)?;
+        let inner = sub_kernel(three_i.clone(), gx2)?;
+        let x_inner = matmul_kernel(x.clone(), inner, false, false)?;
+        x = mul_kernel::<_, _, OpTensor>(x_inner, 0.5)?;
+    }
+
+    // Orthonormalize columns (m >= n) or rows (m < n)
+    let q = if m >= n {
+        matmul_kernel(a.clone(), x.clone(), false, false)?
+    } else {
+        matmul_kernel(x.clone(), a.clone(), false, false)?
+    };
+
+    mul_kernel::<_, _, OpTensor>(q, gain)
+}
 
 #[tensor_op(variants = [function])]
 pub fn eye(n: usize, m: Option<usize>, options: TensorOptions) -> Result<OpTensor> {
@@ -3364,6 +3620,107 @@ impl Tensor {
     ) -> Result<Self> {
         OpTensor::full(shape, value, options).map(Self::wrap)
     }
+}
+
+// We special-case a bunch of initialization methods here to have an initialization API more like
+// PyTorch.
+pub fn init_uniform_(tensor: &Tensor, low: Option<f32>, high: Option<f32>) -> Result<Tensor> {
+    Ok(tensor.wrap_inplace_untracked(rand_kernel(
+        tensor.shape(),
+        low,
+        high,
+        TensorOptions::from_tensor(tensor),
+    )?))
+}
+
+pub fn init_normal_(tensor: &Tensor, mean: Option<f32>, std: Option<f32>) -> Result<Tensor> {
+    Ok(tensor.wrap_inplace_untracked(randn_kernel(
+        tensor.shape(),
+        mean,
+        std,
+        TensorOptions::from_tensor(tensor),
+    )?))
+}
+
+pub fn init_constant_(tensor: &Tensor, value: f32) -> Result<Tensor> {
+    Ok(tensor.wrap_inplace_untracked(full_kernel(
+        tensor.shape(),
+        value,
+        TensorOptions::from_tensor(tensor),
+    )?))
+}
+
+pub fn init_ones_(tensor: &Tensor) -> Result<Tensor> {
+    Ok(tensor.wrap_inplace_untracked(ones_kernel(
+        tensor.shape(),
+        TensorOptions::from_tensor(tensor),
+    )?))
+}
+
+pub fn init_zeros_(tensor: &Tensor) -> Result<Tensor> {
+    Ok(tensor.wrap_inplace_untracked(zeros_kernel(
+        tensor.shape(),
+        TensorOptions::from_tensor(tensor),
+    )?))
+}
+
+pub fn init_eye_(tensor: &Tensor) -> Result<Tensor> {
+    let (n, m) = tensor.shape().dims2()?;
+    Ok(tensor.wrap_inplace_untracked(eye_kernel(n, Some(m), TensorOptions::from_tensor(tensor))?))
+}
+
+pub fn init_xavier_uniform_(tensor: &Tensor, gain: Option<f32>) -> Result<Tensor> {
+    Ok(tensor.wrap_inplace_untracked(xavier_uniform_kernel(
+        tensor.shape(),
+        gain,
+        TensorOptions::from_tensor(tensor),
+    )?))
+}
+
+pub fn init_xavier_normal_(tensor: &Tensor, gain: Option<f32>) -> Result<Tensor> {
+    Ok(tensor.wrap_inplace_untracked(xavier_normal_kernel(
+        tensor.shape(),
+        gain,
+        TensorOptions::from_tensor(tensor),
+    )?))
+}
+
+pub fn init_kaiming_uniform_(
+    tensor: &Tensor,
+    a: Option<f32>,
+    mode: KaimingFan,
+    nonlinearity: KaimingNonLinearity,
+) -> Result<Tensor> {
+    Ok(tensor.wrap_inplace_untracked(kaiming_uniform_kernel(
+        tensor.shape(),
+        a,
+        mode,
+        nonlinearity,
+        TensorOptions::from_tensor(tensor),
+    )?))
+}
+
+pub fn init_kaiming_normal_(
+    tensor: &Tensor,
+    a: Option<f32>,
+    mode: KaimingFan,
+    nonlinearity: KaimingNonLinearity,
+) -> Result<Tensor> {
+    Ok(tensor.wrap_inplace_untracked(kaiming_normal_kernel(
+        tensor.shape(),
+        a,
+        mode,
+        nonlinearity,
+        TensorOptions::from_tensor(tensor),
+    )?))
+}
+
+pub fn init_orthogonal_(tensor: &Tensor, gain: Option<f32>) -> Result<Tensor> {
+    Ok(tensor.wrap_inplace_untracked(orthogonal_kernel(
+        tensor.shape(),
+        gain,
+        TensorOptions::from_tensor(tensor),
+    )?))
 }
 
 impl std::fmt::Debug for Tensor {
