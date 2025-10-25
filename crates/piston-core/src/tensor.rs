@@ -3170,8 +3170,8 @@ impl OpTensor {
         let buffer = gpu_device.get_or_create_buffer(
             &BufferDescriptor {
                 size: self.num_bytes() as _,
-                // If we want the values in CPU land, we'll eventually have to
-                // copy again to a buffer with a usage of COPY_DST | MAP_READ.
+                // If we want the values in CPU land, we'll eventually have to copy again to a
+                // buffer with a usage of COPY_DST | MAP_READ.
                 usage: wgpu::BufferUsages::standard(),
                 mapped_at_creation: false,
             },
