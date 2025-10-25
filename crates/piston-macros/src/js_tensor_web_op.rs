@@ -576,7 +576,9 @@ fn param_unchecked_ts_type(ty: &Type, optional: bool) -> String {
         ParamKind::Tensor => "Tensor".to_string(),
         ParamKind::VecTensor => "Tensor[]".to_string(),
         ParamKind::TensorOrScalar => "Tensor | number".to_string(),
-        ParamKind::NormOrd => "'fro' | 'inf' | '-inf' | '0' | '1' | '-1' | number".to_string(),
+        ParamKind::NormOrd => {
+            "'fro' | 'inf' | '-inf' | '0' | '1' | '-1' | '2' | number".to_string()
+        }
         ParamKind::Shape => "Uint32Array | number[] | number".to_string(),
         ParamKind::ShapeWithOneHole | ParamKind::Dims => {
             "Int32Array | number[] | number".to_string()
