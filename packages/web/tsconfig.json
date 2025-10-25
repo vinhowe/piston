@@ -1,8 +1,8 @@
 {
   "compilerOptions": {
-    "target": "es2023",
+    "target": "es2022",
     "module": "esnext",
-    "lib": ["dom", "esnext"],
+    "lib": ["dom", "esnext", "esnext.disposable"],
     "importHelpers": true,
     "declaration": true,
     "rootDir": "./src",
