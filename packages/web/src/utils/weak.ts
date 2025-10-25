@@ -4,12 +4,12 @@ import { __pistonActiveTensors, Tensor_wasm } from "@/wasm";
 
 import { forEachTensorDeep } from ".";
 
-interface WeakTensorFunctionModeOptions {
+export interface WeakTensorFunctionModeOptions {
   label?: string;
   trackLeaks?: boolean;
 }
 
-class WeakTensorFunctionMode extends PistonFunctionMode {
+export class WeakTensorFunctionMode extends PistonFunctionMode {
   private weakTensors: Map<number, Tensor_wasm>;
   public readonly label?: string;
   private readonly trackLeaks: boolean;
