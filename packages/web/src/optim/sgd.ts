@@ -4,7 +4,7 @@ import { Optimizer } from "@/optim/optimizer";
 import { OptimizerParamState, ParamGroup } from "@/optim/optimizer";
 import { Tensor } from "@/tensor";
 import { pin } from "@/utils/weak";
-import { _popFunctionMode, _pushFunctionMode, Device } from "@/wasm";
+import { Device } from "@/wasm";
 
 interface SGDParamState extends OptimizerParamState {
   momentumBuffer?: Tensor | null;
