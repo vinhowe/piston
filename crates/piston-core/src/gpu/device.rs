@@ -4,10 +4,6 @@ use maybe_async::maybe_async;
 use parking_lot::RwLock;
 use std::collections::BTreeMap;
 use std::{borrow::Cow, sync::Arc};
-#[cfg(target_arch = "wasm32")]
-use wasm_bindgen::JsCast;
-#[cfg(target_arch = "wasm32")]
-use wasm_bindgen::JsValue;
 use wgpu::{Adapter, Limits};
 
 use crate::DeviceError;
