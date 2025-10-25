@@ -1,11 +1,6 @@
 import { Parameter } from "@/nn/parameter";
 import { Tensor } from "@/tensor";
-import {
-  NestedNumberList,
-  OptionalShapeConfig,
-  ShapeType,
-  TensorOptions,
-} from "@/types";
+import { NestedNumberList, OptionalShapeConfig, ShapeType, TensorOptions } from "@/types";
 import {
   abs as abs_wasm,
   add as add_wasm,
@@ -161,10 +156,7 @@ export let initXavierUniform_: typeof initXavierUniform_wasm;
 export let initZeros_: typeof initZeros_wasm;
 
 export let tensor: {
-  (
-    data: CreateTensorData,
-    config: TensorOptions & OptionalShapeConfig,
-  ): Parameter;
+  (data: CreateTensorData, config: TensorOptions & OptionalShapeConfig): Parameter;
   (data: CreateTensorData, config?: TensorOptions & OptionalShapeConfig): Tensor;
 };
 
