@@ -31,13 +31,9 @@ impl JsDevice {
 
     #[wasm_bindgen(js_name = markStep)]
     pub async fn mark_step(&self) -> Result<(), JsValue> {
-        self.inner
-            .try_gpu()
-            .unwrap()
-            .mark_step()
+        crate::function::handle_mark_step(self)
             .await
-            .map_err(|e| e.to_string())?;
-        Ok(())
+            .map_err(|e| e.into())
     }
 
     #[wasm_bindgen(js_name = beginPass)]

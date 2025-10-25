@@ -1,4 +1,4 @@
-import { _popFunctionMode, _pushFunctionMode } from "@/wasm";
+import { _popFunctionMode, _popMarkStepMode, _pushFunctionMode, _pushMarkStepMode } from "@/wasm";
 
 export abstract class PistonFunctionMode {
   constructor() {
@@ -40,5 +40,24 @@ export class FunctionModeGuard {
 
   [Symbol.dispose]() {
     _pushFunctionMode(this.mode);
+  }
+}
+
+export abstract class PistonMarkStepMode {
+  constructor() {
+    _pushMarkStepMode(this);
+  }
+
+  [Symbol.dispose]() {
+    _popMarkStepMode();
+  }
+
+  // If returns undefined/null, default mark_step is executed.
+  abstract _pistonMarkStep(original: () => Promise<void>): void | Promise<void>;
+}
+
+export class BasePistonMarkStepMode extends PistonMarkStepMode {
+  _pistonMarkStep(original: () => Promise<void>): void | Promise<void> {
+    return original();
   }
 }

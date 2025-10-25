@@ -6,6 +6,7 @@ use std::cell::RefCell;
 use wasm_bindgen::JsCast;
 use wasm_bindgen::closure::Closure;
 use wasm_bindgen::prelude::*;
+use wasm_bindgen_futures::{JsFuture, future_to_promise};
 
 use crate::error::IntoJsError;
 use crate::js_util::is_subclass;
@@ -20,6 +21,19 @@ thread_local! {
 #[wasm_bindgen(js_name = _setFunctionModeConstructor)]
 pub fn set_function_mode_constructor(constructor: &Function) {
     FUNCTION_MODE_CONSTRUCTOR.with(|cell| {
+        cell.borrow_mut().replace(constructor.clone());
+    });
+}
+
+// MarkStep-mode constructor set from JavaScript
+thread_local! {
+    static MARK_STEP_MODE_CONSTRUCTOR: RefCell<Option<Function>> = const { RefCell::new(None) };
+}
+
+/// Register the base MarkStepMode constructor from JS.
+#[wasm_bindgen(js_name = _setMarkStepModeConstructor)]
+pub fn set_mark_step_mode_constructor(constructor: &Function) {
+    MARK_STEP_MODE_CONSTRUCTOR.with(|cell| {
         cell.borrow_mut().replace(constructor.clone());
     });
 }
@@ -361,6 +375,150 @@ impl Drop for StashFunctionModeGuard {
     fn drop(&mut self) {
         if let Some(mode) = self.current_mode.take() {
             push_function_mode(mode);
+        }
+    }
+}
+
+/// MarkStep mode: simpler analog to FunctionMode for intercepting mark_step.
+#[derive(Clone, Debug)]
+pub struct MarkStepMode {
+    js_mode_obj: JsValue,
+}
+
+thread_local! {
+    static MARK_STEP_MODE_STACK: RefCell<Vec<MarkStepMode>> = const { RefCell::new(Vec::new()) };
+}
+
+pub fn push_mark_step_mode(mode: MarkStepMode) {
+    MARK_STEP_MODE_STACK.with(|stack| stack.borrow_mut().push(mode));
+}
+
+pub fn pop_mark_step_mode() -> Option<MarkStepMode> {
+    MARK_STEP_MODE_STACK.with(|stack| stack.borrow_mut().pop())
+}
+
+#[wasm_bindgen(js_name = _pushMarkStepMode)]
+pub fn push_mark_step_mode_js(mode_obj: &JsValue) -> Result<(), JsValue> {
+    if mode_obj.is_undefined() || mode_obj.is_null() {
+        return Ok(());
+    }
+    push_mark_step_mode(MarkStepMode {
+        js_mode_obj: mode_obj.clone(),
+    });
+    Ok(())
+}
+
+#[wasm_bindgen(js_name = _popMarkStepMode)]
+pub fn pop_mark_step_mode_js() -> JsValue {
+    pop_mark_step_mode()
+        .map(|m| m.js_mode_obj)
+        .unwrap_or_else(JsValue::undefined)
+}
+
+pub fn is_mark_step_mode_active() -> bool {
+    MARK_STEP_MODE_STACK.with(|stack| !stack.borrow().is_empty())
+}
+
+/// Handle mark_step dispatch via the active MarkStepMode if present.
+/// If the mode handler returns undefined/null, fall back to the default implementation.
+pub async fn handle_mark_step(device: &crate::device::JsDevice) -> Result<(), JsError> {
+    if !is_mark_step_mode_active() {
+        // No mode active: run default behavior
+        device
+            .inner
+            .try_gpu()
+            .unwrap()
+            .mark_step()
+            .await
+            .map_err(|e| JsError::new(&e.to_string()))?;
+        return Ok(());
+    }
+
+    let mut _mode_guard = StashMarkStepModeGuard::new();
+    let mode_obj = &_mode_guard
+        .current_mode
+        .as_ref()
+        .expect("No MarkStep mode object")
+        .js_mode_obj;
+
+    let piston_mark_step_func: Function =
+        Reflect::get(mode_obj, &JsValue::from_str("_pistonMarkStep"))
+            .and_then(|v: JsValue| v.dyn_into())
+            .map_err(|_| JsError::new("Mode object does not have a _pistonMarkStep method"))?;
+
+    // Create original function closure returning a Promise<void>
+    let device_inner = std::rc::Rc::new(device.inner.clone());
+    let device_inner_for_closure = device_inner.clone();
+    let original_fn_closure = Closure::wrap(Box::new(move || -> JsValue {
+        let device_inner = device_inner_for_closure.clone();
+        let fut = async move {
+            device_inner
+                .try_gpu()
+                .unwrap()
+                .mark_step()
+                .await
+                .map_err(|e| JsValue::from_str(&e.to_string()))?;
+            Ok(JsValue::UNDEFINED)
+        };
+        future_to_promise(fut).unchecked_into::<JsValue>()
+    }) as Box<dyn Fn() -> JsValue>);
+    // Cast to Function for JS .apply. Keep the Closure alive in scope until we finish.
+    let original_fn: Function = original_fn_closure
+        .as_ref()
+        .unchecked_ref::<Function>()
+        .clone();
+
+    let ret = piston_mark_step_func
+        .apply(mode_obj, &Array::of1(&original_fn))
+        .map_err(|e| e.into_js_error())?;
+
+    if let Some(promise) = ret.dyn_ref::<Promise>() {
+        // Keep mode disabled until promise settles, then restore it
+        let saved_mode = _mode_guard.current_mode.take();
+        JsFuture::from(promise.clone())
+            .await
+            .map_err(|e| e.into_js_error())?;
+        if let Some(mode) = saved_mode {
+            push_mark_step_mode(mode);
+        }
+        // original_fn_closure drops here
+        return Ok(());
+    }
+
+    // Immediate value: if undefined/null, fall back to default implementation
+    if ret.is_undefined() || ret.is_null() {
+        device
+            .inner
+            .try_gpu()
+            .unwrap()
+            .mark_step()
+            .await
+            .map_err(|e| JsError::new(&e.to_string()))?;
+        Ok(())
+    } else {
+        // Non-null immediate indicates the handler completed the step
+        Ok(())
+    }
+}
+
+/// RAII guard for temporarily stashing the current MarkStepMode
+pub struct StashMarkStepModeGuard {
+    current_mode: Option<MarkStepMode>,
+}
+
+impl StashMarkStepModeGuard {
+    pub fn new() -> Self {
+        let saved_mode = pop_mark_step_mode();
+        Self {
+            current_mode: saved_mode,
+        }
+    }
+}
+
+impl Drop for StashMarkStepModeGuard {
+    fn drop(&mut self) {
+        if let Some(mode) = self.current_mode.take() {
+            push_mark_step_mode(mode);
         }
     }
 }

@@ -1,8 +1,11 @@
 export {
   __pistonActiveTensors,
   _popFunctionMode,
+  _popMarkStepMode,
   _pushFunctionMode,
+  _pushMarkStepMode,
   _setFunctionModeConstructor,
+  _setMarkStepModeConstructor,
   _setPistonWebModule,
   _setTensorConstructor,
   abs,
