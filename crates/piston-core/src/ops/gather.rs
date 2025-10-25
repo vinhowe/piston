@@ -205,6 +205,9 @@ impl Kernel for GatherKernels {
             (DType::F16, KernelElement::Vec4) => {
                 self.render::<Vec4<f16>>(inplace, dst, workgroup_size)
             }
+            (DType::I32, KernelElement::Scalar) => {
+                self.render::<Scalar<i32>>(inplace, dst, workgroup_size)
+            }
             _ => Err(OperationError::CompileError(format!(
                 "Unsupported dtype {:?} or kernel element {:?}",
                 inner.src.dtype(),
@@ -257,6 +260,30 @@ def gather(src, ids, dim):
         ground.all_close(&ours, 1e-5, 1e-5).unwrap();
     }
 
+    fn run_gather_i32_trial(problem: GatherProblem, device: Device) {
+        let GatherProblem { B, M, N, dim } = problem;
+
+        let src = randint(0, 1000, (B, M, N), Default::default()).unwrap();
+
+        // Create the shape for ids tensor
+        let mut ids_shape = rvec![B, M, N];
+        ids_shape[dim] = 1;
+        let ids = randint(0, src.shape()[dim] as i32, ids_shape, Default::default()).unwrap();
+
+        let ground = ground_truth(&src, &ids, dim).unwrap();
+
+        let src_gpu = src.to(&device).unwrap();
+        let ids_gpu = ids.to(&device).unwrap();
+
+        let result = src_gpu.gather(dim, ids_gpu).unwrap();
+
+        let ours = result.to(&Device::CPU).unwrap();
+        // Compare in float space for equality
+        let ground_f32 = ground.cast(DType::F32).unwrap();
+        let ours_f32 = ours.cast(DType::F32).unwrap();
+        ground_f32.all_close(&ours_f32, 0.0f32, 0.0f32).unwrap();
+    }
+
     #[derive(Arbitrary, Debug)]
     struct GatherProblem {
         #[strategy(1..=3usize)]
@@ -276,6 +303,13 @@ def gather(src, ids, dim):
         log::info!("B = {B}, M = {M}, N = {N}, dim = {dim}");
         let device = Device::request_device(DeviceRequest::GPU).unwrap();
         run_gather_trial(prob, device);
+    }
+
+    #[proptest(cases = 6)]
+    fn test_gather_i32(prob: GatherProblem) {
+        let _ = env_logger::builder().is_test(true).try_init();
+        let device = Device::request_device(DeviceRequest::GPU).unwrap();
+        run_gather_i32_trial(prob, device);
     }
 
     #[derive(Arbitrary, Debug)]
