@@ -1678,6 +1678,7 @@ pub fn topk<D: Dim>(
 /// let tensor = full([3, 3], 5.0, TensorOptions::new()
 ///     .requires_grad(true))?;
 /// ```
+#[derive(Debug, Clone)]
 pub struct TensorOptions {
     pub device: Option<Device>,
     pub dtype: Option<DType>,
