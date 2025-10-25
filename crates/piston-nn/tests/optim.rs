@@ -11,13 +11,13 @@ fn run_linear_regression<O: Optimizer>(optimizer: OptimizerFactory<O>) -> anyhow
     let _ = env_logger::builder().is_test(true).try_init();
     let device = Device::request_device(DeviceRequest::GPU).unwrap();
     let w_gen = Tensor::from_data(vec![3f32, 1.], (1, 2), TensorOptions::new())?.to(&device)?;
-    let b_gen = Tensor::from_data(vec![-2f32], (1, 1), TensorOptions::new()).to(&device)?;
+    let b_gen = Tensor::from_data(vec![-2f32], (1, 1), TensorOptions::new())?.to(&device)?;
     let r#gen = Linear::new(w_gen, Some(b_gen));
     let sample_xs = Tensor::from_data(
         vec![2f32, 1., 7., 4., -4., 12., 5., 8.],
         (4, 2),
         TensorOptions::new(),
-    );
+    )?;
     let sample_xs = sample_xs.to(&device)?;
     let sample_ys = r#gen.schedule(sample_xs.clone())?;
 
