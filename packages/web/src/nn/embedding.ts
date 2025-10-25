@@ -31,6 +31,13 @@ export class Embedding extends Module<[Tensor], Tensor> {
     finalDims.push(this.hiddenSize);
     const indexes = input.flatten();
     const values = this.weight.indexSelect(indexes, 0);
+    // Basic guard against accidental zero-sized dims which would break view
+    const inputSize = input.size();
+    for (let i = 0; i < inputSize.length; i++) {
+      if (inputSize[i] === 0) {
+        throw new Error("Input tensor has a dimension with size 0, which is not allowed");
+      }
+    }
     return values.view(finalDims);
   }
 }
