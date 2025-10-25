@@ -277,6 +277,11 @@ impl JsTensor {
         self.inner().requires_grad()
     }
 
+    #[wasm_bindgen(getter = isLeaf)]
+    pub fn is_leaf(&self) -> bool {
+        self.inner().is_leaf()
+    }
+
     #[wasm_bindgen(getter = retainsGrad)]
     pub fn retains_grad(&self) -> bool {
         self.inner().retains_grad()

@@ -2385,7 +2385,7 @@ impl OpTensor {
     }
 
     pub fn retain_grad(&self) -> Result<()> {
-        if self.op.can_be_parameter() {
+        if self.op.is_leaf() {
             if !self.requires_grad {
                 return Err(anyhow::anyhow!(
                     "can't retain_grad on Tensor that has requires_grad=false"
@@ -2397,6 +2397,10 @@ impl OpTensor {
         }
         *self.inner.retains_grad.write() = true;
         Ok(())
+    }
+
+    pub fn is_leaf(&self) -> bool {
+        self.op.is_leaf()
     }
 
     /// Returns a new tensor detached from the current graph, gradient are not propagated through
@@ -3316,6 +3320,10 @@ impl Tensor {
 
     pub fn requires_grad(&self) -> bool {
         self.inner_or_source().requires_grad()
+    }
+
+    pub fn is_leaf(&self) -> bool {
+        self.inner_or_source().is_leaf()
     }
 
     pub fn set_sync(&self, src: Self) -> Result<()> {

@@ -206,6 +206,22 @@ impl LazyOp {
         )
     }
 
+    /// Returns true if this operation represents a leaf in the computation graph.
+    ///
+    /// Semantics are analogous to PyTorch's `is_leaf`:
+    /// - First, treat obvious parameter-capable creators as leaves (`can_be_parameter`).
+    /// - Also treat explicit detach boundaries as leaves (`Detach`).
+    /// - Finally, include any zero-input op as a leaf.
+    pub fn is_leaf(&self) -> bool {
+        if self.can_be_parameter() {
+            return true;
+        }
+        match self {
+            LazyOp::Detach(_) => true,
+            _ => self.srcs().is_empty(),
+        }
+    }
+
     #[track_caller]
     pub fn check_invariants(&self) {
         match self {
