@@ -17,6 +17,7 @@ export {
   Sequential,
 } from "./module";
 export { LayerNorm, RMSNorm } from "./normalization";
+export { Buffer, Parameter } from "./parameter";
 export { RotaryEmbedding } from "./rope";
 export { SinusoidalEmbedding } from "./sinusoidal";
 export {
