@@ -1510,6 +1510,20 @@ pub fn gather<D: Dim>(input: OpTensor, dim: D, index: OpTensor) -> Result<OpTens
     OpTensor::lazy(LazyOp::Gather(gather), new_view, device, false)
 }
 
+#[tensor_op(variants = [function, method])]
+pub fn multinomial(input: OpTensor, num_samples: usize, replacement: bool) -> Result<OpTensor> {
+    let shape = input.shape();
+    if !(shape.dim() == 1 || shape.dim() == 2) {
+        anyhow::bail!("multinomial: input must be 1D [V] or 2D [B, V]");
+    }
+    let device = input.device().clone();
+    let rng = device.get_rng();
+    let seed = rng.write().next_u32();
+    let op = Multinomial::new(input, num_samples, replacement, Some(seed));
+    let new_view = op.compute_view()?;
+    OpTensor::lazy(LazyOp::Multinomial(op), new_view, device, false)
+}
+
 //
 // TensorOptions for factory functions
 //
@@ -2561,6 +2575,7 @@ impl OpTensor {
             LazyOp::Reduce(s) => s.create_gpu_compile_key(self, can_inplace, uniform).ok(),
             LazyOp::Detach(d) => self.gpu_compile_key_for_op(d, can_inplace, uniform),
             LazyOp::Gather(g) => g.create_gpu_compile_key(self, can_inplace, uniform).ok(),
+            LazyOp::Multinomial(m) => m.create_gpu_compile_key(self, can_inplace, uniform).ok(),
             LazyOp::FillPointwise(f) => f.create_gpu_compile_key(self, can_inplace, uniform).ok(),
             LazyOp::Bernoulli(b) => b.create_gpu_compile_key(self, can_inplace, uniform).ok(),
             LazyOp::Arange(a) => a.create_gpu_compile_key(self, can_inplace, uniform).ok(),
@@ -2864,6 +2879,7 @@ pub fn compile_gpu_for_op(
         LazyOp::Reduce(s) => s.compile_gpu(gpu_compile_key, gpu_device, debug).ok(),
         LazyOp::Detach(d) => compile_gpu_for_op(d, gpu_compile_key, gpu_device, debug),
         LazyOp::Gather(g) => g.compile_gpu(gpu_compile_key, gpu_device, debug).ok(),
+        LazyOp::Multinomial(m) => m.compile_gpu(gpu_compile_key, gpu_device, debug).ok(),
         LazyOp::FillPointwise(f) => f.compile_gpu(gpu_compile_key, gpu_device, debug).ok(),
         LazyOp::Eye(e) => e.compile_gpu(gpu_compile_key, gpu_device, debug).ok(),
         LazyOp::Bernoulli(b) => b.compile_gpu(gpu_compile_key, gpu_device, debug).ok(),

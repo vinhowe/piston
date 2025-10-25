@@ -322,6 +322,7 @@ impl Tensor {
                     | LazyOp::Eye(_)
                     | LazyOp::FillPointwise(_)
                     | LazyOp::Bernoulli(_)
+                    | LazyOp::Multinomial(_)
                     | LazyOp::Arange(_)
                     | LazyOp::Cache(_)
                     | LazyOp::Trilu(_) => nodes,
@@ -943,6 +944,7 @@ impl Tensor {
                 | LazyOp::Eye(_)
                 | LazyOp::FillPointwise(_)
                 | LazyOp::Bernoulli(_)
+                | LazyOp::Multinomial(_)
                 | LazyOp::Arange(_)
                 | LazyOp::Unary(Unary {
                     op: UnaryOp::IsInf | UnaryOp::IsNan,

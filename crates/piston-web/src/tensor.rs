@@ -684,6 +684,14 @@ pub fn lerp(input: Tensor, end: Tensor, weight: TensorOrScalar) -> JsTensorResul
 #[js_tensor_web_op(name = Bernoulli, variants = [function, method, method_inplace])]
 pub fn bernoulli(input: Tensor) -> JsTensorResult {}
 
+#[js_tensor_web_op(name = Multinomial, variants = [method, function])]
+pub fn multinomial(
+    input: Tensor,
+    #[op(name = "numSamples")] num_samples: usize,
+    #[op(default = false)] replacement: bool,
+) -> JsTensorResult {
+}
+
 #[js_tensor_web_op(name = Zero, variants = [method_inplace])]
 pub fn zero(input: Tensor) -> JsTensorResult {}
 
