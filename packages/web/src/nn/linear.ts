@@ -1,7 +1,9 @@
-import { gpu, randn, zeros } from "@/globals";
+import { gpu, initKaimingUniform_, initUniform_, zeros } from "@/globals";
 import { Module } from "@/nn/module";
 import { Parameter } from "@/nn/parameter";
 import { Tensor } from "@/tensor";
+
+import { calculateFanInAndFanOut } from "./utils";
 
 export class Linear extends Module<[Tensor], Tensor> {
   weight: Parameter;
@@ -14,10 +16,21 @@ export class Linear extends Module<[Tensor], Tensor> {
    */
   constructor(inFeatures: number, outFeatures: number, bias = true) {
     super();
-    this.weight = randn([outFeatures, inFeatures], { device: gpu, requiresGrad: true });
+    this.weight = zeros([outFeatures, inFeatures], { device: gpu, requiresGrad: true });
 
     if (bias) {
       this.bias = zeros([outFeatures], { device: gpu, requiresGrad: true });
+    }
+
+    this.resetParameters();
+  }
+
+  resetParameters() {
+    initKaimingUniform_(this.weight, { a: Math.sqrt(5) });
+    if (this.bias) {
+      const [fanIn] = calculateFanInAndFanOut(this.weight);
+      const bound = fanIn > 0 ? Math.sqrt(1 / fanIn) : 0;
+      initUniform_(this.bias, { low: -bound, high: bound });
     }
   }
 

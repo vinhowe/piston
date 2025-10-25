@@ -1,4 +1,4 @@
-import { gpu, randn } from "@/core";
+import { gpu, initNormal_, zeros } from "@/core";
 import { Module } from "@/nn/module";
 import { Parameter } from "@/nn/parameter";
 import { Tensor } from "@/tensor";
@@ -13,11 +13,17 @@ export class Embedding extends Module<[Tensor], Tensor> {
    */
   constructor(numEmbeddings: number, embeddingDim: number) {
     super();
-    this.weight = randn([numEmbeddings, embeddingDim], {
+    this.weight = zeros([numEmbeddings, embeddingDim], {
       device: gpu,
       requiresGrad: true,
     });
     this.hiddenSize = embeddingDim;
+
+    this.resetParameters();
+  }
+
+  resetParameters() {
+    initNormal_(this.weight);
   }
 
   forward(input: Tensor) {
