@@ -1,4 +1,4 @@
-import { FunctionModeGuard, PistonFunctionMode } from "@/function";
+import { FunctionModeGuard, PistonFunctionMode, PistonMarkStepMode } from "@/function";
 import { Tensor } from "@/tensor";
 import { __pistonActiveTensors, Tensor_wasm } from "@/wasm";
 
@@ -181,4 +181,15 @@ export function weak<T>(
   }
 
   return after(input as T);
+}
+
+export class WeakMarkStepMode extends PistonMarkStepMode {
+  _pistonMarkStep(original: () => Promise<void>): void | Promise<void> {
+    using guard = new FunctionModeGuard();
+    const mode = guard.mode;
+    if (mode instanceof WeakTensorFunctionMode) {
+      return mode[Symbol.dispose]();
+    }
+    return original();
+  }
 }
