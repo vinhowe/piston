@@ -34,6 +34,9 @@ import {
   int32_wasm,
   le as le_wasm,
   log as log_wasm,
+  logicalAnd as logicalAnd_wasm,
+  logicalOr as logicalOr_wasm,
+  logicalXor as logicalXor_wasm,
   lt as lt_wasm,
   ne as ne_wasm,
   neg as neg_wasm,
@@ -98,6 +101,9 @@ export let gt: typeof gt_wasm;
 export let ge: typeof ge_wasm;
 export let lt: typeof lt_wasm;
 export let le: typeof le_wasm;
+export let logicalAnd: typeof logicalAnd_wasm;
+export let logicalOr: typeof logicalOr_wasm;
+export let logicalXor: typeof logicalXor_wasm;
 export let gelu: typeof gelu_wasm;
 export let tanh: typeof tanh_wasm;
 export let exp: typeof exp_wasm;
@@ -287,6 +293,9 @@ export async function initGlobals() {
   silu = wrapWithLibTensor(silu_wasm);
   square = wrapWithLibTensor(square_wasm);
   recip = wrapWithLibTensor(recip_wasm);
+  logicalAnd = wrapWithLibTensor(logicalAnd_wasm);
+  logicalOr = wrapWithLibTensor(logicalOr_wasm);
+  logicalXor = wrapWithLibTensor(logicalXor_wasm);
   bernoulli = wrapWithLibTensor(bernoulli_wasm);
   zeros = wrapWithParam(wrapWithLibTensor(zeros_wasm));
   zerosLike = wrapWithParam(wrapWithLibTensor(zerosLike_wasm));

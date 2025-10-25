@@ -3,7 +3,7 @@
 /// Methods for backpropagation of gradients.
 use crate::ops::{BinaryOp, TernaryOp, UnaryOp};
 use crate::{
-    Affine, Alibi, Binary, Broadcast, Cast, Cmp, Concat, Conv, DType, Gather, GroupNorm, IndexAdd,
+    Affine, Alibi, Binary, Broadcast, Cast, Concat, Conv, DType, Flip, Gather, GroupNorm, IndexAdd,
     IndexSelect, LazyOp, Matmul, Norm, NormOp, OpTensor, Permute, Powf, Reduce, ReduceOp, Reindex,
     RoPE, ScatterAdd, ScopePusher, Slice, Softmax, Tensor, TensorId, TensorOptions,
     TensorTypeOrScalar, TensorTypeOrScalarEnum, Ternary, Unary, View, WhereCond, cat, rvec, zeros,
@@ -247,8 +247,7 @@ impl Tensor {
                         input: _node,
                         op: UnaryOp::Floor,
                     }) => nodes,
-                    LazyOp::Cmp(Cmp { lhs: node, .. })
-                    | LazyOp::Unary(Unary { input: node, .. })
+                    LazyOp::Unary(Unary { input: node, .. })
                     | LazyOp::Reduce(Reduce {
                         input: node,
                         op: ReduceOp::Min | ReduceOp::Sum | ReduceOp::Max | ReduceOp::Norm2,
@@ -291,6 +290,7 @@ impl Tensor {
                     LazyOp::IndexWrite(_) => todo!(),
                     LazyOp::Copy(_) => todo!(),
                     LazyOp::Detach(_)
+                    | LazyOp::Cmp(_)
                     | LazyOp::Const
                     | LazyOp::Alibi(_)
                     | LazyOp::Reduce(Reduce {
@@ -1170,7 +1170,7 @@ impl Tensor {
                 }
                 LazyOp::Norm(_) => todo!(),
                 LazyOp::Const => panic!("piston internal error - const node in backprop"),
-                LazyOp::Cmp(_) => todo!(),
+                LazyOp::Cmp(_) => todo!("cmp backprop"),
                 LazyOp::Powf(_) => todo!(),
                 LazyOp::RoPE(RoPE {
                     input: arg,

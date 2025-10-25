@@ -355,6 +355,9 @@ impl_cmp_op!(gt, Gt);
 impl_cmp_op!(ge, Ge);
 impl_cmp_op!(lt, Lt);
 impl_cmp_op!(le, Le);
+impl_cmp_op!(logical_and, LogicalAnd);
+impl_cmp_op!(logical_or, LogicalOr);
+impl_cmp_op!(logical_xor, LogicalXor);
 
 impl_unary_op!(gelu, Gelu);
 impl_unary_op!(tanh, Tanh);

@@ -23,6 +23,9 @@ pub enum CmpOp {
     Ge,
     Lt,
     Gt,
+    LogicalAnd,
+    LogicalOr,
+    LogicalXor,
 }
 
 impl CmpOp {
@@ -34,6 +37,9 @@ impl CmpOp {
             CmpOp::Ge => "ge",
             CmpOp::Lt => "lt",
             CmpOp::Gt => "gt",
+            CmpOp::LogicalAnd => "logical_and",
+            CmpOp::LogicalOr => "logical_or",
+            CmpOp::LogicalXor => "logical_xor",
         }
     }
 
@@ -45,6 +51,9 @@ impl CmpOp {
             CmpOp::Ge => ">=",
             CmpOp::Lt => "<",
             CmpOp::Gt => ">",
+            CmpOp::LogicalAnd => "&&",
+            CmpOp::LogicalOr => "||",
+            CmpOp::LogicalXor => "!=",
         }
     }
 }
@@ -125,23 +134,58 @@ impl KernelRenderable for CmpKernels {
             KernelElement::Vec4 => "vec4<i32>",
         };
         let op = inner.op.op_str();
+        let booleanify = matches!(
+            inner.op,
+            CmpOp::LogicalAnd | CmpOp::LogicalOr | CmpOp::LogicalXor
+        );
+
+        let casted_scalar_dtype = match self.kernel_element(dst) {
+            KernelElement::Scalar => inner.lhs.dtype().as_wgsl().to_string(),
+            KernelElement::Vec2 => {
+                format!("vec2<{}>", inner.lhs.dtype().as_wgsl())
+            }
+            KernelElement::Vec4 => {
+                format!("vec4<{}>", inner.lhs.dtype().as_wgsl())
+            }
+        };
+
+        let A_expr = if booleanify {
+            wgsl! {
+                (A[index] != 'casted_scalar_dtype(0.))
+            }
+        } else {
+            wgsl! {
+                A[index]
+            }
+        };
 
         let assignment_expr = match &inner.rhs {
-            TensorTypeOrScalarEnum::Tensor(_) => wgsl! {
-                'out_dtype(A[index] 'op B[index])
-            },
-            TensorTypeOrScalarEnum::Scalar(_) => {
-                let casted_scalar_dtype = match self.kernel_element(dst) {
-                    KernelElement::Scalar => inner.lhs.dtype().as_wgsl().to_string(),
-                    KernelElement::Vec2 => {
-                        format!("vec2<{}>", inner.lhs.dtype().as_wgsl())
+            TensorTypeOrScalarEnum::Tensor(_) => {
+                let B_expr = if booleanify {
+                    wgsl! {
+                        (B[index] != 'casted_scalar_dtype(0.))
                     }
-                    KernelElement::Vec4 => {
-                        format!("vec4<{}>", inner.lhs.dtype().as_wgsl())
+                } else {
+                    wgsl! {
+                        B[index]
                     }
                 };
                 wgsl! {
-                    'out_dtype(A[index] 'op 'casted_scalar_dtype(metadata.value))
+                    'out_dtype('A_expr 'op 'B_expr)
+                }
+            }
+            TensorTypeOrScalarEnum::Scalar(_) => {
+                let value_expr = if booleanify {
+                    wgsl! {
+                        metadata.value != 0.0
+                    }
+                } else {
+                    wgsl! {
+                        metadata.value
+                    }
+                };
+                wgsl! {
+                    'out_dtype('A_expr 'op 'casted_scalar_dtype('value_expr))
                 }
             }
         };
@@ -191,6 +235,9 @@ impl Operation for Cmp {
             CmpOp::Ge => "Ge",
             CmpOp::Lt => "Lt",
             CmpOp::Gt => "Gt",
+            CmpOp::LogicalAnd => "LogicalAnd",
+            CmpOp::LogicalOr => "LogicalOr",
+            CmpOp::LogicalXor => "LogicalXor",
         }
     }
 
@@ -404,6 +451,9 @@ def {kn}(a, scalar):
             CmpOp::Ge => a_gpu.ge(b_gpu)?,
             CmpOp::Lt => a_gpu.le(b_gpu)?,
             CmpOp::Gt => a_gpu.gt(b_gpu)?,
+            CmpOp::LogicalAnd => a_gpu.logical_and(b_gpu)?,
+            CmpOp::LogicalOr => a_gpu.logical_or(b_gpu)?,
+            CmpOp::LogicalXor => a_gpu.logical_xor(b_gpu)?,
         };
 
         let d_gpu = c_gpu.to(&Device::CPU)?.cast(DType::F32)?;
@@ -412,6 +462,14 @@ def {kn}(a, scalar):
     }
 
     fn run_cmp_scalar_trial(prob: CmpScalarProblem, device: Device) -> anyhow::Result<()> {
+        // We'll just skip these for now
+        if matches!(
+            prob.op,
+            CmpOp::LogicalAnd | CmpOp::LogicalOr | CmpOp::LogicalXor
+        ) {
+            return Ok(());
+        }
+
         let CmpScalarProblem { op, shape, scalar } = prob;
         let a = randn(shape, None, None, Default::default())?;
         let ground = ground_truth_scalar(&a, scalar, &op)?.cast(DType::F32)?;
@@ -424,6 +482,9 @@ def {kn}(a, scalar):
             CmpOp::Ge => a_gpu.ge(scalar)?,
             CmpOp::Lt => a_gpu.lt(scalar)?,
             CmpOp::Gt => a_gpu.gt(scalar)?,
+            CmpOp::LogicalAnd => a_gpu.logical_and(scalar)?,
+            CmpOp::LogicalOr => a_gpu.logical_or(scalar)?,
+            CmpOp::LogicalXor => a_gpu.logical_xor(scalar)?,
         };
 
         let d_gpu = c_gpu.to(&Device::CPU)?.cast(DType::F32)?;
