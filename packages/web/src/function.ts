@@ -1,5 +1,8 @@
 import { _popFunctionMode, _popMarkStepMode, _pushFunctionMode, _pushMarkStepMode } from "@/wasm";
 
+// @ts-expect-error polyfill
+Symbol.dispose ||= Symbol.for("Symbol.dispose");
+
 export abstract class PistonFunctionMode {
   constructor() {
     _pushFunctionMode(this);
