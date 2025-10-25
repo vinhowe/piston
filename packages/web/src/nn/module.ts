@@ -118,10 +118,12 @@ export class Module<Input = unknown, Output = unknown> {
         // Handle hooks
         if (prop === "forward" && typeof target.forward === "function") {
           return function (...args: unknown[]) {
+            const proxiedModule = receiver as Module<Input, Output>;
+
             // Apply pre-hooks
             let hookInput = args;
             for (const hook of target._forwardPreHooks.values()) {
-              const result = hook(target, args as Input);
+              const result = hook(proxiedModule, args as Input);
               if (result !== undefined) {
                 hookInput = Array.isArray(result) ? result : [result];
               }
@@ -132,7 +134,7 @@ export class Module<Input = unknown, Output = unknown> {
             // Apply post-hooks
             let hookOutput = output;
             for (const hook of target._forwardHooks.values()) {
-              const result = hook(target, hookInput as Input, hookOutput);
+              const result = hook(proxiedModule, hookInput as Input, hookOutput);
               if (result !== undefined) {
                 hookOutput = result;
               }
