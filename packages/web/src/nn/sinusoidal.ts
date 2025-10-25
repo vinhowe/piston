@@ -16,7 +16,7 @@ export class SinusoidalEmbedding extends Module<[Tensor], Tensor> {
    * @param dim The embedding dimension. Must be even.
    * @param device Optional device to create the internal tensors on.
    */
-  constructor(dim: number, device?: Device | "cpu") {
+  constructor(dim: number, device?: Device) {
     super();
     if (dim % 2 !== 0) {
       throw new Error("Embedding dimension must be even.");
