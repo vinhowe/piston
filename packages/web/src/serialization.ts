@@ -2,7 +2,7 @@ import { Buffer, Parameter } from "@/nn/parameter";
 import { Tensor } from "@/tensor";
 import { save_wasm } from "@/wasm";
 
-export function save(stateDict: Record<string, Parameter | Buffer>) {
+export function save(stateDict: Record<string, Parameter | Buffer>, extra?: unknown) {
   return save_wasm(
     Object.fromEntries(
       Object.entries(stateDict).map(([name, paramOrBuffer]) => {
@@ -16,5 +16,6 @@ export function save(stateDict: Record<string, Parameter | Buffer>) {
         );
       }),
     ),
+    extra ? JSON.stringify(extra) : undefined,
   );
 }
