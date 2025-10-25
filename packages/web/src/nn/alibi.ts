@@ -11,7 +11,7 @@ import { Tensor } from "@/tensor";
  * For more details see "Train Short, Test Long: Attention with Linear Biases Enables Input Length
  * Extrapolation" (https://arxiv.org/abs/2108.12409).
  */
-export class AlibiEmbedding extends Module {
+export class AlibiEmbedding extends Module<[Tensor], Tensor> {
   private maxBias: number;
 
   /**

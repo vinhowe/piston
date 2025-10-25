@@ -7,7 +7,7 @@ import { Device } from "@/wasm";
 /**
  * Implements sinusoidal positional encodings as described in "Attention Is All You Need".
  */
-export class SinusoidalEmbedding extends Module {
+export class SinusoidalEmbedding extends Module<[Tensor], Tensor> {
   private dim: number;
   private invFreq: Buffer;
 

@@ -1,7 +1,7 @@
 import { Module } from "@/nn/module";
 import { Tensor } from "@/tensor";
 
-export class LogSoftmax extends Module {
+export class LogSoftmax extends Module<[Tensor], Tensor> {
   constructor(private dim: number = 1) {
     super();
   }

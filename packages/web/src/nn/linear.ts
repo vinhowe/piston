@@ -3,7 +3,7 @@ import { Module } from "@/nn/module";
 import { Parameter } from "@/nn/parameter";
 import { Tensor } from "@/tensor";
 
-export class Linear extends Module {
+export class Linear extends Module<[Tensor], Tensor> {
   weight: Parameter;
   bias?: Parameter;
   /**

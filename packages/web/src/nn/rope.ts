@@ -11,7 +11,7 @@ import { Tensor } from "@/tensor";
  * For more details see `RoFormer: Enhanced Transformer with Rotary Position Embedding
  * <https://arxiv.org/abs/2104.09864>`.
  */
-export class RotaryEmbedding extends Module {
+export class RotaryEmbedding extends Module<[Tensor], Tensor> {
   private dim: number;
   private base: number;
 
