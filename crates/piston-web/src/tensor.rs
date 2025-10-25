@@ -483,7 +483,6 @@ pub fn sum(
     }
 }
 
-// mean(Tensor tensor, Dims? dim=None, bool keepdim=False)
 #[js_tensor_web_op(name = Mean, variants = [method])]
 pub fn mean(
     input: Tensor,
@@ -497,7 +496,6 @@ pub fn mean(
     }
 }
 
-// var(Tensor tensor, Dims? dim=None, bool keepdim=False)
 #[js_tensor_web_op(name = Var, variants = [method])]
 pub fn var(
     input: Tensor,
@@ -511,7 +509,6 @@ pub fn var(
     }
 }
 
-// max(Tensor tensor, Dims? dim=None, bool keepdim=False)
 #[js_tensor_web_op(name = Max, variants = [method])]
 pub fn max(
     input: Tensor,
@@ -525,7 +522,6 @@ pub fn max(
     }
 }
 
-// min(Tensor tensor, Dims? dim=None, bool keepdim=False)
 #[js_tensor_web_op(name = Min, variants = [method])]
 pub fn min(
     input: Tensor,
@@ -613,7 +609,6 @@ pub fn slice(
 #[js_tensor_web_op(name = View, variants = [method])]
 pub fn view(input: Tensor, shape: ShapeWithOneHole) -> JsTensorResult {}
 
-// unsqueeze(Tensor tensor, int dim)
 #[js_tensor_web_op(name = Unsqueeze, variants = [method])]
 pub fn unsqueeze(input: Tensor, dim: Dim) -> JsTensorResult {}
 
