@@ -379,6 +379,7 @@ struct OpParamMeta {
     keyword: bool,
     raw_js: bool,
     ts_type_override: Option<String>,
+    name: Option<String>,
 }
 
 fn parse_op_param_meta(attrs: &[Attribute]) -> SynResult<OpParamMeta> {
@@ -399,6 +400,10 @@ fn parse_op_param_meta(attrs: &[Attribute]) -> SynResult<OpParamMeta> {
                 } else if nested.path.is_ident("unchecked_type") || nested.path.is_ident("type") {
                     let lit: LitStr = nested.value()?.parse()?;
                     meta.ts_type_override = Some(lit.value());
+                    Ok(())
+                } else if nested.path.is_ident("name") {
+                    let lit: LitStr = nested.value()?.parse()?;
+                    meta.name = Some(lit.value());
                     Ok(())
                 } else {
                     Err(nested.error("Unknown op(...) attribute key"))
@@ -659,7 +664,11 @@ fn build_options_struct(
         }
         let name_ident = p.ident.clone();
         let name_str = name_ident.to_string();
-        let camel = name_str.to_lower_camel_case();
+        let camel = if let Some(ref custom) = p.meta.name {
+            custom.clone()
+        } else {
+            name_str.to_lower_camel_case()
+        };
         // Required fields remain non-Option; optional fields become Option<...>
         let is_optional = p.is_option || p.meta.default_expr.is_some();
         // Avoid Option<Option<T>> in the generated options struct by mapping Option<T> to T first
@@ -1460,7 +1469,11 @@ pub fn process_js_tensor_web_op(attr: JsTensorWebOpAttr, item: ItemFn) -> SynRes
                 }
                 let p = &params[param_idx];
                 let name_str = p.ident.to_string();
-                let camel = name_str.to_lower_camel_case();
+                let camel = if let Some(ref custom) = p.meta.name {
+                    custom.clone()
+                } else {
+                    name_str.to_lower_camel_case()
+                };
                 let mut attrs_tokens: Vec<TokenStream2> = Vec::new();
                 // js_name override when camelCase differs
                 if camel != name_str {
@@ -1509,7 +1522,11 @@ pub fn process_js_tensor_web_op(attr: JsTensorWebOpAttr, item: ItemFn) -> SynRes
                 let name = p.ident.clone();
                 // camelCase rename for param if different
                 let name_str = name.to_string();
-                let camel = name_str.to_lower_camel_case();
+                let camel = if let Some(ref custom) = p.meta.name {
+                    custom.clone()
+                } else {
+                    name_str.to_lower_camel_case()
+                };
                 let mut attrs = Vec::<TokenStream2>::new();
                 if camel != name_str {
                     let jsname_lit = syn::LitStr::new(&camel, Span::call_site());
