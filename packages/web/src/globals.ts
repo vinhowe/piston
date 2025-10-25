@@ -43,6 +43,7 @@ import {
   lt as lt_wasm,
   ne as ne_wasm,
   neg as neg_wasm,
+  oneHot as oneHot_wasm,
   ones as ones_wasm,
   onesLike as onesLike_wasm,
   rand as rand_wasm,
@@ -130,6 +131,7 @@ export let recip: typeof recip_wasm;
 export let eye: typeof eye_wasm;
 export let isnan: typeof isnan_wasm;
 export let isinf: typeof isinf_wasm;
+export let oneHot: typeof oneHot_wasm;
 export let topk: typeof topk_wasm;
 
 export let tensor: {
@@ -315,6 +317,7 @@ export async function initGlobals() {
   logicalNot = wrapWithLibTensor(logicalNot_wasm);
   logicalOr = wrapWithLibTensor(logicalOr_wasm);
   logicalXor = wrapWithLibTensor(logicalXor_wasm);
+  oneHot = wrapWithLibTensor(oneHot_wasm);
   topk = wrapWithLibTensorArray(topk_wasm);
   bernoulli = wrapWithLibTensor(bernoulli_wasm);
   zeros = wrapWithParam(wrapWithLibTensor(zeros_wasm));

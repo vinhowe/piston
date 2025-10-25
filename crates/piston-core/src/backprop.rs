@@ -326,7 +326,8 @@ impl Tensor {
                     | LazyOp::Arange(_)
                     | LazyOp::Cache(_)
                     | LazyOp::Trilu(_)
-                    | LazyOp::TopK(_) => nodes,
+                    | LazyOp::TopK(_)
+                    | LazyOp::OneHot(_) => nodes,
                 }
             };
             already_seen.insert(node.id(), track_grad);
@@ -943,6 +944,7 @@ impl Tensor {
                     ..
                 })
                 | LazyOp::Eye(_)
+                | LazyOp::OneHot(_)
                 | LazyOp::FillPointwise(_)
                 | LazyOp::Bernoulli(_)
                 | LazyOp::Multinomial(_)

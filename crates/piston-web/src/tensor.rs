@@ -957,6 +957,9 @@ pub fn eye(n: usize, m: Option<usize>, options: TensorOptions) -> anyhow::Result
     piston::eye(n, m, options)
 }
 
+#[js_tensor_web_op(name = OneHot, variants = [function, method])]
+pub fn one_hot(input: Tensor, #[op(name = "numClasses")] num_classes: usize) -> JsTensorResult {}
+
 #[js_tensor_web_op(name = "Zeros", variants = [function])]
 pub fn zeros(shape: Shape, options: TensorOptions) -> anyhow::Result<Tensor> {
     piston::zeros(shape, options)

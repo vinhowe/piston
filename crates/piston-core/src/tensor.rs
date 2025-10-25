@@ -2080,6 +2080,14 @@ pub fn eye(n: usize, m: Option<usize>, options: TensorOptions) -> Result<OpTenso
     )
 }
 
+#[tensor_op(variants = [function, method])]
+pub fn one_hot(input: OpTensor, num_classes: usize) -> Result<OpTensor> {
+    let device = input.device().clone();
+    let op = crate::ops::OneHot::new(input, num_classes);
+    let view = op.compute_view()?;
+    OpTensor::lazy(LazyOp::OneHot(op), view, device, false)
+}
+
 /// Private implementation for full
 fn full_impl<T: TensorDType + AsPrimitive<f32>>(
     shape: &Shape,
@@ -2599,6 +2607,7 @@ impl OpTensor {
             LazyOp::Reduce(s) => s.create_gpu_compile_key(self, can_inplace, uniform).ok(),
             LazyOp::Detach(d) => self.gpu_compile_key_for_op(d, can_inplace, uniform),
             LazyOp::Gather(g) => g.create_gpu_compile_key(self, can_inplace, uniform).ok(),
+            LazyOp::OneHot(o) => o.create_gpu_compile_key(self, can_inplace, uniform).ok(),
             LazyOp::Multinomial(m) => m.create_gpu_compile_key(self, can_inplace, uniform).ok(),
             LazyOp::FillPointwise(f) => f.create_gpu_compile_key(self, can_inplace, uniform).ok(),
             LazyOp::Bernoulli(b) => b.create_gpu_compile_key(self, can_inplace, uniform).ok(),
@@ -2902,6 +2911,7 @@ pub fn compile_gpu_for_op(
         LazyOp::Trilu(t) => t.compile_gpu(gpu_compile_key, gpu_device, debug).ok(),
         LazyOp::Cache(c) => c.compile_gpu(gpu_compile_key, gpu_device, debug).ok(),
         LazyOp::Reduce(s) => s.compile_gpu(gpu_compile_key, gpu_device, debug).ok(),
+        LazyOp::OneHot(o) => o.compile_gpu(gpu_compile_key, gpu_device, debug).ok(),
         LazyOp::Detach(d) => compile_gpu_for_op(d, gpu_compile_key, gpu_device, debug),
         LazyOp::Gather(g) => g.compile_gpu(gpu_compile_key, gpu_device, debug).ok(),
         LazyOp::Multinomial(m) => m.compile_gpu(gpu_compile_key, gpu_device, debug).ok(),
