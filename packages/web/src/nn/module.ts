@@ -233,7 +233,7 @@ export class Module<Input = unknown, Output = unknown> {
   registerParameter(name: string, param: Parameter | null): Module<Input, Output> {
     if (param !== null && !(param instanceof Parameter)) {
       throw new TypeError(
-        `Cannot assign '${(param as unknown)?.constructor?.name || typeof param}' as parameter '${name}'`,
+        `Cannot assign '${(param as Module)?.constructor?.name || typeof param}' as parameter '${name}'`,
       );
     }
 
@@ -311,7 +311,7 @@ export class Module<Input = unknown, Output = unknown> {
     module: Module<SubmoduleInput, SubmoduleOutput> | null,
   ): Module<Input, Output> {
     if (module !== null && !(module instanceof Module)) {
-      throw new Error(`${(module as unknown)?.constructor?.name || typeof module} is not a Module`);
+      throw new Error(`${(module as Module)?.constructor?.name || typeof module} is not a Module`);
     } else if (typeof name !== "string") {
       throw new Error(`module name should be a string. Got ${typeof name}`);
     } else if (name in this && !(name in this._modules)) {
@@ -326,7 +326,7 @@ export class Module<Input = unknown, Output = unknown> {
     // Call global module registration hooks
     for (const hook of globalModuleRegistrationHooks.values()) {
       try {
-        hook(this as Module<unknown, unknown>, name, module as Module<unknown, unknown> | null);
+        hook(this as Module, name, module as Module | null);
       } catch (error) {
         throw new Error(`Error in module registration hook: ${error}`, { cause: error });
       }
@@ -563,12 +563,12 @@ export class Module<Input = unknown, Output = unknown> {
     prefix: string = "",
     removeDuplicate: boolean = true,
   ): Generator<[string, Module]> {
-    if (!memo.has(this as unknown as Module) || !removeDuplicate) {
+    if (!memo.has(this as Module) || !removeDuplicate) {
       if (removeDuplicate) {
-        memo.add(this as unknown as Module);
+        memo.add(this as Module);
       }
 
-      yield [prefix, this as unknown as Module];
+      yield [prefix, this as Module];
 
       for (const [name, module] of Object.entries(this._modules)) {
         if (module === null) {
@@ -614,7 +614,7 @@ export class Module<Input = unknown, Output = unknown> {
       module.train(mode);
     }
 
-    return this as unknown as Module;
+    return this as Module;
   }
 
   /**
