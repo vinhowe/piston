@@ -923,7 +923,6 @@ impl Tensor {
                     let arg_grad = grad.div(node.clone())?.affine(0.5, 0.)?;
                     ctx.add(&arg, arg_grad)?;
                 }
-                LazyOp::Detach(_) => todo!(),
                 LazyOp::Unary(Unary {
                     input: arg,
                     op: UnaryOp::Sigmoid,
@@ -933,6 +932,7 @@ impl Tensor {
                     let arg_grad = grad.clone().mul(node.clone())?.mul((1. - node.clone())?)?;
                     ctx.add(&arg, arg_grad)?;
                 }
+                LazyOp::Detach(_) => todo!("detach backprop"),
                 LazyOp::Reduce(Reduce {
                     input: _,
                     op: ReduceOp::ArgMax,
