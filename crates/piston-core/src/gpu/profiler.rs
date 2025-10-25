@@ -260,7 +260,7 @@ impl Profiler {
         self.destination_buffer
             .slice(..)
             .map_async(wgpu::MapMode::Read, |_| ());
-        self.device.poll(wgpu::Maintain::Wait);
+        self.device.poll(wgpu::Maintain::Wait).unwrap();
         let timestamp_view = self
             .destination_buffer
             .slice(
@@ -290,7 +290,9 @@ impl Profiler {
             .map_async(wgpu::MapMode::Read, move |_| {
                 tx.send(()).expect("Failed to sync for profiling");
             });
-        self.device.poll(wgpu::Maintain::Wait);
+        self.device
+            .poll(wgpu::PollType::wait_indefinitely())
+            .unwrap();
         #[cfg(target_arch = "wasm32")]
         rx.receive().await.unwrap();
         #[cfg(not(target_arch = "wasm32"))]

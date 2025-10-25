@@ -83,7 +83,7 @@ impl GPUBuffer {
             )
             .unwrap();
         device.queue().submit(None);
-        device.poll(wgpu::Maintain::Wait);
+        device.poll(wgpu::PollType::wait_indefinitely()).unwrap();
         Self {
             inner,
             alignment,
@@ -119,7 +119,7 @@ impl GPUBuffer {
             device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
         encoder.copy_buffer_to_buffer(&self.inner, 0, &clone, 0, self.inner.size());
         device.queue().submit(Some(encoder.finish()));
-        device.poll(wgpu::Maintain::Wait);
+        device.poll(wgpu::PollType::wait_indefinitely());
         Self {
             inner: clone,
             alignment: self.alignment,
@@ -136,22 +136,22 @@ impl GPUBuffer {
         CPUBuffer::from_disk::<T, R>(reader, shape)?.to_device(device)
     }
 
-    pub fn trim_id(id: wgpu::Id<wgpu::Buffer>) -> Option<String> {
-        let id = format!("{id:?}");
-        let trimmed = id.trim_start_matches("Id(").trim_end_matches(')');
-        if trimmed.len() > 12 && trimmed.chars().all(|c| c.is_numeric()) {
-            Some(trimmed[12..].to_string())
-        } else {
-            None
-        }
-    }
+    // pub fn trim_id(id: wgpu::Id<wgpu::Buffer>) -> Option<String> {
+    //     let id = format!("{id:?}");
+    //     let trimmed = id.trim_start_matches("Id(").trim_end_matches(')');
+    //     if trimmed.len() > 12 && trimmed.chars().all(|c| c.is_numeric()) {
+    //         Some(trimmed[12..].to_string())
+    //     } else {
+    //         None
+    //     }
+    // }
 
     #[cfg(feature = "plotting")]
     pub fn plot_fmt(&self) -> String {
-        let id_string = Self::trim_id(self.inner().global_id()).unwrap_or_default();
+        // let id_string = Self::trim_id(self.inner().global_id()).unwrap_or_default();
         format!(
-            "GPU:#{}\n({:?})\n{} bytes",
-            id_string,
+            "GPU:\n({:?})\n{} bytes",
+            // id_string,
             self.inner.handle,
             self.inner.size()
         )
@@ -178,8 +178,8 @@ impl DeviceStorage for GPUBuffer {
 
     fn dump(&self, _: DType, _: bool) -> String {
         let mut result = String::new();
-        let id_string = Self::trim_id(self.inner().global_id()).unwrap_or_default();
-        result.push_str(&format!("GPU Buffer #{id_string}\n"));
+        // let id_string = Self::trim_id(self.inner().global_id()).unwrap_or_default();
+        // result.push_str(&format!("GPU Buffer #{id_string}\n"));
         result.push_str(&format!("Size: {} bytes\n", self.inner.size()));
         result
     }
@@ -208,7 +208,7 @@ pub async fn wgpu_buffer_to_cpu_buffer(
         })
         .expect("Failed to send result of read_buffer");
     });
-    device.poll(wgpu::Maintain::Wait);
+    device.poll(wgpu::PollType::wait_indefinitely()).unwrap();
     #[cfg(target_arch = "wasm32")]
     return rx.receive().await.unwrap().unwrap();
     #[cfg(not(target_arch = "wasm32"))]

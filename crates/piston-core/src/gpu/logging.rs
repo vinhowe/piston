@@ -173,7 +173,7 @@ impl TensorLogStep {
     pub fn gpu_buf(&self) -> JsValue {
         self.gpu_buf
             .as_ref()
-            .map(|buf| buf.as_webgpu_buffer().unwrap().into())
+            .map(|buf| buf.as_webgpu_buffer().into())
             .unwrap_or(JsValue::null())
     }
 }

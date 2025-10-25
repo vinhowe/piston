@@ -54,7 +54,7 @@ impl std::fmt::Debug for WgpuDevice {
 
 impl PartialEq for WgpuDevice {
     fn eq(&self, other: &Self) -> bool {
-        self.ordinal == other.ordinal && self.device.global_id() == other.device.global_id()
+        self.ordinal == other.ordinal && self.device == other.device
     }
 }
 
@@ -83,13 +83,15 @@ impl WgpuDevice {
                 ..Default::default()
             },
             memory_hints: wgpu::MemoryHints::Performance,
+            experimental_features: wgpu::ExperimentalFeatures::disabled(),
+            trace: Default::default(),
         };
-        let device_request = adapter.request_device(&device_descriptor, None).await;
+        let device_request = adapter.request_device(&device_descriptor).await;
         let (device, queue) = if let Err(e) = device_request {
             log::error!("Failed to acq. device, trying with reduced limits: {e:?}");
             device_descriptor.required_limits = adapter.limits();
             device_descriptor.required_features = adapter.features();
-            adapter.request_device(&device_descriptor, None).await
+            adapter.request_device(&device_descriptor).await
         } else {
             device_request
         }?;
@@ -147,7 +149,7 @@ impl WgpuDevice {
                 force_fallback_adapter: false,
             })
             .await
-            .ok_or(DeviceError::AdapterRequestFailed)
+            .map_err(|_| DeviceError::AdapterRequestFailed)
     }
 
     #[cfg(not(target_arch = "wasm32"))]

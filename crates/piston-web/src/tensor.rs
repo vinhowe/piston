@@ -287,11 +287,6 @@ impl JsTensor {
         self.inner().retain_grad().map_err(|e| e.into_js_error())
     }
 
-    #[wasm_bindgen(js_name = storageId)]
-    pub fn storage_id(&self) -> Option<usize> {
-        self.inner().storage_id()
-    }
-
     pub fn is_contiguous(&self) -> bool {
         self.inner().is_contiguous()
     }
@@ -822,11 +817,7 @@ impl JsTensor {
         let inner = self.inner();
         let inner_source = inner.inner_or_source();
         match inner_source.storage().as_ref() {
-            Some(Storage::GPU(g)) => Ok(g
-                .inner()
-                .as_webgpu_buffer()
-                .map(|b| b.into())
-                .unwrap_or(JsValue::null())),
+            Some(Storage::GPU(g)) => Ok(g.inner().as_webgpu_buffer().into()),
             _ => Err(JsError::new("Tensor is not on GPU")),
         }
     }

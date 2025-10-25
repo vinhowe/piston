@@ -38,7 +38,7 @@ impl std::ops::Deref for PooledGPUBuffer {
 
 impl PartialEq for PooledGPUBuffer {
     fn eq(&self, other: &Self) -> bool {
-        self.0.inner.global_id() == other.0.inner.global_id()
+        self.0.inner == other.0.inner
     }
 }
 
@@ -117,7 +117,7 @@ impl BufferPool {
             });
             if immediate {
                 device.queue().submit(None);
-                device.poll(wgpu::Maintain::Wait);
+                device.poll(wgpu::PollType::wait_indefinitely()).unwrap();
             }
             buf
         }))

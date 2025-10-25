@@ -3484,16 +3484,6 @@ impl Tensor {
     pub fn take_grad(&self) -> Option<Self> {
         self.inner_or_source().take_grad()
     }
-
-    pub fn storage_id(&self) -> Option<usize> {
-        self.inner_or_source()
-            .storage()
-            .as_ref()
-            .and_then(|s| match s {
-                Storage::CPU(_) => None,
-                Storage::GPU(g) => Some(g.inner().global_id().inner() as _),
-            })
-    }
 }
 
 impl<T: TensorDType> From<ArrayD<T>> for Tensor {

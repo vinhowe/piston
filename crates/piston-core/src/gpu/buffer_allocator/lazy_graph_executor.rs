@@ -203,7 +203,12 @@ impl LazyGraphExecutor {
             .await?;
 
         if immediate {
-            gpu_device.poll(wgpu::MaintainBase::WaitForSubmissionIndex(index));
+            gpu_device
+                .poll(wgpu::PollType::Wait {
+                    submission_index: Some(index),
+                    timeout: None,
+                })
+                .unwrap();
         }
         Ok(result)
     }
@@ -252,17 +257,22 @@ impl LazyGraphExecutor {
         let mut seen_nodes = HashSet::default();
         let mut post_order = Vec::new();
 
+        // let mut can_inplace_count = 0;
+        // let mut no_op_support_for_inplacing_count = 0;
+        // let mut no_inplacing_because_source_requires_grad_count = 0;
+        // let post_order_len = combined_post_orders.len();
+
         // First we loop over the post order to hash the tensors in the right order
         for tensor in combined_post_orders.into_iter() {
             if seen_nodes.insert(tensor.id()) {
                 post_order.push(tensor);
                 // Scope to drop tensor_hashes before inserting
                 let srcs = tensor.op().srcs();
-                log::trace!(
-                    "{:?}: Srcs: {:?}",
-                    tensor.id(),
-                    srcs.iter().map(|s| s.id()).collect::<Vec<_>>()
-                );
+                // log::trace!(
+                //     "{:?}: Srcs: {:?}",
+                //     tensor.id(),
+                //     srcs.iter().map(|s| s.id()).collect::<Vec<_>>()
+                // );
                 let first_src = srcs.first().cloned();
 
                 let mut to_modify = None;

@@ -61,7 +61,12 @@ impl KernelModulePool {
                 log::warn!("Using checked shader compilation");
                 device.create_shader_module(shader_module_desc)
             } else {
-                unsafe { device.create_shader_module_unchecked(shader_module_desc) }
+                unsafe {
+                    device.create_shader_module_trusted(
+                        shader_module_desc,
+                        wgpu::ShaderRuntimeChecks::unchecked(),
+                    )
+                }
             }
         })
     }

@@ -79,11 +79,11 @@ impl Executable {
     ) -> Result<(), ExecutionError> {
         compute_pass.set_pipeline(pipeline_resources.get(op.pipeline_handle())?);
         for (group_index, bind_group) in op.storage_groups().iter().enumerate() {
-            compute_pass.set_bind_group(group_index as u32, bind_group, &[]);
+            compute_pass.set_bind_group(group_index as u32, Some(&**bind_group), &[]);
         }
         let uniform_group_index = op.storage_groups().len() as u32;
         let uniform_group = gpu_uniform.bind_group();
-        compute_pass.set_bind_group(uniform_group_index, uniform_group, &[op.offset()]);
+        compute_pass.set_bind_group(uniform_group_index, Some(&**uniform_group), &[op.offset()]);
         let [x_count, y_count, z_count] = op.workgroup_count().as_slice();
         compute_pass.dispatch_workgroups(x_count, y_count, z_count);
         Ok(())
@@ -211,7 +211,7 @@ impl Executable {
                                 0,
                                 &debug_buffer,
                                 0,
-                                result_t.num_bytes() as _,
+                                Some(result_t.num_bytes() as _),
                             );
 
                             gpu_bufs
