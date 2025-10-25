@@ -356,6 +356,7 @@ impl WgpuDevice {
 
     pub fn begin_pass(&self, pass_index: u64) {
         self.buffer_allocator.begin_pass(pass_index);
+        self.bind_group_pool.begin_pass(pass_index);
     }
 
     pub fn compute_features(&self) -> &DeviceFeatures {
