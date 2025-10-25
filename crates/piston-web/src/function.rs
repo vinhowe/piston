@@ -313,6 +313,9 @@ pub fn pop_function_mode() -> Option<FunctionMode> {
 /// Push a new JS function mode object onto the stack.
 #[wasm_bindgen(js_name = _pushFunctionMode)]
 pub fn push_function_mode_js(mode_obj: &JsValue) -> Result<(), JsValue> {
+    if mode_obj.is_undefined() || mode_obj.is_null() {
+        return Ok(());
+    }
     push_function_mode(FunctionMode {
         js_mode_obj: mode_obj.clone(),
     });

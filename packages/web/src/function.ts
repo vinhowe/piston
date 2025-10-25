@@ -39,7 +39,9 @@ export class FunctionModeGuard {
   }
 
   [Symbol.dispose]() {
-    _pushFunctionMode(this.mode);
+    if (this.mode) {
+      _pushFunctionMode(this.mode);
+    }
   }
 }
 
