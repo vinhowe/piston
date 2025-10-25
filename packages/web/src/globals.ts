@@ -15,6 +15,7 @@ import {
   bernoulli as bernoulli_wasm,
   cat as cat_wasm,
   ceil as ceil_wasm,
+  chunk as chunk_wasm,
   cos as cos_wasm,
   cpu_wasm,
   Device,
@@ -56,6 +57,7 @@ import {
   sigmoid as sigmoid_wasm,
   silu as silu_wasm,
   sin as sin_wasm,
+  split as split_wasm,
   sqrt as sqrt_wasm,
   square as square_wasm,
   stack as stack_wasm,
@@ -133,6 +135,8 @@ export let isnan: typeof isnan_wasm;
 export let isinf: typeof isinf_wasm;
 export let oneHot: typeof oneHot_wasm;
 export let topk: typeof topk_wasm;
+export let split: typeof split_wasm;
+export let chunk: typeof chunk_wasm;
 
 export let tensor: {
   (
@@ -320,6 +324,8 @@ export async function initGlobals() {
   oneHot = wrapWithLibTensor(oneHot_wasm);
   topk = wrapWithLibTensorArray(topk_wasm);
   bernoulli = wrapWithLibTensor(bernoulli_wasm);
+  split = wrapWithLibTensorArray(split_wasm);
+  chunk = wrapWithLibTensorArray(chunk_wasm);
   zeros = wrapWithParam(wrapWithLibTensor(zeros_wasm));
   zerosLike = wrapWithParam(wrapWithLibTensor(zerosLike_wasm));
   ones = wrapWithParam(wrapWithLibTensor(ones_wasm));

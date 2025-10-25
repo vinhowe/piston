@@ -1092,6 +1092,81 @@ pub fn slice<D: std::ops::RangeBounds<usize>>(input: OpTensor, ranges: &[D]) -> 
     OpTensor::lazy(op, out_view, device, false)
 }
 
+pub enum SplitArg {
+    SplitSize(usize),
+    Sizes(RVec<usize>),
+}
+
+/// Splits the tensor along dimension `dim`. When given a `SplitArg::SplitSize(n)`,
+/// the tensor is split into chunks of size `n` (last chunk may be smaller). When
+/// given `SplitArg::Sizes(sizes)`, it is split according to the explicit sizes.
+#[tensor_op(variants = [function, method])]
+pub fn split<D: Dim>(input: OpTensor, arg: SplitArg, dim: D) -> Result<RVec<OpTensor>> {
+    let dim = dim.to_index(input.shape(), "split")?;
+    let dim_len = input.shape()[dim];
+
+    match arg {
+        SplitArg::SplitSize(split_size) => {
+            if split_size == 0 {
+                anyhow::bail!("split: split_size must be > 0");
+            }
+            if dim_len == 0 {
+                return Ok(rvec![]);
+            }
+            let mut start = 0usize;
+            let mut outputs: RVec<OpTensor> = RVec::with_capacity(dim_len.div_ceil(split_size));
+            while start < dim_len {
+                let len = (dim_len - start).min(split_size);
+                outputs.push(narrow_kernel(input.clone(), dim, start, len)?);
+                start += len;
+            }
+            Ok(outputs)
+        }
+        SplitArg::Sizes(sizes) => {
+            let total: usize = sizes.iter().sum();
+            if total != dim_len {
+                anyhow::bail!(
+                    "split_with_sizes: sizes {:?} must sum to dim length {} (dim {})",
+                    sizes,
+                    dim_len,
+                    dim
+                );
+            }
+            let mut start = 0usize;
+            let mut outputs: RVec<OpTensor> = RVec::with_capacity(sizes.len());
+            for &len in sizes.iter() {
+                outputs.push(narrow_kernel(input.clone(), dim, start, len)?);
+                start += len;
+            }
+            Ok(outputs)
+        }
+    }
+}
+
+/// Splits the tensor into `chunks` parts along dimension `dim`.
+/// The first `dim_len % chunks` chunks will have size `ceil(dim_len / chunks)`,
+/// and the remainder will have size `floor(dim_len / chunks)`. Zero-length chunks
+/// are produced if `chunks > dim_len`.
+#[tensor_op(variants = [function, method])]
+pub fn chunk<D: Dim>(input: OpTensor, chunks: usize, dim: D) -> Result<RVec<OpTensor>> {
+    let dim = dim.to_index(input.shape(), "chunk")?;
+    let dim_len = input.shape()[dim];
+
+    if chunks == 0 {
+        anyhow::bail!("chunk: chunks must be > 0");
+    }
+
+    let base = dim_len / chunks;
+    let rem = dim_len % chunks;
+
+    // Build explicit sizes and reuse split_with_sizes implementation
+    let mut sizes = RVec::with_capacity(chunks);
+    for i in 0..chunks {
+        sizes.push(base + ((i < rem) as usize));
+    }
+    split_kernel(input, SplitArg::Sizes(sizes), dim)
+}
+
 /// Returns a new tensor that is a narrowed version of the input, the dimension `dim`
 /// ranges from `start` to `start + len`.
 /// This calls `slice` internally.

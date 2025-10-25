@@ -611,6 +611,47 @@ pub fn slice(
     input.slice(&ranges)
 }
 
+#[js_tensor_web_op(name = Split, variants = [method, function])]
+pub fn split(
+    input: Tensor,
+    #[op(unchecked_type = "number | number[]", name = "splitSizeOrSections")]
+    split_size_or_sections: JsValue,
+    #[op(default = 0)] dim: Dim,
+) -> Result<Vec<Tensor>, JsError> {
+    let arg = if let Some(n) = split_size_or_sections.as_f64() {
+        piston::SplitArg::SplitSize(n as usize)
+    } else if split_size_or_sections.is_object() && split_size_or_sections.is_array() {
+        let arr = split_size_or_sections
+            .dyn_into::<js_sys::Array>()
+            .map_err(|_| JsError::new("split sections must be an array"))?;
+        let sizes = arr
+            .iter()
+            .map(|v| {
+                v.as_f64()
+                    .map(|f| f as usize)
+                    .ok_or_else(|| JsError::new("sections must be numbers"))
+            })
+            .collect::<Result<Vec<_>, JsError>>()?;
+        piston::SplitArg::Sizes(sizes.into())
+    } else {
+        return Err(JsError::new(
+            "split requires a number or an array of numbers",
+        ));
+    };
+    let parts = piston::split(input, arg, dim).map_err(|e| e.into_js_error())?;
+    Ok::<_, JsError>(parts.into_iter().collect::<Vec<_>>())
+}
+
+#[js_tensor_web_op(name = Chunk, variants = [method, function])]
+pub fn chunk(
+    input: Tensor,
+    chunks: usize,
+    #[op(default = 0)] dim: Dim,
+) -> Result<Vec<Tensor>, JsError> {
+    let parts = piston::chunk(input, chunks, dim).map_err(|e| e.into_js_error())?;
+    Ok::<_, JsError>(parts.into_iter().collect::<Vec<_>>())
+}
+
 #[js_tensor_web_op(name = View, variants = [method])]
 pub fn view(input: Tensor, shape: ShapeWithOneHole) -> JsTensorResult {}
 
