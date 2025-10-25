@@ -7,7 +7,7 @@ import { Tensor } from "@/tensor";
  * Configuration options for CrossEntropyLoss
  * @interface CrossEntropyLossConfig
  */
-interface CrossEntropyLossConfig {
+export interface CrossEntropyLossConfig {
   /**
    * Index to ignore in the target tensor
    * @default -100

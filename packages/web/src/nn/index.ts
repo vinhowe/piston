@@ -3,7 +3,7 @@ export { AlibiEmbedding } from "./alibi";
 export { Dropout } from "./dropout";
 export { Embedding } from "./embedding";
 export { Linear } from "./linear";
-export { CrossEntropyLoss } from "./loss";
+export { CrossEntropyLoss, type CrossEntropyLossConfig } from "./loss";
 export {
   type BufferRegistrationHook,
   Module,
