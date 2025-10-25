@@ -35,6 +35,10 @@ impl CpuUniform {
         self.0.into_inner()
     }
 
+    pub fn clone_inner(&self) -> Vec<u8> {
+        self.0.as_ref().clone()
+    }
+
     /// Consumes the CPU repr of the uniform buffer and writes to the GPU.
     pub(crate) fn into_gpu(self, device: &WgpuDevice) -> Result<GpuUniform, OperationError> {
         let buf = device.create_uniform_init(self);
