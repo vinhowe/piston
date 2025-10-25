@@ -300,8 +300,8 @@ impl Tensor {
                             nodes
                         }
                     }
-                    LazyOp::IndexWrite(_) => todo!(),
-                    LazyOp::Copy(_) => todo!(),
+                    LazyOp::IndexWrite(_) => todo!("index write walking for backprop"),
+                    LazyOp::Copy(_) => todo!("copy walking for backprop"),
                     LazyOp::Detach(_)
                     | LazyOp::Cmp(_)
                     | LazyOp::Unary(Unary {
@@ -1209,10 +1209,10 @@ impl Tensor {
                         offset += input.shape()[dim];
                     }
                 }
-                LazyOp::Norm(_) => todo!(),
+                LazyOp::Norm(_) => todo!("norm backprop"),
                 LazyOp::Const => panic!("piston internal error - const node in backprop"),
                 LazyOp::Cmp(_) => todo!("cmp backprop"),
-                LazyOp::Powf(_) => todo!(),
+                LazyOp::Powf(_) => todo!("powf backprop"),
                 LazyOp::RoPE(RoPE {
                     input: arg,
                     dim,
@@ -1224,11 +1224,11 @@ impl Tensor {
                     let arg_grad = grad.rope_backward_(dim, base, offset)?;
                     ctx.add(&arg, arg_grad)?;
                 }
-                LazyOp::Conv(_) => todo!(),
-                LazyOp::IndexWrite(_) => todo!(),
-                LazyOp::IndexAdd(_) => todo!(),
-                LazyOp::Cache(_) => todo!(),
-                LazyOp::Copy(_) => todo!(),
+                LazyOp::Conv(_) => todo!("conv backprop"),
+                LazyOp::IndexWrite(_) => todo!("index write backprop"),
+                LazyOp::IndexAdd(_) => todo!("index add backprop"),
+                LazyOp::Cache(_) => todo!("cache backprop"),
+                LazyOp::Copy(_) => todo!("copy backprop"),
             };
         }
         Ok(())
