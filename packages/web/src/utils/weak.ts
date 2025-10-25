@@ -95,9 +95,14 @@ class WeakTensorFunctionMode extends PistonFunctionMode {
     }
   }
 
-  pinTensor(tensor: Tensor) {
-    this.weakTensors.delete((tensor as unknown as { __wbg_ptr: number }).__wbg_ptr);
-    this.pinnedPtrs.add(tensor.__pistonStrongId);
+  pin<T>(input: T): T {
+    forEachTensorDeep(input, (tensor) => {
+      this.weakTensors.delete((tensor as unknown as { __wbg_ptr: number }).__wbg_ptr);
+      this.pinnedPtrs.add(tensor.__pistonStrongId);
+    });
+    return input;
+  }
+
   }
 
   [Symbol.dispose]() {
@@ -107,14 +112,14 @@ class WeakTensorFunctionMode extends PistonFunctionMode {
   }
 }
 
-export function pin(tensor: Tensor) {
+export function pin<T>(input: T): T {
   using guard = new FunctionModeGuard();
   const mode = guard.mode;
   if (mode instanceof WeakTensorFunctionMode) {
-    mode.pinTensor(tensor);
+    return mode.pin(input);
   }
   // Fine to silently ignore; default "strong" mode will pin anyway
-  return tensor;
+  return input;
 }
 
 export async function weak<T>(
@@ -132,11 +137,11 @@ export function weak<T>(
   const after = (result: T) => {
     try {
       if (result instanceof Tensor) {
-        weakMode.pinTensor(result);
+        weakMode.pin(result);
         return result;
       }
 
-      forEachTensorDeep(result, (tensor) => weakMode.pinTensor(tensor));
+      forEachTensorDeep(result, (tensor) => weakMode.pin(tensor));
 
       return result;
     } finally {
