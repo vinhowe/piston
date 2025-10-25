@@ -548,6 +548,27 @@ fn is_return_type_option(func: &ItemFn) -> bool {
     false
 }
 
+fn is_return_type_vec_tensor(func: &ItemFn) -> bool {
+    use syn::ReturnType;
+    let mut ty_opt: Option<&Type> = None;
+    if let ReturnType::Type(_, ty) = &func.sig.output {
+        ty_opt = Some(ty);
+    }
+    if let Some(ty) = ty_opt {
+        // Unwrap Result<Ok, Err> -> Ok
+        let ok_ty = if let Some((inner, _)) = get_inner_type(ty, "Result") {
+            inner
+        } else {
+            ty
+        };
+        // Vec<Tensor>
+        if let Some((inner, _)) = get_inner_type(ok_ty, "Vec") {
+            return is_type(inner, "JsTensor") || is_type(inner, "Tensor");
+        }
+    }
+    false
+}
+
 fn param_unchecked_ts_type(ty: &Type, optional: bool) -> String {
     let (kind, meta) = classify_param_kind(ty);
     let is_optional = optional || meta.optional;
@@ -1017,13 +1038,25 @@ fn build_options_parsing(
                 typed_fields.push(quote! { #field_ident });
             }
             ParamKind::TensorOrScalar => {
-                prelude.push(quote! {
-                    let __js = crate::js_util::to_option(#opts_ident.#field_ident.clone()).unwrap_or(wasm_bindgen::JsValue::UNDEFINED);
-                    let #field_ident: crate::tensor::JsTensorOrScalar = crate::tensor::JsTensorOrScalar { inner: __js };
-                });
-                typed_fields.push(
-                    quote! { #field_ident.tensor_or_scalar().map_err(|e| e.into_js_error())? },
-                );
+                if p.is_option {
+                    prelude.push(quote! {
+                        let #field_ident: Option<crate::tensor::JsTensorOrScalar> = #opts_ident.#field_ident.clone();
+                    });
+                    typed_fields.push(quote! {
+                        #field_ident
+                            .map(|v| v.tensor_or_scalar())
+                            .transpose()
+                            .map_err(|e| e.into_js_error())?
+                    });
+                } else {
+                    prelude.push(quote! {
+                        let __js = crate::js_util::to_option(#opts_ident.#field_ident.clone()).unwrap_or(wasm_bindgen::JsValue::UNDEFINED);
+                        let #field_ident: crate::tensor::JsTensorOrScalar = crate::tensor::JsTensorOrScalar { inner: __js };
+                    });
+                    typed_fields.push(
+                        quote! { #field_ident.tensor_or_scalar().map_err(|e| e.into_js_error())? },
+                    );
+                }
             }
             ParamKind::Shape => {
                 if p.is_option || p.meta.default_expr.is_some() {
@@ -1236,8 +1269,11 @@ pub fn process_js_tensor_web_op(attr: JsTensorWebOpAttr, item: ItemFn) -> SynRes
         quote! {}
     };
     let output_is_option = is_return_type_option(&item);
+    let output_is_vec_tensor = is_return_type_vec_tensor(&item);
     let unchecked_ret_ts = if output_is_option {
         syn::LitStr::new("Tensor | undefined", Span::call_site())
+    } else if output_is_vec_tensor {
+        syn::LitStr::new("Tensor[]", Span::call_site())
     } else {
         syn::LitStr::new("Tensor", Span::call_site())
     };
@@ -1416,6 +1452,15 @@ pub fn process_js_tensor_web_op(attr: JsTensorWebOpAttr, item: ItemFn) -> SynRes
                 Ok(result_opt
                     .map(|js_t| js_t.into())
                     .unwrap_or(wasm_bindgen::JsValue::UNDEFINED))
+            }
+        } else if output_is_vec_tensor {
+            quote! {
+                let result = #invocation_tokens.map_err(|e| e.into_js_error())?;
+                let array = js_sys::Array::new();
+                for t in result.into_iter() {
+                    array.push(&crate::tensor::JsTensor::new(t).into());
+                }
+                Ok(array.into())
             }
         } else {
             quote! {

@@ -1,5 +1,5 @@
 use proc_macro2::{Span, TokenStream as TokenStream2};
-use quote::quote;
+use quote::{ToTokens, quote};
 use std::collections::HashMap;
 use syn::{
     Attribute, Error, Expr, FnArg, GenericParam, Ident, ItemFn, Pat, PatIdent, PatType, Path,
@@ -699,7 +699,7 @@ fn generate_function_variant(
     }
     func.sig.inputs = new_inputs;
 
-    // Replace OpTensor with Tensor in return type
+    // Replace OpTensor with Tensor in return type, including containers like RVec<OpTensor> or Vec<OpTensor>
     if let ReturnType::Type(_, ref mut ty) = func.sig.output {
         replace_op_tensor_with_tensor(ty, false);
     }
@@ -737,9 +737,59 @@ fn generate_function_variant(
         call_args.push(quote!(#param_name));
     }
 
-    func.block = syn::parse_quote!({
-        #kernel_name(#(#call_args),*).map(Tensor::wrap)
-    });
+    // Detect if return type is Result<Container<OpTensor>> where Container is RVec or Vec
+    let returns_container_of_optensor = (|| {
+        if let ReturnType::Type(_, ty) = &original_fn.sig.output {
+            // Unwrap Result<Ok, Err> to Ok
+            let ok_ty: &Type = if let Type::Path(tp) = &**ty
+                && tp.path.segments.last().map(|s| s.ident.to_string())
+                    == Some("Result".to_string())
+                && matches!(
+                    tp.path.segments.last().unwrap().arguments,
+                    syn::PathArguments::AngleBracketed(_)
+                ) {
+                if let syn::PathArguments::AngleBracketed(args) =
+                    &tp.path.segments.last().unwrap().arguments
+                {
+                    if let Some(syn::GenericArgument::Type(t)) = args.args.first() {
+                        t
+                    } else {
+                        ty
+                    }
+                } else {
+                    ty
+                }
+            } else {
+                ty
+            };
+
+            if let Type::Path(tp2) = ok_ty
+                && let Some(seg) = tp2.path.segments.last()
+            {
+                let name = seg.ident.to_string();
+                if (name == "RVec" || name == "Vec")
+                    && let syn::PathArguments::AngleBracketed(args) = &seg.arguments
+                    && let Some(syn::GenericArgument::Type(inner_ty)) = args.args.first()
+                    && let Type::Path(inner_path) = inner_ty
+                {
+                    return is_op_tensor_path(&inner_path.path);
+                }
+            }
+        }
+        // Fallback: string match on signature tokens
+        let sig = original_fn.sig.output.to_token_stream().to_string();
+        sig.contains("RVec < OpTensor >") || sig.contains("Vec < OpTensor >")
+    })();
+
+    if returns_container_of_optensor {
+        func.block = syn::parse_quote!({
+            #kernel_name(#(#call_args),*).map(|v| v.into_iter().map(Tensor::wrap).collect())
+        });
+    } else {
+        func.block = syn::parse_quote!({
+            #kernel_name(#(#call_args),*).map(Tensor::wrap)
+        });
+    }
 
     Ok(func)
 }
@@ -800,9 +850,60 @@ fn generate_method_variant(
         replace_op_tensor_with_tensor(ty, true);
     }
 
-    let method = quote! {
-        pub fn #method_name #generics (self, #(#method_params),*) #return_type {
-            #kernel_name(#(#call_args),*).map(Self::wrap)
+    // Detect if return type is Result<Container<OpTensor>> where Container is RVec or Vec
+    let returns_container_of_optensor = (|| {
+        if let ReturnType::Type(_, ty) = &original_fn.sig.output {
+            // Unwrap Result<Ok, Err> to Ok
+            let ok_ty: &Type = if let Type::Path(tp) = &**ty
+                && tp.path.segments.last().map(|s| s.ident.to_string())
+                    == Some("Result".to_string())
+                && matches!(
+                    tp.path.segments.last().unwrap().arguments,
+                    syn::PathArguments::AngleBracketed(_)
+                ) {
+                if let syn::PathArguments::AngleBracketed(args) =
+                    &tp.path.segments.last().unwrap().arguments
+                {
+                    if let Some(syn::GenericArgument::Type(t)) = args.args.first() {
+                        t
+                    } else {
+                        ty
+                    }
+                } else {
+                    ty
+                }
+            } else {
+                ty
+            };
+
+            if let Type::Path(tp2) = ok_ty
+                && let Some(seg) = tp2.path.segments.last()
+            {
+                let name = seg.ident.to_string();
+                if (name == "RVec" || name == "Vec")
+                    && let syn::PathArguments::AngleBracketed(args) = &seg.arguments
+                    && let Some(syn::GenericArgument::Type(inner_ty)) = args.args.first()
+                    && let Type::Path(inner_path) = inner_ty
+                {
+                    return is_op_tensor_path(&inner_path.path);
+                }
+            }
+        }
+        let sig = original_fn.sig.output.to_token_stream().to_string();
+        sig.contains("RVec < OpTensor >") || sig.contains("Vec < OpTensor >")
+    })();
+
+    let method = if returns_container_of_optensor {
+        quote! {
+            pub fn #method_name #generics (self, #(#method_params),*) #return_type {
+                #kernel_name(#(#call_args),*).map(|v| v.into_iter().map(Self::wrap).collect())
+            }
+        }
+    } else {
+        quote! {
+            pub fn #method_name #generics (self, #(#method_params),*) #return_type {
+                #kernel_name(#(#call_args),*).map(Self::wrap)
+            }
         }
     };
 
