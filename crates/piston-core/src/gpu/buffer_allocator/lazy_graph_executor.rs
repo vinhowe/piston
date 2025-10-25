@@ -475,7 +475,7 @@ impl LazyGraphExecutor {
                 &post_order,
                 &output_tensors,
                 &compile_keys,
-                do_shared_realloc,
+                self.shared_object_allocation_enabled,
                 gpu_device,
             )?)
         } else {

@@ -45,6 +45,24 @@ impl JsDevice {
         self.inner.try_gpu().unwrap().begin_pass(0);
     }
 
+    #[wasm_bindgen(js_name = setSharedObjectAllocationEnabled)]
+    pub fn set_shared_object_allocation_enabled(&self, enabled: bool) {
+        self.inner
+            .try_gpu()
+            .unwrap()
+            .set_shared_object_allocation_enabled(enabled);
+    }
+
+    #[wasm_bindgen(js_name = setCachingEnabled)]
+    pub fn set_caching_enabled(&self, enabled: bool) {
+        self.inner.try_gpu().unwrap().set_caching_enabled(enabled);
+    }
+
+    #[wasm_bindgen(js_name = setInplaceSupport)]
+    pub fn set_inplace_support(&self, enabled: bool) {
+        self.inner.try_gpu().unwrap().set_inplace_support(enabled);
+    }
+
     #[wasm_bindgen(getter)]
     pub fn name(&self) -> String {
         match self.inner {
