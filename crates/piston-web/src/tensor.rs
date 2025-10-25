@@ -1034,6 +1034,7 @@ impl JsTensor {
 }
 
 #[derive(Clone)]
+#[wasm_bindgen(js_name = TensorOrScalar)]
 struct JsTensorOrScalar {
     inner: JsValue,
 }
@@ -1049,6 +1050,22 @@ impl TensorTypeOrScalar<Tensor> for JsTensorOrScalar {
                 .map(|f| f as f32)
                 .ok_or_else(|| anyhow::anyhow!("Failed to convert JsValue to f32"))?;
             Ok(TensorTypeOrScalarEnum::Scalar(other))
+        }
+    }
+}
+
+impl TryFrom<JsValue> for JsTensorOrScalar {
+    type Error = JsError;
+    fn try_from(value: JsValue) -> Result<Self, Self::Error> {
+        if let Some(scalar) = value.as_f64() {
+            Ok(JsTensorOrScalar {
+                inner: JsValue::from_f64(scalar),
+            })
+        } else {
+            // We don't do any extra validation here; just hope it'll work
+            Ok(JsTensorOrScalar {
+                inner: value.clone(),
+            })
         }
     }
 }
