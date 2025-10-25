@@ -999,7 +999,7 @@ fn build_options_parsing(
     params: &[ParamInfo],
     pack_start: usize,
     include_tensor_options: bool,
-    has_self: bool,
+    _has_self: bool,
 ) -> (TokenStream2, Vec<TokenStream2>) {
     let options_ident = format_ident!("{}Options", op_name_pascal);
     if pack_start >= params.len() && !include_tensor_options {
