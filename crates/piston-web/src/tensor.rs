@@ -140,6 +140,11 @@ impl JsTensor {
         self.inner().id().0
     }
 
+    #[wasm_bindgen(getter = __pistonStrongCount)]
+    pub fn __piston_strong_count(&self) -> usize {
+        self.inner().strong_count()
+    }
+
     // - Skipping storage_view
 
     pub fn dim(&self) -> usize {

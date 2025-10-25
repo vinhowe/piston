@@ -206,7 +206,7 @@ impl OpTensor {
         Ok(value)
     }
 
-    pub(crate) fn strong_count(&self) -> usize {
+    pub fn strong_count(&self) -> usize {
         Arc::strong_count(&self.inner)
     }
 
@@ -3412,6 +3412,10 @@ impl Tensor {
 
     pub fn num_bytes(&self) -> usize {
         self.inner_or_source().num_bytes()
+    }
+
+    pub fn strong_count(&self) -> usize {
+        self.inner_or_source().strong_count()
     }
 }
 
