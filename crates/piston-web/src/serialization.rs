@@ -4,22 +4,18 @@ use crate::error::IntoJsError;
 use crate::tensor::JsTensor;
 use futures::lock::Mutex;
 use js_sys::{Object, Reflect};
-use piston::Device;
-use piston::OpTensor;
-use piston::Tensor;
+use piston::{Device, OpTensor, Tensor};
 use wasm_bindgen::JsValue;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::JsFuture;
 use wasm_bindgen_futures::future_to_promise;
-use web_sys::Blob;
-use web_sys::Url;
 
-/// Saves tensors to a safetensors format and returns a URL for download
+/// Saves tensors to a safetensors format and returns an ArrayBuffer
 ///
 /// The input is expected to be a JavaScript object mapping tensor ID strings to
 /// either JsTensor or JsParameter objects.
 #[wasm_bindgen]
-pub async fn save(data: JsValue) -> anyhow::Result<String, JsError> {
+pub async fn save(data: JsValue) -> Result<js_sys::Uint8Array, JsError> {
     // Check if the data is a JavaScript object
     if !data.is_object() {
         return Err(JsError::new(
@@ -90,13 +86,6 @@ pub async fn save(data: JsValue) -> anyhow::Result<String, JsError> {
     let serialized = safetensors::tensor::serialize(data_ref.iter().map(|(k, v)| (k, v)), &None)
         .map_err(|e| JsError::new(&format!("Failed to serialize tensors: {e}")))?;
 
-    // Create a Uint8Array from the serialized data
-    let uint8_array = js_sys::Uint8Array::from(&serialized[..]);
-    let blob = Blob::new_with_u8_array_sequence(&js_sys::Array::of1(&JsValue::from(uint8_array)))
-        .map_err(|e| e.into_js_error())?;
-
-    // Create a download URL
-    let url = Url::create_object_url_with_blob(&blob).map_err(|e| e.into_js_error())?;
-
-    Ok(url)
+    // Create an ArrayBuffer from the serialized data
+    Ok(js_sys::Uint8Array::from(&serialized[..]))
 }
