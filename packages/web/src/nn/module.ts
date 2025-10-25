@@ -721,16 +721,24 @@ export class Module<Input = unknown, Output = unknown> {
   }
 }
 
+type TupleToObject<T extends readonly unknown[]> = {
+  [K in keyof T as K extends `${number}` ? K : never]: T[K];
+};
+
 /**
  * ModuleList container for a sequence of modules
  * Modules can be added as ordered members of the ModuleList.
  * ModuleList can be indexed like an array to access contained modules.
  * This is similar to torch.nn.ModuleList in PyTorch.
  */
-export class ModuleList<Input = unknown, Output = unknown> extends Module<Input, Output> {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export class ModuleList<ListType extends Module<any, any>[] = Module<any, any>[]> extends Module<
+  unknown,
+  unknown
+> {
   private modulesList: Module[];
   private _proxy: ModuleList<ListType>;
-  [key: number]: Module;
+  [key: number]: ListType[number];
 
   constructor(modules: Module[] = []) {
     super();
@@ -745,7 +753,7 @@ export class ModuleList<Input = unknown, Output = unknown> extends Module<Input,
 
     // Create a proxy to allow array-like indexing
     this._proxy = new Proxy(this, {
-      get: (target: ModuleList<Input, Output>, prop: string | symbol): unknown => {
+      get: (target: ModuleList<ListType>, prop: string | symbol): unknown => {
         // Forward numeric indices and string numeric indices to at()
         if (typeof prop === "string" && /^\d+$/.test(prop)) {
           return target.at(parseInt(prop, 10));
@@ -756,7 +764,7 @@ export class ModuleList<Input = unknown, Output = unknown> extends Module<Input,
         // Forward everything else to the target
         return Reflect.get(target, prop);
       },
-      set: (target: ModuleList<Input, Output>, prop: string | symbol, value: unknown): boolean => {
+      set: (target: ModuleList<ListType>, prop: string | symbol, value: unknown): boolean => {
         // Handle numeric indices and string numeric indices
         if (typeof prop === "string" && /^\d+$/.test(prop) && value instanceof Module) {
           const index = parseInt(prop, 10);
@@ -786,7 +794,7 @@ export class ModuleList<Input = unknown, Output = unknown> extends Module<Input,
    * @param module - Module to append
    * @returns The ModuleList instance for chaining
    */
-  append(module: Module): ModuleList<Input, Output> {
+  append(module: Module): ModuleList<ListType> {
     const idx = this.modulesList.length;
     this.addModule(idx.toString(), module);
     this.modulesList.push(module);
@@ -799,7 +807,7 @@ export class ModuleList<Input = unknown, Output = unknown> extends Module<Input,
    * @param modules - Iterable of modules to add
    * @returns The ModuleList instance for chaining
    */
-  extend(modules: Iterable<Module>): ModuleList<Input, Output> {
+  extend(modules: Iterable<Module>): ModuleList<ListType> {
     for (const module of modules) {
       this.append(module);
     }
@@ -813,7 +821,7 @@ export class ModuleList<Input = unknown, Output = unknown> extends Module<Input,
    * @param module - Module to insert
    * @returns The ModuleList instance for chaining
    */
-  insert(index: number, module: Module): ModuleList<Input, Output> {
+  insert(index: number, module: Module): ModuleList<ListType> {
     if (index < 0) {
       index = Math.max(0, this.modulesList.length + index + 1);
     }
@@ -833,7 +841,7 @@ export class ModuleList<Input = unknown, Output = unknown> extends Module<Input,
    * @param module - Module to remove
    * @returns The ModuleList instance for chaining
    */
-  remove(module: Module): ModuleList<Input, Output> {
+  remove(module: Module): ModuleList<ListType> {
     const index = this.modulesList.indexOf(module);
     if (index !== -1) {
       this.modulesList.splice(index, 1);
@@ -848,7 +856,7 @@ export class ModuleList<Input = unknown, Output = unknown> extends Module<Input,
    *
    * @returns The ModuleList instance for chaining
    */
-  clear(): ModuleList<Input, Output> {
+  clear(): ModuleList<ListType> {
     this.modulesList = [];
     // Get all registered module keys using named modules iterator
     const moduleKeys = Array.from(this.namedChildrenIter()).map(([key]) => key);
@@ -885,7 +893,7 @@ export class ModuleList<Input = unknown, Output = unknown> extends Module<Input,
    * @param module - Module to set at the index
    * @returns The ModuleList instance for chaining
    */
-  set(index: number, module: Module): ModuleList<Input, Output> {
+  set(index: number, module: Module): ModuleList<ListType> {
     if (index < 0) {
       index = this.modulesList.length + index;
     }
@@ -946,6 +954,11 @@ export class ModuleList<Input = unknown, Output = unknown> extends Module<Input,
   /**
    * Direct access to the ModuleList, using the key as a property
    */
+  [Symbol.toPrimitive](_hint: number): ModuleList<ListType> & TupleToObject<ListType> {
+    return this._proxy as ModuleList<ListType> & TupleToObject<ListType>;
+  }
+}
+
 /**
  * Sequential container for composing a stack of modules that are executed in order.
  * The output of each module is provided as the input to the next.
