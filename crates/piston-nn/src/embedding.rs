@@ -1,6 +1,6 @@
 use crate::Module;
 use maybe_async::maybe_async;
-use piston::{AllDims, D, DType, Shape, Tensor};
+use piston::{D, DType, Shape, Tensor};
 use piston_macros::scoped_module;
 
 /// # Embedding
