@@ -147,4 +147,12 @@ impl BufferPool {
     pub fn total_gpu_size_in_bytes(&self) -> u64 {
         self.inner.total_resource_size_in_bytes()
     }
+
+    pub fn reset_usage_peaks(&self) {
+        self.inner.reset_usage_peaks();
+    }
+
+    pub fn peak_total_gpu_size_in_bytes_since_reset(&self) -> u64 {
+        self.inner.peak_total_resource_size_in_bytes_since_reset()
+    }
 }

@@ -1,5 +1,6 @@
 use super::*;
 use crate::{RVec, gpu::WgpuDevice};
+use parking_lot::RwLock;
 use std::sync::Arc;
 
 slotmap::new_key_type! { pub struct GpuBindGroupHandle; }
@@ -84,12 +85,8 @@ impl DynamicResourcesDesc for BindGroupDescriptor {
 /// The question whether a bind groups happen to be re-usable becomes again a simple question of matching
 /// bind group descs which itself does not contain any ref counted objects!
 pub struct BindGroupPool {
-    // Use a DynamicResourcePool because it gives out reference counted handles
-    // which makes interacting with buffer/textures easier.
-    //
-    // On the flipside if someone requests the exact same bind group again as before,
-    // they'll get a new one which is unnecessary. But this is *very* unlikely to ever happen.
-    inner: DynamicResourcePool<GpuBindGroupHandle, BindGroupDescriptor, wgpu::BindGroup>,
+    // Wrapped in RwLock so we can run maintenance each pass without requiring &mut self on device
+    inner: RwLock<DynamicResourcePool<GpuBindGroupHandle, BindGroupDescriptor, wgpu::BindGroup>>,
 }
 
 impl Default for BindGroupPool {
@@ -101,7 +98,7 @@ impl Default for BindGroupPool {
 impl BindGroupPool {
     pub fn new() -> Self {
         Self {
-            inner: DynamicResourcePool::default(),
+            inner: RwLock::new(DynamicResourcePool::default()),
         }
     }
 
@@ -118,7 +115,7 @@ impl BindGroupPool {
                 .collect()
         };
 
-        let resource = self.inner.get_or_create(desc, |desc| {
+        let resource = self.inner.read().get_or_create(desc, |desc| {
             let mut buffer_index = 0;
 
             let entries = desc
@@ -155,7 +152,11 @@ impl BindGroupPool {
         }
     }
 
-    pub fn begin_pass(&mut self, pass_index: u64) {
-        self.inner.begin_pass(pass_index, |_res| {});
+    pub fn num_resources(&self) -> usize {
+        self.inner.read().num_resources()
+    }
+
+    pub fn begin_pass(&self, pass_index: u64) {
+        self.inner.write().begin_pass(pass_index, |_res| {});
     }
 }

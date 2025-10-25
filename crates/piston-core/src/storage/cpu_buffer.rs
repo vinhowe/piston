@@ -4,10 +4,22 @@ use half::f16;
 use crate::{DType, Device, DeviceError, GPUBuffer, Shape, TensorDType, storage::DeviceStorage};
 
 use maybe_async::maybe_async;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::{alloc::Layout, fmt::Debug, mem::MaybeUninit, sync::Arc};
 
 #[derive(derive_new::new, Debug, PartialEq, Eq)]
 pub struct RawCPUBuffer(*mut u8, Layout);
+
+static ALIVE_CPUBUF_BYTES: AtomicUsize = AtomicUsize::new(0);
+static ALIVE_CPUBUF_COUNT: AtomicUsize = AtomicUsize::new(0);
+
+pub fn alive_cpu_bytes() -> usize {
+    ALIVE_CPUBUF_BYTES.load(Ordering::Relaxed)
+}
+
+pub fn alive_cpu_count() -> usize {
+    ALIVE_CPUBUF_COUNT.load(Ordering::Relaxed)
+}
 
 impl RawCPUBuffer {
     pub fn into_raw_parts(&self) -> (*mut u8, Layout) {
@@ -41,6 +53,10 @@ impl RawCPUBuffer {
             assert!(!ptr.is_null());
             ptr
         } as *mut u8;
+        if size > 0 {
+            ALIVE_CPUBUF_BYTES.fetch_add(size, Ordering::Relaxed);
+            ALIVE_CPUBUF_COUNT.fetch_add(1, Ordering::Relaxed);
+        }
         Self(data, layout)
     }
 }
@@ -56,6 +72,8 @@ impl Clone for RawCPUBuffer {
 impl Drop for RawCPUBuffer {
     fn drop(&mut self) {
         if !self.0.is_null() && self.1.size() > 0 {
+            ALIVE_CPUBUF_BYTES.fetch_sub(self.1.size(), Ordering::Relaxed);
+            ALIVE_CPUBUF_COUNT.fetch_sub(1, Ordering::Relaxed);
             unsafe { std::alloc::dealloc(self.0, self.1) }
         }
     }

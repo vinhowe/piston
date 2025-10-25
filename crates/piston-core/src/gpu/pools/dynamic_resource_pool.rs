@@ -58,6 +58,8 @@ pub(super) struct DynamicResourcePool<Handle: Key, Desc: Debug, Res> {
     state: RwLock<DynamicResourcePoolProtectedState<Handle, Desc, Res>>,
     current_pass_index: u64,
     total_resource_size_in_bytes: AtomicU64,
+    /// Peak of total_resource_size_in_bytes observed since last reset
+    peak_total_resource_size_since_reset: AtomicU64,
 }
 
 /// We cannot #derive(Default) as that would require Handle/Desc/Res to implement Default too.
@@ -73,6 +75,7 @@ where
             }),
             current_pass_index: Default::default(),
             total_resource_size_in_bytes: AtomicU64::new(0),
+            peak_total_resource_size_since_reset: AtomicU64::new(0),
         }
     }
 }
@@ -103,10 +106,28 @@ where
 
         // Otherwise create a new resource
         let inner_resource = { constructor(desc) };
-        self.total_resource_size_in_bytes.fetch_add(
-            desc.resource_size_in_bytes(),
-            std::sync::atomic::Ordering::Relaxed,
-        );
+        let added_size = desc.resource_size_in_bytes();
+        let prev_total = self
+            .total_resource_size_in_bytes
+            .fetch_add(added_size, std::sync::atomic::Ordering::Relaxed);
+        let new_total = prev_total + added_size;
+        // Update peak if this allocation increased the total beyond the current peak
+        let mut observed_peak = self
+            .peak_total_resource_size_since_reset
+            .load(std::sync::atomic::Ordering::Relaxed);
+        while new_total > observed_peak {
+            match self
+                .peak_total_resource_size_since_reset
+                .compare_exchange_weak(
+                    observed_peak,
+                    new_total,
+                    std::sync::atomic::Ordering::Relaxed,
+                    std::sync::atomic::Ordering::Relaxed,
+                ) {
+                Ok(_) => break,
+                Err(current) => observed_peak = current,
+            }
+        }
 
         let handle = state.all_resources.insert_with_key(|handle| {
             Arc::new(DynamicResource {
@@ -204,6 +225,21 @@ where
 
     pub fn total_resource_size_in_bytes(&self) -> u64 {
         self.total_resource_size_in_bytes
+            .load(std::sync::atomic::Ordering::Relaxed)
+    }
+
+    /// Reset peak tracking to the current total so the window starts from baseline usage
+    pub fn reset_usage_peaks(&self) {
+        let current_total = self
+            .total_resource_size_in_bytes
+            .load(std::sync::atomic::Ordering::Relaxed);
+        self.peak_total_resource_size_since_reset
+            .store(current_total, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    /// Get the peak total resource size (in bytes) observed since the last reset
+    pub fn peak_total_resource_size_in_bytes_since_reset(&self) -> u64 {
+        self.peak_total_resource_size_since_reset
             .load(std::sync::atomic::Ordering::Relaxed)
     }
 }

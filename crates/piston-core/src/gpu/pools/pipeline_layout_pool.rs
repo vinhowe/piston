@@ -54,4 +54,8 @@ impl PipelineLayoutPool {
     ) -> StaticResourcePoolReadLockAccessor<'_, PipelineLayoutHandle, wgpu::PipelineLayout> {
         self.inner.resources()
     }
+
+    pub fn num_resources(&self) -> usize {
+        self.inner.num_resources()
+    }
 }

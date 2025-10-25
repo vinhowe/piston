@@ -374,6 +374,14 @@ impl WgpuDevice {
         self.buffer_allocator.usage_bytes()
     }
 
+    pub fn mark_usage_bytes_step(&self) {
+        self.buffer_allocator.reset_usage_peaks();
+    }
+
+    pub fn peak_usage_bytes_since_reset(&self) -> u64 {
+        self.buffer_allocator.peak_usage_bytes_since_reset()
+    }
+
     pub fn set_step_log_config(&self, config: StepLogConfig) {
         self.lazy_graph_executor.write().set_step_log_config(config);
     }

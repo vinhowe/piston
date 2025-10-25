@@ -58,6 +58,16 @@ impl JsDevice {
         self.inner.try_gpu().unwrap().usage_bytes()
     }
 
+    #[wasm_bindgen(js_name = markUsageBytesStep)]
+    pub fn mark_usage_bytes_step(&self) {
+        self.inner.try_gpu().unwrap().mark_usage_bytes_step();
+    }
+
+    #[wasm_bindgen(js_name = peakUsageBytes)]
+    pub fn peak_usage_bytes(&self) -> u64 {
+        self.inner.try_gpu().unwrap().peak_usage_bytes_since_reset()
+    }
+
     #[wasm_bindgen(js_name = setVRAMLimit)]
     pub fn set_vram_limit(&self, #[wasm_bindgen(js_name = vramLimit)] vram_limit: Option<u64>) {
         self.inner.try_gpu().unwrap().set_vram_limit(vram_limit);

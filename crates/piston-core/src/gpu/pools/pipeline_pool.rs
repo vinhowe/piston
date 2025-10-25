@@ -69,4 +69,8 @@ impl ComputePipelinePool {
     ) -> StaticResourcePoolReadLockAccessor<'_, ComputePipelineHandle, wgpu::ComputePipeline> {
         self.inner.resources()
     }
+
+    pub fn num_resources(&self) -> usize {
+        self.inner.num_resources()
+    }
 }

@@ -459,4 +459,12 @@ impl BufferAllocator {
     pub fn usage_bytes(&self) -> u64 {
         self.pool.read().total_gpu_size_in_bytes()
     }
+
+    pub fn reset_usage_peaks(&self) {
+        self.pool.read().reset_usage_peaks();
+    }
+
+    pub fn peak_usage_bytes_since_reset(&self) -> u64 {
+        self.pool.read().peak_total_gpu_size_in_bytes_since_reset()
+    }
 }
