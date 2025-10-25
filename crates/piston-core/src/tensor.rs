@@ -1940,6 +1940,66 @@ pub fn rand<S: Into<Shape>>(
     )
 }
 
+
+#[tensor_op(variants = [function])]
+pub fn eye(n: usize, m: Option<usize>, options: TensorOptions) -> Result<OpTensor> {
+    let m = m.unwrap_or(n);
+    let shape = Shape::from(vec![n, m]);
+    let device = options.device_or_default();
+    let dtype = options.dtype_or_default();
+
+    if device.is_cpu() {
+        match dtype {
+            DType::F32 => {
+                let mut data = vec![0f32; n * m];
+                let d = n.min(m);
+                for i in 0..d {
+                    data[i * m + i] = 1.0;
+                }
+                return OpTensor::from_data(data, shape, options);
+            }
+            DType::F16 => {
+                let mut data = vec![half::f16::from_f32(0.0); n * m];
+                let d = n.min(m);
+                for i in 0..d {
+                    data[i * m + i] = half::f16::from_f32(1.0);
+                }
+                return OpTensor::from_data(data, shape, options);
+            }
+            DType::I32 => {
+                let mut data = vec![0i32; n * m];
+                let d = n.min(m);
+                for i in 0..d {
+                    data[i * m + i] = 1;
+                }
+                return OpTensor::from_data(data, shape, options);
+            }
+            DType::U32 => {
+                let mut data = vec![0u32; n * m];
+                let d = n.min(m);
+                for i in 0..d {
+                    data[i * m + i] = 1u32;
+                }
+                return OpTensor::from_data(data, shape, options);
+            }
+            _ => anyhow::bail!("dtype {:?} not supported for eye", dtype),
+        }
+    }
+
+    let meta = StorageView {
+        shape: shape.clone(),
+        dtype,
+        stride: Stride::from(&shape),
+    };
+    OpTensor::new(
+        LazyOp::Eye(Eye { shape }),
+        meta,
+        None,
+        device,
+        options.requires_grad_or_default(),
+    )
+}
+
 /// Private implementation for full
 fn full_impl<T: TensorDType + AsPrimitive<f32>>(
     shape: &Shape,
@@ -2463,6 +2523,7 @@ impl OpTensor {
             LazyOp::FillRandn(f) => f.create_gpu_compile_key(self, can_inplace, uniform).ok(),
             LazyOp::Bernoulli(b) => b.create_gpu_compile_key(self, can_inplace, uniform).ok(),
             LazyOp::Arange(a) => a.create_gpu_compile_key(self, can_inplace, uniform).ok(),
+            LazyOp::Eye(e) => e.create_gpu_compile_key(self, can_inplace, uniform).ok(),
             LazyOp::Copy(_) | LazyOp::View(_) | LazyOp::Const => None,
         }
     }
@@ -2764,6 +2825,7 @@ pub fn compile_gpu_for_op(
         LazyOp::Gather(g) => g.compile_gpu(gpu_compile_key, gpu_device, debug).ok(),
         LazyOp::FillConstant(f) => f.compile_gpu(gpu_compile_key, gpu_device, debug).ok(),
         LazyOp::FillRandn(f) => f.compile_gpu(gpu_compile_key, gpu_device, debug).ok(),
+        LazyOp::Eye(e) => e.compile_gpu(gpu_compile_key, gpu_device, debug).ok(),
         LazyOp::Bernoulli(b) => b.compile_gpu(gpu_compile_key, gpu_device, debug).ok(),
         LazyOp::Arange(a) => a.compile_gpu(gpu_compile_key, gpu_device, debug).ok(),
         LazyOp::View(_) | LazyOp::Const => None,

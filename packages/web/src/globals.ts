@@ -21,6 +21,7 @@ import {
   DType,
   eq as eq_wasm,
   exp as exp_wasm,
+  eye as eye_wasm,
   float16_wasm,
   float32_wasm,
   floor as floor_wasm,
@@ -115,6 +116,7 @@ export let swiglu: typeof swiglu_wasm;
 export let silu: typeof silu_wasm;
 export let square: typeof square_wasm;
 export let recip: typeof recip_wasm;
+export let eye: typeof eye_wasm;
 
 export let tensor: {
   (
@@ -257,6 +259,7 @@ export async function initGlobals() {
   randint = wrapWithParam(wrapWithLibTensor(randint_wasm));
   randn = wrapWithParam(wrapWithLibTensor(randn_wasm));
   rand = wrapWithParam(wrapWithLibTensor(rand_wasm));
+  eye = wrapWithLibTensor(eye_wasm);
   add = wrapWithLibTensor(add_wasm);
   addcdiv = wrapWithLibTensor(addcdiv_wasm);
   addcmul = wrapWithLibTensor(addcmul_wasm);

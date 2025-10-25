@@ -59,6 +59,7 @@ pub enum LazyOp {
     IndexAdd(IndexAdd),
     ScatterAdd(ScatterAdd),
     Trilu(TriluOp),
+    Eye(Eye),
     Arange(Arange),
     Copy(TensorCopy),
     Detach(Box<LazyOp>), //Because the entire graph is lazy, you can't actually detach something without computing the graph in parts
@@ -91,6 +92,7 @@ impl LazyOp {
             LazyOp::Trilu(t) => t.name(),
             LazyOp::FillConstant(f) => f.name(),
             LazyOp::FillRandn(f) => f.name(),
+            LazyOp::Eye(e) => e.name(),
             LazyOp::Bernoulli(b) => b.name(),
             LazyOp::Arange(a) => a.name(),
             LazyOp::RoPE(r) => r.name(),
@@ -130,6 +132,7 @@ impl LazyOp {
             LazyOp::IndexAdd(ia) => ia.srcs(),
             LazyOp::ScatterAdd(sa) => sa.srcs(),
             LazyOp::Trilu(t) => t.srcs(),
+            LazyOp::Eye(e) => e.srcs(),
             LazyOp::Cache(c) => c.srcs(),
             LazyOp::Detach(d) => d.srcs(),
             LazyOp::View(v) => v.srcs(),
@@ -169,6 +172,7 @@ impl LazyOp {
             LazyOp::Trilu(t) => t.supports_inplace(),
             LazyOp::FillConstant(fc) => fc.supports_inplace(),
             LazyOp::FillRandn(fr) => fr.supports_inplace(),
+            LazyOp::Eye(e) => e.supports_inplace(),
             LazyOp::Bernoulli(b) => b.supports_inplace(),
             LazyOp::Arange(a) => a.supports_inplace(),
             LazyOp::Cache(c) => c.supports_inplace(),
@@ -189,7 +193,7 @@ impl LazyOp {
     pub fn can_be_parameter(&self) -> bool {
         matches!(
             self,
-            LazyOp::Const | LazyOp::FillConstant(_) | LazyOp::FillRandn(_) | LazyOp::Arange(_)
+            LazyOp::Const | LazyOp::FillConstant(_) | LazyOp::FillRandn(_) | LazyOp::Eye(_) | LazyOp::Arange(_)
         )
     }
 
@@ -226,6 +230,7 @@ impl LazyOp {
             LazyOp::Trilu(t) => t.check_invariants(),
             LazyOp::FillConstant(f) => f.check_invariants(),
             LazyOp::FillRandn(f) => f.check_invariants(),
+            LazyOp::Eye(e) => e.check_invariants(),
             LazyOp::Bernoulli(b) => b.check_invariants(),
             LazyOp::Arange(a) => a.check_invariants(),
             LazyOp::Cache(c) => c.check_invariants(),
@@ -264,6 +269,7 @@ impl LazyOp {
             LazyOp::Trilu(t) => t.ir(),
             LazyOp::FillConstant(f) => f.ir(),
             LazyOp::FillRandn(f) => f.ir(),
+            LazyOp::Eye(e) => e.ir(),
             LazyOp::Bernoulli(b) => b.ir(),
             LazyOp::Arange(a) => a.ir(),
             LazyOp::Cache(c) => c.ir(),

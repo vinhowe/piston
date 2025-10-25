@@ -299,6 +299,7 @@ impl Tensor {
                     })
                     | LazyOp::FillConstant(_)
                     | LazyOp::FillRandn(_)
+                    | LazyOp::Eye(_)
                     | LazyOp::Bernoulli(_)
                     | LazyOp::Arange(_)
                     | LazyOp::Cache(_)
@@ -911,6 +912,7 @@ impl Tensor {
                 })
                 | LazyOp::FillConstant(_)
                 | LazyOp::FillRandn(_)
+                | LazyOp::Eye(_)
                 | LazyOp::Bernoulli(_)
                 | LazyOp::Arange(_) => {}
                 LazyOp::View(View { src: arg, .. }) => {

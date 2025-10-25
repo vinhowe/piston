@@ -925,6 +925,11 @@ pub fn rand(
     piston::rand(shape, lo, up, options)
 }
 
+#[js_tensor_web_op(name = "Eye", variants = [function])]
+pub fn eye(n: usize, m: Option<usize>, options: TensorOptions) -> anyhow::Result<Tensor> {
+    piston::eye(n, m, options)
+}
+
 #[js_tensor_web_op(name = "Zeros", variants = [function])]
 pub fn zeros(shape: Shape, options: TensorOptions) -> anyhow::Result<Tensor> {
     piston::zeros(shape, options)

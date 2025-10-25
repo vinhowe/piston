@@ -20,6 +20,7 @@ export {
   DType,
   eq,
   exp,
+  eye,
   float16 as float16_wasm,
   float32 as float32_wasm,
   floor,
