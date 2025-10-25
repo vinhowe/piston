@@ -14,6 +14,7 @@ export {
   registerModuleBufferRegistrationHook,
   registerModuleModuleRegistrationHook,
   registerModuleParameterRegistrationHook,
+  Sequential,
 } from "./module";
 export { LayerNorm, RMSNorm } from "./normalization";
 export { RotaryEmbedding } from "./rope";

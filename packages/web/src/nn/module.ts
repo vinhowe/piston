@@ -944,8 +944,251 @@ export class ModuleList<Input = unknown, Output = unknown> extends Module<Input,
   /**
    * Direct access to the ModuleList, using the key as a property
    */
-  [Symbol.toPrimitive](_hint: number): ModuleList<Input, Output> {
-    return this._proxy;
+/**
+ * Sequential container for composing a stack of modules that are executed in order.
+ * The output of each module is provided as the input to the next.
+ * By default, modules are registered with numeric string keys ("0", "1", ...).
+ * Optionally, named modules can be provided to register using user-specified keys.
+ * This is similar to torch.nn.Sequential in PyTorch.
+ */
+export class Sequential extends Module {
+  private modulesList: Module[];
+  private moduleNames: string[];
+
+  constructor();
+  constructor(modules: Module[]);
+  constructor(...modules: Module[]);
+  constructor(namedModules: Record<string, Module>);
+  constructor(...args: unknown[]) {
+    super();
+    this.modulesList = [];
+    this.moduleNames = [];
+
+    if (args.length === 0) {
+      return;
+    }
+
+    if (args.length === 1) {
+      const only = args[0];
+      if (Array.isArray(only)) {
+        this.extend(only as Module[]);
+        return;
+      }
+      if (only instanceof Module) {
+        this.append(only as Module);
+        return;
+      }
+      if (only && typeof only === "object") {
+        // Treat as named modules
+        for (const [name, mod] of Object.entries(only as Record<string, Module>)) {
+          this.appendNamed(name, mod);
+        }
+        return;
+      }
+    }
+
+    // Varargs modules
+    for (const mod of args) {
+      if (mod instanceof Module) {
+        this.append(mod);
+      }
+    }
+  }
+
+  /**
+   * Append a module and register it with an auto-generated numeric key.
+   */
+  append(module: Module): Sequential {
+    const key = this.modulesList.length.toString();
+    this.addModule(key, module);
+    this.modulesList.push(module);
+    this.moduleNames.push(key);
+    return this;
+  }
+
+  /**
+   * Append a named module and register it with the provided key.
+   */
+  appendNamed(name: string, module: Module): Sequential {
+    if (typeof name !== "string" || name.length === 0) {
+      throw new Error("Sequential.appendNamed: name must be a non-empty string");
+    }
+    if (name.includes(".")) {
+      throw new Error(`Sequential.appendNamed: name can't contain ".", got: ${name}`);
+    }
+    if (this.moduleNames.includes(name)) {
+      throw new Error(`Sequential.appendNamed: duplicate name '${name}'`);
+    }
+    this.addModule(name, module);
+    this.modulesList.push(module);
+    this.moduleNames.push(name);
+    return this;
+  }
+
+  /**
+   * Extend with an iterable of modules (auto-numbered).
+   */
+  extend(modules: Iterable<Module>): Sequential {
+    for (const m of modules) {
+      this.append(m);
+    }
+    return this;
+  }
+
+  /**
+   * Extend with a mapping of name -> module.
+   */
+  extendNamed(named: Record<string, Module>): Sequential {
+    for (const [name, m] of Object.entries(named)) {
+      this.appendNamed(name, m);
+    }
+    return this;
+  }
+
+  /**
+   * Insert a module at a specific index. If name is omitted, a numeric key is re-generated.
+   */
+  insert(index: number, module: Module, name?: string): Sequential {
+    if (index < 0) {
+      index = Math.max(0, this.modulesList.length + index + 1);
+    }
+    this.modulesList.splice(index, 0, module);
+    if (name) {
+      if (this.moduleNames.includes(name)) {
+        throw new Error(`Sequential.insert: duplicate name '${name}'`);
+      }
+      this.moduleNames.splice(index, 0, name);
+    } else {
+      // placeholder; will be regenerated
+      this.moduleNames.splice(index, 0, "");
+    }
+    this.recreateModules();
+    return this;
+  }
+
+  /**
+   * Remove the first occurrence of a specific module instance.
+   */
+  remove(module: Module): Sequential {
+    const idx = this.modulesList.indexOf(module);
+    if (idx !== -1) {
+      this.modulesList.splice(idx, 1);
+      this.moduleNames.splice(idx, 1);
+      this.recreateModules();
+    }
+    return this;
+  }
+
+  /**
+   * Delete a module by its registered name.
+   */
+  delete(name: string): Sequential {
+    const idx = this.moduleNames.indexOf(name);
+    if (idx !== -1) {
+      this.modulesList.splice(idx, 1);
+      this.moduleNames.splice(idx, 1);
+      this.recreateModules();
+    }
+    return this;
+  }
+
+  /**
+   * Clear all modules.
+   */
+  clear(): Sequential {
+    this.modulesList = [];
+    this.moduleNames = [];
+    // Remove all registered children
+    const keys = Array.from(this.namedChildrenIter()).map(([k]) => k);
+    for (const k of keys) {
+      this.addModule(k, null);
+    }
+    return this;
+  }
+
+  /**
+   * Number of modules.
+   */
+  get length(): number {
+    return this.modulesList.length;
+  }
+
+  /**
+   * Get module by index.
+   */
+  at(index: number): Module | undefined {
+    if (index < 0) {
+      index = this.modulesList.length + index;
+    }
+    return this.modulesList[index];
+  }
+
+  /**
+   * Get module by index or name.
+   */
+  get(key: number | string): Module | undefined {
+    if (typeof key === "number") return this.at(key);
+    const idx = this.moduleNames.indexOf(key);
+    return idx >= 0 ? this.modulesList[idx] : undefined;
+  }
+
+  /**
+   * Replace module at index; preserves or sets the name if provided.
+   */
+  set(index: number, module: Module, name?: string): Sequential {
+    if (index < 0) {
+      index = this.modulesList.length + index;
+    }
+    if (index < 0 || index > this.modulesList.length) {
+      throw new Error("Sequential.set: index out of bounds");
+    }
+    if (index === this.modulesList.length) {
+      // append
+      return name ? this.insert(index, module, name) : this.insert(index, module);
+    }
+    this.modulesList[index] = module;
+    if (name) {
+      if (this.moduleNames.includes(name) && this.moduleNames[index] !== name) {
+        throw new Error(`Sequential.set: duplicate name '${name}'`);
+      }
+      this.moduleNames[index] = name;
+    }
+    this.recreateModules();
+    return this;
+  }
+
+  /**
+   * Re-register children after any structural change to keep names and indices consistent.
+   */
+  private recreateModules(): void {
+    // Remove existing children
+    const keys = Array.from(this.namedChildrenIter()).map(([k]) => k);
+    for (const k of keys) {
+      this.addModule(k, null);
+    }
+
+    // Re-add with normalized names
+    for (let i = 0; i < this.modulesList.length; i++) {
+      const explicit = this.moduleNames[i];
+      const name = explicit && explicit.length > 0 ? explicit : i.toString();
+      this.moduleNames[i] = name; // ensure any placeholders are filled
+      this.addModule(name, this.modulesList[i]);
+    }
+  }
+
+  /**
+   * Forward pass: feed inputs through each module in order.
+   * If a module returns an array, it is expanded as multiple arguments to the next module.
+   */
+  forward(...args: unknown[]): unknown {
+    let current: unknown[] = args;
+    for (const module of this.modulesList) {
+      // Call with current as varargs; hooks are applied by Module's proxy
+      const out = (module.forward as (...xs: unknown[]) => unknown)(...current);
+      // Prepare next arguments
+      current = Array.isArray(out) ? (out as unknown[]) : [out];
+    }
+    return current.length === 1 ? current[0] : current;
   }
 }
 
