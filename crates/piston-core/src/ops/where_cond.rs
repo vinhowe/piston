@@ -372,10 +372,10 @@ impl KernelRenderable for WhereCondKernels {
         let apply = if inplace {
             wgsl! {
                 let val = A[index];
-                A[index] = select('on_true_expr, 'on_false_expr, val != 'kernel_element_str(0));
+                A[index] = select('on_false_expr, 'on_true_expr, val != 'kernel_element_str(0));
             }
         } else {
-            wgsl! { Y[index] = select('on_true_expr, 'on_false_expr, A[index] != 'kernel_element_str(0)); }
+            wgsl! { Y[index] = select('on_false_expr, 'on_true_expr, A[index] != 'kernel_element_str(0)); }
         };
         kernel_builder.write_main(apply);
         Ok(kernel_builder.build()?)
@@ -394,7 +394,7 @@ mod tests {
         let prg = r#"
 import torch
 def where_cond(a, b, c):
-    return torch.where(torch.from_numpy(a) == 0, torch.from_numpy(b), torch.from_numpy(c)).numpy()
+    return torch.where(torch.from_numpy(a) != 0, torch.from_numpy(b), torch.from_numpy(c)).numpy()
 "#;
         run_py_prg(prg.to_string(), &[a, b, c], &[], b.dtype())
     }
@@ -403,7 +403,7 @@ def where_cond(a, b, c):
         let prg = r#"
 import torch
 def where_cond_scalar(a, b, scalar):
-    return torch.where(torch.from_numpy(a) == 0, torch.from_numpy(b), scalar).numpy()
+    return torch.where(torch.from_numpy(a) != 0, torch.from_numpy(b), scalar).numpy()
 "#;
         run_py_prg(prg.to_string(), &[a, b], &[&scalar], b.dtype())
     }
