@@ -211,6 +211,7 @@ impl LazyOp {
                 Reindex::Permute(p) => p.check_invariants(),
                 Reindex::Slice(s) => s.check_invariants(),
                 Reindex::Broadcast(b) => b.check_invariants(),
+                Reindex::Flip(f) => f.check_invariants(),
             },
             LazyOp::Concat(c) => c.check_invariants(),
             LazyOp::Norm(n) => n.check_invariants(),

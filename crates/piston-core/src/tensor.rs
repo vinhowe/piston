@@ -1265,6 +1265,17 @@ pub fn permute<D: Dims>(input: OpTensor, dims: D) -> Result<OpTensor> {
     OpTensor::lazy(op, out_view, device, false)
 }
 
+#[tensor_op(variants = [function, method])]
+pub fn flip<D: Dims>(input: OpTensor, dims: D) -> Result<OpTensor> {
+    let dims = dims.to_indexes(input.shape(), "flip")?;
+    let device = input.device().clone();
+    let flip = Flip::new(input, dims);
+    let out_view = flip.compute_view()?;
+
+    let op = LazyOp::Reindex(Reindex::Flip(flip));
+    OpTensor::lazy(op, out_view, device, false)
+}
+
 #[tensor_op(variants = [function, method, method_inplace])]
 pub fn transpose<D: Dim>(input: OpTensor, dim0: D, dim1: D) -> Result<OpTensor> {
     let dim0 = dim0.to_index(input.shape(), "transpose")?;

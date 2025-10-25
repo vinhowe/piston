@@ -1,9 +1,12 @@
 mod broadcast;
+mod flip;
 mod permute;
 mod slice;
 
 pub use broadcast::Broadcast;
 use broadcast::BroadcastMeta;
+pub use flip::Flip;
+use flip::FlipMeta;
 use half::f16;
 pub use permute::Permute;
 use permute::PermuteMeta;
@@ -28,6 +31,7 @@ pub enum Reindex {
     Permute(Permute),
     Slice(Slice),
     Broadcast(Broadcast),
+    Flip(Flip),
 }
 
 pub enum ReindexKernels {
@@ -107,6 +111,10 @@ impl KernelRenderable for ReindexKernels {
             Reindex::Broadcast(_) => wgsl! {
                 // Broadcasting is valid if dims are equal, or if one of the dims is 1
                 var src_index = select(dst_index, vec4<u32>(0u), metadata.src_shape == vec4<u32>(1u));
+            },
+            Reindex::Flip(_) => wgsl! {
+                let flipped = (metadata.src_shape - vec4<u32>(1u)) - dst_index;
+                var src_index = select(dst_index, flipped, metadata.flip_mask != vec4<u32>(0u));
             },
         };
         kernel_builder.write_main(body);
@@ -227,6 +235,20 @@ impl Kernel for ReindexKernels {
             Reindex::Broadcast(_) => Ok(ReindexMeta::Broadcast(BroadcastMeta::new(
                 src_shape, dst_shape, src_stride, dst_stride, src_numel, dst_numel,
             ))),
+            Reindex::Flip(f) => {
+                // Build flip mask: 1 for flipped axes in promoted 4D space
+                let promoted = f.promote();
+                let mut mask = [0u32; 4];
+                for &d in promoted.iter() {
+                    if d < 4 {
+                        mask[d] = 1;
+                    }
+                }
+                let flip_mask = UVec4::from(mask);
+                Ok(ReindexMeta::Flip(FlipMeta::new(
+                    src_shape, dst_shape, src_stride, dst_stride, src_numel, dst_numel, flip_mask,
+                )))
+            }
         }
     }
 
@@ -242,6 +264,7 @@ pub enum ReindexMeta {
     Permute(PermuteMeta),
     Slice(SliceMeta),
     Broadcast(BroadcastMeta),
+    Flip(FlipMeta),
 }
 
 impl KernelMetadata for ReindexMeta {
@@ -250,6 +273,7 @@ impl KernelMetadata for ReindexMeta {
             ReindexMeta::Permute(p) => p.render_meta(),
             ReindexMeta::Slice(s) => s.render_meta(),
             ReindexMeta::Broadcast(b) => b.render_meta(),
+            ReindexMeta::Flip(f) => f.render_meta(),
         }
     }
 
@@ -258,6 +282,7 @@ impl KernelMetadata for ReindexMeta {
             ReindexMeta::Permute(p) => p.write(uniform),
             ReindexMeta::Slice(s) => s.write(uniform),
             ReindexMeta::Broadcast(b) => b.write(uniform),
+            ReindexMeta::Flip(f) => f.write(uniform),
         }
     }
 }
@@ -268,6 +293,7 @@ impl OpGuards for Reindex {
             Reindex::Permute(p) => p.check_shapes(),
             Reindex::Slice(s) => s.check_shapes(),
             Reindex::Broadcast(b) => b.check_shapes(),
+            Reindex::Flip(f) => f.check_shapes(),
         }
     }
 
@@ -276,6 +302,7 @@ impl OpGuards for Reindex {
             Reindex::Permute(p) => p.check_dtypes(),
             Reindex::Slice(s) => s.check_dtypes(),
             Reindex::Broadcast(b) => b.check_dtypes(),
+            Reindex::Flip(f) => f.check_dtypes(),
         }
     }
 }
@@ -286,6 +313,7 @@ impl Operation for Reindex {
             Reindex::Permute(_) => "Permute",
             Reindex::Slice(_) => "Slice",
             Reindex::Broadcast(_) => "Broadcast",
+            Reindex::Flip(_) => "Flip",
         }
     }
 
@@ -294,6 +322,7 @@ impl Operation for Reindex {
             Reindex::Permute(p) => p.compute_view(),
             Reindex::Slice(s) => s.compute_view(),
             Reindex::Broadcast(b) => b.compute_view(),
+            Reindex::Flip(f) => f.compute_view(),
         }
     }
 
@@ -303,6 +332,7 @@ impl Operation for Reindex {
             Reindex::Permute(p) => p.srcs(),
             Reindex::Slice(s) => s.srcs(),
             Reindex::Broadcast(b) => b.srcs(),
+            Reindex::Flip(f) => f.srcs(),
         }
     }
 }

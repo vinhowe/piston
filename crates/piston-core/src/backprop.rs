@@ -268,6 +268,7 @@ impl Tensor {
                     | LazyOp::Reindex(Reindex::Permute(Permute { src: node, .. }))
                     | LazyOp::Reindex(Reindex::Broadcast(Broadcast { src: node, .. }))
                     | LazyOp::Reindex(Reindex::Slice(Slice { src: node, .. }))
+                    | LazyOp::Reindex(Reindex::Flip(Flip { src: node, .. }))
                     | LazyOp::Softmax(Softmax { input: node, .. })
                     | LazyOp::RoPE(RoPE { input: node, .. })
                     | LazyOp::Powf(Powf { src: node, .. }) => {
@@ -681,6 +682,11 @@ impl Tensor {
                         inv_dims[dim] = i;
                     }
                     let arg_grad = grad.permute(inv_dims)?;
+                    ctx.add(&arg, arg_grad)?;
+                }
+                LazyOp::Reindex(Reindex::Flip(Flip { src: arg, dims })) => {
+                    let arg = arg.wrap();
+                    let arg_grad = grad.flip(dims.clone())?;
                     ctx.add(&arg, arg_grad)?;
                 }
                 LazyOp::Reduce(Reduce {

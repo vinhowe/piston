@@ -628,6 +628,9 @@ pub fn squeeze(input: Tensor, dim: Option<Dims>) -> JsTensorResult {
 #[js_tensor_web_op(name = Permute, variants = [method, function])]
 pub fn permute(input: Tensor, dims: Dims) -> JsTensorResult {}
 
+#[js_tensor_web_op(name = Flip, variants = [method, function])]
+pub fn flip(input: Tensor, dims: Dims) -> JsTensorResult {}
+
 #[js_tensor_web_op(name = Transpose, variants = [method, function])]
 pub fn transpose(input: Tensor, dim0: Dim, dim1: Dim) -> JsTensorResult {}
 

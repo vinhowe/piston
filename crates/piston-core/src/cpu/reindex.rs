@@ -1,6 +1,6 @@
 use super::utils::cpu_store_result;
 use crate::{
-    Broadcast, CPUOperation, DType, OpTensor, OperationError, Permute, Reindex, Shape, Slice,
+    Broadcast, CPUOperation, DType, Flip, OpTensor, OperationError, Permute, Reindex, Shape, Slice,
     Stride, TensorDType,
 };
 use half::{bf16, f16};
@@ -15,6 +15,7 @@ impl CPUOperation for Reindex {
             Reindex::Permute(p) => p.apply_cpu(dst).await,
             Reindex::Slice(s) => s.apply_cpu(dst).await,
             Reindex::Broadcast(b) => b.apply_cpu(dst).await,
+            Reindex::Flip(f) => f.apply_cpu(dst).await,
         }
     }
 }
@@ -156,6 +157,73 @@ impl CPUOperation for Broadcast {
             _ => todo!(),
         }
     }
+}
+
+#[maybe_async(AFIT)]
+#[cfg_attr(target_arch = "wasm32", async_trait::async_trait)]
+impl CPUOperation for Flip {
+    #[maybe_async]
+    async fn apply_cpu(&self, dst: OpTensor) -> Result<OpTensor, OperationError> {
+        match dst.dtype() {
+            DType::F32 => apply_flip::<f32>(self, dst).await,
+            DType::BF16 => apply_flip::<bf16>(self, dst).await,
+            DType::F16 => apply_flip::<f16>(self, dst).await,
+            DType::I32 => apply_flip::<i32>(self, dst).await,
+            DType::U32 => apply_flip::<u32>(self, dst).await,
+            _ => todo!(),
+        }
+    }
+}
+
+#[maybe_async]
+async fn apply_flip<T: TensorDType>(f: &Flip, dst: OpTensor) -> Result<OpTensor, OperationError> {
+    let result = flip_cpu::<T, _>(&f.src.to_vec::<T>().await?, f.src.shape(), &f.dims);
+    super::utils::cpu_store_result(&dst, &result);
+    Ok(dst)
+}
+
+fn flip_cpu<T: TensorDType, SrcShape: Into<Shape>>(
+    src: &[T],
+    src_shape: SrcShape,
+    dims: &[usize],
+) -> Vec<T> {
+    let src_shape = &Shape::promote(src_shape.into(), 4);
+    let src_stride = &Stride::from(src_shape);
+
+    let src_shape_arr: [usize; 4] = src_shape.try_into().unwrap();
+    let src_stride_arr: [usize; 4] = src_stride.into();
+
+    let dst_numel = src_shape.numel();
+    let mut result = vec![T::zero(); dst_numel];
+
+    // Build promoted flip mask
+    let pad_len = 0;
+    let mut mask = [false; 4];
+    for &d in dims.iter() {
+        let pd = d + pad_len;
+        if pd < 4 {
+            mask[pd] = true;
+        }
+    }
+
+    // dst_shape == src_shape for flip
+    let dst_stride_arr = src_stride_arr;
+
+    (0..dst_numel).for_each(|i| {
+        let dst_index = offset_to_ndindex(i, dst_stride_arr);
+        let mut src_index = [0usize; 4];
+        for ax in 0..4 {
+            src_index[ax] = if mask[ax] {
+                src_shape_arr[ax] - 1 - dst_index[ax]
+            } else {
+                dst_index[ax]
+            };
+        }
+        let src_offset = nd_index_to_offset(src_index, src_stride_arr);
+        result[i] = src[src_offset];
+    });
+
+    result
 }
 
 #[maybe_async]
