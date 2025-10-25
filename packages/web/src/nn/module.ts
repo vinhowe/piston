@@ -335,6 +335,14 @@ export class Module<Input = unknown, Output = unknown> {
     return this;
   }
 
+  apply(fn: (module: Module<unknown, unknown>) => void): Module<Input, Output> {
+    for (const module of this.children()) {
+      module.apply(fn);
+    }
+    fn(this as Module);
+    return this;
+  }
+
   /**
    * Helper method that returns an iterator over named members of the module.
    */
