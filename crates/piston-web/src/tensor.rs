@@ -709,6 +709,14 @@ pub fn index_write(input: Tensor, src: Tensor, write_start: Dims) -> JsTensorRes
 #[js_tensor_web_op(name = Where, variants = [method, function], js_name = "where")]
 pub fn where_cond(input: Tensor, condition: Tensor, on_false: TensorOrScalar) -> JsTensorResult {}
 
+#[js_tensor_web_op(name = Clamp, variants = [method, method_inplace, function])]
+pub fn clamp(
+    input: Tensor,
+    min: Option<TensorOrScalar>,
+    max: Option<TensorOrScalar>,
+) -> JsTensorResult {
+}
+
 #[js_tensor_web_op(name = ScatterAdd, variants = [method, function])]
 pub fn scatter_add(input: Tensor, indices: Tensor, source: Tensor, dim: Dim) -> JsTensorResult {}
 

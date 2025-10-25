@@ -1460,6 +1460,36 @@ pub fn where_cond<T: TensorTypeOrScalar<OpTensor>>(
 }
 
 #[tensor_op(variants = [function, method, method_inplace])]
+pub fn clamp<T1: TensorTypeOrScalar<OpTensor>, T2: TensorTypeOrScalar<OpTensor>>(
+    input: OpTensor,
+    min: Option<T1>,
+    max: Option<T2>,
+) -> Result<OpTensor> {
+    if min.is_none() && max.is_none() {
+        return Ok(input);
+    }
+
+    let min_val = min
+        .as_ref()
+        .map(|t| t.map_tensor(|t| t.into()))
+        .transpose()?
+        .unwrap_or(TensorTypeOrScalarEnum::Scalar(0.0));
+    let max_val = max
+        .as_ref()
+        .map(|t| t.map_tensor(|t| t.into()))
+        .transpose()?
+        .unwrap_or(TensorTypeOrScalarEnum::Scalar(1.0));
+    let (mut input, min_cast, max_cast) = crate::promoted_cast_ternary(input, min_val, max_val)?;
+    if min.is_some() {
+        input = where_cond_kernel(input.clone(), ge_kernel(input, min_cast.clone())?, min_cast)?;
+    }
+    if max.is_some() {
+        input = where_cond_kernel(input.clone(), le_kernel(input, max_cast.clone())?, max_cast)?;
+    }
+    Ok(input)
+}
+
+#[tensor_op(variants = [function, method, method_inplace])]
 pub fn scatter_add<D: Dim>(
     input: OpTensor,
     indices: OpTensor,
