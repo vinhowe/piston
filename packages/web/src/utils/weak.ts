@@ -136,13 +136,16 @@ export function markWeak<T>(input: T) {
 }
 
 export async function weak<T>(
-  input: () => Promise<T>,
+  input: (mode: WeakTensorFunctionMode) => Promise<T>,
   options?: WeakTensorFunctionModeOptions,
 ): Promise<T>;
-export function weak<T>(input: () => T, options?: WeakTensorFunctionModeOptions): T;
+export function weak<T>(
+  input: (mode: WeakTensorFunctionMode) => T,
+  options?: WeakTensorFunctionModeOptions,
+): T;
 export function weak<T>(input: T, options?: WeakTensorFunctionModeOptions): T;
 export function weak<T>(
-  input: (() => T | Promise<T>) | T,
+  input: ((mode: WeakTensorFunctionMode) => T | Promise<T>) | T,
   options?: WeakTensorFunctionModeOptions,
 ): T | Promise<T> {
   const weakMode = new WeakTensorFunctionMode(options);
@@ -163,9 +166,9 @@ export function weak<T>(
   };
 
   if (typeof input === "function") {
-    const fn = input as () => T | Promise<T>;
+    const fn = input as (mode: WeakTensorFunctionMode) => T | Promise<T>;
     try {
-      const fnOutput = fn();
+      const fnOutput = fn(weakMode);
       if (fnOutput instanceof Promise) {
         return fnOutput.then(after);
       }
