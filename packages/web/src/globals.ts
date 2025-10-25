@@ -61,6 +61,7 @@ import {
   swiglu as swiglu_wasm,
   tanh as tanh_wasm,
   Tensor_wasm,
+  topk as topk_wasm,
   uint32_wasm,
   zeros as zeros_wasm,
   zerosLike as zerosLike_wasm,
@@ -129,6 +130,7 @@ export let recip: typeof recip_wasm;
 export let eye: typeof eye_wasm;
 export let isnan: typeof isnan_wasm;
 export let isinf: typeof isinf_wasm;
+export let topk: typeof topk_wasm;
 
 export let tensor: {
   (
@@ -183,6 +185,14 @@ function wrapWithLibTensor<Args extends unknown[]>(
 ): (...args: Args) => Tensor {
   return (...args: Args) => {
     return Tensor._wrap(fn(...args));
+  };
+}
+
+function wrapWithLibTensorArray<Args extends unknown[]>(
+  fn: (...args: Args) => Tensor_wasm[],
+): (...args: Args) => Tensor[] {
+  return (...args: Args) => {
+    return fn(...args).map((t) => Tensor._wrap(t));
   };
 }
 
@@ -305,6 +315,7 @@ export async function initGlobals() {
   logicalNot = wrapWithLibTensor(logicalNot_wasm);
   logicalOr = wrapWithLibTensor(logicalOr_wasm);
   logicalXor = wrapWithLibTensor(logicalXor_wasm);
+  topk = wrapWithLibTensorArray(topk_wasm);
   bernoulli = wrapWithLibTensor(bernoulli_wasm);
   zeros = wrapWithParam(wrapWithLibTensor(zeros_wasm));
   zerosLike = wrapWithParam(wrapWithLibTensor(zerosLike_wasm));

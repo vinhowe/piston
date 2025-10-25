@@ -63,6 +63,7 @@ pub enum LazyOp {
     Arange(Arange),
     Copy(TensorCopy),
     Detach(Box<LazyOp>), //Because the entire graph is lazy, you can't actually detach something without computing the graph in parts
+    TopK(TopK),
 }
 
 impl LazyOp {
@@ -92,6 +93,7 @@ impl LazyOp {
             LazyOp::ScatterAdd(sa) => sa.name(),
             LazyOp::Trilu(t) => t.name(),
             LazyOp::Eye(e) => e.name(),
+            LazyOp::TopK(t) => t.name(),
             LazyOp::FillPointwise(f) => f.name(),
             LazyOp::Bernoulli(b) => b.name(),
             LazyOp::Arange(a) => a.name(),
@@ -134,6 +136,7 @@ impl LazyOp {
             LazyOp::ScatterAdd(sa) => sa.srcs(),
             LazyOp::Trilu(t) => t.srcs(),
             LazyOp::Eye(e) => e.srcs(),
+            LazyOp::TopK(t) => t.srcs(),
             LazyOp::Cache(c) => c.srcs(),
             LazyOp::Detach(d) => d.srcs(),
             LazyOp::View(v) => v.srcs(),
@@ -173,6 +176,7 @@ impl LazyOp {
             LazyOp::ScatterAdd(sa) => sa.supports_inplace(),
             LazyOp::Trilu(t) => t.supports_inplace(),
             LazyOp::Eye(e) => e.supports_inplace(),
+            LazyOp::TopK(t) => t.supports_inplace(),
             LazyOp::FillPointwise(f) => f.supports_inplace(),
             LazyOp::Bernoulli(b) => b.supports_inplace(),
             LazyOp::Arange(a) => a.supports_inplace(),
@@ -232,6 +236,7 @@ impl LazyOp {
             LazyOp::ScatterAdd(sa) => sa.check_invariants(),
             LazyOp::Trilu(t) => t.check_invariants(),
             LazyOp::Eye(e) => e.check_invariants(),
+            LazyOp::TopK(t) => t.check_invariants(),
             LazyOp::FillPointwise(f) => f.check_invariants(),
             LazyOp::Bernoulli(b) => b.check_invariants(),
             LazyOp::Arange(a) => a.check_invariants(),
@@ -271,6 +276,7 @@ impl LazyOp {
             LazyOp::ScatterAdd(sa) => sa.ir(),
             LazyOp::Trilu(t) => t.ir(),
             LazyOp::Eye(e) => e.ir(),
+            LazyOp::TopK(t) => t.ir(),
             LazyOp::FillPointwise(f) => f.ir(),
             LazyOp::Bernoulli(b) => b.ir(),
             LazyOp::Arange(a) => a.ir(),

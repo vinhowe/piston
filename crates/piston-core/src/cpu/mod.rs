@@ -47,6 +47,7 @@ pub async fn apply_operation(op: LazyOp, dst: OpTensor) -> Result<OpTensor, Oper
         LazyOp::Gather(_g) => todo!(),
         LazyOp::Eye(_e) => todo!(),
         LazyOp::FillPointwise(_f) => todo!(),
+        LazyOp::TopK(_t) => todo!(),
         LazyOp::Bernoulli(_b) => todo!(),
         LazyOp::Multinomial(_m) => todo!(),
         LazyOp::Arange(_a) => todo!(),

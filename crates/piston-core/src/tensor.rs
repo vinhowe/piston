@@ -1524,6 +1524,30 @@ pub fn multinomial(input: OpTensor, num_samples: usize, replacement: bool) -> Re
     OpTensor::lazy(LazyOp::Multinomial(op), new_view, device, false)
 }
 
+#[tensor_op(variants = [function, method])]
+pub fn topk<D: Dim>(
+    input: OpTensor,
+    k: usize,
+    dim: Option<D>,
+    largest: Option<bool>,
+    sorted: Option<bool>,
+) -> Result<RVec<OpTensor>> {
+    let dim_idx = match dim {
+        Some(d) => d.to_index(input.shape(), "topk")?,
+        None => input.dim().saturating_sub(1),
+    };
+    let largest = largest.unwrap_or(true);
+    let sorted = sorted.unwrap_or(false);
+
+    let device = input.device().clone();
+    let op = TopK::new(input.clone(), k, dim_idx, largest, sorted);
+    let indices_view = op.compute_view()?;
+    let indices = OpTensor::lazy(LazyOp::TopK(op), indices_view, device, false)?;
+
+    let values = gather_kernel(input, dim_idx, indices.clone())?;
+    Ok(rvec![values, indices])
+}
+
 //
 // TensorOptions for factory functions
 //
@@ -2581,6 +2605,7 @@ impl OpTensor {
             LazyOp::Arange(a) => a.create_gpu_compile_key(self, can_inplace, uniform).ok(),
             LazyOp::Eye(e) => e.create_gpu_compile_key(self, can_inplace, uniform).ok(),
             LazyOp::Copy(_) | LazyOp::View(_) | LazyOp::Const => None,
+            LazyOp::TopK(t) => t.create_gpu_compile_key(self, can_inplace, uniform).ok(),
         }
     }
 
@@ -2884,6 +2909,7 @@ pub fn compile_gpu_for_op(
         LazyOp::Eye(e) => e.compile_gpu(gpu_compile_key, gpu_device, debug).ok(),
         LazyOp::Bernoulli(b) => b.compile_gpu(gpu_compile_key, gpu_device, debug).ok(),
         LazyOp::Arange(a) => a.compile_gpu(gpu_compile_key, gpu_device, debug).ok(),
+        LazyOp::TopK(t) => t.compile_gpu(gpu_compile_key, gpu_device, debug).ok(),
         LazyOp::View(_) | LazyOp::Const => None,
         LazyOp::Copy(_) => panic!("Copy should not have a gpu_compile_key"),
     }

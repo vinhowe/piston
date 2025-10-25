@@ -692,6 +692,22 @@ pub fn multinomial(
 ) -> JsTensorResult {
 }
 
+#[js_tensor_web_op(name = Topk, variants = [method, function])]
+pub fn topk(
+    input: Tensor,
+    k: usize,
+    #[op(default = -1)] dim: Dim,
+    #[op(default = true)] largest: bool,
+    #[op(default = false)] sorted: bool,
+) -> Result<Vec<Tensor>, JsError> {
+    if sorted {
+        return Err(JsError::new("topk: sorted=true not implemented"));
+    }
+    let result = piston::topk(input, k, Some(dim), Some(largest), Some(sorted))
+        .map_err(|e| e.into_js_error())?;
+    Ok::<_, JsError>(result.into_iter().collect::<Vec<_>>())
+}
+
 #[js_tensor_web_op(name = Zero, variants = [method_inplace])]
 pub fn zero(input: Tensor) -> JsTensorResult {}
 

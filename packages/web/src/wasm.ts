@@ -67,6 +67,7 @@ export {
   swiglu,
   tanh,
   Tensor as Tensor_wasm,
+  topk,
   Trainer as Trainer_wasm,
   uint32 as uint32_wasm,
   default as wasmInit,

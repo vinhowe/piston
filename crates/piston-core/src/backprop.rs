@@ -325,7 +325,8 @@ impl Tensor {
                     | LazyOp::Multinomial(_)
                     | LazyOp::Arange(_)
                     | LazyOp::Cache(_)
-                    | LazyOp::Trilu(_) => nodes,
+                    | LazyOp::Trilu(_)
+                    | LazyOp::TopK(_) => nodes,
                 }
             };
             already_seen.insert(node.id(), track_grad);
@@ -950,6 +951,9 @@ impl Tensor {
                     op: UnaryOp::IsInf | UnaryOp::IsNan,
                     ..
                 }) => {}
+                // TopK itself doesn't handle any inputs in the graph; the Gather we parameterize
+                // with its indices does. Since we have a gather case, we're good to go.
+                LazyOp::TopK(_) => {}
                 LazyOp::View(View { src: arg, .. }) => {
                     let arg = arg.wrap();
                     let arg_grad = grad.clone().view(arg.shape().clone())?;
