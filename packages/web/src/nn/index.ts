@@ -21,16 +21,10 @@ export { Buffer, Parameter } from "./parameter";
 export { RotaryEmbedding } from "./rope";
 export { SinusoidalEmbedding } from "./sinusoidal";
 export {
-  ModuleScopeItem,
   nameFromScope,
-  OptimizerParamGroupScopeItem,
-  OptimizerParamUpdateScopeItem,
-  OptimizerScopeItem,
-  ScopeItem,
+  type OptimizerScopeItem,
+  type ScopeItem,
   tensorName,
-  tensorScopeStack,
   track,
-  TrackedTensor,
-  trackOptimizerStep,
-  withScope,
+  type TrackedTensor,
 } from "./tracking";
