@@ -7,25 +7,52 @@ import {
   TensorOptions,
 } from "@/types";
 import {
+  abs as abs_wasm,
+  add as add_wasm,
+  addcdiv as addcdiv_wasm,
+  addcmul as addcmul_wasm,
   arange as arange_wasm,
   bernoulli as bernoulli_wasm,
   cat as cat_wasm,
+  ceil as ceil_wasm,
+  cos as cos_wasm,
   cpu_wasm,
   Device,
   DType,
+  eq as eq_wasm,
+  exp as exp_wasm,
   float16_wasm,
   float32_wasm,
+  floor as floor_wasm,
   fromData,
   full as full_wasm,
+  ge as ge_wasm,
+  gelu as gelu_wasm,
   gpu_wasm,
+  gt as gt_wasm,
   int32_wasm,
+  le as le_wasm,
+  log as log_wasm,
+  lt as lt_wasm,
+  ne as ne_wasm,
+  neg as neg_wasm,
   ones as ones_wasm,
   onesLike as onesLike_wasm,
   rand as rand_wasm,
   randint as randint_wasm,
   randn as randn_wasm,
+  recip as recip_wasm,
+  relu2 as relu2_wasm,
+  relu as relu_wasm,
   seed_wasm,
+  sigmoid as sigmoid_wasm,
+  silu as silu_wasm,
+  sin as sin_wasm,
+  sqrt as sqrt_wasm,
+  square as square_wasm,
   stack as stack_wasm,
+  swiglu as swiglu_wasm,
+  tanh as tanh_wasm,
   Tensor_wasm,
   uint32_wasm,
   zeros as zeros_wasm,
@@ -61,6 +88,33 @@ export let zeros: typeof zeros_wasm;
 export let zerosLike: typeof zerosLike_wasm;
 export let ones: typeof ones_wasm;
 export let onesLike: typeof onesLike_wasm;
+export let add: typeof add_wasm;
+export let addcdiv: typeof addcdiv_wasm;
+export let addcmul: typeof addcmul_wasm;
+export let eq: typeof eq_wasm;
+export let ne: typeof ne_wasm;
+export let gt: typeof gt_wasm;
+export let ge: typeof ge_wasm;
+export let lt: typeof lt_wasm;
+export let le: typeof le_wasm;
+export let gelu: typeof gelu_wasm;
+export let tanh: typeof tanh_wasm;
+export let exp: typeof exp_wasm;
+export let log: typeof log_wasm;
+export let sin: typeof sin_wasm;
+export let cos: typeof cos_wasm;
+export let abs: typeof abs_wasm;
+export let sqrt: typeof sqrt_wasm;
+export let relu: typeof relu_wasm;
+export let relu2: typeof relu2_wasm;
+export let floor: typeof floor_wasm;
+export let ceil: typeof ceil_wasm;
+export let neg: typeof neg_wasm;
+export let sigmoid: typeof sigmoid_wasm;
+export let swiglu: typeof swiglu_wasm;
+export let silu: typeof silu_wasm;
+export let square: typeof square_wasm;
+export let recip: typeof recip_wasm;
 
 export let tensor: {
   (
@@ -203,6 +257,33 @@ export async function initGlobals() {
   randint = wrapWithParam(wrapWithLibTensor(randint_wasm));
   randn = wrapWithParam(wrapWithLibTensor(randn_wasm));
   rand = wrapWithParam(wrapWithLibTensor(rand_wasm));
+  add = wrapWithLibTensor(add_wasm);
+  addcdiv = wrapWithLibTensor(addcdiv_wasm);
+  addcmul = wrapWithLibTensor(addcmul_wasm);
+  eq = wrapWithLibTensor(eq_wasm);
+  ne = wrapWithLibTensor(ne_wasm);
+  gt = wrapWithLibTensor(gt_wasm);
+  ge = wrapWithLibTensor(ge_wasm);
+  lt = wrapWithLibTensor(lt_wasm);
+  le = wrapWithLibTensor(le_wasm);
+  gelu = wrapWithLibTensor(gelu_wasm);
+  tanh = wrapWithLibTensor(tanh_wasm);
+  exp = wrapWithLibTensor(exp_wasm);
+  log = wrapWithLibTensor(log_wasm);
+  sin = wrapWithLibTensor(sin_wasm);
+  cos = wrapWithLibTensor(cos_wasm);
+  abs = wrapWithLibTensor(abs_wasm);
+  sqrt = wrapWithLibTensor(sqrt_wasm);
+  relu = wrapWithLibTensor(relu_wasm);
+  relu2 = wrapWithLibTensor(relu2_wasm);
+  floor = wrapWithLibTensor(floor_wasm);
+  ceil = wrapWithLibTensor(ceil_wasm);
+  neg = wrapWithLibTensor(neg_wasm);
+  sigmoid = wrapWithLibTensor(sigmoid_wasm);
+  swiglu = wrapWithLibTensor(swiglu_wasm);
+  silu = wrapWithLibTensor(silu_wasm);
+  square = wrapWithLibTensor(square_wasm);
+  recip = wrapWithLibTensor(recip_wasm);
   bernoulli = wrapWithLibTensor(bernoulli_wasm);
   zeros = wrapWithParam(wrapWithLibTensor(zeros_wasm));
   zerosLike = wrapWithParam(wrapWithLibTensor(zerosLike_wasm));
