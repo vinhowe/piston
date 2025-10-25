@@ -299,7 +299,6 @@ impl JsTensor {
 
 macro_rules! impl_binary_op {
     ($op:ident, $Name:ident) => {
-        // Web free-function exports for method and inplace (place outside paste!)
         #[js_tensor_web_op(name = $Name, variants = [method, method_inplace, function])]
         pub fn $op(input: Tensor, other: TensorOrScalar) -> anyhow::Result<Tensor> {}
     };
