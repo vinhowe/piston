@@ -46,8 +46,7 @@ pub enum LazyOp {
     Ternary(Ternary),
     Lerp(Lerp),
     // ---- Everything below this line shouldn't exist ----
-    FillConstant(FillConstant),
-    FillRandn(FillRandn),
+    FillPointwise(FillPointwise),
     Bernoulli(Bernoulli),
     RoPE(RoPE),
     Alibi(Alibi),
@@ -90,9 +89,8 @@ impl LazyOp {
             LazyOp::IndexAdd(ia) => ia.name(),
             LazyOp::ScatterAdd(sa) => sa.name(),
             LazyOp::Trilu(t) => t.name(),
-            LazyOp::FillConstant(f) => f.name(),
-            LazyOp::FillRandn(f) => f.name(),
             LazyOp::Eye(e) => e.name(),
+            LazyOp::FillPointwise(f) => f.name(),
             LazyOp::Bernoulli(b) => b.name(),
             LazyOp::Arange(a) => a.name(),
             LazyOp::RoPE(r) => r.name(),
@@ -138,7 +136,7 @@ impl LazyOp {
             LazyOp::View(v) => v.srcs(),
             LazyOp::Copy(c) => c.srcs(),
             LazyOp::Bernoulli(b) => b.srcs(),
-            LazyOp::FillConstant(_) | LazyOp::FillRandn(_) | LazyOp::Arange(_) | LazyOp::Const => {
+            LazyOp::FillPointwise(_) | LazyOp::Arange(_) | LazyOp::Const => {
                 rvec![]
             } //end of the line kid
         }
@@ -170,9 +168,8 @@ impl LazyOp {
             LazyOp::IndexAdd(ia) => ia.supports_inplace(),
             LazyOp::ScatterAdd(sa) => sa.supports_inplace(),
             LazyOp::Trilu(t) => t.supports_inplace(),
-            LazyOp::FillConstant(fc) => fc.supports_inplace(),
-            LazyOp::FillRandn(fr) => fr.supports_inplace(),
             LazyOp::Eye(e) => e.supports_inplace(),
+            LazyOp::FillPointwise(f) => f.supports_inplace(),
             LazyOp::Bernoulli(b) => b.supports_inplace(),
             LazyOp::Arange(a) => a.supports_inplace(),
             LazyOp::Cache(c) => c.supports_inplace(),
@@ -193,7 +190,7 @@ impl LazyOp {
     pub fn can_be_parameter(&self) -> bool {
         matches!(
             self,
-            LazyOp::Const | LazyOp::FillConstant(_) | LazyOp::FillRandn(_) | LazyOp::Eye(_) | LazyOp::Arange(_)
+            LazyOp::Const | LazyOp::FillPointwise(_) | LazyOp::Eye(_) | LazyOp::Arange(_)
         )
     }
 
@@ -229,9 +226,8 @@ impl LazyOp {
             LazyOp::IndexAdd(ia) => ia.check_invariants(),
             LazyOp::ScatterAdd(sa) => sa.check_invariants(),
             LazyOp::Trilu(t) => t.check_invariants(),
-            LazyOp::FillConstant(f) => f.check_invariants(),
-            LazyOp::FillRandn(f) => f.check_invariants(),
             LazyOp::Eye(e) => e.check_invariants(),
+            LazyOp::FillPointwise(f) => f.check_invariants(),
             LazyOp::Bernoulli(b) => b.check_invariants(),
             LazyOp::Arange(a) => a.check_invariants(),
             LazyOp::Cache(c) => c.check_invariants(),
@@ -268,9 +264,8 @@ impl LazyOp {
             LazyOp::IndexAdd(ia) => ia.ir(),
             LazyOp::ScatterAdd(sa) => sa.ir(),
             LazyOp::Trilu(t) => t.ir(),
-            LazyOp::FillConstant(f) => f.ir(),
-            LazyOp::FillRandn(f) => f.ir(),
             LazyOp::Eye(e) => e.ir(),
+            LazyOp::FillPointwise(f) => f.ir(),
             LazyOp::Bernoulli(b) => b.ir(),
             LazyOp::Arange(a) => a.ir(),
             LazyOp::Cache(c) => c.ir(),

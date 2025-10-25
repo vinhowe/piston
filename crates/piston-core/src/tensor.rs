@@ -151,9 +151,9 @@ impl OpTensor {
             stride: Stride::from(&shape.clone()),
         };
         Self::new(
-            LazyOp::FillConstant(FillConstant {
+            LazyOp::FillPointwise(FillPointwise {
+                kind: FillPointwiseKind::Constant { value: value.as_() },
                 shape: shape.clone(),
-                value: value.as_(),
             }),
             meta,
             None,
@@ -1832,11 +1832,13 @@ fn randn_impl<T: TensorDType + num_traits::Float + AsPrimitive<f32>>(
             stride: Stride::from(shape),
         };
         OpTensor::new(
-            LazyOp::FillRandn(FillRandn {
+            LazyOp::FillPointwise(FillPointwise {
                 shape: shape.clone(),
-                mean: mean.as_(),
-                std: std.as_(),
-                seed: Some(rng.write().next_u32()),
+                kind: FillPointwiseKind::Randn {
+                    mean: mean.as_(),
+                    std: std.as_(),
+                    seed: Some(rng.write().next_u32()),
+                },
             }),
             meta,
             None,
@@ -1897,25 +1899,48 @@ fn rand_impl<T: TensorDType + num_traits::Float + AsPrimitive<f32>>(
     requires_grad: bool,
 ) -> Result<OpTensor> {
     let rng = device.get_rng();
-    let distr = Uniform::new(lo.as_(), up.as_());
-    let data = (0..shape.numel())
-        .map(|_| {
-            let sample: f32 = distr.sample(&mut *rng.write());
-            T::from(sample).expect("Failed to convert sample")
-        })
-        .collect::<Vec<_>>();
 
-    let stride = Stride::from(shape);
-    let meta = StorageView::new(shape.clone(), T::dtype(), stride);
-    let storage = Storage::from_slice(&data, shape, device);
+    if device.is_cpu() {
+        let distr = Uniform::new(lo.as_(), up.as_());
+        let data = (0..shape.numel())
+            .map(|_| {
+                let sample: f32 = distr.sample(&mut *rng.write());
+                T::from(sample).expect("Failed to convert sample")
+            })
+            .collect::<Vec<_>>();
 
-    OpTensor::new(
-        LazyOp::Const,
-        meta,
-        Some(storage),
-        device.clone(),
-        requires_grad,
-    )
+        let stride = Stride::from(shape);
+        let meta = StorageView::new(shape.clone(), T::dtype(), stride);
+        let storage = Storage::from_slice(&data, shape, device);
+
+        OpTensor::new(
+            LazyOp::Const,
+            meta,
+            Some(storage),
+            device.clone(),
+            requires_grad,
+        )
+    } else {
+        let meta = StorageView {
+            shape: shape.clone(),
+            dtype: T::dtype(),
+            stride: Stride::from(shape),
+        };
+        OpTensor::new(
+            LazyOp::FillPointwise(FillPointwise {
+                shape: shape.clone(),
+                kind: FillPointwiseKind::Rand {
+                    lo: lo.as_(),
+                    up: up.as_(),
+                    seed: Some(rng.write().next_u32()),
+                },
+            }),
+            meta,
+            None,
+            device.clone(),
+            requires_grad,
+        )
+    }
 }
 
 #[cfg(feature = "rand")]
@@ -2030,9 +2055,9 @@ fn full_impl<T: TensorDType + AsPrimitive<f32>>(
         stride: Stride::from(shape),
     };
     OpTensor::new(
-        LazyOp::FillConstant(FillConstant {
+        LazyOp::FillPointwise(FillPointwise {
             shape: shape.clone(),
-            value: value.as_(),
+            kind: FillPointwiseKind::Constant { value: value.as_() },
         }),
         meta,
         None,
@@ -2536,8 +2561,7 @@ impl OpTensor {
             LazyOp::Reduce(s) => s.create_gpu_compile_key(self, can_inplace, uniform).ok(),
             LazyOp::Detach(d) => self.gpu_compile_key_for_op(d, can_inplace, uniform),
             LazyOp::Gather(g) => g.create_gpu_compile_key(self, can_inplace, uniform).ok(),
-            LazyOp::FillConstant(f) => f.create_gpu_compile_key(self, can_inplace, uniform).ok(),
-            LazyOp::FillRandn(f) => f.create_gpu_compile_key(self, can_inplace, uniform).ok(),
+            LazyOp::FillPointwise(f) => f.create_gpu_compile_key(self, can_inplace, uniform).ok(),
             LazyOp::Bernoulli(b) => b.create_gpu_compile_key(self, can_inplace, uniform).ok(),
             LazyOp::Arange(a) => a.create_gpu_compile_key(self, can_inplace, uniform).ok(),
             LazyOp::Eye(e) => e.create_gpu_compile_key(self, can_inplace, uniform).ok(),
@@ -2840,8 +2864,7 @@ pub fn compile_gpu_for_op(
         LazyOp::Reduce(s) => s.compile_gpu(gpu_compile_key, gpu_device, debug).ok(),
         LazyOp::Detach(d) => compile_gpu_for_op(d, gpu_compile_key, gpu_device, debug),
         LazyOp::Gather(g) => g.compile_gpu(gpu_compile_key, gpu_device, debug).ok(),
-        LazyOp::FillConstant(f) => f.compile_gpu(gpu_compile_key, gpu_device, debug).ok(),
-        LazyOp::FillRandn(f) => f.compile_gpu(gpu_compile_key, gpu_device, debug).ok(),
+        LazyOp::FillPointwise(f) => f.compile_gpu(gpu_compile_key, gpu_device, debug).ok(),
         LazyOp::Eye(e) => e.compile_gpu(gpu_compile_key, gpu_device, debug).ok(),
         LazyOp::Bernoulli(b) => b.compile_gpu(gpu_compile_key, gpu_device, debug).ok(),
         LazyOp::Arange(a) => a.compile_gpu(gpu_compile_key, gpu_device, debug).ok(),

@@ -319,9 +319,8 @@ impl Tensor {
                         op: ReduceOp::ArgMax | ReduceOp::ArgMin,
                         ..
                     })
-                    | LazyOp::FillConstant(_)
-                    | LazyOp::FillRandn(_)
                     | LazyOp::Eye(_)
+                    | LazyOp::FillPointwise(_)
                     | LazyOp::Bernoulli(_)
                     | LazyOp::Arange(_)
                     | LazyOp::Cache(_)
@@ -941,9 +940,8 @@ impl Tensor {
                     op: ReduceOp::ArgMin,
                     ..
                 })
-                | LazyOp::FillConstant(_)
-                | LazyOp::FillRandn(_)
                 | LazyOp::Eye(_)
+                | LazyOp::FillPointwise(_)
                 | LazyOp::Bernoulli(_)
                 | LazyOp::Arange(_)
                 | LazyOp::Unary(Unary {
