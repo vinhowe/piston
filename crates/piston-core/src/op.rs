@@ -834,7 +834,7 @@ pub trait GPUOperation: Operation {
         gpu_compile_key: &ComputeCompileKey<'a>,
         device: &'a WgpuDevice,
         // TODO(vinhowe): We should remove this
-        debug: bool,
+        _debug: bool,
     ) -> Result<CompiledOp, OperationError> {
         let ComputeCompileKey {
             dst,
