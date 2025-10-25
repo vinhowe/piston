@@ -240,14 +240,26 @@ impl Tensor {
                         }
                     }
                     LazyOp::Unary(Unary {
-                        input: _node,
-                        op: UnaryOp::Ceil,
+                        input: node,
+                        op:
+                            UnaryOp::Gelu
+                            | UnaryOp::Tanh
+                            | UnaryOp::Exp
+                            | UnaryOp::Log
+                            | UnaryOp::Sin
+                            | UnaryOp::Cos
+                            | UnaryOp::Abs
+                            | UnaryOp::Square
+                            | UnaryOp::Sqrt
+                            | UnaryOp::Relu
+                            | UnaryOp::Relu2
+                            | UnaryOp::Neg
+                            | UnaryOp::Reciprocal
+                            | UnaryOp::Silu
+                            | UnaryOp::Sigmoid
+                            | UnaryOp::Swiglu,
+                        ..
                     })
-                    | LazyOp::Unary(Unary {
-                        input: _node,
-                        op: UnaryOp::Floor,
-                    }) => nodes,
-                    LazyOp::Unary(Unary { input: node, .. })
                     | LazyOp::Reduce(Reduce {
                         input: node,
                         op: ReduceOp::Min | ReduceOp::Sum | ReduceOp::Max | ReduceOp::Norm2,
@@ -291,6 +303,15 @@ impl Tensor {
                     LazyOp::Copy(_) => todo!(),
                     LazyOp::Detach(_)
                     | LazyOp::Cmp(_)
+                    | LazyOp::Unary(Unary {
+                        op:
+                            UnaryOp::IsInf
+                            | UnaryOp::IsNan
+                            | UnaryOp::Ceil
+                            | UnaryOp::Floor
+                            | UnaryOp::LogicalNot,
+                        ..
+                    })
                     | LazyOp::Const
                     | LazyOp::Alibi(_)
                     | LazyOp::Reduce(Reduce {
@@ -791,6 +812,14 @@ impl Tensor {
                     op: UnaryOp::Ceil,
                 }) => Err(BackpropError::BackwardNotSupported { op: "ceil" })?,
                 LazyOp::Unary(Unary {
+                    input: _,
+                    op: UnaryOp::Floor,
+                }) => Err(BackpropError::BackwardNotSupported { op: "floor" })?,
+                LazyOp::Unary(Unary {
+                    input: _,
+                    op: UnaryOp::LogicalNot,
+                }) => Err(BackpropError::BackwardNotSupported { op: "logical_not" })?,
+                LazyOp::Unary(Unary {
                     input: arg,
                     op: UnaryOp::Gelu,
                 }) => {
@@ -896,11 +925,7 @@ impl Tensor {
                     let arg_grad = grad.clone().mul(node.clone())?.mul((1. - node.clone())?)?;
                     ctx.add(&arg, arg_grad)?;
                 }
-                LazyOp::Unary(Unary {
-                    input: _,
-                    op: UnaryOp::Floor,
-                })
-                | LazyOp::Reduce(Reduce {
+                LazyOp::Reduce(Reduce {
                     input: _,
                     op: ReduceOp::ArgMax,
                     ..
@@ -914,7 +939,11 @@ impl Tensor {
                 | LazyOp::FillRandn(_)
                 | LazyOp::Eye(_)
                 | LazyOp::Bernoulli(_)
-                | LazyOp::Arange(_) => {}
+                | LazyOp::Arange(_)
+                | LazyOp::Unary(Unary {
+                    op: UnaryOp::IsInf | UnaryOp::IsNan,
+                    ..
+                }) => {}
                 LazyOp::View(View { src: arg, .. }) => {
                     let arg = arg.wrap();
                     let arg_grad = grad.clone().view(arg.shape().clone())?;

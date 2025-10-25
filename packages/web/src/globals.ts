@@ -32,9 +32,12 @@ import {
   gpu_wasm,
   gt as gt_wasm,
   int32_wasm,
+  isinf as isinf_wasm,
+  isnan as isnan_wasm,
   le as le_wasm,
   log as log_wasm,
   logicalAnd as logicalAnd_wasm,
+  logicalNot as logicalNot_wasm,
   logicalOr as logicalOr_wasm,
   logicalXor as logicalXor_wasm,
   lt as lt_wasm,
@@ -102,6 +105,7 @@ export let ge: typeof ge_wasm;
 export let lt: typeof lt_wasm;
 export let le: typeof le_wasm;
 export let logicalAnd: typeof logicalAnd_wasm;
+export let logicalNot: typeof logicalNot_wasm;
 export let logicalOr: typeof logicalOr_wasm;
 export let logicalXor: typeof logicalXor_wasm;
 export let gelu: typeof gelu_wasm;
@@ -123,6 +127,8 @@ export let silu: typeof silu_wasm;
 export let square: typeof square_wasm;
 export let recip: typeof recip_wasm;
 export let eye: typeof eye_wasm;
+export let isnan: typeof isnan_wasm;
+export let isinf: typeof isinf_wasm;
 
 export let tensor: {
   (
@@ -293,7 +299,10 @@ export async function initGlobals() {
   silu = wrapWithLibTensor(silu_wasm);
   square = wrapWithLibTensor(square_wasm);
   recip = wrapWithLibTensor(recip_wasm);
+  isnan = wrapWithLibTensor(isnan_wasm);
+  isinf = wrapWithLibTensor(isinf_wasm);
   logicalAnd = wrapWithLibTensor(logicalAnd_wasm);
+  logicalNot = wrapWithLibTensor(logicalNot_wasm);
   logicalOr = wrapWithLibTensor(logicalOr_wasm);
   logicalXor = wrapWithLibTensor(logicalXor_wasm);
   bernoulli = wrapWithLibTensor(bernoulli_wasm);

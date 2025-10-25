@@ -675,6 +675,9 @@ impl_unary_op!(swiglu, UnaryOp::Swiglu);
 impl_unary_op!(silu, UnaryOp::Silu);
 impl_unary_op!(square, UnaryOp::Square);
 impl_unary_op!(recip, UnaryOp::Reciprocal);
+impl_unary_op!(logical_not, UnaryOp::LogicalNot);
+impl_unary_op!(isnan, UnaryOp::IsNan);
+impl_unary_op!(isinf, UnaryOp::IsInf);
 
 #[tensor_op(variants = [function, method])]
 pub fn cast(input: OpTensor, dst_dtype: DType) -> Result<OpTensor> {

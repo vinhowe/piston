@@ -377,6 +377,9 @@ impl_unary_op!(swiglu, Swiglu);
 impl_unary_op!(silu, Silu);
 impl_unary_op!(square, Square);
 impl_unary_op!(recip, Recip);
+impl_unary_op!(logical_not, LogicalNot);
+impl_unary_op!(isnan, IsNan);
+impl_unary_op!(isinf, IsInf);
 
 #[js_tensor_web_op(name = Full, variants = [function])]
 pub fn full(shape: Shape, value: f32, options: TensorOptions) -> JsTensorResult {

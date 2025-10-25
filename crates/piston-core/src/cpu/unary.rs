@@ -93,6 +93,9 @@ macro_rules! impl_unary_ops {
                     UnaryOp::Silu => Self::silu(op.input(), dst).await,
                     UnaryOp::Sigmoid => Self::sigmoid(op.input(), dst).await,
                     UnaryOp::Swiglu => Self::swiglu(op.input(), dst).await,
+                    UnaryOp::LogicalNot => todo!("logical_not"),
+                    UnaryOp::IsNan => todo!("isnan"),
+                    UnaryOp::IsInf => todo!("isinf"),
                 }
             }
         }
