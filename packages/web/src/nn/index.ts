@@ -28,3 +28,4 @@ export {
   track,
   type TrackedTensor,
 } from "./tracking";
+export * from "./utils";
