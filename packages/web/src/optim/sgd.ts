@@ -111,7 +111,7 @@ export class SGD extends Optimizer<SGDParamState, SGDConfig, SGDParamGroup> {
 
         // Apply weight decay
         if (weightDecay !== 0) {
-          grad = grad.add(param.mul(weightDecay));
+          grad.add_(param.mul(weightDecay));
         }
 
         // Apply momentum
