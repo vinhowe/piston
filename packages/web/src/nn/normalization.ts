@@ -3,17 +3,24 @@ import { Module } from "@/nn/module";
 import { Parameter } from "@/nn/parameter";
 import { Tensor } from "@/tensor";
 
+export interface LayerNormConfig {
+  eps?: number;
+  bias?: boolean;
+}
+
 export class LayerNorm extends Module<[Tensor], Tensor> {
   weight: Parameter;
-  bias: Parameter;
+  bias?: Parameter;
+  eps: number;
 
-  constructor(
-    normalizedShape: number,
-    private eps = 1e-5,
-  ) {
+  constructor(normalizedShape: number, config: LayerNormConfig = {}) {
     super();
+    this.eps = config.eps ?? 1e-5;
     this.weight = ones([normalizedShape], { device: gpu, requiresGrad: true });
-    this.bias = zeros([normalizedShape], { device: gpu, requiresGrad: true });
+    this.bias =
+      (config.bias ?? true)
+        ? zeros([normalizedShape], { device: gpu, requiresGrad: true })
+        : undefined;
   }
 
   forward(input: Tensor) {
@@ -21,14 +28,17 @@ export class LayerNorm extends Module<[Tensor], Tensor> {
   }
 }
 
+export interface RMSNormConfig {
+  eps?: number;
+}
+
 export class RMSNorm extends Module<[Tensor], Tensor> {
   weight: Parameter;
+  eps: number;
 
-  constructor(
-    normalizedShape: number,
-    private eps = 1e-5,
-  ) {
+  constructor(normalizedShape: number, config: RMSNormConfig = {}) {
     super();
+    this.eps = config.eps ?? 1e-5;
     this.weight = ones([normalizedShape], { device: gpu, requiresGrad: true });
   }
 
