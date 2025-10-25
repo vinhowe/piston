@@ -1,3 +1,5 @@
+import { Tensor } from "@/tensor";
+
 /**
  * A handle which provides the capability to remove a hook.
  *
@@ -40,6 +42,56 @@ export class RemovableHandle {
 
   [Symbol.dispose]() {
     this.remove();
+  }
+}
+
+export function forEachTensorDeep(
+  value: unknown,
+  visit: (t: Tensor) => void,
+  seen: WeakSet<object> = new WeakSet(),
+): void {
+  if (value instanceof Tensor) {
+    visit(value);
+    return;
+  }
+  if (value === null) return;
+
+  const t = typeof value;
+  if (t !== "object" && t !== "function") return;
+
+  const obj = value as object;
+  if (seen.has(obj)) return;
+  seen.add(obj);
+
+  if (Array.isArray(obj)) {
+    for (const v of obj) forEachTensorDeep(v, visit, seen);
+    return;
+  }
+  if (obj instanceof Map) {
+    for (const [k, v] of obj) {
+      forEachTensorDeep(k, visit, seen);
+      forEachTensorDeep(v, visit, seen);
+    }
+    return;
+  }
+  if (obj instanceof Set) {
+    for (const v of obj) forEachTensorDeep(v, visit, seen);
+    return;
+  }
+  if (
+    ArrayBuffer.isView(obj) ||
+    obj instanceof ArrayBuffer ||
+    obj instanceof Date ||
+    obj instanceof RegExp
+  ) {
+    return;
+  }
+
+  // Own props only; avoid calling getters
+  for (const key of Reflect.ownKeys(obj)) {
+    const desc = Object.getOwnPropertyDescriptor(obj, key);
+    if (!desc || !("value" in desc)) continue;
+    forEachTensorDeep(obj[key as keyof typeof obj], visit, seen);
   }
 }
 
