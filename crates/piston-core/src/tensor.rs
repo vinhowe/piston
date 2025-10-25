@@ -1729,6 +1729,10 @@ impl TensorOptions {
         self.dtype.unwrap_or(DType::F32)
     }
 
+    pub fn dtype_or(&self, dtype: DType) -> DType {
+        self.dtype.unwrap_or(dtype)
+    }
+
     pub fn requires_grad_or_default(&self) -> bool {
         self.requires_grad.unwrap_or(false)
     }
@@ -1922,7 +1926,7 @@ pub fn randint<S: Into<Shape>>(
 ) -> Result<OpTensor> {
     let shape = shape.into();
     let device = options.device_or_default();
-    let dtype = options.dtype_or_default();
+    let dtype = options.dtype_or(DType::I32);
 
     dispatch_int_types!(
         dtype,
