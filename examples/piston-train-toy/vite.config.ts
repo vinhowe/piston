@@ -8,7 +8,7 @@ import wasm from 'vite-plugin-wasm';
 // Get the project root directory
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 
-export default defineConfig({
+export default defineConfig((_) => ({
 	plugins: [sveltekit(), tailwindcss(), wasm()],
 	worker: {
 		format: 'es',
@@ -30,4 +30,4 @@ export default defineConfig({
 			]
 		}
 	}
-});
+}));
