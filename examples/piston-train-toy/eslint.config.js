@@ -35,6 +35,8 @@ export default defineConfig(
 	{
 		rules: {
 			'no-unused-vars': 'off',
+			'@typescript-eslint/ban-types': 'off',
+			'@typescript-eslint/no-explicit-any': 'warn',
 			'@typescript-eslint/no-unused-vars': [
 				'warn',
 				{
@@ -42,7 +44,8 @@ export default defineConfig(
 					varsIgnorePattern: '^_',
 					caughtErrorsIgnorePattern: '^_'
 				}
-			]
+			],
+			'@typescript-eslint/no-var-requires': 'off'
 		}
 	}
 );
