@@ -9,7 +9,7 @@ import wasm from 'vite-plugin-wasm';
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 
 export default defineConfig((_) => ({
-	plugins: [sveltekit(), tailwindcss(), wasm()],
+	plugins: [tailwindcss(), sveltekit(), wasm()],
 	worker: {
 		format: 'es',
 		plugins: () => [wasm(), sveltekit()]
