@@ -45,7 +45,7 @@ anyhow = "1.0.79"
 tokenizers = "0.19.1"
 
 js-sys = "0.3.64"
-wasm-bindgen = "0.2.100"
+wasm-bindgen = "0.2.104"
 wasm-bindgen-test = "0.3.34"
 cfg-if = "1.0.0"
 chrono = "0.4.35"
@@ -108,4 +108,4 @@ paste = { version = "1.0.15" }
 tsify = { version = "0.5.5", features = ["js"] }
 
 [patch.crates-io]
-wasm-bindgen  = { git = "https://github.com/vinhowe/wasm-bindgen", branch = "unchecked-prelude" }
+wasm-bindgen = { git = "https://github.com/vinhowe/wasm-bindgen", rev = "4b4f9cd9731cf35725727bcac92940d51a559a50" }
