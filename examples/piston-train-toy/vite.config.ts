@@ -12,12 +12,10 @@ export default defineConfig({
 	plugins: [sveltekit(), tailwindcss(), wasm()],
 	worker: {
 		format: 'es',
-		plugins: () => [wasm()]
+		plugins: () => [wasm(), sveltekit()]
 	},
 	esbuild: {
-		supported: {
-			'top-level-await': true
-		}
+		supported: { 'top-level-await': true }
 	},
 	server: {
 		fs: {
