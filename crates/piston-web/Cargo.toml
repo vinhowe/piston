@@ -23,7 +23,6 @@ strip = true
 piston-macros = { path = "../piston-macros" }
 piston = { path = "../piston-core" }
 half = { workspace = true }
-wgpu = { workspace = true }
 wasm-bindgen = { workspace = true }
 safetensors = { workspace = true }
 wasm-bindgen-futures = { workspace = true }
@@ -37,7 +36,6 @@ parking_lot = { workspace = true }
 log.workspace = true
 fern = { workspace = true }
 futures = "0.3.30"
-async-trait = { workspace = true }
 tsify = { workspace = true }
 
 [dependencies.web-sys]
@@ -50,3 +48,6 @@ chrono = { workspace = true }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 getrandom = { workspace = true, features = ["js"] }
+
+[package.metadata.cargo-machete]
+ignored = ["tsify"]

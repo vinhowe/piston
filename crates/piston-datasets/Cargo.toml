@@ -26,10 +26,6 @@ wasm-opt = ['-O3', '--enable-simd']
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 [dependencies]
 piston = { path = "../piston-core" }
-log.workspace = true
-tokenizers = { version = "0.19.1", default-features = false, features = [
-    "unstable_wasm",
-] }
 anyhow.workspace = true
 memmap2.workspace = true
 rand.workspace = true
