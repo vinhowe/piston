@@ -1,9 +1,9 @@
-import tailwindcss from '@tailwindcss/vite';
 import { sveltekit } from '@sveltejs/kit/vite';
+import tailwindcss from '@tailwindcss/vite';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import { defineConfig } from 'vite';
 import wasm from 'vite-plugin-wasm';
-import { fileURLToPath } from 'url';
-import path from 'path';
 
 // Get the project root directory
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
