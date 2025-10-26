@@ -1,6 +1,7 @@
-import prettier from 'eslint-config-prettier';
-import js from '@eslint/js';
 import { includeIgnoreFile } from '@eslint/compat';
+import js from '@eslint/js';
+import prettier from 'eslint-config-prettier';
+import perfectionist from 'eslint-plugin-perfectionist';
 import svelte from 'eslint-plugin-svelte';
 import { defineConfig } from 'eslint/config';
 import globals from 'globals';
@@ -13,7 +14,6 @@ export default defineConfig(
 	js.configs.recommended,
 	...ts.configs.recommended,
 	...svelte.configs['flat/recommended'],
-	prettier,
 	...svelte.configs['flat/prettier'],
 	{
 		languageOptions: {
@@ -33,6 +33,10 @@ export default defineConfig(
 		}
 	},
 	{
+		plugins: {
+			prettier,
+			perfectionist
+		},
 		rules: {
 			'no-unused-vars': 'off',
 			'@typescript-eslint/ban-types': 'off',
@@ -45,7 +49,29 @@ export default defineConfig(
 					caughtErrorsIgnorePattern: '^_'
 				}
 			],
-			'@typescript-eslint/no-var-requires': 'off'
+			'@typescript-eslint/no-var-requires': 'off',
+			'perfectionist/sort-imports': [
+				'error',
+				{
+					type: 'natural',
+					order: 'asc',
+					groups: [
+						'type',
+						['builtin', 'external'],
+						'internal-type',
+						'internal',
+						['parent-type', 'sibling-type', 'index-type'],
+						['parent', 'sibling', 'index'],
+						'side-effect',
+						'style',
+						'object',
+						'unknown'
+					]
+				}
+			],
+			'perfectionist/sort-exports': ['error', { type: 'natural' }],
+			'perfectionist/sort-named-exports': ['error', { type: 'natural' }],
+			'perfectionist/sort-named-imports': ['error', { type: 'natural' }]
 		}
 	}
 );
