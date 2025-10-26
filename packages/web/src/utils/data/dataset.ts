@@ -21,8 +21,8 @@ export abstract class Dataset<T> {
   /**
    * Optional: subclasses can implement length if known
    */
-  public get length(): number {
-    throw new Error("Dataset subclass should implement length getter");
+  public get length(): number | undefined {
+    return undefined;
   }
 }
 
@@ -40,6 +40,14 @@ export abstract class IterableDataset<T> extends Dataset<T> implements Iterable<
 
   public getItem(_index: number): T {
     throw new Error("IterableDataset does not support indexed access");
+  }
+}
+
+export abstract class AsyncIterableDataset<T> extends Dataset<T> implements AsyncIterable<T> {
+  public abstract [Symbol.asyncIterator](): AsyncIterator<T>;
+
+  public getItem(_index: number): T {
+    throw new Error("AsyncIterableDataset does not support indexed access");
   }
 }
 

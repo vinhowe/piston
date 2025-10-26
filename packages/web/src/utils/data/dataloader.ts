@@ -3,7 +3,7 @@ import { Random } from "random-js";
 import type { Tensor } from "@/tensor";
 
 import { defaultCollate } from "./collate";
-import { Dataset, IterableDataset } from "./dataset";
+import { AsyncIterableDataset, Dataset, IterableDataset } from "./dataset";
 import { BatchSampler, RandomSampler, Sampler, SequentialSampler } from "./sampler";
 
 /**
@@ -131,6 +131,80 @@ class DataLoaderIterator<T, B> implements Iterator<B> {
   }
 }
 
+class DataLoaderAsyncIterator<T, B> implements AsyncIterator<B> {
+  private dataset: Dataset<T>;
+  private autoCollation: boolean;
+  private dropLast: boolean;
+  private indexSampler: Sampler<number | number[]>;
+  private collateFn?: (batch: T[]) => B;
+  private samplerIter: Iterator<number | number[]>;
+  private datasetAsyncIter?: AsyncIterator<T>;
+  private ended: boolean;
+
+  constructor(loader: DataLoader<T, B>) {
+    this.dataset = loader.dataset;
+    this.autoCollation = loader.autoCollation;
+    this.dropLast = loader.dropLast!;
+    this.indexSampler = loader.indexSampler;
+    this.collateFn = loader.collateFn;
+    this.samplerIter = this.indexSampler[Symbol.iterator]();
+    this.ended = false;
+
+    this.datasetAsyncIter = (this.dataset as AsyncIterableDataset<T>)[Symbol.asyncIterator]();
+  }
+
+  private async nextData(): Promise<IteratorResult<B>> {
+    const nextIdx = this.samplerIter.next();
+    if (nextIdx.done) {
+      return { value: undefined, done: true };
+    }
+
+    const idxOrIndices = nextIdx.value as number | number[];
+
+    if (!this.datasetAsyncIter || this.ended) {
+      // Shouldn't happen: async iterator used with non-async dataset
+      return { value: undefined, done: true };
+    }
+
+    let data: T | T[];
+    if (this.autoCollation) {
+      const batch: T[] = [];
+      const count = (idxOrIndices as number[]).length;
+      for (let i = 0; i < count; i++) {
+        const nextVal = await this.datasetAsyncIter.next();
+        if (nextVal.done) {
+          this.ended = true;
+          break;
+        }
+        batch.push(nextVal.value);
+      }
+      if (
+        batch.length === 0 ||
+        (this.dropLast && batch.length < (idxOrIndices as number[]).length)
+      ) {
+        return { value: undefined, done: true };
+      }
+      data = batch;
+    } else {
+      const nextVal = await this.datasetAsyncIter.next();
+      if (nextVal.done) {
+        this.ended = true;
+        return { value: undefined, done: true };
+      }
+      data = nextVal.value;
+    }
+
+    const resultValue = this.collateFn
+      ? await Promise.resolve(this.collateFn(data as T[]))
+      : (data as B);
+    return { value: resultValue, done: false };
+  }
+
+  async next(): Promise<IteratorResult<B>> {
+    return this.nextData();
+  }
+}
+
 export interface DataLoaderConfig<T, B> {
   batchSize?: number;
   shuffle?: boolean;
@@ -141,7 +215,7 @@ export interface DataLoaderConfig<T, B> {
   generator?: Random;
 }
 
-export class DataLoader<T, B = Tensor> implements Iterable<B> {
+export class DataLoader<T, B = Tensor> implements Iterable<B>, AsyncIterable<B> {
   public dataset: Dataset<T>;
   public batchSize?: number;
   public dropLast?: boolean;
@@ -150,6 +224,8 @@ export class DataLoader<T, B = Tensor> implements Iterable<B> {
   public collateFn?: (batch: T[]) => B;
   /** @internal */
   public isIterableDataset: boolean;
+  /** @internal */
+  public isAsyncIterableDataset: boolean;
   public generator?: Random;
   /** @internal */
   public iterableDatasetLenCalled?: number;
@@ -168,10 +244,11 @@ export class DataLoader<T, B = Tensor> implements Iterable<B> {
     }: DataLoaderConfig<T, B> = config;
     let batchSize: number | undefined = "batchSize" in config ? config.batchSize : 1;
 
-    // Check if this is an iterable dataset using instanceof
+    // Check if this is an iterable or async-iterable dataset using instanceof
     this.isIterableDataset = dataset instanceof IterableDataset;
+    this.isAsyncIterableDataset = dataset instanceof AsyncIterableDataset;
 
-    if (this.isIterableDataset) {
+    if (this.isIterableDataset || this.isAsyncIterableDataset) {
       if (config.sampler !== undefined) {
         throw new Error(
           `DataLoader with IterableDataset: expected unspecified sampler option, but got sampler=${config.sampler}`,
@@ -208,7 +285,7 @@ export class DataLoader<T, B = Tensor> implements Iterable<B> {
       }
     }
 
-    if (this.isIterableDataset) {
+    if (this.isIterableDataset || this.isAsyncIterableDataset) {
       if (shuffle) {
         console.warn(
           "shuffle=True with IterableDataset has no effect. " +
@@ -275,8 +352,11 @@ export class DataLoader<T, B = Tensor> implements Iterable<B> {
   }
 
   public get length(): number {
-    if (this.isIterableDataset) {
-      const length = (this.iterableDatasetLenCalled = (this.dataset as IterableDataset<T>).length);
+    if (this.isIterableDataset || this.isAsyncIterableDataset) {
+      const length = (this.iterableDatasetLenCalled = this.dataset.length);
+      if (length === undefined) {
+        throw new Error("Dataset does not implement length");
+      }
       if (this.batchSize !== undefined) {
         // IterableDataset doesn't allow custom sampler or batch_sampler
         if (this.dropLast) {
@@ -292,12 +372,32 @@ export class DataLoader<T, B = Tensor> implements Iterable<B> {
   }
 
   public *[Symbol.iterator](): Iterator<B> {
+    if (this.isAsyncIterableDataset) {
+      throw new Error(
+        "DataLoader with AsyncIterableDataset must be consumed with an async iterator",
+      );
+    }
     const iterator = new DataLoaderIterator(this);
     let result = iterator.next();
     while (!result.done) {
       yield result.value;
       result = iterator.next();
     }
+  }
+
+  public [Symbol.asyncIterator](): AsyncIterator<B> {
+    if (this.isAsyncIterableDataset) {
+      return new DataLoaderAsyncIterator(this);
+    }
+
+    // Fallback: wrap sync iterator into an async iterator so for-await works universally
+    const syncIterator = this[Symbol.iterator]();
+    return {
+      next: async () => {
+        const result = syncIterator.next();
+        return Promise.resolve(result);
+      },
+    } as AsyncIterator<B>;
   }
 }
 
