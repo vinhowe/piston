@@ -55,7 +55,7 @@ class DataLoaderIterator<T, B> implements Iterator<B> {
   private nextData(): IteratorResult<B> {
     const nextIdx = this.samplerIter.next();
     if (nextIdx.done) {
-      return { value: undefined as unknown as B, done: true };
+      return { value: undefined, done: true };
     }
 
     const idxOrIndices = nextIdx.value as number | number[];
@@ -69,12 +69,12 @@ class DataLoaderIterator<T, B> implements Iterator<B> {
       } else {
         data = this.dataset.getItem(idxOrIndices as number);
       }
-      const result = this.collateFn ? this.collateFn(data as T[]) : (data as unknown as B);
+      const result = this.collateFn ? this.collateFn(data as T[]) : (data as B);
       return { value: result, done: false };
     } else {
       // Iterable dataset fetch logic
       if (this.ended) {
-        return { value: undefined as unknown as B, done: true };
+        return { value: undefined, done: true };
       }
 
       let data: T | T[];
@@ -92,18 +92,18 @@ class DataLoaderIterator<T, B> implements Iterator<B> {
           batch.length === 0 ||
           (this.dropLast && batch.length < (idxOrIndices as number[]).length)
         ) {
-          return { value: undefined as unknown as B, done: true };
+          return { value: undefined, done: true };
         }
         data = batch;
       } else {
         const nextVal = this.datasetIter!.next();
         if (nextVal.done) {
           this.ended = true;
-          return { value: undefined as unknown as B, done: true };
+          return { value: undefined, done: true };
         }
         data = nextVal.value;
       }
-      const result = this.collateFn ? this.collateFn(data as T[]) : (data as unknown as B);
+      const result = this.collateFn ? this.collateFn(data as T[]) : (data as B);
       return { value: result, done: false };
     }
   }
@@ -222,12 +222,12 @@ export class DataLoader<T, B = Tensor> implements Iterable<B> {
         sampler = config.sampler;
       } else {
         sampler = shuffle
-          ? new RandomSampler(dataset, {
+          ? new RandomSampler(dataset as { length: number }, {
               replacement: false,
               numSamples: undefined,
               generator: config.generator,
             })
-          : new SequentialSampler(dataset);
+          : new SequentialSampler(dataset as { length: number });
       }
     }
 
