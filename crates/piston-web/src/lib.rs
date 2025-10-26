@@ -4,7 +4,6 @@ mod dtype;
 mod error;
 mod function;
 mod js_util;
-mod model;
 mod serialization;
 mod shape;
 mod tensor;

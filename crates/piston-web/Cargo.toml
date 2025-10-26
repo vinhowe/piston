@@ -6,9 +6,6 @@ edition = "2024"
 license = "MIT"
 repository = "https://github.com/vinhowe/piston"
 
-[features]
-debug = ["piston-nn/debug"]
-
 [lib]
 crate-type = ["cdylib", "rlib"]
 
@@ -23,9 +20,6 @@ strip = true
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 [dependencies]
-piston-models = { path = "../piston-models" }
-piston-nn = { path = "../piston-nn" }
-piston-datasets = { path = "../piston-datasets" }
 piston-macros = { path = "../piston-macros" }
 piston = { path = "../piston-core" }
 half = { workspace = true }
@@ -34,31 +28,25 @@ wasm-bindgen = { workspace = true }
 safetensors = { workspace = true }
 wasm-bindgen-futures = { workspace = true }
 js-sys = { workspace = true }
-thiserror.workspace = true
 anyhow.workspace = true
 serde = { workspace = true }
-serde_json = { workspace = true }
 serde-wasm-bindgen = { workspace = true }
 console_error_panic_hook = { workspace = true }
 console_log = { workspace = true }
 parking_lot = { workspace = true }
 log.workspace = true
-chrono = { workspace = true }
 fern = { workspace = true }
-tokenizers = { version = "0.19.1", default-features = false, features = [
-  "unstable_wasm",
-] }
 futures = "0.3.30"
 async-trait = { workspace = true }
-paste = { workspace = true }
 tsify = { workspace = true }
-smallvec = { workspace = true }
+
 [dependencies.web-sys]
 features = ['console', 'Window', 'Navigator']
 workspace = true
 
-
 [dev-dependencies]
 wasm-bindgen-test.workspace = true
-serde_json = { workspace = true }
-ndarray = { workspace = true }
+chrono = { workspace = true }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+getrandom = { workspace = true, features = ["js"] }
