@@ -2,7 +2,6 @@ import tailwindcss from '@tailwindcss/vite';
 import { sveltekit } from '@sveltejs/kit/vite';
 import { defineConfig } from 'vite';
 import wasm from 'vite-plugin-wasm';
-import topLevelAwait from 'vite-plugin-top-level-await';
 import { fileURLToPath } from 'url';
 import path from 'path';
 
@@ -10,10 +9,10 @@ import path from 'path';
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 
 export default defineConfig({
-	plugins: [sveltekit(), tailwindcss(), wasm(), topLevelAwait()],
+	plugins: [sveltekit(), tailwindcss(), wasm()],
 	worker: {
 		format: 'es',
-		plugins: () => [wasm(), topLevelAwait()]
+		plugins: () => [wasm()]
 	},
 	esbuild: {
 		supported: {
