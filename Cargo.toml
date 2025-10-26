@@ -17,7 +17,7 @@ debug-assertions = true
 [profile.release]
 panic = 'abort'
 lto = "fat"
-codegen-units = 1
+opt-level = 3
 
 [profile.profiling]
 inherits = "release"
