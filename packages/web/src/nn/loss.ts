@@ -78,8 +78,12 @@ export class CrossEntropyLoss extends Module {
       )
       .cast(float32);
 
+    // Replace ignoreIndex positions with a safe index (0) before gather.
+    // This prevents out-of-range gathers on -100 while having no effect after masking.
+    const safeTargets = target.where(mask, 0).cast(int32);
+
     // Gather the negative log-prob for the correct classes
-    const nllGathered = logProbs.gather(1, target.unsqueeze(1)).mul(-1);
+    const nllGathered = logProbs.gather(1, safeTargets.unsqueeze(1)).mul(-1);
 
     // Mask out ignored tokens
     const nllMasked = nllGathered.mul(mask.unsqueeze(1));
