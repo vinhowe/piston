@@ -80,6 +80,30 @@ const CONFIG_DEFAULTS: Config = {
 			value: 1e-2,
 			useWeightDecayGroups: true
 		},
+		lrScheduler: {
+			present: true,
+			type: 'cosine',
+			stepSchedule: {
+				stepSize: 100,
+				gamma: 0.8
+			},
+			constantSchedule: {
+				factor: 1 / 3,
+				totalIters: 100
+			},
+			cosineAnnealingSchedule: {
+				tMax: 500,
+				etaMin: 1e-4
+			},
+			exponentialSchedule: {
+				gamma: 0.999
+			},
+			linearSchedule: {
+				startFactor: 1.0,
+				endFactor: 1 / 3,
+				totalIters: 1000
+			}
+		},
 		adam: {
 			beta1: 0.9,
 			beta2: 0.999,

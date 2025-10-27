@@ -1,3 +1,11 @@
+import type {
+	ConstantConfig,
+	CosineAnnealingConfig,
+	ExponentialConfig,
+	LinearConfig,
+	StepConfig
+} from '@piston-ml/piston-web';
+
 export type {
 	AdditionConfig,
 	ModularAdditionConfig,
@@ -96,6 +104,15 @@ export interface OptimizerConfig {
 		present: boolean;
 		value: number;
 		useWeightDecayGroups: boolean;
+	};
+	lrScheduler: {
+		present: boolean;
+		type: string;
+		stepSchedule: StepConfig;
+		constantSchedule: ConstantConfig;
+		cosineAnnealingSchedule: CosineAnnealingConfig;
+		exponentialSchedule: ExponentialConfig;
+		linearSchedule: LinearConfig;
 	};
 	adam: {
 		beta1: number;

@@ -2,7 +2,11 @@
 	import MetricsSection from '$lib/components/metrics/MetricsSection.svelte';
 	import RunChart from '$lib/components/metrics/RunChart.svelte';
 	import ToggleChips from '$lib/components/ToggleChips.svelte';
-	import { getMetricGroups, getMetricNamesFromLastNRuns } from '$lib/workspace/runs.svelte';
+	import {
+		getCurrentRun,
+		getMetricGroups,
+		getMetricNamesFromLastNRuns
+	} from '$lib/workspace/runs.svelte';
 	import {
 		metricsSectionsOpen,
 		metricVisibility,
@@ -15,8 +19,17 @@
 	// Group metrics by prefix (everything before the first '/')
 	const metricGroups = $derived(getMetricGroups(metricNames));
 
+	const runConfig = $derived(getCurrentRun()?.config);
+
+	// Derived: lr scheduler present
+	const lrSchedulerPresent = $derived(
+		(runConfig?.optimizer?.lrScheduler?.present ?? false) ||
+			(runConfig?.optimizer?.warmupSteps?.present ?? false)
+	);
+
 	function getDefaultMetricVisibility(name: string): boolean {
 		if (name === 'speed/wall_clock_seconds') return false;
+		if (name === 'optimizer/learning_rate') return !!lrSchedulerPresent;
 		return true;
 	}
 
@@ -42,7 +55,12 @@
 		</div>
 	{:else}
 		<div class="space-y-6">
-			{#each Object.entries(metricGroups) as [groupName, metrics] (groupName)}
+			{#each Object.entries(metricGroups).sort(([a], [b]) => {
+				const order = ['train', 'optimizer'];
+				const aPriority = order.indexOf(a);
+				const bPriority = order.indexOf(b);
+				return (aPriority === -1 ? 999 : aPriority) - (bPriority === -1 ? 999 : bPriority) || a.localeCompare(b);
+			}) as [groupName, metrics] (groupName)}
 				{@const filteredMetrics = getFilteredMetrics(groupName, metrics)}
 				{@const hasMetrics = filteredMetrics.length > 0}
 				{@const sectionOpen = (metricsSectionsOpen.current[groupName] ?? true) && hasMetrics}

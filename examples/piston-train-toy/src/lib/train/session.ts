@@ -1,6 +1,13 @@
 import type { Config } from '$lib/workspace/config';
 
-import { type Tensor } from '@piston-ml/piston-web';
+import {
+	CosineAnnealingLR,
+	ExponentialLR,
+	LinearLR,
+	type LRScheduler,
+	StepLR,
+	type Tensor
+} from '@piston-ml/piston-web';
 import * as piston from '@piston-ml/piston-web';
 
 import type { BuiltData } from './data/pipeline';
@@ -40,6 +47,7 @@ export class TrainingSession {
 
 	private model!: GeneratableModel;
 	private optimizer!: piston.Optimizer;
+	private scheduler: LRScheduler<unknown> | undefined;
 	private trainDataset!: ToyDatasetLike;
 	private blockSize!: number | { source: number; target: number };
 
@@ -126,6 +134,40 @@ export class TrainingSession {
 			piston.gpu
 		);
 
+		// Create learning rate scheduler if configured
+		if (this.config.optimizer.lrScheduler.present) {
+			const lrConfig = this.config.optimizer.lrScheduler;
+			switch (lrConfig.type) {
+				case 'step':
+					this.scheduler = new StepLR(
+						this.optimizer,
+						lrConfig.stepSchedule.stepSize,
+						lrConfig.stepSchedule.gamma
+					);
+					break;
+				case 'cosine':
+					this.scheduler = new CosineAnnealingLR(
+						this.optimizer,
+						lrConfig.cosineAnnealingSchedule.tMax,
+						lrConfig.cosineAnnealingSchedule.etaMin
+					);
+					break;
+				case 'exponential':
+					this.scheduler = new ExponentialLR(this.optimizer, lrConfig.exponentialSchedule.gamma);
+					break;
+				case 'linear':
+					this.scheduler = new LinearLR(
+						this.optimizer,
+						lrConfig.linearSchedule.startFactor,
+						lrConfig.linearSchedule.endFactor,
+						lrConfig.linearSchedule.totalIters
+					);
+					break;
+				default:
+					throw new Error(`Unknown scheduler type: ${lrConfig.type}`);
+			}
+		}
+
 		this.model.train();
 
 		this.isSetup = true;
@@ -211,6 +253,11 @@ export class TrainingSession {
 
 			this.optimizer.zeroGrad(true);
 
+			// Step learning rate scheduler if present
+			if (this.scheduler) {
+				this.scheduler.step();
+			}
+
 			if (loggingStep) {
 				const currentTime = Date.now();
 				const totalElapsedSeconds = (currentTime - this.startTimeMs!) / 1000;
@@ -249,6 +296,11 @@ export class TrainingSession {
 					'speed/tokens_per_second': tokensPerSecond,
 					'speed/wall_clock_seconds': totalElapsedSeconds
 				};
+				// Log current learning rate if scheduler is present
+				const currentLr = this.optimizer.paramGroups[0].lr;
+				if (currentLr) {
+					logData['optimizer/learning_rate'] = currentLr;
+				}
 
 				this.logMetrics(logData, { step: this.stepCount });
 

@@ -18,6 +18,7 @@
 	import CollapsibleSection from './CollapsibleSection.svelte';
 	import ControlsStatistic from './ControlsStatistic.svelte';
 	import DatasetControls from './DatasetControls.svelte';
+	import LRSchedulePicker from './LRSchedulePicker.svelte';
 	import NumberInput from './NumberInput.svelte';
 	import SelectModelTopology from './select/SelectModelTopology.svelte';
 	import SelectWithCitations from './select/SelectWithCitations.svelte';
@@ -431,6 +432,19 @@
 			hasDefaultValue={equalsConfigDefault('optimizer.lr')}
 			onReset={() => resetConfigToDefaults('optimizer.lr')}
 		/>
+
+		<!-- Learning Rate Scheduler -->
+		<ToggleGroup
+			title="Learning Rate Scheduler"
+			id="lr-scheduler-control"
+			showEnableToggle={true}
+			bind:enabled={config.optimizer.lrScheduler.present}
+			contentClass={sectionClass}
+			hasDefaultValue={equalsConfigDefault('optimizer.lrScheduler.present')}
+			onReset={() => resetConfigToDefaults('optimizer.lrScheduler.present')}
+		>
+			<LRSchedulePicker />
+		</ToggleGroup>
 
 		<ToggleGroup
 			id="optimizer-weight-decay-group"
