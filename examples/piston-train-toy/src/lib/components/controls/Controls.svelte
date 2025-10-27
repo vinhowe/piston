@@ -405,6 +405,15 @@
 							{ name: 'Robbins & Monro, 1951', url: 'https://www.jstor.org/stable/2236626?seq=1' }
 						]
 					}
+				},
+				{
+					value: 'Muon',
+					title: 'Muon with AdamW',
+					citations: {
+						entries: [
+							{ name: 'Jordan et al., 2024', url: 'https://kellerjordan.github.io/posts/muon/' }
+						]
+					}
 				}
 			]}
 			hasDefaultValue={equalsConfigDefault('optimizer.type')}
@@ -452,7 +461,41 @@
 		</ToggleGroup>
 
 		<div class="space-y-1">
-			{#if config.optimizer.type === 'AdamW' || config.optimizer.type === 'Adam'}
+			{#if config.optimizer.type === 'Muon'}
+				<BorderedGroup title="Muon Settings" contentClass={sectionClass}>
+					<div class="grid grid-cols-2 gap-2">
+						<NumberInput
+							id="optimizer-muon-ns-steps"
+							label="N-S Steps"
+							step={1}
+							min={0}
+							max={10}
+							bind:value={config.optimizer.muon.nsSteps}
+							hasDefaultValue={equalsConfigDefault('optimizer.muon.nsSteps')}
+							onReset={() => resetConfigToDefaults('optimizer.muon.nsSteps')}
+						/>
+						<NumberInput
+							id="optimizer-muon-momentum"
+							label="Momentum"
+							step={0.001}
+							min={0}
+							max={1}
+							bind:value={config.optimizer.muon.momentum}
+							hasDefaultValue={equalsConfigDefault('optimizer.muon.momentum')}
+							onReset={() => resetConfigToDefaults('optimizer.muon.momentum')}
+						/>
+						<CheckboxInput
+							id="optimizer-muon-nesterov"
+							label="Nesterov"
+							bind:checked={config.optimizer.muon.nesterov}
+							class="col-span-2"
+							hasDefaultValue={equalsConfigDefault('optimizer.muon.nesterov')}
+							onReset={() => resetConfigToDefaults('optimizer.muon.nesterov')}
+						/>
+					</div>
+				</BorderedGroup>
+			{/if}
+			{#if config.optimizer.type === 'AdamW' || config.optimizer.type === 'Adam' || config.optimizer.type === 'Muon'}
 				{@const settingsName = config.optimizer.type === 'Adam' ? 'Adam' : 'AdamW'}
 				<BorderedGroup title={`${settingsName} Settings`} contentClass={sectionClass}>
 					<div class="grid grid-cols-2 gap-2">

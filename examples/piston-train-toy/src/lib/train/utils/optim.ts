@@ -4,12 +4,23 @@ import {
 	AdamW,
 	type Device,
 	type Module,
+	MuonWithAdamW,
+	type MuonWithAdamWParamGroup,
 	nn,
 	type Optimizer,
 	type Parameter as ParameterType,
 	type ParamGroup,
 	SGD
 } from '@piston-ml/piston-web';
+
+// Deterministic sorting helpers
+function compareByName<T>(a: [string, T], b: [string, T]): number {
+	return a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0;
+}
+
+function sortEntriesByName<T>(entries: Array<[string, T]>): Array<[string, T]> {
+	return entries.sort(compareByName);
+}
 
 function paramsFromNamesSorted(
 	names: Iterable<string>,
@@ -209,6 +220,161 @@ function configureOptimizers(
 				nesterov: trainConfig.sgd.nesterov
 			});
 		}
+	} else if (trainConfig.type === 'Muon') {
+		// Get parameter groups by type
+		const paramEntries = sortEntriesByName(Array.from(paramDict.entries()));
+		const moduleLayersParams = paramEntries.filter(([n]) =>
+			moduleLayersPrefixes.some((prefix) => n.startsWith(prefix))
+		);
+		// Sort each category deterministically by name
+		const hiddenMatrixParams = sortEntriesByName(
+			moduleLayersParams.filter(([n, p]) => p.ndim >= 2 && !n.toLowerCase().includes('embed'))
+		);
+		const scalarParams = sortEntriesByName(moduleLayersParams.filter(([_, p]) => p.ndim < 2));
+		const embedParams = sortEntriesByName(
+			paramEntries.filter(([n, _]) => n.toLowerCase().includes('embed'))
+		);
+		const headParams = sortEntriesByName(paramEntries.filter(([n]) => n.startsWith(lmHeadPrefix)));
+		// Any other params we just throw to AdamW
+		const filteredParams = new Set([
+			...hiddenMatrixParams.map(([n]) => n),
+			...scalarParams.map(([n]) => n),
+			...embedParams.map(([n]) => n),
+			...headParams.map(([n]) => n)
+		]);
+		const remainingParams = paramEntries.filter(([n]) => !filteredParams.has(n));
+
+		if (remainingParams.length > 0) {
+			console.warn(
+				`Found ${remainingParams.length} parameters that don't fit Muon categorization and will be handled by AdamW:`,
+				remainingParams.map(([name]) => name)
+			);
+		}
+
+		// Apply weight decay grouping to each parameter type
+		const paramGroups: MuonWithAdamWParamGroup[] = [];
+
+		// Hidden matrix parameters for Muon optimizer
+		if (trainConfig.weightDecay.useWeightDecayGroups) {
+			const hiddenDecay = hiddenMatrixParams.filter(([name]) => decay.has(name)).map(([_, p]) => p);
+			const hiddenNoDecay = hiddenMatrixParams
+				.filter(([name]) => noDecay.has(name))
+				.map(([_, p]) => p);
+
+			if (hiddenDecay.length > 0) {
+				paramGroups.push({
+					optimizer: 'muon',
+					lr: trainConfig.lr,
+					weightDecay: effectiveWeightDecay,
+					momentum: trainConfig.muon.momentum,
+					nsSteps: trainConfig.muon.nsSteps,
+					nesterov: trainConfig.muon.nesterov,
+					params: hiddenDecay
+				});
+			}
+
+			if (hiddenNoDecay.length > 0) {
+				paramGroups.push({
+					optimizer: 'muon',
+					lr: trainConfig.lr,
+					weightDecay: 0.0, // no decay
+					momentum: trainConfig.muon.momentum,
+					nsSteps: trainConfig.muon.nsSteps,
+					nesterov: trainConfig.muon.nesterov,
+					params: hiddenNoDecay
+				});
+			}
+		} else {
+			if (hiddenMatrixParams.length > 0) {
+				paramGroups.push({
+					optimizer: 'muon',
+					lr: trainConfig.lr,
+					weightDecay: effectiveWeightDecay,
+					momentum: trainConfig.muon.momentum,
+					nsSteps: trainConfig.muon.nsSteps,
+					nesterov: trainConfig.muon.nesterov,
+					params: hiddenMatrixParams.map(([_, p]) => p)
+				});
+			}
+		}
+
+		// Scalar, embedding, and head parameters for AdamW optimizer
+		const adamwParams = sortEntriesByName([
+			...scalarParams,
+			...embedParams,
+			...headParams,
+			...remainingParams
+		]);
+
+		// Check if there is any overlap between the two optimizers getting overlap of adamWparams
+		const adamwParamSet = new Set(adamwParams.map(([n]) => n));
+		const muonParamSet = new Set(hiddenMatrixParams.map(([n]) => n));
+		const overlap = adamwParamSet.intersection(muonParamSet);
+		if (overlap.size > 0) {
+			throw new Error(
+				`Overlap between AdamW and Muon parameters: ${Array.from(overlap).join(', ')}`
+			);
+		}
+
+		if (trainConfig.weightDecay.useWeightDecayGroups) {
+			const adamwDecay = adamwParams.filter(([name]) => decay.has(name)).map(([_, p]) => p);
+			const adamwNoDecay = adamwParams.filter(([name]) => noDecay.has(name)).map(([_, p]) => p);
+
+			if (adamwDecay.length > 0) {
+				paramGroups.push({
+					optimizer: 'adamw',
+					lr: trainConfig.lr,
+					betas: [trainConfig.adam.beta1, trainConfig.adam.beta2],
+					eps: trainConfig.adam.eps,
+					weightDecay: effectiveWeightDecay,
+					amsgrad: trainConfig.adam.amsgrad,
+					params: adamwDecay
+				});
+			}
+
+			if (adamwNoDecay.length > 0) {
+				paramGroups.push({
+					optimizer: 'adamw',
+					lr: trainConfig.lr,
+					betas: [trainConfig.adam.beta1, trainConfig.adam.beta2],
+					eps: trainConfig.adam.eps,
+					weightDecay: 0.0, // no decay
+					amsgrad: trainConfig.adam.amsgrad,
+					params: adamwNoDecay
+				});
+			}
+		} else {
+			if (adamwParams.length > 0) {
+				paramGroups.push({
+					optimizer: 'adamw',
+					lr: trainConfig.lr,
+					betas: [trainConfig.adam.beta1, trainConfig.adam.beta2],
+					eps: trainConfig.adam.eps,
+					weightDecay: effectiveWeightDecay,
+					amsgrad: trainConfig.adam.amsgrad,
+					params: adamwParams.map(([_, p]) => p)
+				});
+			}
+		}
+
+		validateParameterGroups(model, paramGroups, paramDict);
+
+		return new MuonWithAdamW(paramGroups, device, {
+			muon: {
+				lr: trainConfig.lr,
+				weightDecay: effectiveWeightDecay,
+				momentum: trainConfig.muon.momentum,
+				nsSteps: trainConfig.muon.nsSteps,
+				nesterov: trainConfig.muon.nesterov
+			},
+			adamw: {
+				lr: trainConfig.lr,
+				betas: [trainConfig.adam.beta1, trainConfig.adam.beta2],
+				eps: trainConfig.adam.eps,
+				weightDecay: effectiveWeightDecay,
+				amsgrad: trainConfig.adam.amsgrad
+			}
+		});
 	}
 
 	throw new Error(`Unknown optimizer type: ${trainConfig.type}`);

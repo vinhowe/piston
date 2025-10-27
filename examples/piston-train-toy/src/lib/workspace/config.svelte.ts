@@ -73,7 +73,7 @@ const CONFIG_DEFAULTS: Config = {
 		}
 	},
 	optimizer: {
-		type: 'AdamW',
+		type: 'Muon',
 		lr: 1e-3,
 		weightDecay: {
 			present: true,
@@ -90,6 +90,11 @@ const CONFIG_DEFAULTS: Config = {
 			momentum: 0.9,
 			dampening: 0,
 			nesterov: false
+		},
+		muon: {
+			momentum: 0.95,
+			nsSteps: 5,
+			nesterov: true
 		}
 	},
 	version: 1

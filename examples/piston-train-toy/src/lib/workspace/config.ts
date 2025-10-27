@@ -90,7 +90,7 @@ export interface ModelConfig {
 }
 
 export interface OptimizerConfig {
-	type: 'AdamW' | 'Adam' | 'SGD';
+	type: 'AdamW' | 'Adam' | 'SGD' | 'Muon';
 	lr: number;
 	weightDecay: {
 		present: boolean;
@@ -105,6 +105,11 @@ export interface OptimizerConfig {
 	};
 	sgd: {
 		dampening: number;
+		momentum: number;
+		nesterov: boolean;
+	};
+	muon: {
+		nsSteps: number;
 		momentum: number;
 		nesterov: boolean;
 	};
