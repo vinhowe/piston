@@ -1,6 +1,6 @@
 import type { Config } from '$lib/workspace/config';
 
-import { Adam, AdamW, SGD, type Tensor } from '@piston-ml/piston-web';
+import { type Tensor } from '@piston-ml/piston-web';
 import * as piston from '@piston-ml/piston-web';
 
 import type { BuiltData } from './data/pipeline';
@@ -27,6 +27,7 @@ import {
 	createDataloader,
 	createModel
 } from './utils/model';
+import { configureOptimizerForModel } from './utils/optim';
 import { seededRandom } from './utils/random';
 
 // @ts-expect-error polyfill
@@ -116,32 +117,14 @@ export class TrainingSession {
 
 		// Build and store the training data pipeline (iterator bound to current dataset/collate)
 		this.dataPipeline = await buildDataPipeline(this.config, trainGenerator, this.trainDataset);
-
-		const optimizerConfig = this.config.optimizer;
-		const effectiveWeightDecay = optimizerConfig.weightDecay.present
-			? optimizerConfig.weightDecay.value
-			: 0.0;
-		if (optimizerConfig.type === 'AdamW' || optimizerConfig.type === 'Adam') {
-			this.optimizer = new (optimizerConfig.type === 'AdamW' ? AdamW : Adam)(
-				this.model.parameters(),
-				piston.gpu,
-				{
-					lr: optimizerConfig.lr,
-					betas: [optimizerConfig.adam.beta1, optimizerConfig.adam.beta2],
-					eps: optimizerConfig.adam.eps,
-					weightDecay: effectiveWeightDecay,
-					amsgrad: optimizerConfig.adam.amsgrad
-				}
-			);
-		} else if (optimizerConfig.type === 'SGD') {
-			this.optimizer = new SGD(this.model.parameters(), piston.gpu, {
-				lr: optimizerConfig.lr,
-				momentum: optimizerConfig.sgd.momentum,
-				dampening: optimizerConfig.sgd.dampening,
-				weightDecay: effectiveWeightDecay,
-				nesterov: optimizerConfig.sgd.nesterov
-			});
-		}
+		// Create optimizer based on model type, using the (possibly restored) model parameters
+		this.optimizer = configureOptimizerForModel(
+			this.model,
+			isEncoderOnly,
+			isEncoderDecoder,
+			this.config.optimizer,
+			piston.gpu
+		);
 
 		this.model.train();
 
