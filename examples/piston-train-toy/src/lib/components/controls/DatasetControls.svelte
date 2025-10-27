@@ -2,10 +2,12 @@
 	import type { ConfigParameter } from '$lib/train/data/toy/config';
 
 	import { DATASET_CONFIG_METADATA } from '$lib/train/data';
+	import { NATURAL_DATASET_META } from '$lib/train/data/natural';
 	import { config, equalsConfigDefault, resetConfigToDefaults } from '$lib/workspace/config.svelte';
 
 	import CheckboxInput from './checkbox/CheckboxInput.svelte';
 	import DatasetSample from './DatasetSample.svelte';
+	import RadioGroupInput from './radio/RadioGroupInput.svelte';
 	import SelectDataset from './SelectDataset.svelte';
 	import Slider from './Slider.svelte';
 	let { datasetName }: { datasetName: typeof config.data.dataset } = $props();
@@ -20,6 +22,7 @@
 			: undefined
 	);
 	const showMaskRatio = $derived(config.model.topology === 'encoder');
+	const isNatural = $derived(Object.keys(NATURAL_DATASET_META).includes(config.data.dataset));
 
 	const showDivider = $derived(showMaskRatio);
 
@@ -92,6 +95,42 @@
 			</div>
 		{/if}
 	{/key}
+	{#if isNatural}
+		<Slider
+			id="dataset-context-size"
+			label="Context Size"
+			bind:value={config.data.natural.contextSize}
+			min={8}
+			max={1024}
+			step={4}
+			hasDefaultValue={equalsConfigDefault('data.natural.contextSize')}
+			onReset={() => resetConfigToDefaults('data.natural.contextSize')}
+		/>
+		<RadioGroupInput
+			id="dataset-natural-vocab-size"
+			label="Tokenizer Vocabulary Size"
+			name="natural-vocab-size"
+			bind:value={
+				() => String(config.data.natural.vocabSize),
+				(v) =>
+					(config.data.natural.vocabSize =
+						v === 'char' ? 'char' : (parseInt(v) as typeof config.data.natural.vocabSize))
+			}
+			options={[
+				{ value: 'char', label: 'Character-level' },
+				{ value: '512', label: '512' },
+				{ value: '1024', label: '1024' },
+				{ value: '2048', label: '2048' },
+				{ value: '4096', label: '4096' },
+				{ value: '8192', label: '8192' },
+				{ value: '16384', label: '16384' },
+				{ value: '32768', label: '32768' },
+				{ value: '65536', label: '65536' }
+			]}
+			hasDefaultValue={equalsConfigDefault('data.natural.vocabSize')}
+			onReset={() => resetConfigToDefaults('data.natural.vocabSize')}
+		/>
+	{/if}
 	{#if showDivider}
 		<hr class="my-1 border-panel-border-base" />
 	{/if}

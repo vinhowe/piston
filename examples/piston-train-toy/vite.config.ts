@@ -1,5 +1,6 @@
 import { sveltekit } from '@sveltejs/kit/vite';
 import tailwindcss from '@tailwindcss/vite';
+import fs from 'node:fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { defineConfig } from 'vite';
@@ -8,8 +9,25 @@ import wasm from 'vite-plugin-wasm';
 // Get the project root directory
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 
+// Remove large static subfolders we don't want to ship
+const pruneStaticDirs = () => {
+	return {
+		name: 'prune-static-dirs',
+		// After Vite writes bundles (client/server into .svelte-kit/output/*),
+		// remove unwanted static folders from client output to avoid copying into final build
+		async writeBundle() {
+			const root = path.dirname(fileURLToPath(import.meta.url));
+			const clientOut = path.resolve(root, '.svelte-kit', 'output', 'client');
+			const targets = [path.resolve(clientOut, 'tokenized'), path.resolve(clientOut, 'tokenizer')];
+			await Promise.all(
+				targets.map((p) => fs.rm(p, { recursive: true, force: true }).catch(() => {}))
+			);
+		}
+	};
+};
+
 export default defineConfig((_) => ({
-	plugins: [tailwindcss(), sveltekit(), wasm()],
+	plugins: [tailwindcss(), sveltekit(), wasm(), pruneStaticDirs()],
 	worker: {
 		format: 'es',
 		plugins: () => [wasm(), sveltekit()]

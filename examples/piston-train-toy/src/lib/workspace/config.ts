@@ -51,6 +51,10 @@ export interface DataConfig {
 	specialTokens: {
 		includeEos: boolean;
 	};
+	natural: {
+		contextSize: number;
+		vocabSize: 'char' | 512 | 1024 | 2048 | 4096 | 8192 | 16384 | 32768 | 65536;
+	};
 }
 
 export interface PositionEncodingConfig {

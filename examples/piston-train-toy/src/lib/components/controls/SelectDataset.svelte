@@ -24,7 +24,26 @@
 		}));
 	}
 
+	const GROUP_LABELS = {
+		natural: 'Natural Language',
+		toy: 'Toy/Synthetic'
+	};
+
 	const options = $derived(getAvailableDatasets());
+	const optionsGrouped = $derived.by(() => {
+		const groups = options.reduce(
+			(acc, opt) => {
+				acc[opt.type] = acc[opt.type] || [];
+				acc[opt.type].push(opt);
+				return acc;
+			},
+			{} as Record<string, DatasetOption[]>
+		);
+		return Object.entries(groups).map(([type, options]) => ({
+			label: GROUP_LABELS[type as keyof typeof GROUP_LABELS],
+			options
+		}));
+	});
 
 	type $$Props = {
 		value: DatasetName;
@@ -97,7 +116,15 @@
 {/snippet}
 
 <div class="relative w-full">
-	<SelectInput bind:value {options} {label} {id} class={wrapperClass} {hasDefaultValue} {onReset}>
+	<SelectInput
+		bind:value
+		groups={optionsGrouped}
+		{label}
+		{id}
+		class={wrapperClass}
+		{hasDefaultValue}
+		{onReset}
+	>
 		{#snippet option(_opt, _selected)}
 			{@const opt = _opt as DatasetOption}
 			{@render nameAndBadges(opt)}

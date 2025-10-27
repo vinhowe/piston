@@ -14,15 +14,13 @@ import type { BuiltData } from './data/pipeline';
 import type {
 	ToyAutoregressiveBatch,
 	ToyBidirectionalBatch,
-	ToyDatasetLike,
 	ToyEncoderDecoderBatch
 } from './data/toy/dataset';
 import type { RunWorkerEvent, RunWorkerEventWithoutRunId, WorkerEvent } from './protocol';
-import type { GeneratableModel } from './types';
+import type { GeneratableModel, PistonDatasetType } from './types';
 
-import { tensorWrap } from './data';
+import { buildDataset, tensorWrap } from './data';
 import { buildDataPipeline } from './data/pipeline';
-import { buildToyDataset } from './data/toy';
 import {
 	DecoderTransformer,
 	EncoderDecoderTransformer,
@@ -48,7 +46,7 @@ export class TrainingSession {
 	private model!: GeneratableModel;
 	private optimizer!: piston.Optimizer;
 	private scheduler: LRScheduler<unknown> | undefined;
-	private trainDataset!: ToyDatasetLike;
+	private trainDataset!: PistonDatasetType;
 	private blockSize!: number | { source: number; target: number };
 
 	private isSetup: boolean = false;
@@ -91,7 +89,7 @@ export class TrainingSession {
 		// training
 		const trainGenerator = seededRandom();
 
-		this.trainDataset = buildToyDataset(this.config, trainGenerator);
+		this.trainDataset = buildDataset(this.config, trainGenerator, 'train');
 
 		// Calculate vocab size using shared utility
 		const vocabSize = calculateVocabSize(this.trainDataset);

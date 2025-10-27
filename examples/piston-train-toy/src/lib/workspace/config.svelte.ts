@@ -1,8 +1,7 @@
 import type { Config, ModelType } from '$lib/workspace/config';
 
-import { DATASET_CONFIG_METADATA } from '$lib/train/data';
+import { buildDataset, DATASET_CONFIG_METADATA } from '$lib/train/data';
 import { getCollatedSampleData } from '$lib/train/data/collate';
-import { buildToyDataset } from '$lib/train/data/toy';
 import { TOY_DATASET_CONFIG_DEFAULTS } from '$lib/train/data/toy/config';
 import { calculateBlockSize, calculateVocabSize, createDataloader } from '$lib/train/utils/model';
 import { seededRandom } from '$lib/train/utils/random';
@@ -39,7 +38,11 @@ const CONFIG_DEFAULTS: Config = {
 		specialTokens: {
 			includeEos: true
 		},
-		datasets: TOY_DATASET_CONFIG_DEFAULTS
+		datasets: TOY_DATASET_CONFIG_DEFAULTS,
+		natural: {
+			contextSize: 32,
+			vocabSize: 1024
+		}
 	},
 	model: {
 		topology: 'decoder',
@@ -391,25 +394,26 @@ function ensureDatasetSupportsModelType() {
 function datasetFromConfig(config: Config) {
 	ensureDatasetSupportsModelType();
 	const generator = seededRandom();
-	const dataset = buildToyDataset(config, generator);
+	const dataset = buildDataset(config, generator, 'train');
 	const [dataloader, collateFn] = createDataloader(config, dataset, generator, null);
 	const blockSize = calculateBlockSize(config, dataloader);
 	const vocabSize = calculateVocabSize(dataset);
 
 	const collatedData = getCollatedSampleData(dataset, collateFn, 4);
 
-	const firstSample = collatedData.collated[0];
-
 	return {
 		dataset,
 		vocabSize,
 		blockSize,
 		tokenizer: dataset.tokenizer,
-		sampleData: {
-			hasPrompt: 'prompt' in firstSample && (firstSample.prompt?.length ?? 0) > 0,
-			samples: collatedData.samples,
-			collated: collatedData.collated
-		}
+		sampleData: collatedData.then((data) => {
+			const firstSample = data.collated[0];
+			return {
+				hasPrompt: 'prompt' in firstSample && (firstSample.prompt?.length ?? 0) > 0,
+				samples: data.samples,
+				collated: data.collated
+			};
+		})
 	};
 }
 

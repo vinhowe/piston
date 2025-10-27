@@ -14,6 +14,7 @@
     "format": "prettier --write ."
   },
   "dependencies": {
+    "@huggingface/jinja": "^0.5.1",
     "@piston-ml/piston-web": "workspace:^",
     "@types/katex": "^0.16.7",
     "echarts": "^6.0.0",

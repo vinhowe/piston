@@ -3,9 +3,24 @@ import type { Random } from 'random-js';
 import { DataLoader, Tensor } from '@piston-ml/piston-web';
 
 import type { Config } from '../../workspace/config';
-import type { ToyBatchType, ToyCollateFnType, ToyDataloaderType } from '../types';
+import type {
+	NaturalBatchType,
+	NaturalCollateFnType,
+	NaturalDataloaderType,
+	PistonCollateFnType,
+	PistonDataloaderType,
+	PistonDatasetType,
+	ToyBatchType,
+	ToyCollateFnType,
+	ToyDataloaderType
+} from '../types';
 
 import { type CollateWrapFunction } from '../data';
+import {
+	naturalLanguageAutoregressiveCollate,
+	naturalLanguageBidirectionalCollate,
+	NaturalLanguageDataset
+} from '../data/natural';
 import {
 	toyDatasetAutoregressiveCollate,
 	toyDatasetBidirectionalCollate,
@@ -23,7 +38,7 @@ type EncoderDecoderBlockSize = { source: number; target: number };
 /**
  * Calculate the vocabulary size based on the dataset and configuration
  */
-export function calculateVocabSize(dataset: ToyDatasetLike): number {
+export function calculateVocabSize(dataset: PistonDatasetType): number {
 	return 'vocabSize' in dataset
 		? (dataset.vocabSize as number)
 		: Object.keys(dataset.tokenizer.vocab).length;
@@ -31,9 +46,13 @@ export function calculateVocabSize(dataset: ToyDatasetLike): number {
 
 export function calculateBlockSize<T>(
 	config: Config,
-	dataloader: ToyDataloaderType<T>
+	dataloader: PistonDataloaderType<T>
 ): number | EncoderDecoderBlockSize {
-	// Infer lengths without advancing iteration using deterministic index-based generation
+	if (dataloader.dataset instanceof NaturalLanguageDataset) {
+		return config.data.natural.contextSize;
+	}
+
+	// For toy datasets, infer lengths without advancing iteration using deterministic index-based generation
 	const toy = dataloader.dataset as ToyDatasetLike;
 
 	const sample = toy.generateSequenceAt(0);
@@ -60,14 +79,50 @@ export function calculateBlockSize<T>(
 // Overloads for strong typing based on dataset kind
 export function createCollateFn<W = Tensor>(
 	config: Config,
+	dataset: NaturalLanguageDataset,
+	maskGenerator: Random | null,
+	wrapFunction?: CollateWrapFunction<W> | null
+): NaturalCollateFnType<W>;
+export function createCollateFn<W = Tensor>(
+	config: Config,
 	dataset: ToyDatasetLike,
 	maskGenerator: Random | null,
 	wrapFunction?: CollateWrapFunction<W> | null
-): ToyCollateFnType<W> {
+): ToyCollateFnType<W>;
+export function createCollateFn<W = Tensor>(
+	config: Config,
+	dataset: PistonDatasetType,
+	maskGenerator: Random | null,
+	wrapFunction?: CollateWrapFunction<W> | null
+): PistonCollateFnType<W>;
+export function createCollateFn<W = Tensor>(
+	config: Config,
+	dataset: PistonDatasetType,
+	maskGenerator: Random | null,
+	wrapFunction?: CollateWrapFunction<W> | null
+): PistonCollateFnType<W> {
 	const isEncoderOnly = config.model.topology === 'encoder';
 	const isEncoderDecoder = config.model.topology === 'encoder-decoder';
 	const collateOptions = wrapFunction !== undefined ? { wrapFunction } : {};
-	if (isEncoderOnly) {
+	if (dataset instanceof NaturalLanguageDataset) {
+		if (isEncoderDecoder) {
+			throw new Error('Encoder-decoder is not supported for natural language datasets.');
+		}
+		if (isEncoderOnly) {
+			return (batch: number[][]) =>
+				naturalLanguageBidirectionalCollate(batch as number[][], {
+					maskRatio: config.data.maskRatio,
+					generator: maskGenerator!,
+					maskTokenId: dataset.maskId! as number,
+					...collateOptions
+				});
+		} else {
+			return (batch: number[][]) =>
+				naturalLanguageAutoregressiveCollate(batch as number[][], {
+					...collateOptions
+				});
+		}
+	} else if (isEncoderOnly) {
 		return (batch: ToySequence[]) =>
 			toyDatasetBidirectionalCollate(batch as ToySequence[], dataset, {
 				maskPrompt: config.data.trainOnPrompt,
@@ -91,13 +146,40 @@ export function createCollateFn<W = Tensor>(
 
 export function createDataloader<W = Tensor>(
 	config: Config,
+	dataset: NaturalLanguageDataset,
+	generator: Random,
+	wrapFunction?: CollateWrapFunction<W> | null
+): [NaturalDataloaderType<W>, NaturalCollateFnType<W>];
+export function createDataloader<W = Tensor>(
+	config: Config,
 	dataset: ToyDatasetLike,
 	generator: Random,
 	wrapFunction?: CollateWrapFunction<W> | null
-): [ToyDataloaderType<W>, ToyCollateFnType<W>] {
-	const toyDataset = dataset as ToyDatasetLike;
-	const collateFn = createCollateFn(config, toyDataset, generator, wrapFunction);
-	return [new DataLoader<ToySequence, ToyBatchType<W>>(toyDataset, { collateFn }), collateFn];
+): [ToyDataloaderType<W>, ToyCollateFnType<W>];
+export function createDataloader<W = Tensor>(
+	config: Config,
+	dataset: PistonDatasetType,
+	generator: Random,
+	wrapFunction?: CollateWrapFunction<W> | null
+):
+	| [NaturalDataloaderType<W>, NaturalCollateFnType<W>]
+	| [ToyDataloaderType<W>, ToyCollateFnType<W>];
+export function createDataloader<W = Tensor>(
+	config: Config,
+	dataset: PistonDatasetType,
+	generator: Random,
+	wrapFunction?: CollateWrapFunction<W> | null
+):
+	| [NaturalDataloaderType<W>, NaturalCollateFnType<W>]
+	| [ToyDataloaderType<W>, ToyCollateFnType<W>] {
+	if (dataset instanceof NaturalLanguageDataset) {
+		const collateFn = createCollateFn(config, dataset, generator, wrapFunction);
+		return [new DataLoader<number[], NaturalBatchType<W>>(dataset, { collateFn }), collateFn];
+	} else {
+		const toyDataset = dataset as ToyDatasetLike;
+		const collateFn = createCollateFn(config, toyDataset, generator, wrapFunction);
+		return [new DataLoader<ToySequence, ToyBatchType<W>>(toyDataset, { collateFn }), collateFn];
+	}
 }
 
 /**
