@@ -205,7 +205,13 @@ export class Muon extends Optimizer<MuonParamState, MuonConfig, MuonParamGroup> 
           this.state.set(param, state);
         }
 
-        const update = muonUpdate(grad, state.momentumBuffer as Tensor, momentum, nsSteps, nesterov);
+        const update = muonUpdate(
+          grad,
+          state.momentumBuffer as Tensor,
+          momentum,
+          nsSteps,
+          nesterov,
+        );
 
         // Apply weight decay
         if (weightDecay !== 0) {
