@@ -12,6 +12,7 @@
 		metricVisibility,
 		toggleMetricsSection
 	} from '$lib/workspace/ui.svelte';
+	import { sortWithPriority } from '$lib/workspace/utils';
 
 	// Derived state: Automatically tracks metric names from the last 5 runs
 	const metricNames = $derived(getMetricNamesFromLastNRuns(5));
@@ -43,8 +44,19 @@
 		metricVisibility.current = { ...metricVisibility.current, [name]: !current };
 	}
 
+	function getSortedMetrics(groupName: string, metrics: string[]): string[] {
+		let priorities: string[] = [];
+		if (groupName === 'validation') {
+			priorities = ['validation/accuracy'];
+		} else if (groupName === 'train') {
+			priorities = ['train/loss'];
+		}
+		return sortWithPriority(metrics, (m) => m, priorities);
+	}
+
 	function getFilteredMetrics(groupName: string, metrics: string[]): string[] {
-		return metrics.filter((m) => isMetricVisible(m));
+		const sortedMetrics = getSortedMetrics(groupName, metrics);
+		return sortedMetrics.filter((m) => isMetricVisible(m));
 	}
 </script>
 
@@ -56,7 +68,7 @@
 	{:else}
 		<div class="space-y-6">
 			{#each Object.entries(metricGroups).sort(([a], [b]) => {
-				const order = ['train', 'optimizer'];
+				const order = ['validation', 'train', 'optimizer'];
 				const aPriority = order.indexOf(a);
 				const bPriority = order.indexOf(b);
 				return (aPriority === -1 ? 999 : aPriority) - (bPriority === -1 ? 999 : bPriority) || a.localeCompare(b);
@@ -73,7 +85,7 @@
 				>
 					{#snippet chips()}
 						<ToggleChips
-							items={metrics}
+							items={getSortedMetrics(groupName, metrics)}
 							{groupName}
 							isOn={isMetricVisible}
 							onToggle={toggleMetricVisibility}

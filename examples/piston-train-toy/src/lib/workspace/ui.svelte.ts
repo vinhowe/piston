@@ -105,6 +105,32 @@ export function selectTab(tabName: 'about' | 'metrics') {
 	}
 }
 
+let showLowDiversityDatasetError = $state(false);
+
+export function triggerLowDiversityDatasetError() {
+	controlSectionsOpen.current.task = true;
+	showLowDiversityDatasetError = true;
+
+	// Scroll to GPU memory limit after a brief delay to allow section to open
+	setTimeout(() => {
+		const lowDiversityDatasetErrorElement = document.getElementById('low-diversity-dataset-error');
+		if (lowDiversityDatasetErrorElement) {
+			lowDiversityDatasetErrorElement.scrollIntoView({
+				behavior: 'instant',
+				block: 'center'
+			});
+		}
+	}, 100);
+}
+
+export function getShowLowDiversityDatasetError() {
+	return showLowDiversityDatasetError;
+}
+
+export function resetLowDiversityDatasetError() {
+	showLowDiversityDatasetError = false;
+}
+
 const iconStrokeWidth = $derived(isMobile ? 2 : 2.5);
 
 export function getIconStrokeWidth() {
@@ -157,6 +183,10 @@ export function startTraining() {
 
 	if (activeTab.current === 'about') {
 		switchToMetrics();
+	}
+
+	if (getShowLowDiversityDatasetError()) {
+		resetLowDiversityDatasetError();
 	}
 
 	workerStartTraining();

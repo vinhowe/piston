@@ -19,6 +19,13 @@ const CONFIG_DEFAULTS: Config = {
 	training: {
 		logSteps: 5,
 		batchSize: 32,
+		validation: {
+			present: true,
+			valSteps: 100,
+			batchSize: 8,
+			temperature: 0.0,
+			useKvCache: false
+		},
 		dropout: {
 			present: false,
 			embedding: 0.1,

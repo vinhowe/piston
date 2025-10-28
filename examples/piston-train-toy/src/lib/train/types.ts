@@ -33,6 +33,12 @@ export type ToyBatchType<W> =
 	| ToyAutoregressiveBatch<W>;
 
 export type EncoderDecoderBatchType<W> = ToyEncoderDecoderBatch<W>;
+export type BidirectionalBatchType<W> =
+	| ToyBidirectionalBatch<W>
+	| NaturalLanguageBidirectionalBatch<W>;
+export type AutoregressiveBatchType<W> =
+	| ToyAutoregressiveBatch<W>
+	| NaturalLanguageAutoregressiveBatch<W>;
 
 export type ToyAutoregressiveCollateFnType<W> = CollateFn<
 	ToyCollateInput,

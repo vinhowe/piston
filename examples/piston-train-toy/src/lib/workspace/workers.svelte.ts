@@ -1,4 +1,5 @@
 import { currentRun, log } from './runs.svelte';
+import { triggerLowDiversityDatasetError } from './ui.svelte';
 
 // Train state
 let trainWorker: Worker | null = $state(null);
@@ -52,7 +53,15 @@ export async function initializeWorker() {
 						break;
 
 					case 'error':
-						console.error(`[Main] Training error for run ${data.runId}:`, data.message);
+						if (data.name === 'LowDiversityDatasetError') {
+							console.error(
+								`[Main] Low diversity dataset error for run ${data.runId}:`,
+								data.message
+							);
+							triggerLowDiversityDatasetError();
+						} else {
+							console.error(`[Main] Training error for run ${data.runId}:`, data.message);
+						}
 						workerStopTraining();
 						break;
 				}

@@ -29,10 +29,19 @@ export interface DropoutConfig {
 	};
 }
 
+export interface ValidationConfig {
+	present: boolean;
+	valSteps: number;
+	batchSize: number;
+	temperature: number;
+	useKvCache: boolean;
+}
+
 export interface TrainingConfig {
 	logSteps: number;
 	batchSize: number;
 	dropout: DropoutConfig;
+	validation: ValidationConfig;
 	sharedObjectAllocation: boolean;
 	cachingEnabled: boolean;
 	inplaceSupport: boolean;

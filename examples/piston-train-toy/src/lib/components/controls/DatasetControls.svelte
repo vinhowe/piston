@@ -4,8 +4,10 @@
 	import { DATASET_CONFIG_METADATA } from '$lib/train/data';
 	import { NATURAL_DATASET_META } from '$lib/train/data/natural';
 	import { config, equalsConfigDefault, resetConfigToDefaults } from '$lib/workspace/config.svelte';
+	import { getShowLowDiversityDatasetError } from '$lib/workspace/ui.svelte';
 
 	import CheckboxInput from './checkbox/CheckboxInput.svelte';
+	import ControlsNote from './ControlsNote.svelte';
 	import DatasetSample from './DatasetSample.svelte';
 	import RadioGroupInput from './radio/RadioGroupInput.svelte';
 	import SelectDataset from './SelectDataset.svelte';
@@ -56,6 +58,18 @@
 <p class="-mt-1 mb-1 mx-0.5 text-sm py-1">{datasetConfigMetadata?.description}</p>
 
 <DatasetSample />
+
+{#if getShowLowDiversityDatasetError()}
+	<div id="low-diversity-dataset-error" class="error-flash">
+		<ControlsNote label="Low Diversity" type="error">
+			<p>
+				Not enough example diversity in the training dataset for a held-out validation set of size {config
+					.training.validation.batchSize}. Consider changing dataset parameters or reducing the
+				validation batch size.
+			</p>
+		</ControlsNote>
+	</div>
+{/if}
 
 <div class="flex flex-col gap-1">
 	{#key datasetName}

@@ -315,6 +315,38 @@
 			onReset={() => resetConfigToDefaults('training.batchSize')}
 		/>
 
+		<ToggleGroup
+			id="validation-control"
+			title="Validation"
+			showEnableToggle={true}
+			bind:enabled={config.training.validation.present}
+			contentClass={sectionClass}
+			hasDefaultValue={equalsConfigDefault('training.validation.present')}
+			onReset={() => resetConfigToDefaults('training.validation.present')}
+		>
+			<Slider
+				id="training-validation-val-steps"
+				label="Validate Every $k$ Steps"
+				bind:value={config.training.validation.valSteps}
+				min={1}
+				max={100}
+				step={1}
+				hasDefaultValue={equalsConfigDefault('training.validation.valSteps')}
+				onReset={() => resetConfigToDefaults('training.validation.valSteps')}
+			/>
+			<Slider
+				label="Number of Examples Held-out for Validation"
+				id="training-validation-batch-size"
+				bind:value={config.training.validation.batchSize}
+				min={1}
+				max={1024}
+				step={1}
+				base={2}
+				hasDefaultValue={equalsConfigDefault('training.validation.batchSize')}
+				onReset={() => resetConfigToDefaults('training.validation.batchSize')}
+			/>
+		</ToggleGroup>
+
 		<BorderedGroup title="Regularization" contentClass={sectionClass}>
 			<!-- Dropout -->
 			<ToggleGroup
@@ -613,6 +645,29 @@
 </div>
 
 <style>
+	:global(.error-flash) {
+		animation: error-flash 1s steps(1);
+	}
+
+	@keyframes error-flash {
+		0%,
+		100% {
+			box-shadow: none;
+		}
+		12.5% {
+			box-shadow: 0 0 0 calc(var(--spacing) * 0.75) var(--color-red-500);
+		}
+		25% {
+			box-shadow: none;
+		}
+		37.5% {
+			box-shadow: 0 0 0 calc(var(--spacing) * 0.75) var(--color-red-500);
+		}
+		50% {
+			box-shadow: none;
+		}
+	}
+
 	:global(#mlp-control:target),
 	:global(#dropout-control:target),
 	:global(#model-layer-normalization-control:target),

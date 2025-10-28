@@ -14,12 +14,14 @@ import type { BuiltData } from './data/pipeline';
 import type {
 	ToyAutoregressiveBatch,
 	ToyBidirectionalBatch,
-	ToyEncoderDecoderBatch
+	ToyEncoderDecoderBatch,
+	ToySequence
 } from './data/toy/dataset';
 import type { RunWorkerEvent, RunWorkerEventWithoutRunId, WorkerEvent } from './protocol';
-import type { GeneratableModel, PistonDatasetType } from './types';
+import type { GeneratableModel, PistonCollateFnType, PistonDatasetType } from './types';
 
 import { buildDataset, tensorWrap } from './data';
+import { filterDatasetByHeldoutSamples } from './data/filter';
 import { buildDataPipeline } from './data/pipeline';
 import {
 	DecoderTransformer,
@@ -29,11 +31,17 @@ import {
 import {
 	calculateBlockSize,
 	calculateVocabSize,
+	createCollateFn,
 	createDataloader,
 	createModel
 } from './utils/model';
 import { configureOptimizerForModel } from './utils/optim';
-import { seededRandom } from './utils/random';
+import { forkRandom, seededRandom } from './utils/random';
+import {
+	computeLikelihoodMetrics,
+	prepareValidationExamples,
+	type ValidationExamples
+} from './validation';
 
 // @ts-expect-error polyfill
 Symbol.dispose ||= Symbol.for('Symbol.dispose');
@@ -57,6 +65,10 @@ export class TrainingSession {
 	private stepCount: number = 0;
 
 	private dataPipeline!: BuiltData;
+
+	private validationExamples: ValidationExamples | null = null;
+	private validationCollateFn: PistonCollateFnType<Tensor> | null = null;
+	private validationDataset: PistonDatasetType | null = null;
 
 	constructor(runId: string, config: Config, post: (e: WorkerEvent) => void) {
 		this.runId = runId;
@@ -88,8 +100,60 @@ export class TrainingSession {
 		// Set up dataset; we use two generators so we change validation parameters without affecting
 		// training
 		const trainGenerator = seededRandom();
+		const maskGenerator = isEncoderOnly ? forkRandom(trainGenerator) : null;
 
 		this.trainDataset = buildDataset(this.config, trainGenerator, 'train');
+		const validationDisabled =
+			('disableValidation' in this.trainDataset && this.trainDataset.disableValidation) || false;
+
+		this.validationExamples = null;
+		this.validationCollateFn = null;
+		this.validationDataset = null;
+
+		if (this.config.training.validation.present && !validationDisabled) {
+			const validationGenerator = forkRandom(trainGenerator);
+			this.validationDataset = buildDataset(this.config, validationGenerator, 'val');
+			this.validationCollateFn = createCollateFn(
+				this.config,
+				this.validationDataset,
+				maskGenerator,
+				tensorWrap
+			);
+			this.validationExamples = await prepareValidationExamples(
+				this.config,
+				this.validationDataset,
+				{
+					isDecoderOnly,
+					isEncoderDecoder
+				}
+			);
+			// Filter training dataset against holdout examples without duplication
+			let validationSequences: ToySequence[] | number[][];
+			if ('toySequences' in this.validationExamples) {
+				validationSequences = this.validationExamples.toySequences;
+				this.trainDataset = filterDatasetByHeldoutSamples(
+					this.trainDataset,
+					this.config.data.dataset,
+					validationSequences
+				);
+			} else if ('naturalSequences' in this.validationExamples) {
+				validationSequences = this.validationExamples.naturalSequences;
+				this.trainDataset = filterDatasetByHeldoutSamples(
+					this.trainDataset,
+					this.config.data.dataset,
+					validationSequences
+				);
+			} else {
+				throw new Error('Unsupported validation dataset');
+			}
+			console.debug(
+				`Prepared ${validationSequences.length} validation examples for batch generation`
+			);
+		}
+
+		if (validationDisabled) {
+			console.debug('Validation disabled by dataset; skipping validation and holdout filtering.');
+		}
 
 		// Calculate vocab size using shared utility
 		const vocabSize = calculateVocabSize(this.trainDataset);
@@ -122,7 +186,12 @@ export class TrainingSession {
 		this.model = createModel(this.config, vocabSize, blockSize);
 
 		// Build and store the training data pipeline (iterator bound to current dataset/collate)
-		this.dataPipeline = await buildDataPipeline(this.config, trainGenerator, this.trainDataset);
+		this.dataPipeline = await buildDataPipeline(
+			this.config,
+			trainGenerator,
+			maskGenerator,
+			this.trainDataset
+		);
 		// Create optimizer based on model type, using the (possibly restored) model parameters
 		this.optimizer = configureOptimizerForModel(
 			this.model,
@@ -181,7 +250,7 @@ export class TrainingSession {
 			this.lastLogStep = this.stepCount;
 		}
 		try {
-			const iterNext = await this.dataPipeline.iterator.next();
+			const iterNext = await this.dataPipeline.train.iterator.next();
 			if (iterNext.done) {
 				return { done: true, value: 'completed' };
 			}
@@ -254,6 +323,40 @@ export class TrainingSession {
 			// Step learning rate scheduler if present
 			if (this.scheduler) {
 				this.scheduler.step();
+			}
+
+			if (
+				this.config.training.validation.present &&
+				this.stepCount % this.config.training.validation.valSteps === 0 &&
+				this.validationExamples &&
+				this.validationDataset &&
+				this.validationCollateFn
+			) {
+				try {
+					let valLoss = Number.NaN;
+					let perplexity = Number.NaN;
+					const validationLog: Record<string, number> = {};
+
+					if (this.validationExamples) {
+						const result = await computeLikelihoodMetrics(
+							this.model,
+							this.validationExamples!,
+							this.validationCollateFn!
+						);
+
+						valLoss = result.valLoss;
+						perplexity = result.perplexity;
+
+						const logData: Record<string, number> = {
+							...validationLog,
+							'validation/loss': valLoss,
+							'validation/perplexity': perplexity
+						};
+						this.logMetrics(logData, { step: this.stepCount });
+					}
+				} catch (error) {
+					console.error('Error during batch validation:', error);
+				}
 			}
 
 			if (loggingStep) {
