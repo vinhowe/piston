@@ -50,6 +50,10 @@ export interface TrainingConfig {
 	batchSize: number;
 	dropout: DropoutConfig;
 	validation: ValidationConfig;
+	vramLimitMb: {
+		present: boolean;
+		value: number;
+	};
 	useWeakTensorReferences: boolean;
 	sharedObjectAllocation: boolean;
 	cachingEnabled: boolean;

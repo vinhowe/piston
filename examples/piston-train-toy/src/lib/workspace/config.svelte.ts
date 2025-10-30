@@ -43,7 +43,11 @@ const CONFIG_DEFAULTS: Config = {
 		useWeakTensorReferences: true,
 		sharedObjectAllocation: false,
 		cachingEnabled: false,
-		inplaceSupport: true
+		inplaceSupport: true,
+		vramLimitMb: {
+			present: true,
+			value: 4096
+		}
 	},
 	data: {
 		dataset: 'sort',

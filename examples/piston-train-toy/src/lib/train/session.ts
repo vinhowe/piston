@@ -110,6 +110,10 @@ export class TrainingSession {
 		const isDecoderOnly = this.config.model.topology === 'decoder';
 		const isEncoderDecoder = this.config.model.topology === 'encoder-decoder';
 
+		if (this.config.training.vramLimitMb.present) {
+			piston.gpu.setVRAMLimit(BigInt(this.config.training.vramLimitMb.value * 1024 * 1024));
+		}
+
 		// Ensure shared-object allocation is enabled so buffer handles are stable across steps
 		piston.gpu.setSharedObjectAllocationEnabled(this.config.training.sharedObjectAllocation);
 		piston.gpu.setCachingEnabled(this.config.training.cachingEnabled);

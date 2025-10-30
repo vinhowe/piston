@@ -443,6 +443,35 @@
 				/>
 			</ToggleGroup>
 		</BorderedGroup>
+
+		<ToggleGroup
+			id="training-vram-limit-group"
+			title="GPU Memory Limit"
+			showEnableToggle={true}
+			bind:enabled={config.training.vramLimitMb.present}
+			hasDefaultValue={equalsConfigDefault('training.vramLimitMb.present')}
+			onReset={() => resetConfigToDefaults('training.vramLimitMb.present')}
+		>
+			<Slider
+				id="training-vram-limit-value"
+				bind:value={config.training.vramLimitMb.value}
+				unit="MB"
+				min={1}
+				max={2 ** 17}
+				step={1}
+				base={2}
+				tickFormatter={(value) => {
+					if (value >= 1024) {
+						const gb = value / 1024;
+						const gbStr = gb % 1 === 0 ? `${gb}GB` : `${gb.toFixed(1)}GB`;
+						return gbStr;
+					}
+					return `${value}MB`;
+				}}
+				hasDefaultValue={equalsConfigDefault('training.vramLimitMb.value')}
+				onReset={() => resetConfigToDefaults('training.vramLimitMb.value')}
+			/>
+		</ToggleGroup>
 	</CollapsibleSection>
 
 	<!-- Optimizer Section -->

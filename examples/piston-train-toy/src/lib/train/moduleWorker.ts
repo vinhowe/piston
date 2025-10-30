@@ -43,6 +43,22 @@ function sendLog(level: string, message: string, source: string = '[Worker]') {
 	const wasmLogRegex = /^\[WASM ([^:]+):(\d+)(?::(\d+))?\] (.*)$/;
 	const match = message.match(wasmLogRegex);
 
+	if (level === 'error' && message.startsWith('panicked at')) {
+		const lines = message.split('\n');
+		if (lines[1].startsWith('VRAM limit exceeded')) {
+			self.postMessage({ type: 'log', level: 'error', message: lines[1] });
+			self.postMessage({
+				type: 'error',
+				runId: session?.runId,
+				message: 'VRAM limit exceeded',
+				name: 'VRAMLimitExceededError'
+			});
+			return;
+		} else {
+			self.postMessage({ type: 'error', runId: session?.runId, message });
+		}
+	}
+
 	if (match) {
 		// Handle WASM logs with parsed source info
 		const [, filepath, lineno, colno, actualMessage] = match;

@@ -105,6 +105,33 @@ export function selectTab(tabName: 'about' | 'metrics') {
 	}
 }
 
+let flashVramLimit = $state(false);
+
+export function triggerVramLimitFlash() {
+	controlSectionsOpen.current.training = true;
+
+	// Scroll to GPU memory limit after a brief delay to allow section to open
+	setTimeout(() => {
+		const trainingVramLimitElement = document.getElementById('training-vram-limit');
+		flashVramLimit = true;
+		if (trainingVramLimitElement) {
+			trainingVramLimitElement.scrollIntoView({
+				behavior: 'instant',
+				block: 'center'
+			});
+			trainingVramLimitElement.classList.add('error-flash');
+			setTimeout(() => {
+				trainingVramLimitElement.classList.remove('error-flash');
+				flashVramLimit = false;
+			}, 1000);
+		}
+	}, 100);
+}
+
+export function getFlashVramLimit() {
+	return flashVramLimit;
+}
+
 let showLowDiversityDatasetError = $state(false);
 
 export function triggerLowDiversityDatasetError() {
