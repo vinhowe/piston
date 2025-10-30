@@ -40,6 +40,7 @@ const CONFIG_DEFAULTS: Config = {
 				residual: 0.1
 			}
 		},
+		useWeakTensorReferences: true,
 		sharedObjectAllocation: false,
 		cachingEnabled: false,
 		inplaceSupport: true

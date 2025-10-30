@@ -673,6 +673,13 @@
 		contentClass={collapsibleSectionClass}
 	>
 		<CheckboxInput
+			id="training-use-weak-tensor-references"
+			label="Use Weak Tensor References"
+			bind:checked={config.training.useWeakTensorReferences}
+			hasDefaultValue={equalsConfigDefault('training.useWeakTensorReferences')}
+			onReset={() => resetConfigToDefaults('training.useWeakTensorReferences')}
+		/>
+		<CheckboxInput
 			id="training-shared-object-allocation"
 			label="Shared Object Allocation"
 			bind:checked={config.training.sharedObjectAllocation}

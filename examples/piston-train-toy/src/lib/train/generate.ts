@@ -4,7 +4,7 @@
 
 import type { Device, Tensor } from '@piston-ml/piston-web';
 
-import { int32, tensor } from '@piston-ml/piston-web';
+import { int32, tensor, WeakTensorFunctionMode } from '@piston-ml/piston-web';
 
 import type { GeneratableModel } from './types';
 
@@ -117,71 +117,79 @@ export async function* generateGPTStream(
 	let step = 0;
 	const getTokensPerSecond = startTokensPerSecondTracker();
 	while (true) {
-		// Seed cache once with full sequences, then switch to single-token steps
-		const prevLengths = results.map((seq) => seq.length);
-		let inputTensor: Tensor;
-		if (kvCache && seeded) {
-			const latestTokens = results.map((seq) => [seq[seq.length - 1] ?? 0]);
-			inputTensor = createInputTensor(latestTokens, device);
-		} else {
-			const { padded } = rightPadSequences(results);
-			inputTensor = createInputTensor(padded, device);
-		}
+		const weakMode = new WeakTensorFunctionMode();
+		try {
+			weakMode.markWeak(kvCache);
+			// Seed cache once with full sequences, then switch to single-token steps
+			const prevLengths = results.map((seq) => seq.length);
+			let inputTensor: Tensor;
+			if (kvCache && seeded) {
+				const latestTokens = results.map((seq) => [seq[seq.length - 1] ?? 0]);
+				inputTensor = createInputTensor(latestTokens, device);
+			} else {
+				const { padded } = rightPadSequences(results);
+				inputTensor = createInputTensor(padded, device);
+			}
 
-		// Forward pass to get logits
-		const [logits, _] = model.forward(inputTensor, { kvCache });
+			// Forward pass to get logits
+			const [logits, _] = model.forward(inputTensor, { kvCache });
+			weakMode.pin(kvCache);
 
-		// Get logits for the last token in each sequence
-		const [batchSize, seqLen, vocabSize] = logits.size();
-		let lastTokenLogits = logits
-			.slice([
-				[0, batchSize],
-				[seqLen - 1, seqLen],
-				[0, vocabSize]
-			])
-			.view([batchSize, vocabSize]);
+			// Get logits for the last token in each sequence
+			const [batchSize, seqLen, vocabSize] = logits.size();
+			let lastTokenLogits = logits
+				.slice([
+					[0, batchSize],
+					[seqLen - 1, seqLen],
+					[0, vocabSize]
+				])
+				.view([batchSize, vocabSize]);
 
-		if (config.temperature && config.temperature > 0) {
-			lastTokenLogits = lastTokenLogits.div(config.temperature);
-		}
+			if (config.temperature && config.temperature > 0) {
+				lastTokenLogits = lastTokenLogits.div(config.temperature);
+			}
 
-		lastTokenLogits = lastTokenLogits.softmax(-1);
+			lastTokenLogits = lastTokenLogits.softmax(-1);
 
-		// Choose next tokens: sample when temperature > 0, else greedy argmax
-		const nextTokenTensor =
-			config.temperature && config.temperature > 0
-				? lastTokenLogits.multinomial(1, { replacement: false })
-				: lastTokenLogits.argmax({ dim: -1 });
-		const nextTokensArray = await tensorToTokens(nextTokenTensor);
+			// Choose next tokens: sample when temperature > 0, else greedy argmax
+			const nextTokenTensor =
+				config.temperature && config.temperature > 0
+					? lastTokenLogits.multinomial(1, { replacement: false })
+					: lastTokenLogits.argmax({ dim: -1 });
+			const nextTokensArray = await tensorToTokens(nextTokenTensor);
 
-		// Update sequences and check for stop conditions
-		const shouldContinue = shouldContinueGeneration(results, nextTokensArray, stopTokenSet);
-		// Compute tokens appended this step across active sequences
-		let appendedThisStep = 0;
-		for (let i = 0; i < results.length; i++) {
-			appendedThisStep += results[i].length - prevLengths[i];
-		}
-		const tokensPerSecond = getTokensPerSecond(appendedThisStep);
+			// Update sequences and check for stop conditions
+			const shouldContinue = shouldContinueGeneration(results, nextTokensArray, stopTokenSet);
+			// Compute tokens appended this step across active sequences
+			let appendedThisStep = 0;
+			for (let i = 0; i < results.length; i++) {
+				appendedThisStep += results[i].length - prevLengths[i];
+			}
+			const tokensPerSecond = getTokensPerSecond(appendedThisStep);
 
-		// Yield current state with sequences and logits
-		yield {
-			sequences: isBatch ? results.map((seq) => [...seq]) : [results[0].slice()],
-			probs: lastTokenLogits, // Provide the softmax'd logits for the last token
-			tokensPerSecond
-		};
+			weakMode.pin([results, lastTokenLogits]);
+			// Yield current state with sequences and logits
+			yield {
+				sequences: isBatch ? results.map((seq) => [...seq]) : [results[0].slice()],
+				probs: lastTokenLogits, // Provide the softmax'd logits for the last token
+				tokensPerSecond
+			};
 
-		// Mark cache as seeded after first forward with cache
-		if (kvCache && !seeded) seeded = true;
+			// Mark cache as seeded after first forward with cache
+			if (kvCache && !seeded) seeded = true;
 
-		// If all sequences hit stop tokens, break
-		if (!shouldContinue) {
-			break;
-		}
+			// If all sequences hit stop tokens, break
+			if (!shouldContinue) {
+				break;
+			}
 
-		step++;
+			step++;
 
-		if (config.maxTokens !== undefined && step >= config.maxTokens) {
-			break;
+			if (config.maxTokens !== undefined && step >= config.maxTokens) {
+				break;
+			}
+		} finally {
+			weakMode[Symbol.dispose]();
 		}
 	}
 }
@@ -215,81 +223,89 @@ export async function* generateTransformerStream(
 	const getTokensPerSecond = startTokensPerSecondTracker();
 
 	while (step < maxTargetLength) {
-		// Seed cache once with full targets, then switch to single-token steps
-		const prevLengths = targetResults.map((seq) => seq.length);
-		let targetTensor: Tensor;
-		let tgtPaddingMask: Tensor | null = null;
-		if (kvCache && seeded) {
-			const latestTargets = targetResults.map((seq) => [seq[seq.length - 1] ?? startToken]);
-			targetTensor = createInputTensor(latestTargets, device);
-			// No padding mask needed for single-token incremental step
-			tgtPaddingMask = null;
-		} else {
-			const { padded: paddedTargets, paddingMask } = rightPadSequences(
-				targetResults,
-				Array.isArray(config.stopTokens) ? config.stopTokens[0] : config.stopTokens
-			);
-			targetTensor = createInputTensor(paddedTargets, device);
-			tgtPaddingMask = tensor(paddingMask, { device, dtype: int32 });
-		}
+		const weakMode = new WeakTensorFunctionMode();
+		try {
+			weakMode.markWeak(kvCache);
+			// Seed cache once with full targets, then switch to single-token steps
+			const prevLengths = targetResults.map((seq) => seq.length);
+			let targetTensor: Tensor;
+			let tgtPaddingMask: Tensor | null = null;
+			if (kvCache && seeded) {
+				const latestTargets = targetResults.map((seq) => [seq[seq.length - 1] ?? startToken]);
+				targetTensor = createInputTensor(latestTargets, device);
+				// No padding mask needed for single-token incremental step
+				tgtPaddingMask = null;
+			} else {
+				const { padded: paddedTargets, paddingMask } = rightPadSequences(
+					targetResults,
+					Array.isArray(config.stopTokens) ? config.stopTokens[0] : config.stopTokens
+				);
+				targetTensor = createInputTensor(paddedTargets, device);
+				tgtPaddingMask = tensor(paddingMask, { device, dtype: int32 });
+			}
 
-		// Use the model's forward method with pre-computed encoder hidden states
-		const [logits, _] = model.forward(null, targetTensor, {
-			tgtPaddingMask,
-			encoderHiddenStates,
-			kvCache
-		});
+			// Use the model's forward method with pre-computed encoder hidden states
+			const [logits, _] = model.forward(null, targetTensor, {
+				tgtPaddingMask,
+				encoderHiddenStates,
+				kvCache
+			});
+			weakMode.pin(kvCache);
 
-		// Get logits for the last token in each sequence
-		const [batchSize, seqLen, vocabSize] = logits.size();
-		let lastTokenLogits = logits
-			.slice([
-				[0, batchSize],
-				[seqLen - 1, seqLen],
-				[0, vocabSize]
-			])
-			.view([batchSize, vocabSize]);
+			// Get logits for the last token in each sequence
+			const [batchSize, seqLen, vocabSize] = logits.size();
+			let lastTokenLogits = logits
+				.slice([
+					[0, batchSize],
+					[seqLen - 1, seqLen],
+					[0, vocabSize]
+				])
+				.view([batchSize, vocabSize]);
 
-		if (config.temperature) {
-			lastTokenLogits = lastTokenLogits.div(config.temperature);
-		}
+			if (config.temperature) {
+				lastTokenLogits = lastTokenLogits.div(config.temperature);
+			}
 
-		lastTokenLogits = lastTokenLogits.softmax(-1);
+			lastTokenLogits = lastTokenLogits.softmax(-1);
 
-		// Choose next tokens: sample when temperature > 0, else greedy argmax
-		const nextTokenTensor =
-			config.temperature && config.temperature > 0
-				? lastTokenLogits.multinomial(1, { replacement: false })
-				: lastTokenLogits.argmax({ dim: -1 });
-		const nextTokensArray = await tensorToTokens(nextTokenTensor);
+			// Choose next tokens: sample when temperature > 0, else greedy argmax
+			const nextTokenTensor =
+				config.temperature && config.temperature > 0
+					? lastTokenLogits.multinomial(1, { replacement: false })
+					: lastTokenLogits.argmax({ dim: -1 });
+			const nextTokensArray = await tensorToTokens(nextTokenTensor);
 
-		// Update sequences and check for stop conditions
-		const shouldContinue = shouldContinueGeneration(targetResults, nextTokensArray, stopTokenSet);
+			// Update sequences and check for stop conditions
+			const shouldContinue = shouldContinueGeneration(targetResults, nextTokensArray, stopTokenSet);
 
-		// Yield current state with sequences and logits
-		let appendedThisStep = 0;
-		for (let i = 0; i < targetResults.length; i++) {
-			appendedThisStep += targetResults[i].length - prevLengths[i];
-		}
-		const tokensPerSecond = getTokensPerSecond(appendedThisStep);
-		yield {
-			sequences: isBatch ? targetResults.map((seq) => [...seq]) : [targetResults[0].slice()],
-			probs: lastTokenLogits, // Provide the logits for the last token
-			tokensPerSecond
-		};
+			// Yield current state with sequences and logits
+			weakMode.pin([targetResults, lastTokenLogits]);
+			let appendedThisStep = 0;
+			for (let i = 0; i < targetResults.length; i++) {
+				appendedThisStep += targetResults[i].length - prevLengths[i];
+			}
+			const tokensPerSecond = getTokensPerSecond(appendedThisStep);
+			yield {
+				sequences: isBatch ? targetResults.map((seq) => [...seq]) : [targetResults[0].slice()],
+				probs: lastTokenLogits, // Provide the logits for the last token
+				tokensPerSecond
+			};
 
-		// Mark cache as seeded after first forward with cache
-		if (kvCache && !seeded) seeded = true;
+			// Mark cache as seeded after first forward with cache
+			if (kvCache && !seeded) seeded = true;
 
-		// If all sequences hit stop tokens, break
-		if (!shouldContinue) {
-			break;
-		}
+			// If all sequences hit stop tokens, break
+			if (!shouldContinue) {
+				break;
+			}
 
-		step++;
+			step++;
 
-		if (config.maxTokens !== undefined && step >= config.maxTokens) {
-			break;
+			if (config.maxTokens !== undefined && step >= config.maxTokens) {
+				break;
+			}
+		} finally {
+			weakMode[Symbol.dispose]();
 		}
 	}
 }

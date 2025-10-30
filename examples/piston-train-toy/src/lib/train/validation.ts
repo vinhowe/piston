@@ -1,7 +1,7 @@
 import type { Config, ValidationConfig } from '$lib/workspace/config';
 import type { BaseStepData, TokenRollout } from '$lib/workspace/runs.svelte';
 
-import { type Tensor } from '@piston-ml/piston-web';
+import { type Tensor, weak } from '@piston-ml/piston-web';
 import { MersenneTwister19937, Random } from 'random-js';
 
 import type { ToyValidationMetrics } from './data/toy/types';
@@ -473,56 +473,59 @@ export async function computeLikelihoodMetrics(
 	sequences: ValidationExamples,
 	collateFn: PistonCollateFnType<Tensor>
 ): Promise<{ valLoss: number; perplexity: number }> {
-	model.eval();
+	return await weak(async () => {
+		model.eval();
 
-	let valLoss: number | null = null;
-	try {
-		let collated;
-		if ('toySequences' in sequences) {
-			collated = (collateFn as ToyCollateFnType<Tensor>)(sequences.toySequences);
-		} else {
-			collated = (collateFn as NaturalCollateFnType<Tensor>)(sequences.naturalSequences);
+		let valLoss: number | null = null;
+		try {
+			let collated;
+			if ('toySequences' in sequences) {
+				collated = (collateFn as ToyCollateFnType<Tensor>)(sequences.toySequences);
+			} else {
+				collated = (collateFn as NaturalCollateFnType<Tensor>)(sequences.naturalSequences);
+			}
+
+			let loss: Tensor | null = null;
+			let modelName = '';
+			if (model instanceof DecoderTransformer) {
+				const [inputs, targets] = collated.tensors;
+				[, loss] = model.forward(await inputs.to('gpu'), {
+					targets: await targets.to('gpu')
+				});
+				modelName = 'decoder-only';
+			} else if (model instanceof EncoderDecoderTransformer) {
+				const [encoderInputs, decoderInputs, decoderTargets] = (
+					collated as EncoderDecoderBatchType<Tensor>
+				).tensors;
+				[, loss] = model.forward(await encoderInputs.to('gpu'), await decoderInputs.to('gpu'), {
+					targets: await decoderTargets.to('gpu')
+				});
+				modelName = 'encoder-decoder';
+			} else if (model instanceof EncoderTransformer) {
+				// Encoder-only: compute MLM loss over masked tokens
+				const [inputs, labels, attentionMask] = (collated as BidirectionalBatchType<Tensor>)
+					.tensors;
+				modelName = 'encoder-only';
+				[, , , loss] = model.forward(await inputs.to('gpu'), {
+					attentionMask: await attentionMask.to('gpu'),
+					targets: await labels.to('gpu')
+				});
+			} else {
+				throw new Error('Unsupported model for validation');
+			}
+
+			if (!loss) {
+				throw new Error(`No loss tensor returned from ${modelName} model during validation`);
+			}
+			valLoss = await (await loss.to('cpu')).item();
+			if (valLoss === null) {
+				throw new Error(`Validation loss item is null for ${modelName} model`);
+			}
+		} finally {
+			model.train();
 		}
 
-		let loss: Tensor | null = null;
-		let modelName = '';
-		if (model instanceof DecoderTransformer) {
-			const [inputs, targets] = collated.tensors;
-			[, loss] = model.forward(await inputs.to('gpu'), {
-				targets: await targets.to('gpu')
-			});
-			modelName = 'decoder-only';
-		} else if (model instanceof EncoderDecoderTransformer) {
-			const [encoderInputs, decoderInputs, decoderTargets] = (
-				collated as EncoderDecoderBatchType<Tensor>
-			).tensors;
-			[, loss] = model.forward(await encoderInputs.to('gpu'), await decoderInputs.to('gpu'), {
-				targets: await decoderTargets.to('gpu')
-			});
-			modelName = 'encoder-decoder';
-		} else if (model instanceof EncoderTransformer) {
-			// Encoder-only: compute MLM loss over masked tokens
-			const [inputs, labels, attentionMask] = (collated as BidirectionalBatchType<Tensor>).tensors;
-			modelName = 'encoder-only';
-			[, , , loss] = model.forward(await inputs.to('gpu'), {
-				attentionMask: await attentionMask.to('gpu'),
-				targets: await labels.to('gpu')
-			});
-		} else {
-			throw new Error('Unsupported model for validation');
-		}
-
-		if (!loss) {
-			throw new Error(`No loss tensor returned from ${modelName} model during validation`);
-		}
-		valLoss = await (await loss.to('cpu')).item();
-		if (valLoss === null) {
-			throw new Error(`Validation loss item is null for ${modelName} model`);
-		}
-	} finally {
-		model.train();
-	}
-
-	const perplexity = Math.exp(valLoss);
-	return { valLoss, perplexity };
+		const perplexity = Math.exp(valLoss);
+		return { valLoss, perplexity };
+	});
 }
