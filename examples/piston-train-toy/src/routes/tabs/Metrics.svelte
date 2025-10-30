@@ -30,6 +30,7 @@
 	);
 
 	function getDefaultMetricVisibility(name: string): boolean {
+		if (name === 'allocation/active_tensor_count') return false;
 		if (name === 'speed/wall_clock_seconds') return false;
 		if (name === 'optimizer/learning_rate') return !!lrSchedulerPresent;
 		return true;
@@ -49,6 +50,8 @@
 		let priorities: string[] = [];
 		if (groupName === 'validation') {
 			priorities = ['validation/completions', 'validation/accuracy'];
+		} else if (groupName === 'allocation') {
+			priorities = ['allocation/gpu_memory_mb'];
 		} else if (groupName === 'train') {
 			priorities = ['train/loss'];
 		}

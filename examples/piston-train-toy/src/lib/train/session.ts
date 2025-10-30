@@ -100,6 +100,10 @@ export class TrainingSession {
 			return;
 		}
 
+		// Log initial memory
+		const initialMemoryMB = Number(piston.gpu.usageBytes()) / (1024 * 1024);
+		console.debug(`Initial memory: ${initialMemoryMB} MB`);
+
 		// Determine model type and create appropriate dataloader/model
 		const isEncoderOnly = this.config.model.topology === 'encoder';
 		const isDecoderOnly = this.config.model.topology === 'decoder';
@@ -434,6 +438,9 @@ export class TrainingSession {
 				const tokensPerStep = this.config.training.batchSize * sequenceLength;
 				const tokensPerSecond = deltaSteps > 0 ? (deltaSteps * tokensPerStep) / deltaTime : 0;
 
+				const activeMap = piston.__pistonActiveTensors();
+				const activeTensors = Array.from(activeMap.values()).reduce((s, v) => s + v.length, 0);
+
 				let lossItem: number | null = null;
 
 				const lossCpu = await loss.to('cpu');
@@ -443,8 +450,12 @@ export class TrainingSession {
 					throw new Error('Loss item is null?');
 				}
 
+				const peakUsageMb = Number(piston.gpu.peakUsageBytes()) / (1024 * 1024);
+
 				const logData: Record<string, number> = {
 					'train/loss': lossItem,
+					'allocation/active_tensor_count': activeTensors,
+					'allocation/gpu_memory_mb': peakUsageMb,
 					'speed/steps_per_second': stepsPerSecond,
 					'speed/step': this.stepCount,
 					'speed/tokens_per_second': tokensPerSecond,

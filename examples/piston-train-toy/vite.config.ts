@@ -46,6 +46,10 @@ export default defineConfig((_) => ({
 				// Allow serving from the WASM file's directory
 				path.resolve(projectRoot, 'target', 'pkg', 'piston-web')
 			]
+		},
+		headers: {
+			'Cross-Origin-Embedder-Policy': 'require-corp',
+			'Cross-Origin-Opener-Policy': 'same-origin'
 		}
 	}
 }));

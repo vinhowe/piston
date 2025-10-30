@@ -9,6 +9,10 @@ export const trainingState = $state<{ current: 'training' | 'stopped' }>({
 	current: 'stopped'
 });
 
+// UA memory measurement state (main thread only)
+let uaMemoryInterval: ReturnType<typeof setInterval> | null = null;
+let lastUAMemoryBytes: number | null = null;
+
 export async function initializeWorker() {
 	return new Promise<void>((resolve, reject) => {
 		try {
@@ -20,6 +24,41 @@ export async function initializeWorker() {
 			});
 
 			console.log('[Main] Module worker created successfully.');
+
+			// Set up UA memory measurement (immediate + interval) on main thread (only once)
+			if (!uaMemoryInterval) {
+				const measure = (
+					performance as Performance & {
+						measureUserAgentSpecificMemory?: () => Promise<{ bytes: number }>;
+					}
+				).measureUserAgentSpecificMemory;
+				if (typeof measure === 'function') {
+					const measureAndStore = async () => {
+						try {
+							const { bytes } = await (
+								performance as Performance & {
+									measureUserAgentSpecificMemory?: () => Promise<{ bytes: number }>;
+								}
+							).measureUserAgentSpecificMemory!();
+							if (typeof bytes === 'number' && Number.isFinite(bytes)) {
+								lastUAMemoryBytes = bytes;
+							}
+						} catch (err) {
+							console.warn('Error measuring UA memory:', err);
+							// Ignore measurement errors
+						}
+					};
+					// Immediate measurement so first log can include it
+					void measureAndStore();
+					uaMemoryInterval = setInterval(() => {
+						void measureAndStore();
+					}, 10_000);
+				} else {
+					console.debug(
+						'performance.measureUserAgentSpecificMemory is not available; skipping UA memory interval'
+					);
+				}
+			}
 
 			trainWorker.onmessage = (event) => {
 				const { type, ...data } = event.data;
@@ -42,6 +81,10 @@ export async function initializeWorker() {
 						const combinedMetrics: Record<string, number | Record<string, unknown>> = {};
 						for (const [metricName, value] of Object.entries(data.data)) {
 							combinedMetrics[metricName] = value as number | Record<string, unknown>;
+						}
+						if (lastUAMemoryBytes !== null) {
+							combinedMetrics['allocation/cpu_memory_mb'] = lastUAMemoryBytes / (1024 * 1024);
+							lastUAMemoryBytes = null;
 						}
 						log(data.runId, combinedMetrics, { step });
 						break;
@@ -116,4 +159,10 @@ export function cleanupWorker() {
 		trainWorker.terminate();
 		trainWorker = null;
 	}
+	// Clear UA memory interval
+	if (uaMemoryInterval) {
+		clearInterval(uaMemoryInterval);
+		uaMemoryInterval = null;
+	}
+	lastUAMemoryBytes = null;
 }
