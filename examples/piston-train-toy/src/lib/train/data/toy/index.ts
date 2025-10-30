@@ -21,7 +21,7 @@ import { type TwoSumConfig, TwoSumDataset } from './twoSum';
 import { type ZerosConfig, ZerosDataset } from './zeros';
 export { type AdditionConfig, AdditionDataset } from './addition';
 export { type CopyMemoryConfig, CopyMemoryDataset } from './copyMemory';
-export { default as ToyDataset } from './dataset';
+export { mustMatchAccuracy, tokenMatches, default as ToyDataset } from './dataset';
 export { type DyckConfig, DyckDataset } from './dyck';
 export { type ElmanConfig, ElmanDataset } from './elman';
 export { type MarkedAdditionConfig, MarkedAdditionDataset } from './markedAddition';

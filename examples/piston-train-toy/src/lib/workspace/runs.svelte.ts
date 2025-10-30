@@ -1,3 +1,5 @@
+import type { ValidationStep } from '$lib/train/validation';
+
 import { generateMemorableName } from '$lib/workspace/utils';
 import { SvelteMap, SvelteSet } from 'svelte/reactivity';
 
@@ -7,7 +9,11 @@ export type BaseStepData = { step: number };
 
 export type Point = BaseStepData & { y: number };
 
-export type StepData = Point;
+export type TokenRollout = {
+	tokenIds: number[];
+	probs: number[][];
+};
+export type StepData = Point | ValidationStep;
 
 export type MetricData = {
 	metricName: string;
@@ -136,7 +142,7 @@ export function endRun() {
  */
 export function log(
 	runId: string,
-	data: { [metricName: string]: number },
+	data: { [metricName: string]: Omit<StepData, 'step'> },
 	{ step }: { step?: number } = {}
 ): void {
 	const run = runsMap.get(runId);
@@ -160,7 +166,12 @@ export function log(
 			run.metrics.set(metricName, metric);
 		}
 
-		const stepData: StepData = { step: currentStep, y: value };
+		let stepData: StepData;
+		if (typeof value === 'number') {
+			stepData = { step: currentStep, y: value };
+		} else {
+			stepData = { step: currentStep, ...value } as ValidationStep;
+		}
 
 		const updatedMetric = {
 			...metric,

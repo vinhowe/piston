@@ -1,4 +1,6 @@
-import ToyDataset, { type ToySequence } from './dataset';
+import type { ToyValidationMetrics } from './types';
+
+import ToyDataset, { mustMatchAccuracy, tokenMatches, type ToySequence } from './dataset';
 
 export interface RepeatConfig {
 	sequenceLength: number;
@@ -106,5 +108,12 @@ export class RepeatDataset extends ToyDataset<RepeatConfig> {
 			}
 		}
 		return { prompt, target };
+	}
+
+	public computeMetrics(completion: number[], target: number[]): ToyValidationMetrics {
+		return {
+			matches: tokenMatches(completion, target),
+			accuracy: mustMatchAccuracy(completion, target)
+		};
 	}
 }

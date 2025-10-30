@@ -1,4 +1,6 @@
-import ToyDataset, { type ToySequence } from './dataset';
+import type { ToyValidationMetrics } from './types';
+
+import ToyDataset, { mustMatchAccuracy, tokenMatches, type ToySequence } from './dataset';
 
 export interface RandomConfig {
 	sequenceLength: number; // length of the prompt
@@ -78,5 +80,12 @@ export class RandomDataset extends ToyDataset<RandomConfig> {
 			target.push(this.generator.integer(0, vocabSize - 1));
 		}
 		return { prompt, target };
+	}
+
+	public computeMetrics(completion: number[], target: number[]): ToyValidationMetrics {
+		return {
+			matches: tokenMatches(completion, target),
+			accuracy: mustMatchAccuracy(completion, target)
+		};
 	}
 }

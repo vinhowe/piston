@@ -29,11 +29,19 @@ export interface DropoutConfig {
 	};
 }
 
+export interface ValidationCompletionsConfig {
+	present: boolean;
+	decodingBatchSize: number;
+	amount: 'all' | 'subset';
+	subsetSize: number;
+}
+
 export interface ValidationConfig {
 	present: boolean;
 	valSteps: number;
 	batchSize: number;
 	temperature: number;
+	completions: ValidationCompletionsConfig;
 	useKvCache: boolean;
 }
 

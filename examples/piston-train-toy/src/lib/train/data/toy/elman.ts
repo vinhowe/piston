@@ -1,3 +1,5 @@
+import type { ToyValidationMetrics } from './types';
+
 import ToyDataset, { type ToySequence } from './dataset';
 
 export const ELMAN_CONFIG_METADATA = {
@@ -84,5 +86,51 @@ export class ElmanDataset extends ToyDataset<null> {
 		// Map words to token IDs
 		const target = sentenceWords.map((w) => this.tokenizer.vocab[w]);
 		return { target };
+	}
+
+	public computeMetrics(completion: number[], _target: number[]): ToyValidationMetrics {
+		// Remove EOS if present at the end
+		let seq = completion.slice();
+		if (this.eosId !== null && seq.length > 0 && seq[seq.length - 1] === this.eosId) {
+			seq = seq.slice(0, -1);
+		}
+
+		// Decode to words for template matching
+		const words = seq.map((id) => this.tokenizer.ids[id] ?? '<unk>');
+
+		// Best-prefix match across templates (only first n tokens, in order)
+		let bestPrefix = 0;
+		for (const tpl of ElmanDataset.templates) {
+			let prefix = 0;
+			for (let i = 0; i < Math.min(3, words.length); i++) {
+				const slot = tpl[i];
+				const w = words[i];
+				const ok = slot === null ? w === 'PAD' : slot.includes(w);
+				if (!ok) break;
+				prefix++;
+				if (prefix === 3) break; // early exit for full match
+			}
+			if (prefix > bestPrefix) {
+				bestPrefix = prefix;
+				if (bestPrefix === 3) break; // early exit if any template fully matches
+			}
+		}
+
+		// Per-token matches for up to 3 tokens
+		const matches: boolean[] = [];
+		for (let i = 0; i < Math.min(3, words.length); i++) {
+			matches.push(i < bestPrefix);
+		}
+
+		const length_correct = seq.length === 3;
+		const matched_template = bestPrefix === 3;
+		const valid_statement = matched_template;
+
+		return {
+			length_correct,
+			matched_template,
+			valid_statement,
+			matches
+		};
 	}
 }

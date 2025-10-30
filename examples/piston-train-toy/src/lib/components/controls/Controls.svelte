@@ -20,6 +20,7 @@
 	import DatasetControls from './DatasetControls.svelte';
 	import LRSchedulePicker from './LRSchedulePicker.svelte';
 	import NumberInput from './NumberInput.svelte';
+	import SelectInput from './select/SelectInput.svelte';
 	import SelectModelTopology from './select/SelectModelTopology.svelte';
 	import SelectWithCitations from './select/SelectWithCitations.svelte';
 	import Slider from './Slider.svelte';
@@ -345,6 +346,50 @@
 				hasDefaultValue={equalsConfigDefault('training.validation.batchSize')}
 				onReset={() => resetConfigToDefaults('training.validation.batchSize')}
 			/>
+			<ToggleGroup
+				id="validation-completions-control"
+				title="Generation"
+				contentClass={sectionClass}
+				showEnableToggle={true}
+				bind:enabled={config.training.validation.completions.present}
+				hasDefaultValue={equalsConfigDefault('training.validation.completions.present')}
+				onReset={() => resetConfigToDefaults('training.validation.completions.present')}
+			>
+				<SelectInput
+					id="validation-completions-amount"
+					bind:value={config.training.validation.completions.amount}
+					options={[
+						{ value: 'all', text: 'All Validation Examples' },
+						{ value: 'subset', text: 'Subset of Validation Examples' }
+					]}
+					hasDefaultValue={equalsConfigDefault('training.validation.completions.amount')}
+					onReset={() => resetConfigToDefaults('training.validation.completions.amount')}
+				/>
+				{#if config.training.validation.completions.amount === 'subset'}
+					<Slider
+						id="validation-completions-subset-size"
+						bind:value={config.training.validation.completions.subsetSize}
+						min={1}
+						max={config.training.validation.batchSize}
+						step={1}
+						base={2}
+						hasDefaultValue={equalsConfigDefault('training.validation.completions.subsetSize')}
+						onReset={() => resetConfigToDefaults('training.validation.completions.subsetSize')}
+					/>
+				{/if}
+				<BorderedGroup title="Sampling" contentClass={sectionClass}>
+					<Slider
+						id="validation-completions-temperature"
+						label="Temperature"
+						bind:value={config.training.validation.temperature}
+						min={0}
+						max={1.2}
+						step={0.01}
+						hasDefaultValue={equalsConfigDefault('training.validation.temperature')}
+						onReset={() => resetConfigToDefaults('training.validation.temperature')}
+					/>
+				</BorderedGroup>
+			</ToggleGroup>
 		</ToggleGroup>
 
 		<BorderedGroup title="Regularization" contentClass={sectionClass}>

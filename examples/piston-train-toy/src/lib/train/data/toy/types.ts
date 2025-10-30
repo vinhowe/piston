@@ -4,3 +4,7 @@ export interface ToyTokenizer {
 	lastToken: number;
 	decode(tokens: number[]): string;
 }
+
+export type ToyValidationMetrics = {
+	matches?: boolean[];
+} & Record<string, number | number[] | boolean | boolean[]>;

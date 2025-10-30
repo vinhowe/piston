@@ -39,9 +39,9 @@ export async function initializeWorker() {
 							return;
 						}
 						const step = data.metadata?.step as number | undefined;
-						const combinedMetrics: Record<string, number> = {};
+						const combinedMetrics: Record<string, number | Record<string, unknown>> = {};
 						for (const [metricName, value] of Object.entries(data.data)) {
-							combinedMetrics[metricName] = value as number;
+							combinedMetrics[metricName] = value as number | Record<string, unknown>;
 						}
 						log(data.runId, combinedMetrics, { step });
 						break;

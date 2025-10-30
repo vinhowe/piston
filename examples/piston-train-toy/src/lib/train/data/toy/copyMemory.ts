@@ -1,4 +1,6 @@
-import ToyDataset, { type ToySequence } from './dataset';
+import type { ToyValidationMetrics } from './types';
+
+import ToyDataset, { mustMatchAccuracy, tokenMatches, type ToySequence } from './dataset';
 
 export interface CopyMemoryConfig {
 	prefixLength: number; // length of the subsequence to memorize (A,B,C)
@@ -133,5 +135,12 @@ export class CopyMemoryDataset extends ToyDataset<CopyMemoryConfig> {
 		// Target is the original prefix
 		const target = [...prefix];
 		return { prompt, target };
+	}
+
+	public computeMetrics(completion: number[], target: number[]): ToyValidationMetrics {
+		return {
+			matches: tokenMatches(completion, target),
+			accuracy: mustMatchAccuracy(completion, target)
+		};
 	}
 }

@@ -1,4 +1,6 @@
-import ToyDataset, { type ToySequence } from './dataset';
+import type { ToyValidationMetrics } from './types';
+
+import ToyDataset, { mustMatchAccuracy, tokenMatches, type ToySequence } from './dataset';
 
 export interface SortConfig {
 	sequenceLength: number;
@@ -105,5 +107,12 @@ export class SortDataset extends ToyDataset<SortConfig> {
 			}
 		}
 		return { prompt, target };
+	}
+
+	public computeMetrics(completion: number[], target: number[]): ToyValidationMetrics {
+		return {
+			matches: tokenMatches(completion, target),
+			accuracy: mustMatchAccuracy(completion, target)
+		};
 	}
 }

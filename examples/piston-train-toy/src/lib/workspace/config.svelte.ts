@@ -24,7 +24,13 @@ const CONFIG_DEFAULTS: Config = {
 			valSteps: 100,
 			batchSize: 8,
 			temperature: 0.0,
-			useKvCache: false
+			useKvCache: false,
+			completions: {
+				present: true,
+				decodingBatchSize: 1,
+				amount: 'subset',
+				subsetSize: 4
+			}
 		},
 		dropout: {
 			present: false,
@@ -465,5 +471,13 @@ export function getMlpIntermediateSize() {
 }
 
 export function validateConfig() {
+	if (
+		config.training.validation.completions.present &&
+		config.training.validation.completions.amount === 'subset' &&
+		config.training.validation.completions.subsetSize > config.training.validation.batchSize
+	) {
+		config.training.validation.completions.subsetSize = config.training.validation.batchSize;
+	}
+
 	ensureDatasetSupportsModelType();
 }

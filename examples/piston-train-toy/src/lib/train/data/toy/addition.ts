@@ -1,4 +1,6 @@
-import ToyDataset, { type ToySequence } from './dataset';
+import type { ToyValidationMetrics } from './types';
+
+import ToyDataset, { mustMatchAccuracy, tokenMatches, type ToySequence } from './dataset';
 
 export interface AdditionConfig {
 	maxNumber: number;
@@ -81,5 +83,12 @@ export class AdditionDataset extends ToyDataset<AdditionConfig> {
 		const target = [sum];
 
 		return { prompt, target };
+	}
+
+	public computeMetrics(completion: number[], target: number[]): ToyValidationMetrics {
+		return {
+			matches: tokenMatches(completion, target),
+			accuracy: mustMatchAccuracy(completion, target)
+		};
 	}
 }

@@ -1,7 +1,7 @@
 import { IterableDataset } from '@piston-ml/piston-web';
 import { MersenneTwister19937, Random } from 'random-js';
 
-import type { ToyTokenizer } from './types';
+import type { ToyTokenizer, ToyValidationMetrics } from './types';
 
 export const BOS = '<bos>';
 export const EOS = '<eos>';
@@ -73,6 +73,10 @@ export interface ToyDatasetLike<DatasetConfig = unknown> extends IterableDataset
 	readonly datasetName: string;
 	generateSequence(): ToySequence;
 	generateSequenceAt(index: number): ToySequence;
+	computeMetrics(
+		completion: number[],
+		target: number[] | [number[], boolean[]]
+	): ToyValidationMetrics;
 }
 
 function hashString32(input: string): number {
@@ -158,6 +162,10 @@ abstract class ToyDataset<DatasetConfig>
 
 	protected abstract buildVocab(): string[];
 	public abstract generateSequence(): ToySequence;
+	public abstract computeMetrics(
+		completion: number[],
+		target: number[] | [number[], boolean[]]
+	): ToyValidationMetrics;
 
 	private tokenizerFromVocab(vocab: string[]): ToyTokenizer {
 		const vocabMap = vocab.reduce(
@@ -212,6 +220,15 @@ abstract class ToyDataset<DatasetConfig>
 			this.generator = previous;
 		}
 	}
+}
+
+export function tokenMatches(completion: number[], target: number[]): boolean[] {
+	if (completion.length !== target.length) return completion.map(() => false);
+	return completion.map((t, i) => t === target[i]);
+}
+
+export function mustMatchAccuracy(completion: number[], target: number[]): number {
+	return completion.every((t, i) => t === target[i]) ? 1 : 0;
 }
 
 export default ToyDataset;

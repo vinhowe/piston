@@ -1,4 +1,6 @@
-import ToyDataset, { type ToySequence } from './dataset';
+import type { ToyValidationMetrics } from './types';
+
+import ToyDataset, { mustMatchAccuracy, tokenMatches, type ToySequence } from './dataset';
 
 export interface TwoSumConfig {
 	sequenceLength: number;
@@ -174,5 +176,12 @@ export class TwoSumDataset extends ToyDataset<TwoSumConfig> {
 			return { prompt, target };
 		}
 		throw new Error('Failed to generate a unique-solution two-sum instance after 10 attempts');
+	}
+
+	public computeMetrics(completion: number[], target: number[]): ToyValidationMetrics {
+		return {
+			matches: tokenMatches(completion, target),
+			accuracy: mustMatchAccuracy(completion, target)
+		};
 	}
 }

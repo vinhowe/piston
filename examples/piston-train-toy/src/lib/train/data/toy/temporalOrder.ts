@@ -1,4 +1,6 @@
-import ToyDataset, { type ToySequence } from './dataset';
+import type { ToyValidationMetrics } from './types';
+
+import ToyDataset, { mustMatchAccuracy, tokenMatches, type ToySequence } from './dataset';
 
 export interface TemporalOrderConfig {
 	sequenceLength: number; // total length including distractors and special symbols X/Y
@@ -111,5 +113,12 @@ export class TemporalOrderDataset extends ToyDataset<TemporalOrderConfig> {
 		const classToken = posX < posY ? 'XY' : 'YX';
 		const target = [this.tokenizer.vocab[classToken]];
 		return { prompt, target };
+	}
+
+	public computeMetrics(completion: number[], target: number[]): ToyValidationMetrics {
+		return {
+			matches: tokenMatches(completion, target),
+			accuracy: mustMatchAccuracy(completion, target)
+		};
 	}
 }

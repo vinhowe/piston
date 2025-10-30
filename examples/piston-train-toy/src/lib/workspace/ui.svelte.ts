@@ -156,6 +156,12 @@ export function toggleMetricsSection(sectionName: string) {
 	metricsSectionsOpen.current[sectionName] = !(metricsSectionsOpen.current[sectionName] ?? true);
 }
 
+export const maxCompletions = new LocalStorage('maxCompletions', 4);
+
+export function setMaxCompletions(value: number) {
+	maxCompletions.current = value;
+}
+
 // Visibility state for per-metric charts (user overrides only)
 export const metricVisibility = new LocalStorage('metricVisibility', {});
 

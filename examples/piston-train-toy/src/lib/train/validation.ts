@@ -1,7 +1,10 @@
-import type { Config } from '$lib/workspace/config';
+import type { Config, ValidationConfig } from '$lib/workspace/config';
+import type { BaseStepData, TokenRollout } from '$lib/workspace/runs.svelte';
 
 import { type Tensor } from '@piston-ml/piston-web';
+import { MersenneTwister19937, Random } from 'random-js';
 
+import type { ToyValidationMetrics } from './data/toy/types';
 import type {
 	BidirectionalBatchType,
 	EncoderDecoderBatchType,
@@ -12,7 +15,7 @@ import type {
 	ToyCollateFnType
 } from './types';
 
-import { NaturalLanguageDataset } from './data/natural';
+import { naturalLanguageBidirectionalCollate, NaturalLanguageDataset } from './data/natural';
 import {
 	toyDatasetAutoregressiveCollate,
 	toyDatasetBidirectionalCollate,
@@ -24,6 +27,26 @@ import {
 	EncoderDecoderTransformer,
 	EncoderTransformer
 } from './model/transformer';
+import {
+	generateDecoderCompletions,
+	generateEncoderDecoderCompletions,
+	predictEncoderOnlyCompletions
+} from './validationHelpers';
+
+export type ValidationStep = BaseStepData & {
+	type: 'validation';
+	completions: TokenRollout[];
+	samplingParams: {
+		temperature: number;
+	};
+	// Running average throughput across the generation in tokens/second (decoder/generative only)
+	tokensPerSecond?: number;
+	targets?: number[][]; // Only present in first step, what tokens should have been
+	encoderInputs?: number[][]; // Encoder/source inputs used (for encoder-decoder or encoder-only)
+	decoderPromptLengths?: number[]; // For decoder-only display: prompt token counts per example
+	matches?: boolean[][]; // Per-example, per-token correctness flags
+	metrics?: ToyValidationMetrics[]; // Per-example metrics computed by the dataset
+};
 
 export type ToyValidationExamples = {
 	toySequences: ToySequence[];
@@ -157,6 +180,292 @@ export async function prepareValidationExamples(
 		return await prepareNaturalValidationExamples(config, dataset);
 	}
 	return prepareToyValidationExamples(config, dataset, options);
+}
+
+export async function computeToyValidationMetrics(
+	model: GeneratableModel,
+	dataset: ToyDatasetLike<unknown>,
+	valExamples: ToyValidationExamples,
+	valConfig: ValidationConfig,
+	options: { isDecoderOnly: boolean; isEncoderDecoder: boolean; includeTargets: boolean }
+): Promise<Omit<ValidationStep, 'step'>> {
+	const { isDecoderOnly, isEncoderDecoder, includeTargets } = options;
+
+	let tokensPerSecond: number | undefined;
+	let completions: TokenRollout[] = [];
+
+	const maxTokens = Math.max(...valExamples.targets.map((t) => t.length));
+
+	if (isDecoderOnly && model instanceof DecoderTransformer) {
+		const prompts = valExamples.prompts.map((prompt) =>
+			prompt.length > 0 ? prompt : [dataset.bosId!]
+		);
+		const result = await generateDecoderCompletions(model, prompts, {
+			maxTokens,
+			stopTokens: dataset.eosId !== null ? [dataset.eosId!] : [],
+			temperature: valConfig.temperature,
+			useKvCache: valConfig.useKvCache
+		});
+		completions = result.completions;
+		tokensPerSecond = result.tokensPerSecond;
+	} else if (isEncoderDecoder && model instanceof EncoderDecoderTransformer) {
+		const sources = valExamples.prompts.map((prompt) =>
+			prompt.length > 0 ? prompt : [dataset.bosId!]
+		);
+		const result = await generateEncoderDecoderCompletions(model, sources, {
+			maxTokens,
+			startToken: dataset.bosId ?? undefined,
+			stopTokens: dataset.eosId !== null ? [dataset.eosId!] : [],
+			temperature: valConfig.temperature,
+			useKvCache: valConfig.useKvCache
+		});
+		completions = result.completions;
+		tokensPerSecond = result.tokensPerSecond;
+	} else {
+		if (model instanceof EncoderTransformer) {
+			const result = await predictEncoderOnlyCompletions(
+				model,
+				valExamples.prompts,
+				valExamples.actualTargets,
+				{ temperature: valConfig.temperature }
+			);
+			completions = result.completions;
+		} else {
+			throw new Error('Invalid model for encoder-only validation');
+		}
+	}
+
+	const validationStepData: Omit<ValidationStep, 'step'> = {
+		type: 'validation',
+		completions,
+		samplingParams: { temperature: valConfig.temperature },
+		targets: includeTargets ? valExamples.actualTargets : undefined,
+		// For display only: shave BOS from encoder inputs
+		encoderInputs: isEncoderDecoder || !isDecoderOnly ? valExamples.prompts : undefined,
+		// Only set for generative paths
+		tokensPerSecond
+	};
+
+	// Compute per-example metrics
+	try {
+		const batchSize = valExamples.prompts.length;
+		const metrics: Array<ToyValidationMetrics> = new Array(batchSize);
+		const matches: boolean[][] = [];
+		for (let bi = 0; bi < batchSize; bi++) {
+			const rollout = completions[bi];
+			const generatedIds = rollout?.tokenIds ?? [];
+
+			// Build predicted/target slices
+			let predictedSlice: number[] = [];
+			let targetSlice: number[] = [];
+
+			if (!isDecoderOnly && !isEncoderDecoder) {
+				// Encoder-only: masked positions only
+				const labelsRow = valExamples.actualTargets[bi] ?? [];
+				const maskedIndices: number[] = [];
+				for (let i = 0; i < labelsRow.length; i++) {
+					if (labelsRow[i] !== -100) maskedIndices.push(i);
+				}
+				const filtered = maskedIndices.filter((i) => generatedIds[i] !== undefined);
+				predictedSlice = filtered.map((i) => generatedIds[i]);
+				targetSlice = filtered.map((i) => labelsRow[i]);
+			} else {
+				// Decoder-only or Encoder-decoder
+				const targetTokens = valExamples.targets[bi] ?? [];
+				const prefixLength = isDecoderOnly
+					? (valExamples.prompts[bi]?.length ?? 0)
+					: isEncoderDecoder
+						? 1
+						: 0;
+				predictedSlice = generatedIds.slice(prefixLength, prefixLength + targetTokens.length);
+				targetSlice = targetTokens;
+			}
+
+			// Single computeMetrics call and shared handling
+			const m = dataset.computeMetrics(predictedSlice, targetSlice);
+			metrics[bi] = m;
+			if (Array.isArray(m.matches)) {
+				matches[bi] = m.matches;
+			}
+		}
+		validationStepData.metrics = metrics;
+		validationStepData.matches = matches.length > 0 ? matches : undefined;
+	} catch (e) {
+		console.warn('Failed to compute validation metrics:', e);
+	}
+
+	return validationStepData;
+}
+
+export async function computeNaturalValidationMetrics(
+	model: GeneratableModel,
+	dataset: NaturalLanguageDataset,
+	valExamples: NaturalValidationExamples,
+	valConfig: ValidationConfig,
+	options: { isDecoderOnly: boolean; includeTargets: boolean; maskRatio: number }
+): Promise<Omit<ValidationStep, 'step'>> {
+	const { isDecoderOnly, maskRatio } = options;
+
+	let promptLen = 0;
+	let encoderOnlyTargets: number[][] | null = null;
+	let tokensPerSecond: number | undefined;
+	let completions: TokenRollout[] = [];
+
+	const contextSize = dataset.contextSize;
+
+	if (isDecoderOnly && model instanceof DecoderTransformer) {
+		// promptLen = Math.max(Math.floor(contextSize / 4), 1);
+		promptLen = 8;
+		const eosId = dataset.eosId as number;
+		const starts = valExamples.naturalSequences.map((seq) => seq.slice(0, promptLen));
+		const maxTokens = Math.max(0, contextSize - promptLen);
+		const result = await generateDecoderCompletions(model, starts, {
+			maxTokens,
+			stopTokens: eosId !== null ? [eosId] : [],
+			temperature: valConfig.temperature,
+			useKvCache: valConfig.useKvCache
+		});
+		completions = result.completions;
+		tokensPerSecond = result.tokensPerSecond;
+	} else {
+		// Encoder-only: predict masked tokens using MLM logits across the whole sequence
+		const maskTokenId = dataset.maskId as number;
+		const generator = new Random(MersenneTwister19937.autoSeed());
+
+		const collated = naturalLanguageBidirectionalCollate<number[][]>(valExamples.naturalSequences, {
+			maskRatio,
+			generator,
+			maskTokenId,
+			wrapFunction: null
+		});
+
+		const inputs = collated.tensors[0];
+		const labels = collated.tensors[1]; // -100 for unmasked
+		encoderOnlyTargets = labels;
+
+		if (model instanceof EncoderTransformer) {
+			const attentionMask = collated.tensors[2];
+			const result = await predictEncoderOnlyCompletions(model, inputs, labels, {
+				attentionMask,
+				temperature: valConfig.temperature
+			});
+			completions = result.completions;
+		} else {
+			throw new Error('Invalid model for encoder-only natural validation');
+		}
+	}
+
+	const validationStepData: Omit<ValidationStep, 'step'> = {
+		type: 'validation',
+		completions,
+		samplingParams: { temperature: valConfig.temperature },
+		decoderPromptLengths: isDecoderOnly
+			? new Array(valExamples.naturalSequences.length).fill(promptLen)
+			: undefined,
+		targets: !isDecoderOnly && encoderOnlyTargets ? encoderOnlyTargets : undefined,
+		tokensPerSecond
+	};
+
+	// Compute metrics for natural encoder-only (MLM) similar to toy datasets
+	if (!isDecoderOnly && encoderOnlyTargets) {
+		try {
+			const B = completions.length;
+			const matches: boolean[][] = new Array(B);
+			const numericMetrics: Array<ToyValidationMetrics> = new Array(B);
+			for (let bi = 0; bi < B; bi++) {
+				const predIds: number[] = completions[bi]?.tokenIds ?? [];
+				const labelsRow: number[] = encoderOnlyTargets[bi] ?? [];
+				let correct = 0;
+				let total = 0;
+				const matchRow: boolean[] = new Array(labelsRow.length).fill(false);
+				for (let ti = 0; ti < labelsRow.length; ti++) {
+					const label = labelsRow[ti];
+					if (label === -100) continue; // skip unmasked positions
+					total++;
+					const ok = predIds[ti] === label;
+					matchRow[ti] = ok;
+					if (ok) correct++;
+				}
+				const accuracy = total > 0 ? correct / total : 0;
+				numericMetrics[bi] = {
+					accuracy,
+					matches: matchRow
+				};
+				matches[bi] = matchRow;
+			}
+			validationStepData.metrics = numericMetrics;
+			validationStepData.matches = matches;
+		} catch (e) {
+			console.warn('Failed to compute natural MLM validation metrics:', e);
+		}
+	}
+
+	return validationStepData;
+}
+
+export function buildValidationLog(
+	validationStepData: Omit<ValidationStep, 'step'>
+): Record<string, number | Omit<ValidationStep, 'step'>> {
+	// Aggregate numeric-like metrics from per-example metrics; average arrays per-example; skip 'matches'
+	const aggregatedNumeric: Record<string, number> = {};
+	const counts: Record<string, number> = {};
+	const perExample = validationStepData.metrics;
+	if (perExample && perExample.length > 0) {
+		for (const m of perExample) {
+			for (const entry of Object.entries(m)) {
+				let [key] = entry;
+				const [_, value] = entry;
+				if (key === 'matches') {
+					key = 'character_level_accuracy';
+				}
+				let numericValue: number | null = null;
+				if (typeof value === 'number' && Number.isFinite(value)) {
+					numericValue = value;
+				} else if (typeof value === 'boolean') {
+					numericValue = value ? 1 : 0;
+				} else if (Array.isArray(value)) {
+					// Average arrays of numbers or booleans
+					const arr = value;
+					if (arr.length > 0) {
+						const sum = arr.reduce((s: number, v: number | boolean) => {
+							const num = typeof v === 'boolean' ? (v ? 1 : 0) : Number.isFinite(v) ? v : 0;
+							return s + num;
+						}, 0);
+						numericValue = sum / arr.length;
+					}
+				}
+				if (numericValue !== null) {
+					aggregatedNumeric[key] = (aggregatedNumeric[key] ?? 0) + numericValue;
+					counts[key] = (counts[key] ?? 0) + 1;
+				}
+			}
+		}
+		for (const key of Object.keys(aggregatedNumeric)) {
+			aggregatedNumeric[key] = aggregatedNumeric[key] / (counts[key] || 1);
+		}
+	}
+
+	// Compute number of unique completions by hashing tokenIds
+	const uniqueCompletionsCount = (() => {
+		const seen = new Set<string>();
+		for (const c of validationStepData.completions ?? []) {
+			const ids = c?.tokenIds ?? [];
+			seen.add(ids.join(','));
+		}
+		return seen.size;
+	})();
+
+	const validationLog: Record<string, number | typeof validationStepData> = {
+		'validation/completions': validationStepData,
+		'validation/unique_completions': uniqueCompletionsCount
+	};
+	if (typeof validationStepData.tokensPerSecond === 'number') {
+		validationLog['validation/tokens_per_second'] = validationStepData.tokensPerSecond;
+	}
+	for (const [k, v] of Object.entries(aggregatedNumeric)) {
+		validationLog[`validation/${k}`] = v;
+	}
+	return validationLog;
 }
 
 export async function computeLikelihoodMetrics(

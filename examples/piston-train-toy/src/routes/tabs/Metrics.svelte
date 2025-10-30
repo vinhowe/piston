@@ -1,6 +1,7 @@
 <script lang="ts">
 	import MetricsSection from '$lib/components/metrics/MetricsSection.svelte';
 	import RunChart from '$lib/components/metrics/RunChart.svelte';
+	import ValidationCompletionsViewer from '$lib/components/metrics/validationCompletions/ValidationCompletionsViewer.svelte';
 	import ToggleChips from '$lib/components/ToggleChips.svelte';
 	import {
 		getCurrentRun,
@@ -47,7 +48,7 @@
 	function getSortedMetrics(groupName: string, metrics: string[]): string[] {
 		let priorities: string[] = [];
 		if (groupName === 'validation') {
-			priorities = ['validation/accuracy'];
+			priorities = ['validation/completions', 'validation/accuracy'];
 		} else if (groupName === 'train') {
 			priorities = ['train/loss'];
 		}
@@ -92,8 +93,16 @@
 						/>
 					{/snippet}
 					{#each filteredMetrics as metricName (metricName)}
-						<div class="bg-white border border-neutral-200">
-							<RunChart {metricName} />
+						<div
+							class="bg-white border border-neutral-200 {metricName === 'validation/completions'
+								? '@3xl:col-span-2'
+								: ''}"
+						>
+							{#if metricName === 'validation/completions'}
+								<ValidationCompletionsViewer />
+							{:else}
+								<RunChart {metricName} />
+							{/if}
 						</div>
 					{/each}
 				</MetricsSection>

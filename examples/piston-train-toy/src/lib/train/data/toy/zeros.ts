@@ -1,4 +1,6 @@
-import ToyDataset, { type ToySequence } from './dataset';
+import type { ToyValidationMetrics } from './types';
+
+import ToyDataset, { mustMatchAccuracy, tokenMatches, type ToySequence } from './dataset';
 
 export interface ZerosConfig {
 	sequenceLength: number;
@@ -51,5 +53,12 @@ export class ZerosDataset extends ToyDataset<ZerosConfig> {
 		const target = Array(sequenceLength).fill(zeroToken);
 
 		return { target };
+	}
+
+	public computeMetrics(completion: number[], target: number[]): ToyValidationMetrics {
+		return {
+			matches: tokenMatches(completion, target),
+			accuracy: mustMatchAccuracy(completion, target)
+		};
 	}
 }

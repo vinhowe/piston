@@ -1,4 +1,5 @@
 import type { Config } from '$lib/workspace/config';
+import type { StepData } from '$lib/workspace/runs.svelte';
 
 import {
 	CosineAnnealingLR,
@@ -22,7 +23,9 @@ import type { GeneratableModel, PistonCollateFnType, PistonDatasetType } from '.
 
 import { buildDataset, tensorWrap } from './data';
 import { filterDatasetByHeldoutSamples } from './data/filter';
+import { NaturalLanguageDataset } from './data/natural';
 import { buildDataPipeline } from './data/pipeline';
+import ToyDataset from './data/toy/dataset';
 import {
 	DecoderTransformer,
 	EncoderDecoderTransformer,
@@ -38,9 +41,16 @@ import {
 import { configureOptimizerForModel } from './utils/optim';
 import { forkRandom, seededRandom } from './utils/random';
 import {
+	buildValidationExamplesSubset,
+	buildValidationLog,
 	computeLikelihoodMetrics,
+	computeNaturalValidationMetrics,
+	computeToyValidationMetrics,
+	type NaturalValidationExamples,
 	prepareValidationExamples,
-	type ValidationExamples
+	type ToyValidationExamples,
+	type ValidationExamples,
+	type ValidationStep
 } from './validation';
 
 // @ts-expect-error polyfill
@@ -78,7 +88,10 @@ export class TrainingSession {
 			(post as (e: RunWorkerEvent) => void)({ ...e, runId: this.runId });
 	}
 
-	private logMetrics(data: { [metricName: string]: number }, metadata?: { step?: number }) {
+	private logMetrics(
+		data: { [metricName: string]: Omit<StepData, 'step'> },
+		metadata?: { step?: number }
+	) {
 		this.post({ type: 'metrics', data, metadata });
 	}
 
@@ -335,9 +348,49 @@ export class TrainingSession {
 				try {
 					let valLoss = Number.NaN;
 					let perplexity = Number.NaN;
-					const validationLog: Record<string, number> = {};
+					let validationLog: Record<string, number | Omit<ValidationStep, 'step'>> = {};
 
 					if (this.validationExamples) {
+						if (this.config.training.validation.completions.present) {
+							let validationExamplesSubset: ValidationExamples | null = null;
+							if (this.config.training.validation.completions.amount === 'subset') {
+								validationExamplesSubset = buildValidationExamplesSubset(
+									this.validationExamples,
+									this.config.training.validation.completions.subsetSize
+								);
+							} else {
+								validationExamplesSubset = this.validationExamples;
+							}
+							if (this.validationDataset instanceof ToyDataset) {
+								const validationStepData = await computeToyValidationMetrics(
+									this.model,
+									this.validationDataset,
+									validationExamplesSubset as ToyValidationExamples,
+									this.config.training.validation,
+									{
+										isDecoderOnly: this.config.model.topology === 'decoder',
+										isEncoderDecoder: this.config.model.topology === 'encoder-decoder',
+										includeTargets:
+											this.stepCount === 0 && (this.validationDataset.hasCanonicalTargets ?? true)
+									}
+								);
+								validationLog = buildValidationLog(validationStepData);
+							} else if (this.validationDataset instanceof NaturalLanguageDataset) {
+								const validationStepData = await computeNaturalValidationMetrics(
+									this.model,
+									this.validationDataset,
+									validationExamplesSubset as NaturalValidationExamples,
+									this.config.training.validation,
+									{
+										isDecoderOnly: this.config.model.topology === 'decoder',
+										includeTargets: this.stepCount === 0,
+										maskRatio: this.config.data.maskRatio
+									}
+								);
+								validationLog = buildValidationLog(validationStepData);
+							}
+						}
+
 						const result = await computeLikelihoodMetrics(
 							this.model,
 							this.validationExamples!,
@@ -347,7 +400,7 @@ export class TrainingSession {
 						valLoss = result.valLoss;
 						perplexity = result.perplexity;
 
-						const logData: Record<string, number> = {
+						const logData: Record<string, number | Omit<ValidationStep, 'step'>> = {
 							...validationLog,
 							'validation/loss': valLoss,
 							'validation/perplexity': perplexity

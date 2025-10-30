@@ -1,4 +1,5 @@
 import type { Config } from '$lib/workspace/config';
+import type { StepData } from '$lib/workspace/runs.svelte';
 
 type WithRunId = { runId: string };
 
@@ -33,7 +34,7 @@ type ErrorWorkerEvent = {
 export type RunWorkerEventWithoutRunId =
 	| {
 			type: 'metrics';
-			data: { [metricName: string]: number };
+			data: { [metricName: string]: Omit<StepData, 'step'> };
 			metadata?: { step?: number };
 	  }
 	| { type: 'complete' }

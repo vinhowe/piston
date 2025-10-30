@@ -1,4 +1,6 @@
-import ToyDataset, { type ToySequence } from './dataset';
+import type { ToyValidationMetrics } from './types';
+
+import ToyDataset, { mustMatchAccuracy, tokenMatches, type ToySequence } from './dataset';
 
 export interface DyckConfig {
 	sequenceLength: number;
@@ -153,5 +155,22 @@ export class DyckDataset extends ToyDataset<DyckConfig> {
 			// Return tokens without masking
 			return { target: tokens };
 		}
+	}
+
+	public computeMetrics(
+		completion: number[],
+		target: number[] | [number[], boolean[]]
+	): ToyValidationMetrics {
+		const targetTokens =
+			Array.isArray(target) &&
+			target.length === 2 &&
+			Array.isArray(target[0]) &&
+			Array.isArray(target[1])
+				? target[0]
+				: (target as number[]);
+		return {
+			matches: tokenMatches(completion, targetTokens),
+			accuracy: mustMatchAccuracy(completion, targetTokens)
+		};
 	}
 }

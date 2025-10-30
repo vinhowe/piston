@@ -1,4 +1,6 @@
-import ToyDataset, { type ToySequence } from './dataset';
+import type { ToyValidationMetrics } from './types';
+
+import ToyDataset, { mustMatchAccuracy, tokenMatches, type ToySequence } from './dataset';
 
 export interface MarkedAdditionConfig {
 	sequenceLength: number; // number of (value, marker) pairs
@@ -123,5 +125,12 @@ export class MarkedAdditionDataset extends ToyDataset<MarkedAdditionConfig> {
 		const target = [this.tokenizer.vocab[targetTokenStr]];
 
 		return { prompt, target };
+	}
+
+	public computeMetrics(completion: number[], target: number[]): ToyValidationMetrics {
+		return {
+			matches: tokenMatches(completion, target),
+			accuracy: mustMatchAccuracy(completion, target)
+		};
 	}
 }
