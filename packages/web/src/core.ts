@@ -44,6 +44,7 @@ async function init(): Promise<void> {
   await initGlobals();
 }
 
+export * from "@/cql";
 export * from "@/function";
 export * from "@/globals";
 export * as nn from "@/nn";
