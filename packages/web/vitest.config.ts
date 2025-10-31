@@ -1,3 +1,4 @@
+import { playwright } from "@vitest/browser-playwright";
 import tsconfigPaths from "vite-tsconfig-paths";
 import { defineConfig } from "vitest/config";
 
@@ -12,7 +13,7 @@ export default defineConfig({
           setupFiles: ["./vitest-client-setup.ts"],
           browser: {
             enabled: true,
-            provider: "playwright",
+            provider: playwright(),
             instances: [
               {
                 browser: "chromium",
