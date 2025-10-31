@@ -63,6 +63,9 @@ export class TrainingSession {
 	private config: Config;
 	private readonly post: (e: RunWorkerEventWithoutRunId) => void;
 
+	private paused = false;
+	private resolvePause: (() => void) | null = null;
+
 	private model!: GeneratableModel;
 	private optimizer!: piston.Optimizer;
 	private scheduler: LRScheduler<unknown> | undefined;
@@ -88,6 +91,21 @@ export class TrainingSession {
 		this.post = (e: RunWorkerEventWithoutRunId) =>
 			// We only post the subset of events that have runId in the payload
 			(post as (e: RunWorkerEvent) => void)({ ...e, runId: this.runId });
+	}
+
+	async pause() {
+		if (this.paused) return;
+		this.paused = true;
+		await new Promise<void>((resolve) => {
+			this.resolvePause = resolve;
+		});
+		this.resolvePause = null;
+		this.post({ type: 'paused' });
+	}
+
+	resume() {
+		this.paused = false;
+		this.post({ type: 'resumed' });
 	}
 
 	private logMetrics(
@@ -546,6 +564,12 @@ export class TrainingSession {
 	async start(): Promise<void> {
 		await this.setup();
 		while (true) {
+			if (this.paused) {
+				if (this.resolvePause) {
+					this.resolvePause();
+				}
+				return;
+			}
 			const { done, value } = await this.step();
 			if (done) {
 				if (value === 'completed') {

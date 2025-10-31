@@ -5,7 +5,7 @@ import { triggerLowDiversityDatasetError, triggerVramLimitFlash } from './ui.sve
 let trainWorker: Worker | null = $state(null);
 export const workerReady = $state({ current: false });
 export const workerVersion = $state({ current: 0 });
-export const trainingState = $state<{ current: 'training' | 'stopped' }>({
+export const trainingState = $state<{ current: 'training' | 'paused' | 'stopped' }>({
 	current: 'stopped'
 });
 
@@ -110,6 +110,14 @@ export async function initializeWorker() {
 						}
 						workerStopTraining();
 						break;
+					case 'paused':
+						console.log('[Main] Training paused');
+						trainingState.current = 'paused';
+						break;
+					case 'resumed':
+						console.log('[Main] Training resumed');
+						trainingState.current = 'training';
+						break;
 				}
 			};
 
@@ -155,6 +163,21 @@ export async function workerStopTraining() {
 
 	// Recreate worker
 	await initializeWorker();
+}
+
+export function workerPauseTraining() {
+	if (!trainWorker || trainingState.current !== 'training') return;
+	trainWorker.postMessage({ type: 'pause' });
+}
+
+export function workerResumeTraining() {
+	if (!trainWorker || trainingState.current !== 'paused') return;
+	trainWorker.postMessage({ type: 'resume' });
+}
+
+export function workerStep() {
+	if (!trainWorker || trainingState.current === 'stopped') return;
+	trainWorker.postMessage({ type: 'step' });
 }
 
 export function cleanupWorker() {

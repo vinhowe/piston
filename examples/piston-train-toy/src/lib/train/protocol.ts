@@ -8,6 +8,9 @@ export type WorkerCommand =
 			type: 'start';
 			data: { runId: string; config: Config };
 	  }
+	| { type: 'pause' }
+	| { type: 'resume' }
+	| { type: 'step' }
 	| { type: 'stop' }
 	| { type: 'inspectModel'; data: { requestId: string; config: Config } };
 
@@ -37,6 +40,8 @@ export type RunWorkerEventWithoutRunId =
 			data: { [metricName: string]: Omit<StepData, 'step'> };
 			metadata?: { step?: number };
 	  }
+	| { type: 'paused' }
+	| { type: 'resumed' }
 	| { type: 'complete' }
 	| LogWorkerEvent
 	| ErrorWorkerEvent;

@@ -13,8 +13,10 @@
 		selectTab,
 		setupUI,
 		startTraining,
+		stepForward,
 		stopTraining,
-		toggleConfig
+		toggleConfig,
+		togglePause
 	} from '$lib/workspace/ui.svelte';
 	import {
 		cleanupWorker,
@@ -25,10 +27,12 @@
 	import {
 		ChartLine,
 		Info,
+		PauseIcon,
 		PlayIcon,
 		RefreshCcwIcon,
 		Settings2,
-		SquareIcon
+		SquareIcon,
+		StepForwardIcon
 	} from 'lucide-svelte';
 	import { onDestroy, onMount } from 'svelte';
 
@@ -181,7 +185,22 @@
 									</span>
 								</ActionButton>
 							{:else}
-								<div class="grid gap-1 {shouldSuggestRestart ? 'grid-cols-4' : 'grid-cols-2'}">
+								<div class="grid gap-1 {shouldSuggestRestart ? 'grid-cols-6' : 'grid-cols-4'}">
+									<ActionButton color="gray" class="h-7.5 col-span-1" onclick={togglePause}>
+										<span class="flex items-center justify-center gap-1.5 w-full">
+											{#if trainingState.current === 'paused'}
+												<PlayIcon class="w-3.5 h-3.5 shrink-0" strokeWidth={iconStrokeWidth} />
+											{:else}
+												<PauseIcon class="w-3.5 h-3.5 shrink-0" strokeWidth={iconStrokeWidth} />
+											{/if}
+										</span>
+									</ActionButton>
+									<ActionButton color="green" class="h-7.5 col-span-1" onclick={stepForward}>
+										<span class="flex items-center justify-center gap-1.5 w-full">
+											<StepForwardIcon class="w-3.5 h-3.5 shrink-0" strokeWidth={iconStrokeWidth} />
+										</span>
+									</ActionButton>
+
 									<ActionButton color="red" class="col-span-1 h-7.5" onclick={stopTraining}>
 										<span class="flex items-center justify-center gap-1.5 w-full">
 											<!-- Stop -->

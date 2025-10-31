@@ -3,8 +3,11 @@ import { LocalStorage } from './localStorage.svelte';
 import { newRun } from './runs.svelte';
 import {
 	trainingState,
+	workerPauseTraining,
 	workerReady,
+	workerResumeTraining,
 	workerStartTraining,
+	workerStep,
 	workerStopTraining
 } from './workers.svelte';
 
@@ -228,6 +231,20 @@ export function startTraining() {
 // Function to stop training
 export async function stopTraining() {
 	await workerStopTraining();
+}
+
+export function togglePause() {
+	if (trainingState.current === 'stopped') return;
+	if (trainingState.current === 'training') {
+		workerPauseTraining();
+	} else {
+		workerResumeTraining();
+	}
+}
+
+export function stepForward() {
+	if (trainingState.current === 'stopped') return;
+	workerStep();
 }
 
 export async function restartTraining() {

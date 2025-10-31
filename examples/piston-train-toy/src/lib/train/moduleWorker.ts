@@ -167,6 +167,21 @@ self.addEventListener('message', async (event) => {
 	const data: unknown = (raw as { data?: unknown }).data;
 
 	switch (type) {
+		case 'pause': {
+			session?.pause();
+			break;
+		}
+		case 'resume': {
+			session?.resume();
+			startTraining();
+			break;
+		}
+		case 'step': {
+			if (!session) break;
+			await session.pause();
+			await session.step({ manual: true });
+			break;
+		}
 		case 'start':
 			try {
 				const { runId: runIdFromData, config } = data as {
