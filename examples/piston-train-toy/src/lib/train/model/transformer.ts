@@ -10,6 +10,7 @@ import { nn } from '@piston-ml/piston-web';
 import * as piston from '@piston-ml/piston-web';
 
 import type { DecoderKVCache } from './cache';
+import type { SinusoidalEncoding } from './modules/positional';
 
 import { MLMHead, Pooler } from './bidirectional';
 import { createEmptyDecoderKVCache } from './cache';
@@ -22,7 +23,8 @@ import {
 	computeAutoregressiveCrossEntropyLoss,
 	createCrossEntropyCriterion,
 	maybeCreateFinalLayerNorm,
-	maybeCreateLearnedPositionEmbedding
+	maybeCreateLearnedPositionEmbedding,
+	maybeCreateSinusoidalEncoding
 } from './utils';
 
 export type EncoderDecoderTransformerConfig = TransformerModuleConfig & {
@@ -70,6 +72,7 @@ export class EncoderDecoderTransformer extends nn.Module {
 	public encoder: nn.ModuleDict<EncoderForEncoderDecoderDict>;
 	public decoder: nn.ModuleDict<DecoderForEncoderDecoderDict>;
 	private readonly criterion: CrossEntropyLoss;
+	private readonly sinusoidalEncoding?: SinusoidalEncoding;
 
 	constructor(config: Config, vocabSize: number, blockSizeSrc: number, blockSizeTgt: number) {
 		super();
@@ -123,6 +126,13 @@ export class EncoderDecoderTransformer extends nn.Module {
 			this.config.layerNormalization
 		);
 
+		// Sinusoidal encoding module if configured
+		this.sinusoidalEncoding = maybeCreateSinusoidalEncoding(
+			this.config.positionalEncoding,
+			this.config.embeddingSize,
+			this.config.dropout.embedding
+		);
+
 		this.encoder = new nn.ModuleDict(encoderDict);
 		this.decoder = new nn.ModuleDict(decoderDict);
 
@@ -170,6 +180,7 @@ export class EncoderDecoderTransformer extends nn.Module {
 		targetWordEmbeddings = addPositionalEncodingToEmbedding(
 			targetWordEmbeddings,
 			this.config.positionalEncoding,
+			this.sinusoidalEncoding,
 			this.decoder.dict.positionEmbedding,
 			this.decoder.dict.drop,
 			posOffsetDec
@@ -233,6 +244,7 @@ export class EncoderDecoderTransformer extends nn.Module {
 		sourceWordEmbeddings = addPositionalEncodingToEmbedding(
 			sourceWordEmbeddings,
 			this.config.positionalEncoding,
+			this.sinusoidalEncoding,
 			this.encoder.dict.positionEmbedding,
 			this.encoder.dict.drop
 		);
@@ -273,6 +285,7 @@ export class DecoderTransformer extends nn.Module {
 	public decoder: nn.ModuleDict<DecoderTransformerDict>;
 	readonly lmHead: nn.Linear;
 	private readonly criterion: CrossEntropyLoss;
+	private readonly sinusoidalEncoding?: SinusoidalEncoding;
 
 	constructor(config: Config, vocabSize: number, blockSize: number) {
 		super();
@@ -301,6 +314,12 @@ export class DecoderTransformer extends nn.Module {
 		transformerDict.lnF = maybeCreateFinalLayerNorm(
 			this.config.embeddingSize,
 			this.config.layerNormalization
+		);
+
+		this.sinusoidalEncoding = maybeCreateSinusoidalEncoding(
+			this.config.positionalEncoding,
+			this.config.embeddingSize,
+			this.config.dropout.embedding
 		);
 
 		this.decoder = new nn.ModuleDict(transformerDict);
@@ -340,6 +359,7 @@ export class DecoderTransformer extends nn.Module {
 		wordEmbeddings = addPositionalEncodingToEmbedding(
 			wordEmbeddings,
 			this.config.positionalEncoding,
+			this.sinusoidalEncoding,
 			this.decoder.dict.positionEmbedding,
 			this.decoder.dict.drop,
 			posOffset
@@ -405,6 +425,7 @@ export class EncoderTransformer extends nn.Module {
 	readonly mlmHead?: MLMHead;
 	readonly pooler?: Pooler;
 	private readonly criterion: CrossEntropyLoss;
+	private readonly sinusoidalEncoding?: SinusoidalEncoding;
 
 	constructor(config: Config, vocabSize: number, blockSize: number, typeVocabSize: number = 2) {
 		super();
@@ -438,7 +459,10 @@ export class EncoderTransformer extends nn.Module {
 		};
 
 		// Only create positional embedding layer for learned positional encoding
-		if (this.config.positionalEncoding.present) {
+		if (
+			this.config.positionalEncoding.present &&
+			this.config.positionalEncoding.type === 'learned'
+		) {
 			encoderDict.positionEmbedding = new nn.Embedding(
 				this.config.blockSize,
 				this.config.embeddingSize
@@ -449,6 +473,12 @@ export class EncoderTransformer extends nn.Module {
 			this.config.embeddingSize,
 			this.config.layerNormalization
 		) as nn.Module<[Tensor], Tensor> | undefined;
+
+		this.sinusoidalEncoding = maybeCreateSinusoidalEncoding(
+			this.config.positionalEncoding,
+			this.config.embeddingSize,
+			this.config.dropout.embedding
+		);
 
 		this.encoder = new nn.ModuleDict(encoderDict);
 
@@ -512,6 +542,7 @@ export class EncoderTransformer extends nn.Module {
 		wordEmbedding = addPositionalEncodingToEmbedding(
 			wordEmbedding,
 			this.config.positionalEncoding,
+			this.sinusoidalEncoding,
 			this.encoder.dict.positionEmbedding,
 			this.encoder.dict.dropout
 		);

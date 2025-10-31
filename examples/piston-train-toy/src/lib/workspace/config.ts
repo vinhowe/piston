@@ -83,8 +83,19 @@ export interface DataConfig {
 	};
 }
 
+export interface AlibiConfig {
+	maxBias: number;
+}
+
+export interface RoPEConfig {
+	base: number;
+}
+
 export interface PositionEncodingConfig {
 	present: boolean;
+	type: 'sinusoidal' | 'learned' | 'rope' | 'alibi';
+	alibi: AlibiConfig;
+	rope: RoPEConfig;
 }
 
 export type LayerNormPosition = 'pre' | 'post';

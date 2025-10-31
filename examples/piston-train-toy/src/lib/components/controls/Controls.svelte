@@ -215,14 +215,6 @@
 			onReset={() => resetConfigToDefaults('model.transformer.headDim')}
 		/>
 
-		<CheckboxInput
-			id="model-positional-encoding-present"
-			label="Positional Encoding"
-			bind:checked={config.model.transformer.positionalEncoding.present}
-			hasDefaultValue={equalsConfigDefault('model.transformer.positionalEncoding.present')}
-			onReset={() => resetConfigToDefaults('model.transformer.positionalEncoding.present')}
-		/>
-
 		<!-- Attention -->
 		<ToggleGroup
 			id="model-attention-control"
@@ -279,6 +271,96 @@
 				hasDefaultValue={equalsConfigDefault('model.transformer.mlp.hiddenExpansionFactor')}
 				onReset={() => resetConfigToDefaults('model.transformer.mlp.hiddenExpansionFactor')}
 			/>
+		</ToggleGroup>
+
+		<ToggleGroup
+			id="model-layer-normalization-control"
+			title="Positional Encoding"
+			showEnableToggle={true}
+			bind:enabled={config.model.transformer.positionalEncoding.present}
+			hasDefaultValue={equalsConfigDefault('model.transformer.positionalEncoding.present')}
+			onReset={() => resetConfigToDefaults('model.transformer.positionalEncoding.present')}
+		>
+			<SelectWithCitations
+				id="model-layer-normalization-type"
+				bind:value={config.model.transformer.positionalEncoding.type}
+				options={[
+					{
+						value: 'sinusoidal',
+						title: 'Sinusoidal',
+						citations: {
+							entries: [{ name: 'Vaswani et al., 2017', url: 'https://arxiv.org/abs/1706.03762' }],
+							extra: '; Transformer'
+						}
+					},
+					{
+						value: 'learned',
+						title: 'Learned',
+						citations: {
+							entries: [
+								{
+									name: 'Radford et al., 2018',
+									url: 'https://cdn.openai.com/research-covers/language-unsupervised/language_understanding_paper.pdf'
+								}
+							],
+							extra: '; GPT-series'
+						}
+					},
+					{
+						value: 'rope',
+						title: 'Rotary',
+						citations: {
+							entries: [
+								{
+									name: 'Su et al., 2021',
+									url: 'https://www.sciencedirect.com/science/article/pii/S0925231223011864'
+								}
+							],
+							extra: '; Llama'
+						}
+					},
+					{
+						value: 'alibi',
+						title: 'Alibi',
+						citations: {
+							entries: [
+								{ name: 'Press et al., 2021', url: 'https://openreview.net/forum?id=R8sQPpGCv0' }
+							],
+							extra: '; BLOOM, MPT'
+						}
+					}
+				]}
+				hasDefaultValue={equalsConfigDefault('model.transformer.positionalEncoding.type')}
+				onReset={() => resetConfigToDefaults('model.transformer.positionalEncoding.type')}
+			/>
+			{#if config.model.transformer.positionalEncoding.type === 'rope'}
+				<Slider
+					id="model-positional-encoding-rope-base"
+					label="Base"
+					bind:value={config.model.transformer.positionalEncoding.rope.base}
+					min={1}
+					max={10000}
+					step={1}
+					useLog
+					hasDefaultValue={equalsConfigDefault('model.transformer.positionalEncoding.rope.base')}
+					onReset={() => resetConfigToDefaults('model.transformer.positionalEncoding.rope.base')}
+				/>
+			{/if}
+			{#if config.model.transformer.positionalEncoding.type === 'alibi'}
+				<Slider
+					id="model-positional-encoding-alibi-max-bias"
+					label="Max Bias"
+					bind:value={config.model.transformer.positionalEncoding.alibi.maxBias}
+					min={1}
+					max={100}
+					step={1}
+					hasDefaultValue={equalsConfigDefault(
+						'model.transformer.positionalEncoding.alibi.maxBias'
+					)}
+					onReset={() =>
+						resetConfigToDefaults('model.transformer.positionalEncoding.alibi.maxBias')}
+				/>
+			{/if}
 		</ToggleGroup>
 
 		<!-- Normalization -->

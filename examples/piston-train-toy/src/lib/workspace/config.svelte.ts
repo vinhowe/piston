@@ -106,7 +106,14 @@ const CONFIG_DEFAULTS: Config = {
 				nKeyValueHeads: 4
 			},
 			positionalEncoding: {
-				present: true
+				present: true,
+				type: 'learned',
+				alibi: {
+					maxBias: 8.0
+				},
+				rope: {
+					base: 10000.0
+				}
 			},
 			mlp: {
 				present: true,

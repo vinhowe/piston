@@ -1,4 +1,4 @@
-import { cat, Linear, nn, Tensor } from '@piston-ml/piston-web';
+import { AlibiEmbedding, cat, Linear, nn, RotaryEmbedding, Tensor } from '@piston-ml/piston-web';
 
 import type { SelfAttentionCache } from '../cache';
 import type { TransformerModuleConfig } from '../config';
@@ -13,6 +13,8 @@ abstract class CoreAttention extends nn.Module {
 	protected abstract cProj: Linear;
 	protected attnDropout?: nn.Dropout;
 	protected residDropout?: nn.Dropout;
+	protected rope?: RotaryEmbedding;
+	protected alibi?: AlibiEmbedding;
 	protected readonly isCausal: boolean;
 	protected readonly config: TransformerModuleConfig;
 
@@ -35,10 +37,16 @@ abstract class CoreAttention extends nn.Module {
 		options: {
 			attentionMask?: Tensor | null;
 			cache?: SelfAttentionCache | null;
+			ropeOffsets?: { qOffset: number; kOffset: number } | null;
 		}
 	): [Tensor, SelfAttentionCache | null] {
 		const B = q.size(0);
 		const T_q = q.size(2);
+
+		// Optional RoPE with separate offsets for q and k
+		if (options.ropeOffsets) {
+			[q, k] = this.applyRoPE(q, k, options.ropeOffsets.qOffset, options.ropeOffsets.kOffset);
+		}
 
 		// Concatenate with cache if present
 		const kCat = options.cache ? cat([options.cache.k, k], { dim: 2 }) : k;
@@ -47,6 +55,11 @@ abstract class CoreAttention extends nn.Module {
 
 		// Compute attention scores
 		let att = q.matmul(kCat, { transRhs: true }).div(Math.sqrt(this.headDim));
+
+		// Apply ALiBi if configured
+		if (this.alibi) {
+			att = this.alibi.forward(att);
+		}
 
 		// Apply causal mask if needed
 		if (this.isCausal) {
@@ -75,6 +88,14 @@ abstract class CoreAttention extends nn.Module {
 			length: T_kv
 		};
 		return [y, newCache];
+	}
+
+	applyRoPE(q: Tensor, k: Tensor, qOffset: number, kOffset?: number) {
+		if (this.rope) {
+			q = this.rope.forward(q, qOffset);
+			k = this.rope.forward(k, kOffset ?? qOffset);
+		}
+		return [q, k];
 	}
 
 	applyAttentionMask(att: Tensor, attentionMask: Tensor) {
@@ -140,6 +161,14 @@ export class SelfAttention extends CoreAttention {
 		if (config.dropout.transformer.residual > 0) {
 			this.residDropout = new nn.Dropout(config.dropout.transformer.residual);
 		}
+
+		if (config.positionalEncoding.present && config.positionalEncoding.type === 'rope') {
+			this.rope = new RotaryEmbedding(this.headDim, config.positionalEncoding.rope.base);
+		}
+
+		if (config.positionalEncoding.present && config.positionalEncoding.type === 'alibi') {
+			this.alibi = new AlibiEmbedding(config.positionalEncoding.alibi.maxBias);
+		}
 	}
 
 	private projectQkv(input: Tensor): [Tensor, Tensor, Tensor] {
@@ -178,9 +207,11 @@ export class SelfAttention extends CoreAttention {
 	): { output: Tensor; pastKeyValues?: SelfAttentionCache } {
 		const qkv = this.projectQkv(input);
 		const [q, k, v] = qkv;
+		const pastLen = options.cache?.length ?? 0;
 		const [y, newCache] = this.runAttention(q, k, v, {
 			attentionMask: options.attentionMask ?? null,
-			cache: options.cache ?? null
+			cache: options.cache ?? null,
+			ropeOffsets: { qOffset: pastLen, kOffset: pastLen }
 		});
 		return { output: y, pastKeyValues: newCache ?? undefined };
 	}
@@ -249,7 +280,8 @@ export class CrossAttention extends CoreAttention {
 		const [y, _ignored] = this.runAttention(q, k, v, {
 			attentionMask: options.attentionMask ?? null,
 			// No KV concatenation for cross-attention; K/V are static from encoder
-			cache: null
+			cache: null,
+			ropeOffsets: { qOffset: 0, kOffset: 0 }
 		});
 		return { output: y, pastKeyValues: returnCache ?? undefined };
 	}

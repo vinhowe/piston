@@ -12,6 +12,7 @@ import {
 } from '@piston-ml/piston-web';
 
 import { createNorm } from './modules/norm';
+import { SinusoidalEncoding } from './modules/positional';
 
 /**
  * Create a causal (lower triangular) mask.
@@ -67,24 +68,41 @@ export function maskedFill(onTrue: Tensor, mask: Tensor, onFalseValue: number): 
 export function addPositionalEncodingToEmbeddings(
 	embeddings: Tensor,
 	positionalEncodingConfig: PositionEncodingConfig,
+	sinusoidalEncoding?: ModuleType<[Tensor], Tensor>,
 	positionEmbeddings?: ModuleType<[Tensor], Tensor>,
 	dropout?: ModuleType<[Tensor], Tensor>,
 	additionalPositionOffset: number = 0
 ): Tensor {
 	const [batchSize, seqLen] = embeddings.size();
 	if (positionalEncodingConfig.present) {
-		// Add positional embeddings
-		const positions = createPositionIds(
-			seqLen,
-			batchSize,
-			embeddings.device,
-			additionalPositionOffset
-		);
-		const positionEmbeddingsOutput = positionEmbeddings!.forward(positions);
-		embeddings = embeddings.add(positionEmbeddingsOutput);
-		// Apply embedding dropout if configured
-		if (dropout) {
-			embeddings = dropout.forward(embeddings);
+		if (positionalEncodingConfig.type === 'learned') {
+			// Add positional embeddings
+			const positions = createPositionIds(
+				seqLen,
+				batchSize,
+				embeddings.device,
+				additionalPositionOffset
+			);
+			const positionEmbeddingsOutput = positionEmbeddings!.forward(positions);
+			embeddings = embeddings.add(positionEmbeddingsOutput);
+			// Apply embedding dropout if configured
+			if (dropout) {
+				embeddings = dropout.forward(embeddings);
+			}
+		} else if (positionalEncodingConfig.type === 'sinusoidal') {
+			embeddings = (sinusoidalEncoding as SinusoidalEncoding).forward(
+				embeddings,
+				additionalPositionOffset
+			);
+		} else if (
+			positionalEncodingConfig.type === 'rope' ||
+			positionalEncodingConfig.type === 'alibi'
+		) {
+			// These are applied in the attention mechanism, so we only apply embedding dropout here, if
+			// configured
+			if (dropout) {
+				embeddings = dropout.forward(embeddings);
+			}
 		}
 	}
 	return embeddings;
@@ -104,8 +122,22 @@ export function maybeCreateLearnedPositionEmbedding(
 	blockSize: number,
 	embeddingSize: number
 ): nn.Embedding | undefined {
-	if (positionalEncoding.present) {
+	if (positionalEncoding.present && positionalEncoding.type === 'learned') {
 		return new nn.Embedding(blockSize, embeddingSize);
+	}
+	return undefined;
+}
+
+/**
+ * Optionally create sinusoidal encoding module based on positional encoding config
+ */
+export function maybeCreateSinusoidalEncoding(
+	positionalEncoding: PositionEncodingConfig,
+	embeddingSize: number,
+	dropout: number
+): SinusoidalEncoding | undefined {
+	if (positionalEncoding.present && positionalEncoding.type === 'sinusoidal') {
+		return new SinusoidalEncoding(embeddingSize, { dropout });
 	}
 	return undefined;
 }
