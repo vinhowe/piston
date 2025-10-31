@@ -34,7 +34,7 @@ import {
 	EncoderTransformer
 } from '../model/transformer';
 import { initTransformerParameters } from './init';
-import { seededRandom } from './random';
+import { parseSeed, seededRandom } from './random';
 
 type EncoderDecoderBlockSize = { source: number; target: number };
 
@@ -250,7 +250,8 @@ export function inspectModel(config: Config): {
 } {
 	return weak(
 		() => {
-			const generator = seededRandom();
+			const seed = seedPiston(config);
+			const generator = seededRandom(seed);
 			const dataset = buildDataset(config, generator, 'train');
 			const [dataloader] = createDataloader(config, dataset, generator, tensorWrap);
 			const isEncoderDecoder = config.model.topology === 'encoder-decoder';
@@ -289,4 +290,17 @@ export function inspectModel(config: Config): {
 			label: 'inspectModel'
 		}
 	);
+}
+
+export function seedPiston(config: Config) {
+	// Set up random number generator
+	const seed = parseSeed(
+		config.training.randomSeed.present ? config.training.randomSeed.value : undefined
+	);
+
+	if (seed !== undefined) {
+		piston.seed(seed);
+	}
+
+	return seed;
 }

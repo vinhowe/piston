@@ -37,7 +37,8 @@ import {
 	createCollateFn,
 	createDataloader,
 	createModel,
-	initializeModel
+	initializeModel,
+	seedPiston
 } from './utils/model';
 import { MarkStepModeIfEnabled, WeakModeIfEnabled } from './utils/modes';
 import { configureOptimizerForModel } from './utils/optim';
@@ -129,6 +130,8 @@ export class TrainingSession {
 		const isDecoderOnly = this.config.model.topology === 'decoder';
 		const isEncoderDecoder = this.config.model.topology === 'encoder-decoder';
 
+		const seed = seedPiston(this.config);
+
 		if (this.config.training.vramLimitMb.present) {
 			piston.gpu.setVRAMLimit(BigInt(this.config.training.vramLimitMb.value * 1024 * 1024));
 		}
@@ -140,7 +143,7 @@ export class TrainingSession {
 
 		// Set up dataset; we use two generators so we change validation parameters without affecting
 		// training
-		const trainGenerator = seededRandom();
+		const trainGenerator = seededRandom(seed);
 		const maskGenerator = isEncoderOnly ? forkRandom(trainGenerator) : null;
 
 		this.trainDataset = buildDataset(this.config, trainGenerator, 'train');

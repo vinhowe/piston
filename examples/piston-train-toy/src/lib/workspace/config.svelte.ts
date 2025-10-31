@@ -40,6 +40,10 @@ const CONFIG_DEFAULTS: Config = {
 				residual: 0.1
 			}
 		},
+		randomSeed: {
+			present: true,
+			value: 'sequence toy'
+		},
 		useWeakTensorReferences: true,
 		sharedObjectAllocation: false,
 		cachingEnabled: false,
@@ -429,7 +433,7 @@ function ensureDatasetSupportsModelType() {
 
 function datasetFromConfig(config: Config) {
 	ensureDatasetSupportsModelType();
-	const generator = seededRandom();
+	const generator = seededRandom(0);
 	const dataset = buildDataset(config, generator, 'train');
 	const [dataloader, collateFn] = createDataloader(config, dataset, generator, null);
 	const blockSize = calculateBlockSize(config, dataloader);

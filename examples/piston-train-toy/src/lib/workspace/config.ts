@@ -50,6 +50,10 @@ export interface TrainingConfig {
 	batchSize: number;
 	dropout: DropoutConfig;
 	validation: ValidationConfig;
+	randomSeed: {
+		present: boolean;
+		value: string;
+	};
 	vramLimitMb: {
 		present: boolean;
 		value: number;

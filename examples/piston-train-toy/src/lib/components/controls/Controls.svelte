@@ -26,6 +26,7 @@
 	import SelectModelTopology from './select/SelectModelTopology.svelte';
 	import SelectWithCitations from './select/SelectWithCitations.svelte';
 	import Slider from './Slider.svelte';
+	import TextInput from './TextInput.svelte';
 	import ToggleGroup from './ToggleGroup.svelte';
 
 	const sectionClass = 'p-1 space-y-1 flex flex-col';
@@ -546,6 +547,22 @@
 				/>
 			</ToggleGroup>
 		</BorderedGroup>
+
+		<ToggleGroup
+			id="random-seed-control"
+			title="Random Seed"
+			showEnableToggle={true}
+			bind:enabled={config.training.randomSeed.present}
+			hasDefaultValue={equalsConfigDefault('training.randomSeed.present')}
+			onReset={() => resetConfigToDefaults('training.randomSeed.present')}
+		>
+			<TextInput
+				id="random-seed-input"
+				bind:value={config.training.randomSeed.value}
+				hasDefaultValue={equalsConfigDefault('training.randomSeed.value')}
+				onReset={() => resetConfigToDefaults('training.randomSeed.value')}
+			/>
+		</ToggleGroup>
 
 		<ToggleGroup
 			id="training-vram-limit-group"
