@@ -37,6 +37,36 @@
 	});
 </script>
 
+{#snippet projectionBlock(configName: 'attention' | 'mlp' | 'lmHead', displayName: string)}
+	<ToggleGroup
+		id={`projections-control-${configName}`}
+		title={displayName}
+		showEnableToggle={true}
+		bind:enabled={config.model.transformer.initialization.projections[configName].present}
+		hasDefaultValue={equalsConfigDefault(
+			`model.transformer.initialization.projections.${configName}.present`
+		)}
+		onReset={() =>
+			resetConfigToDefaults(`model.transformer.initialization.projections.${configName}.present`)}
+	>
+		<SelectInput
+			id={`projections-strategy-${configName}`}
+			bind:value={config.model.transformer.initialization.projections[configName].strategy}
+			options={[
+				{ value: 'layer-scaled', text: 'Layer-Scaled' },
+				{ value: 'zero', text: 'Zero' }
+			]}
+			hasDefaultValue={equalsConfigDefault(
+				`model.transformer.initialization.projections.${configName}.strategy`
+			)}
+			onReset={() =>
+				resetConfigToDefaults(
+					`model.transformer.initialization.projections.${configName}.strategy`
+				)}
+		/>
+	</ToggleGroup>
+{/snippet}
+
 <div>
 	<!-- Task -->
 	<CollapsibleSection
@@ -284,6 +314,32 @@
 				</div>
 			</ToggleGroup>
 		</BorderedGroup>
+		<ToggleGroup
+			id="initialization-control"
+			title="Initialization"
+			showEnableToggle={true}
+			bind:enabled={config.model.transformer.initialization.present}
+			contentClass={sectionClass}
+			hasDefaultValue={equalsConfigDefault(`model.transformer.initialization.present`)}
+			onReset={() => resetConfigToDefaults(`model.transformer.initialization.present`)}
+		>
+			<Slider
+				id="initialization-std"
+				label="Standard Deviation ($&sigma;$)"
+				bind:value={config.model.transformer.initialization.std}
+				min={0}
+				max={100}
+				useLog
+				step={0.0001}
+				hasDefaultValue={equalsConfigDefault('model.transformer.initialization.std')}
+				onReset={() => resetConfigToDefaults('model.transformer.initialization.std')}
+			/>
+			<BorderedGroup contentClass={sectionClass} title="Initialize Projections Separately">
+				{@render projectionBlock('attention', 'Attention')}
+				{@render projectionBlock('mlp', 'MLP')}
+				{@render projectionBlock('lmHead', 'LM Head')}
+			</BorderedGroup>
+		</ToggleGroup>
 	</CollapsibleSection>
 
 	<!-- Training -->

@@ -79,6 +79,24 @@ const CONFIG_DEFAULTS: Config = {
 		},
 		transformer: {
 			headDim: 16,
+			initialization: {
+				present: true,
+				std: 0.02,
+				projections: {
+					attention: {
+						present: true,
+						strategy: 'zero'
+					},
+					mlp: {
+						present: true,
+						strategy: 'zero'
+					},
+					lmHead: {
+						present: true,
+						strategy: 'layer-scaled'
+					}
+				}
+			},
 			attention: {
 				present: true,
 				nKeyValueHeads: 4

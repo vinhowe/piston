@@ -1,6 +1,7 @@
 import type {
 	Config,
 	DropoutConfig,
+	InitializationConfig,
 	LayerNormalizationConfig,
 	MLPConfig,
 	PositionEncodingConfig,
@@ -15,6 +16,7 @@ export interface TransformerModuleConfig {
 	mlp: MLPConfig;
 	positionalEncoding: PositionEncodingConfig;
 	dropout: DropoutConfig;
+	initialization: InitializationConfig;
 }
 
 export function buildTransformerConfigCommon(
@@ -32,6 +34,7 @@ export function buildTransformerConfigCommon(
 		mlp: config.model.transformer.mlp,
 		positionalEncoding: config.model.transformer.positionalEncoding,
 		layerNormalization: config.model.layerNormalization,
+		initialization: config.model.transformer.initialization,
 		dropout: (({ present, embedding: embd, transformer }: DropoutConfig) => {
 			return {
 				present,

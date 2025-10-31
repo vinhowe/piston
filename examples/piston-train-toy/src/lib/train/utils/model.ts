@@ -32,6 +32,7 @@ import {
 	EncoderDecoderTransformer,
 	EncoderTransformer
 } from '../model/transformer';
+import { initTransformerParameters } from './init';
 
 type EncoderDecoderBlockSize = { source: number; target: number };
 
@@ -208,4 +209,11 @@ export function createModel(
 	} else {
 		return new DecoderTransformer(config, vocabSize, blockSize as number);
 	}
+}
+
+export function initializeModel(
+	config: Config,
+	model: DecoderTransformer | EncoderTransformer | EncoderDecoderTransformer
+) {
+	initTransformerParameters(model, config);
 }

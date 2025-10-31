@@ -105,10 +105,27 @@ export interface MLPConfig {
 
 export type ModelType = 'decoder' | 'encoder' | 'encoder-decoder';
 
+export type ProjectionInitializationStrategy = 'layer-scaled' | 'zero';
+export interface ProjectionInitializationConfig {
+	present: boolean;
+	strategy: ProjectionInitializationStrategy;
+}
+
+export interface InitializationConfig {
+	present: boolean;
+	std: number;
+	projections: {
+		attention: ProjectionInitializationConfig;
+		mlp: ProjectionInitializationConfig;
+		lmHead: ProjectionInitializationConfig;
+	};
+}
+
 export interface TransformerConfig {
 	headDim: number;
 	attention: TransformerAttentionConfig;
 	positionalEncoding: PositionEncodingConfig;
+	initialization: InitializationConfig;
 	mlp: MLPConfig;
 }
 

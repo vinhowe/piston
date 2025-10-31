@@ -36,7 +36,8 @@ import {
 	calculateVocabSize,
 	createCollateFn,
 	createDataloader,
-	createModel
+	createModel,
+	initializeModel
 } from './utils/model';
 import { MarkStepModeIfEnabled, WeakModeIfEnabled } from './utils/modes';
 import { configureOptimizerForModel } from './utils/optim';
@@ -206,6 +207,11 @@ export class TrainingSession {
 
 		// Create model
 		this.model = createModel(this.config, vocabSize, blockSize);
+
+		initializeModel(this.config, this.model);
+
+		// We need to flatten down initialization to the constant tensors they're on top of
+		await piston.gpu.markStep();
 
 		// Build and store the training data pipeline (iterator bound to current dataset/collate)
 		this.dataPipeline = await buildDataPipeline(
