@@ -95,5 +95,76 @@ export function forEachTensorDeep(
   }
 }
 
+export function cloneReplaceTensorsDeep(
+  value: unknown,
+  replacer: (t: Tensor) => unknown,
+  seen: WeakMap<object, unknown> = new WeakMap(),
+): unknown {
+  if (value instanceof Tensor) {
+    return replacer(value);
+  }
+  if (value === null) return value;
+
+  const t = typeof value;
+  if (t !== "object" && t !== "function") return value;
+
+  const obj = value as object;
+  const cached = seen.get(obj);
+  if (cached) return cached;
+
+  if (Array.isArray(obj)) {
+    const out: unknown[] = new Array(obj.length);
+    seen.set(obj, out);
+    for (let i = 0; i < obj.length; i++) {
+      out[i] = cloneReplaceTensorsDeep(obj[i], replacer, seen);
+    }
+    return out;
+  }
+  if (obj instanceof Map) {
+    const out = new Map<unknown, unknown>();
+    seen.set(obj, out);
+    for (const [k, v] of obj) {
+      const nk = cloneReplaceTensorsDeep(k, replacer, seen);
+      const nv = cloneReplaceTensorsDeep(v, replacer, seen);
+      out.set(nk, nv);
+    }
+    return out;
+  }
+  if (obj instanceof Set) {
+    const out = new Set<unknown>();
+    seen.set(obj, out);
+    for (const v of obj) {
+      out.add(cloneReplaceTensorsDeep(v, replacer, seen));
+    }
+    return out;
+  }
+  if (
+    ArrayBuffer.isView(obj) ||
+    obj instanceof ArrayBuffer ||
+    obj instanceof Date ||
+    obj instanceof RegExp
+  ) {
+    return obj;
+  }
+
+  const out = Object.create(Object.getPrototypeOf(obj));
+  seen.set(obj, out);
+  for (const key of Reflect.ownKeys(obj)) {
+    const desc = Object.getOwnPropertyDescriptor(obj, key);
+    if (!desc) continue;
+    if ("value" in desc) {
+      const newValue = cloneReplaceTensorsDeep(
+        (obj as Record<PropertyKey, unknown>)[key as keyof typeof obj],
+        replacer,
+        seen,
+      );
+      Object.defineProperty(out, key, { ...desc, value: newValue });
+    } else {
+      Object.defineProperty(out, key, desc);
+    }
+  }
+  return out;
+}
+
 export * from "./data";
 export * from "./weak";

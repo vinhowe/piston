@@ -1,3 +1,4 @@
+import { Module } from "@/nn/module";
 import { Tensor } from "@/tensor";
 
 // Types for the selector tokens
@@ -198,6 +199,114 @@ export interface TensorQuery {
   jsPipe: string | null;
 }
 
+interface BaseOpMatchState {
+  module: Module;
+  type:
+    | "simple"
+    | "next-sibling"
+    | "subsequent-sibling"
+    | "previous-sibling"
+    | "preceding-sibling"
+    | "sibling-chain";
+  matches: Map<Module, OpQueryMatch[]>;
+}
+
+interface BaseItemMatcher {
+  type: "name" | "wildcard" | "regex";
+  match: Tensor | null;
+}
+
+interface NameItemMatcher extends BaseItemMatcher {
+  type: "name";
+  name: string;
+}
+
+interface WildcardItemMatcher extends BaseItemMatcher {
+  type: "wildcard";
+}
+
+interface RegexItemMatcher extends BaseItemMatcher {
+  type: "regex";
+  regex: RegExp;
+}
+
+export type ItemMatcher = NameItemMatcher | WildcardItemMatcher | RegexItemMatcher;
+
+export interface SimpleOpMatchState extends BaseOpMatchState {
+  type: "simple";
+  current: ItemMatcher;
+}
+
+export interface NextSiblingOpMatchState extends BaseOpMatchState {
+  type: "next-sibling";
+  preceding: ItemMatcher;
+  target: ItemMatcher;
+}
+
+export interface SubsequentSiblingOpMatchState extends BaseOpMatchState {
+  type: "subsequent-sibling";
+  preceding: ItemMatcher;
+  target: ItemMatcher;
+}
+
+export interface SiblingChainOpMatchState extends BaseOpMatchState {
+  type: "sibling-chain";
+  /** Items to match in order (length >= 2) */
+  items: ItemMatcher[];
+  /** Relation between items[i] and items[i+1] */
+  relations: ("next-sibling" | "subsequent-sibling")[];
+  /**
+   * Active in-flight progresses represented by index of the last matched item
+   * Multiple progresses allow overlapping matches (e.g., A ~ A ~ A over AAAA)
+   */
+  progresses: number[];
+}
+
+export type OpMatchState =
+  | SimpleOpMatchState
+  | NextSiblingOpMatchState
+  | SubsequentSiblingOpMatchState
+  | SiblingChainOpMatchState;
+
+export interface BaseQueryMatch {
+  type: "op" | "parameter" | "module";
+  /** Index of the parsed query within the current CapturePlan */
+  queryIndex?: number;
+  /** Tensor containing relevant buffer, but not necessarily the original tensor */
+  bufferTensor?: Tensor | Tensor[];
+  /** Tensor for gradient calculation, if query requires it */
+  tensorForGrad?: unknown;
+  transformationForGrad?: ((input: unknown) => Tensor | Tensor[]) | null;
+}
+export interface OpQueryMatch extends BaseQueryMatch {
+  type: "op";
+  op: string;
+}
+export interface ParameterQueryMatch extends BaseQueryMatch {
+  type: "parameter";
+  parameter: string;
+  parameterType: "parameter" | "buffer";
+}
+export interface ModuleQueryMatch extends BaseQueryMatch {
+  type: "module";
+  module: Module;
+  site: "input" | "output";
+}
+export type QueryMatch = OpQueryMatch | ParameterQueryMatch | ModuleQueryMatch;
+
+export interface BaseQueryContext<MatchType extends BaseQueryMatch = QueryMatch> {
+  query: TensorQuery;
+  queryIndex: number;
+  transformation: ((input: unknown) => Tensor | Tensor[]) | null;
+  matches: Map<Module, MatchType[]>;
+}
+export interface OpQueryContext extends BaseQueryContext<OpQueryMatch> {
+  matchStates: Map<Module, OpMatchState> | null;
+}
+export type ModuleQueryContext = BaseQueryContext<BaseQueryMatch>;
+export type ParameterQueryContext = BaseQueryContext<ParameterQueryMatch>;
+export type QueryContext = OpQueryContext | ModuleQueryContext | ParameterQueryContext;
+
 // Model adapter interface for evaluating the DSL against actual models
 export interface ModelNode<ParameterType = Tensor> {
   name: string;
@@ -220,6 +329,11 @@ export interface ModelAdapter<ParameterType = Tensor> {
     results: ModelNode<ParameterType>[],
     maxDepth?: number,
   ): void;
+}
+
+export interface CaptureResult {
+  matches: { [key: string]: QueryMatch[] };
+  source: TensorQuery;
 }
 
 export interface ModuleSelectorOptions {

@@ -67,6 +67,9 @@ const createConfig = ({
       interop: "auto",
       // Export individual named exports in ES format
       exports: "named",
+      // This is important because we need to match on class names and parameter names for the
+      // capture session.
+      minifyInternalExports: false,
     },
     // Make sure we externalize the @piston-ml/piston-web dependency, and the CodeMirror/Lezer
     // packages.
