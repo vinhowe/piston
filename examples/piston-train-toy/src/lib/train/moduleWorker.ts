@@ -3,6 +3,7 @@ import * as piston from '@piston-ml/piston-web';
 import type { WorkerCommand, WorkerEvent } from './protocol';
 
 import { TrainingSession } from './session';
+import { inspectModel } from './utils/model';
 
 let session: TrainingSession | undefined;
 
@@ -201,6 +202,30 @@ self.addEventListener('message', async (event) => {
 					message: error instanceof Error ? error.message : String(error),
 					name: error instanceof Error ? error.name : undefined,
 					stack: error instanceof Error ? error.stack : undefined
+				});
+			}
+			break;
+		case 'inspectModel':
+			try {
+				const { config, requestId } = data as { config: Config; requestId: string };
+				currentExecutionSource = '[ModelInspection]';
+
+				console.debug('Inspecting model...');
+				const result = inspectModel(config);
+
+				self.postMessage({
+					type: 'modelInspection',
+					requestId,
+					parameterCount: result.parameterCount,
+					vocabSize: result.vocabSize,
+					blockSize: result.blockSize
+				});
+			} catch (error: unknown) {
+				console.error('Model inspection error:', error);
+				self.postMessage({
+					type: 'modelInspectionError',
+					requestId: (data as { requestId?: string })?.requestId ?? '',
+					message: error instanceof Error ? error.message : String(error)
 				});
 			}
 			break;

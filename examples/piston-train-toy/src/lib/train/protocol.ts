@@ -48,4 +48,15 @@ export type RunWorkerEventWithoutRunId =
 
 export type RunWorkerEvent = RunWorkerEventWithoutRunId & WithRunId;
 
-export type WorkerEvent = ReadyWorkerEvent | LogWorkerEvent | ErrorWorkerEvent | RunWorkerEvent;
+export type WorkerEvent =
+	| ReadyWorkerEvent
+	| LogWorkerEvent
+	| ErrorWorkerEvent
+	| RunWorkerEvent
+	| {
+			type: 'modelInspection';
+			requestId: string;
+			parameterCount: number;
+			vocabSize: number;
+	  }
+	| { type: 'modelInspectionError'; requestId: string; message: string };

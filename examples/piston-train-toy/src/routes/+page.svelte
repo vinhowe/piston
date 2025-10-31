@@ -19,8 +19,8 @@
 		togglePause
 	} from '$lib/workspace/ui.svelte';
 	import {
-		cleanupWorker,
-		initializeWorker,
+		cleanupWorkers,
+		initializeWorkers,
 		trainingState,
 		workerReady
 	} from '$lib/workspace/workers.svelte';
@@ -55,18 +55,20 @@
 	onMount(() => {
 		// Set mounted state to remove hidden classes
 		hasMounted = true;
+
 		initSharedConfigUrlSync();
 		resetWorkspace();
-		initializeWorker();
+		initializeWorkers();
 
 		const uiCleanup = setupUI();
+
 		return () => {
 			uiCleanup();
 		};
 	});
 
 	onDestroy(() => {
-		cleanupWorker();
+		cleanupWorkers();
 	});
 </script>
 

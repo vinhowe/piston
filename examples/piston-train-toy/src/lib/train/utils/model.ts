@@ -1,6 +1,7 @@
 import type { Random } from 'random-js';
 
-import { DataLoader, Tensor } from '@piston-ml/piston-web';
+import { DataLoader, Tensor, weak } from '@piston-ml/piston-web';
+import * as piston from '@piston-ml/piston-web';
 
 import type { Config } from '../../workspace/config';
 import type {
@@ -15,7 +16,7 @@ import type {
 	ToyDataloaderType
 } from '../types';
 
-import { type CollateWrapFunction } from '../data';
+import { buildDataset, type CollateWrapFunction, tensorWrap } from '../data';
 import {
 	naturalLanguageAutoregressiveCollate,
 	naturalLanguageBidirectionalCollate,
@@ -33,6 +34,7 @@ import {
 	EncoderTransformer
 } from '../model/transformer';
 import { initTransformerParameters } from './init';
+import { seededRandom } from './random';
 
 type EncoderDecoderBlockSize = { source: number; target: number };
 
@@ -216,4 +218,75 @@ export function initializeModel(
 	model: DecoderTransformer | EncoderTransformer | EncoderDecoderTransformer
 ) {
 	initTransformerParameters(model, config);
+}
+
+export function countParameters(
+	model: DecoderTransformer | EncoderTransformer | EncoderDecoderTransformer
+): number {
+	let totalParams = 0;
+
+	// Walk through all named parameters
+	for (const [_, param] of model.namedParameters()) {
+		if (param && param.shape) {
+			const paramCount = (param.shape as number[]).reduce(
+				(acc: number, dim: number) => acc * dim,
+				1
+			);
+			totalParams += paramCount;
+		}
+	}
+
+	return totalParams;
+}
+
+/**
+ * Inspect model for a given configuration: count the number of parameters and capture an "index"
+ * of the model.
+ */
+export function inspectModel(config: Config): {
+	parameterCount: number;
+	vocabSize: number;
+	blockSize: number;
+} {
+	return weak(
+		() => {
+			const generator = seededRandom();
+			const dataset = buildDataset(config, generator, 'train');
+			const [dataloader] = createDataloader(config, dataset, generator, tensorWrap);
+			const isEncoderDecoder = config.model.topology === 'encoder-decoder';
+			const blockSizeOrSizes = calculateBlockSize(config, dataloader);
+			const vocabSize = calculateVocabSize(dataset);
+			const model = createModel(config, vocabSize, blockSizeOrSizes);
+			const parameterCount = countParameters(model);
+
+			// Run the model forward with an input from the dataloader
+			if (model instanceof DecoderTransformer) {
+				model.forward(piston.zeros([1, blockSizeOrSizes as number], { dtype: piston.int32 }));
+			} else if (model instanceof EncoderTransformer) {
+				model.forward(piston.zeros([1, blockSizeOrSizes as number], { dtype: piston.int32 }));
+			} else if (model instanceof EncoderDecoderTransformer) {
+				model.forward(
+					piston.zeros([1, (blockSizeOrSizes as EncoderDecoderBlockSize).source], {
+						dtype: piston.int32
+					}),
+					piston.zeros([1, (blockSizeOrSizes as EncoderDecoderBlockSize).target], {
+						dtype: piston.int32
+					})
+				);
+			}
+
+			console.debug(`Model has ${parameterCount} parameters with vocab size ${vocabSize}`);
+
+			const blockSize = isEncoderDecoder
+				? Math.max(
+						(blockSizeOrSizes as { source: number; target: number }).source,
+						(blockSizeOrSizes as { source: number; target: number }).target
+					)
+				: (blockSizeOrSizes as number);
+			return { parameterCount, vocabSize, blockSize };
+		},
+		{
+			label: 'inspectModel'
+		}
+	);
 }

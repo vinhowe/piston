@@ -1,3 +1,4 @@
+import { config } from './config.svelte';
 import { currentRun, log } from './runs.svelte';
 import { triggerLowDiversityDatasetError, triggerVramLimitFlash } from './ui.svelte';
 
@@ -180,10 +181,139 @@ export function workerStep() {
 	trainWorker.postMessage({ type: 'step' });
 }
 
-export function cleanupWorker() {
+//
+// Model inspection state
+//
+
+let parameterCount = $state<number | null>(null);
+let modelInspectionRequestId = $state<string | null>(null);
+let isInspectingModel = $state(false);
+let modelInspectionWorker: Worker | null = $state(null);
+
+export function getParameterCount() {
+	return parameterCount;
+}
+
+export function getIsInspectingModel() {
+	return isInspectingModel;
+}
+
+export function setModelInspectionWorker(workerInstance: Worker | null) {
+	modelInspectionWorker = workerInstance;
+	// Trigger initial model inspection when worker is set
+	if (modelInspectionWorker && !isInspectingModel) {
+		setTimeout(() => requestModelInspection(), 0);
+	}
+}
+
+// Export a function to manually trigger model inspection
+export function triggerModelInspection() {
+	if (modelInspectionWorker && !isInspectingModel) {
+		setTimeout(() => requestModelInspection(), 0);
+	}
+}
+
+function requestModelInspection() {
+	if (!modelInspectionWorker || isInspectingModel) return;
+
+	isInspectingModel = true;
+	modelInspectionRequestId = crypto.randomUUID();
+
+	try {
+		modelInspectionWorker.postMessage({
+			type: 'inspectModel',
+			data: {
+				config: $state.snapshot(config),
+				requestId: modelInspectionRequestId
+			}
+		});
+	} catch (error) {
+		console.error('Failed to request model inspection:', error);
+		isInspectingModel = false;
+		modelInspectionRequestId = null;
+	}
+}
+
+export function handleModelInspectionResponse(data: {
+	requestId: string;
+	parameterCount: number;
+	vocabSize: number;
+}) {
+	if (data.requestId === modelInspectionRequestId) {
+		parameterCount = data.parameterCount;
+		isInspectingModel = false;
+		modelInspectionRequestId = null;
+	}
+}
+
+export function handleModelInspectionError(data: { requestId: string; message: string }) {
+	if (data.requestId === modelInspectionRequestId) {
+		console.error('Model inspection error:', data.message);
+		isInspectingModel = false;
+		modelInspectionRequestId = null;
+	}
+}
+
+export async function initializeModelInspectionWorker() {
+	return new Promise<void>((resolve, reject) => {
+		try {
+			// Create the dedicated model inspection worker
+			// eslint-disable-next-line svelte/prefer-svelte-reactivity
+			modelInspectionWorker = new Worker(new URL('$lib/train/moduleWorker.ts', import.meta.url), {
+				type: 'module',
+				name: 'modelInspectionWorker'
+			});
+
+			console.log('[Main] Model inspection worker created successfully.');
+
+			modelInspectionWorker.onmessage = (event) => {
+				const { type, ...data } = event.data;
+
+				switch (type) {
+					case 'ready':
+						console.log('[Main] Model inspection worker is ready');
+						resolve();
+						// Set the worker reference for model inspection
+						setModelInspectionWorker(modelInspectionWorker);
+						break;
+
+					case 'modelInspection':
+						handleModelInspectionResponse(data);
+						break;
+
+					case 'modelInspectionError':
+						handleModelInspectionError(data);
+						break;
+
+					case 'error':
+						console.error('[Main] Model inspection worker error:', data.message);
+						break;
+				}
+			};
+
+			modelInspectionWorker.onerror = (event) => {
+				console.error('[Main] Model inspection worker error:', event.message, event);
+				reject(new Error(event.error));
+			};
+		} catch (error) {
+			console.error('[Main] Failed to create model inspection worker:', error);
+			reject(error);
+		}
+	});
+}
+
+export async function initializeWorkers() {
+	return Promise.all([initializeWorker(), initializeModelInspectionWorker()]);
+}
+
+export function cleanupWorkers() {
 	if (trainWorker) {
 		trainWorker.terminate();
 		trainWorker = null;
+	}
+	if (modelInspectionWorker) {
+		modelInspectionWorker.terminate();
+		modelInspectionWorker = null;
 	}
 	// Clear UA memory interval
 	if (uaMemoryInterval) {

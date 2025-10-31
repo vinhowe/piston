@@ -11,6 +11,8 @@
 		validateConfig
 	} from '$lib/workspace/config.svelte';
 	import { controlSectionsOpen, toggleControlSection } from '$lib/workspace/ui.svelte';
+	import { getParameterCount, triggerModelInspection } from '$lib/workspace/workers.svelte';
+	import { untrack } from 'svelte';
 
 	import ActivationPicker from './ActivationPicker.svelte';
 	import BorderedGroup from './BorderedGroup.svelte';
@@ -30,12 +32,47 @@
 	// Put a little bit of padding at the bottom of collapsible sections to demarcate the end of the section
 	const collapsibleSectionClass = 'p-1 space-y-1 flex flex-col';
 
+	// Model comparison data for parameter count display
+	const attentionModelComparisons = {
+		decoder: { name: 'GPT-2 small', params: 124_000_000 },
+		encoder: { name: 'BERT base', params: 110_000_000 },
+		'encoder-decoder': { name: 'T5 Small', params: 60_000_000 }
+	};
+
+	// Derived reactive variable for parameter comparison
+	const parameterComparison = $derived.by(() => {
+		const paramCount = getParameterCount();
+		const modelType = config.model.topology;
+
+		if (!paramCount || !(modelType in attentionModelComparisons)) return null;
+
+		const comparison =
+			attentionModelComparisons[modelType as keyof typeof attentionModelComparisons];
+		const nonBreakingName = comparison.name.replace(' ', '\xa0').replace('-', '\u2011');
+		const percentage = Math.round((paramCount / comparison.params) * 10000) / 100;
+		return `(${percentage}% of ${nonBreakingName} @ ${comparison.params / 1_000_000}M)`;
+	});
+
 	const currentDataset = $derived(getCurrentDataset());
 
 	$effect(() => {
 		validateConfig();
 	});
+
+	// Reactive parameter counting; trigger when model-relevant config changes
+	$effect(() => {
+		// Add dependency on both model and data config (data config influences vocab size)
+		JSON.stringify(config.model);
+		JSON.stringify(config.data);
+
+		// Trigger parameter count when config changes, but triggerParameterCount itself needs to be untracked
+		untrack(() => triggerModelInspection());
+	});
 </script>
+
+{#snippet parameterComparisonFunFact()}
+	{parameterComparison}
+{/snippet}
 
 {#snippet projectionBlock(configName: 'attention' | 'mlp' | 'lmHead', displayName: string)}
 	<ToggleGroup
@@ -87,6 +124,16 @@
 	>
 		<!-- Parameter count display -->
 		<div class="-space-y-px">
+			<ControlsStatistic
+				label="Trainable Parameters"
+				funFact={parameterComparison ? parameterComparisonFunFact : undefined}
+			>
+				{#if getParameterCount() !== null}
+					{getParameterCount()?.toLocaleString()}
+				{:else}
+					...,...
+				{/if}
+			</ControlsStatistic>
 			<ControlsStatistic label="Embedding Size ($d_&lbrace;\text&lbrace;model&rbrace;&rbrace;$)">
 				{getHiddenSize()}
 			</ControlsStatistic>
