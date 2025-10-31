@@ -1,3 +1,5 @@
+import { Tensor } from "@/tensor";
+
 // Types for the selector tokens
 export type ModuleSelectorItemType =
   | "name"
@@ -194,4 +196,55 @@ export interface TensorQuery {
   label?: string | undefined;
   slice: ParsedSlice | null;
   jsPipe: string | null;
+}
+
+// Model adapter interface for evaluating the DSL against actual models
+export interface ModelNode<ParameterType = Tensor> {
+  name: string;
+  typeName: string;
+  parent: ModelNode<ParameterType> | null;
+  getChildren(): ModelNode<ParameterType>[];
+  getChild(nameOrIndex: string | number): ModelNode<ParameterType> | undefined;
+  getParameters(): Record<string, ParameterType>;
+  matchesRegex(regex: RegExp): boolean;
+  path(): string[];
+}
+
+export interface ModelAdapter<ParameterType = Tensor> {
+  getRootModules(): ModelNode<ParameterType>[];
+  getParameter(node: ModelNode<ParameterType>, name: string): ParameterType | undefined;
+  getChild(node: ModelNode<ParameterType>, name: string): ModelNode<ParameterType> | undefined;
+  findDescendants(
+    node: ModelNode<ParameterType>,
+    predicate: (node: ModelNode<ParameterType>) => boolean,
+    results: ModelNode<ParameterType>[],
+    maxDepth?: number,
+  ): void;
+}
+
+export interface ModuleSelectorOptions {
+  includeDescendants?: boolean;
+  maxDepth?: number;
+}
+
+export interface ModuleSelectionResult<ParameterType = Tensor> {
+  matchedModules: ModelNode<ParameterType>[];
+  query: TensorQuery;
+  diagnostics: LintDiagnostic[];
+  context?: {
+    matchCount?: number;
+    [key: string]: unknown;
+  };
+}
+
+/**
+ * Lint diagnostic for reporting errors with source locations
+ */
+export interface LintDiagnostic {
+  from: number;
+  to: number;
+  message: string;
+  severity: "error" | "warning" | "info";
+  source?: string;
+  code?: string | number;
 }
