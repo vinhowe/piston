@@ -14,6 +14,34 @@ export const trainingState = $state<{ current: 'training' | 'paused' | 'stopped'
 let uaMemoryInterval: ReturnType<typeof setInterval> | null = null;
 let lastUAMemoryBytes: number | null = null;
 
+let screenWakeLock: WakeLockSentinel | null = null;
+
+async function acquireScreenWakeLock() {
+	// Only attempt in browser/secure contexts that support it
+	if (typeof navigator === 'undefined' || !('wakeLock' in navigator)) return;
+	try {
+		// Request a screen wake lock
+		screenWakeLock = await navigator.wakeLock.request('screen');
+		// Ensure our local reference is cleared if the system revokes the lock
+		screenWakeLock?.addEventListener?.('release', () => {
+			screenWakeLock = null;
+		});
+	} catch (err) {
+		console.warn('Screen Wake Lock request failed:', err);
+	}
+}
+
+async function releaseScreenWakeLock() {
+	if (!screenWakeLock) return;
+	try {
+		await screenWakeLock.release();
+	} catch (err) {
+		console.warn('Screen Wake Lock release failed:', err);
+	} finally {
+		screenWakeLock = null;
+	}
+}
+
 export async function initializeWorker() {
 	return new Promise<void>((resolve, reject) => {
 		try {
@@ -94,6 +122,7 @@ export async function initializeWorker() {
 						console.log(`[Main] Training completed for run ${data.runId}`);
 						trainingState.current = 'stopped';
 						currentRun.current = null;
+						void releaseScreenWakeLock();
 						break;
 
 					case 'error':
@@ -150,10 +179,12 @@ export function workerStartTraining() {
 	});
 
 	trainingState.current = 'training';
+	void acquireScreenWakeLock();
 }
 
 export async function workerStopTraining() {
 	if (!trainWorker || trainingState.current === 'stopped') return;
+	void releaseScreenWakeLock();
 
 	// For now, we'll just terminate and recreate the worker
 	// In a more sophisticated implementation, we'd send a stop message
@@ -321,4 +352,6 @@ export function cleanupWorkers() {
 		uaMemoryInterval = null;
 	}
 	lastUAMemoryBytes = null;
+
+	void releaseScreenWakeLock();
 }
