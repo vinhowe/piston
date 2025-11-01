@@ -49,6 +49,14 @@ const CONFIG_DEFAULTS: Config = {
 			present: true,
 			value: 'sequence toy'
 		},
+		gradNorm: {
+			track: true,
+			errorIfNonfinite: true
+		},
+		clipGradNorm: {
+			present: false,
+			value: 1.0
+		},
 		useWeakTensorReferences: true,
 		sharedObjectAllocation: false,
 		cachingEnabled: false,

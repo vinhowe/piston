@@ -62,6 +62,14 @@ export interface TrainingConfig {
 		present: boolean;
 		value: number;
 	};
+	gradNorm: {
+		track: boolean;
+		errorIfNonfinite: boolean;
+	};
+	clipGradNorm: {
+		present: boolean;
+		value: number;
+	};
 	useWeakTensorReferences: boolean;
 	sharedObjectAllocation: boolean;
 	cachingEnabled: boolean;

@@ -510,6 +510,45 @@
 		/>
 
 		<ToggleGroup
+			id="training-grad-norm-group"
+			title="Track Gradient Norm"
+			showEnableToggle={true}
+			bind:enabled={config.training.gradNorm.track}
+			contentClass={sectionClass}
+			hasDefaultValue={equalsConfigDefault('training.gradNorm.track')}
+			onReset={() => resetConfigToDefaults('training.gradNorm.track')}
+		>
+			<CheckboxInput
+				id="training-grad-norm-error-if-nonfinite"
+				label="Raise Error if Nonfinite"
+				bind:checked={config.training.gradNorm.errorIfNonfinite}
+				hasDefaultValue={equalsConfigDefault('training.gradNorm.errorIfNonfinite')}
+				onReset={() => resetConfigToDefaults('training.gradNorm.errorIfNonfinite')}
+			/>
+
+			<ToggleGroup
+				id="training-clip-grad-norm-group"
+				title="Clip Gradient Norm"
+				showEnableToggle={true}
+				bind:enabled={config.training.clipGradNorm.present}
+				contentClass={sectionClass}
+				hasDefaultValue={equalsConfigDefault('training.clipGradNorm.present')}
+				onReset={() => resetConfigToDefaults('training.clipGradNorm.present')}
+			>
+				<Slider
+					id="training-clip-grad-max-norm-value"
+					label="Max Norm"
+					bind:value={config.training.clipGradNorm.value}
+					min={0}
+					max={10}
+					step={0.01}
+					hasDefaultValue={equalsConfigDefault('training.clipGradNorm.value')}
+					onReset={() => resetConfigToDefaults('training.clipGradNorm.value')}
+				/>
+			</ToggleGroup>
+		</ToggleGroup>
+
+		<ToggleGroup
 			id="validation-control"
 			title="Validation"
 			showEnableToggle={true}

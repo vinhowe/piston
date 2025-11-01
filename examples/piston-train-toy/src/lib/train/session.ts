@@ -682,11 +682,25 @@ export class TrainingSession {
 				}
 			);
 
+			let gradNorm: Tensor | undefined;
 			try {
 				const weakMarkStepMode = new MarkStepModeIfEnabled(
 					this.config.training.useWeakTensorReferences
 				);
 				weakModeForOptimizerStep.pin(loss);
+
+				if (this.config.training.gradNorm.track) {
+					if (this.config.training.clipGradNorm.present) {
+						gradNorm = weakModeForOptimizerStep.pin(
+							piston.clipGradNorm_(this.model.parameters(), this.config.training.clipGradNorm.value)
+						);
+					} else if (loggingStep) {
+						// If we're not clipping gradients, we can just get the total gradient norm
+						gradNorm = weakModeForOptimizerStep.pin(
+							piston.getTotalGradNorm(this.model.parameters())
+						);
+					}
+				}
 
 				try {
 					await this.optimizer.step();
@@ -708,7 +722,7 @@ export class TrainingSession {
 			try {
 				// We've kept loss strong; we'll want to make sure we get rid of it
 				// Batch tensors are created outside of weak mode, so we manually mark them as weak
-				finalWeakModeForStep.markWeak([loss, batch.tensors]);
+				finalWeakModeForStep.markWeak([loss, gradNorm, batch.tensors]);
 
 				this.optimizer.zeroGrad(true);
 
@@ -836,6 +850,15 @@ export class TrainingSession {
 						'speed/tokens_per_second': tokensPerSecond,
 						'speed/wall_clock_seconds': totalElapsedSeconds
 					};
+
+					if (gradNorm) {
+						const gradNormCpu = await gradNorm.to('cpu');
+						const gradNormItem = await gradNormCpu.item();
+						if (this.config.training.gradNorm.errorIfNonfinite && !isFinite(gradNormItem)) {
+							throw new Error(`Gradient norm was nonfinite, so it cannot be clipped.`);
+						}
+						logData['train/grad_norm'] = gradNormItem;
+					}
 
 					if (
 						loggingStep &&
