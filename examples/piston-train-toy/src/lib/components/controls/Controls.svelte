@@ -77,7 +77,7 @@
 
 {#snippet projectionBlock(configName: 'attention' | 'mlp' | 'lmHead', displayName: string)}
 	<ToggleGroup
-		id={`projections-control-${configName}`}
+		id={`model-initialization-projections-group-${configName}`}
 		title={displayName}
 		showEnableToggle={true}
 		bind:enabled={config.model.transformer.initialization.projections[configName].present}
@@ -257,7 +257,7 @@
 
 		<!-- Attention -->
 		<ToggleGroup
-			id="model-attention-control"
+			id="model-attention-group"
 			title="Multi-Head Attention (MHA)"
 			showEnableToggle={true}
 			citations={{
@@ -401,7 +401,7 @@
 
 		<!-- MLP -->
 		<ToggleGroup
-			id="mlp-control"
+			id="model-mlp-group"
 			title="Feed-Forward Network (MLP)"
 			showEnableToggle={true}
 			contentClass={sectionClass}
@@ -453,7 +453,7 @@
 		</ToggleGroup>
 
 		<ToggleGroup
-			id="model-layer-normalization-control"
+			id="model-positional-encoding-group"
 			title="Positional Encoding"
 			showEnableToggle={true}
 			bind:enabled={config.model.transformer.positionalEncoding.present}
@@ -461,7 +461,7 @@
 			onReset={() => resetConfigToDefaults('model.transformer.positionalEncoding.present')}
 		>
 			<SelectWithCitations
-				id="model-layer-normalization-type"
+				id="model-positional-encoding-type"
 				bind:value={config.model.transformer.positionalEncoding.type}
 				options={[
 					{
@@ -545,7 +545,7 @@
 		<!-- Normalization -->
 		<BorderedGroup title="Normalization" contentClass={sectionClass}>
 			<ToggleGroup
-				id="model-layer-normalization-control"
+				id="model-layer-normalization-group"
 				title="Layer Normalization"
 				showEnableToggle={true}
 				bind:enabled={config.model.layerNormalization.transformer.present}
@@ -553,74 +553,72 @@
 				hasDefaultValue={equalsConfigDefault('model.layerNormalization.transformer.present')}
 				onReset={() => resetConfigToDefaults('model.layerNormalization.transformer.present')}
 			>
-				<div id="model-layer-normalization-control">
-					<SelectWithCitations
-						id="model-layer-normalization-type"
-						bind:value={config.model.layerNormalization.type}
-						options={[
-							{
-								value: 'layernorm',
-								title: 'LayerNorm',
-								citations: {
-									entries: [
-										{
-											name: 'Ba et al., 2016',
-											url: 'https://www.cs.utoronto.ca/~hinton/absps/LayerNormalization.pdf'
-										}
-									],
-									extra: '; Transformer, GPT-series'
-								}
-							},
-							{
-								value: 'rmsnorm',
-								title: 'RMSNorm',
-								citations: {
-									entries: [
-										{
-											name: 'Zhang & Sennrich, 2019',
-											url: 'https://proceedings.neurips.cc/paper_files/paper/2019/file/1e8a19426224ca89e83cef47f1e7f53b-Paper.pdf'
-										}
-									],
-									extra: '; Llama'
-								}
+				<SelectWithCitations
+					id="model-layer-normalization-type"
+					bind:value={config.model.layerNormalization.type}
+					options={[
+						{
+							value: 'layernorm',
+							title: 'LayerNorm',
+							citations: {
+								entries: [
+									{
+										name: 'Ba et al., 2016',
+										url: 'https://www.cs.utoronto.ca/~hinton/absps/LayerNormalization.pdf'
+									}
+								],
+								extra: '; Transformer, GPT-series'
 							}
-						]}
-						hasDefaultValue={equalsConfigDefault('model.layerNormalization.type')}
-						onReset={() => resetConfigToDefaults('model.layerNormalization.type')}
-					/>
-					<SelectWithCitations
-						id="model-layer-normalization-position"
-						label="Position"
-						bind:value={config.model.layerNormalization.transformer.position}
-						options={[
-							{
-								value: 'post',
-								title: 'Post-Norm',
-								citations: { extra: 'Transformer, GPT' }
-							},
-							{
-								value: 'pre',
-								title: 'Pre-Norm',
-								citations: {
-									extra: 'GPT-2, most recent models'
-								}
+						},
+						{
+							value: 'rmsnorm',
+							title: 'RMSNorm',
+							citations: {
+								entries: [
+									{
+										name: 'Zhang & Sennrich, 2019',
+										url: 'https://proceedings.neurips.cc/paper_files/paper/2019/file/1e8a19426224ca89e83cef47f1e7f53b-Paper.pdf'
+									}
+								],
+								extra: '; Llama'
 							}
-						]}
-						hasDefaultValue={equalsConfigDefault('model.layerNormalization.transformer.position')}
-						onReset={() => resetConfigToDefaults('model.layerNormalization.transformer.position')}
-					/>
-					<Slider
-						id="model-layer-normalization-epsilon"
-						label="Epsilon"
-						bind:value={config.model.layerNormalization.eps}
-						min={1e-5}
-						max={1e-1}
-						step={1e-5}
-						useLog
-						hasDefaultValue={equalsConfigDefault('model.layerNormalization.eps')}
-						onReset={() => resetConfigToDefaults('model.layerNormalization.eps')}
-					/>
-				</div>
+						}
+					]}
+					hasDefaultValue={equalsConfigDefault('model.layerNormalization.type')}
+					onReset={() => resetConfigToDefaults('model.layerNormalization.type')}
+				/>
+				<SelectWithCitations
+					id="model-layer-normalization-position"
+					label="Position"
+					bind:value={config.model.layerNormalization.transformer.position}
+					options={[
+						{
+							value: 'post',
+							title: 'Post-Norm',
+							citations: { extra: 'Transformer, GPT' }
+						},
+						{
+							value: 'pre',
+							title: 'Pre-Norm',
+							citations: {
+								extra: 'GPT-2, most recent models'
+							}
+						}
+					]}
+					hasDefaultValue={equalsConfigDefault('model.layerNormalization.transformer.position')}
+					onReset={() => resetConfigToDefaults('model.layerNormalization.transformer.position')}
+				/>
+				<Slider
+					id="model-layer-normalization-epsilon"
+					label="Epsilon"
+					bind:value={config.model.layerNormalization.eps}
+					min={1e-5}
+					max={1e-1}
+					step={1e-5}
+					useLog
+					hasDefaultValue={equalsConfigDefault('model.layerNormalization.eps')}
+					onReset={() => resetConfigToDefaults('model.layerNormalization.eps')}
+				/>
 			</ToggleGroup>
 			<ToggleGroup
 				id="model-normalization-qk-norm-group"
@@ -724,8 +722,9 @@
 				</ToggleGroup>
 			</BorderedGroup>
 		</BorderedGroup>
+
 		<ToggleGroup
-			id="initialization-control"
+			id="initialization-group"
 			title="Initialization"
 			showEnableToggle={true}
 			bind:enabled={config.model.transformer.initialization.present}
@@ -783,6 +782,7 @@
 		/>
 
 		<CheckboxInput
+			id="training-enable-visualization"
 			label="Enable Activation Visualization"
 			bind:checked={config.training.enableVisualization}
 			hasDefaultValue={equalsConfigDefault('training.enableVisualization')}
@@ -829,7 +829,7 @@
 		</ToggleGroup>
 
 		<ToggleGroup
-			id="validation-control"
+			id="training-validation-group"
 			title="Validation"
 			showEnableToggle={true}
 			bind:enabled={config.training.validation.present}
@@ -848,8 +848,8 @@
 				onReset={() => resetConfigToDefaults('training.validation.valSteps')}
 			/>
 			<Slider
-				label="Number of Examples Held-out for Validation"
 				id="training-validation-batch-size"
+				label="Number of Examples Held-out for Validation"
 				bind:value={config.training.validation.batchSize}
 				min={1}
 				max={1024}
@@ -859,7 +859,7 @@
 				onReset={() => resetConfigToDefaults('training.validation.batchSize')}
 			/>
 			<ToggleGroup
-				id="validation-completions-control"
+				id="training-validation-completions-group"
 				title="Generation"
 				contentClass={sectionClass}
 				showEnableToggle={true}
@@ -952,7 +952,7 @@
 			</ToggleGroup>
 			<!-- Dropout -->
 			<ToggleGroup
-				id="dropout-control"
+				id="training-dropout-group"
 				title="Dropout"
 				citations={{
 					entries: [
@@ -1002,7 +1002,7 @@
 		</BorderedGroup>
 
 		<ToggleGroup
-			id="random-seed-control"
+			id="training-random-seed-group"
 			title="Random Seed"
 			showEnableToggle={true}
 			bind:enabled={config.training.randomSeed.present}
@@ -1339,16 +1339,5 @@
 		50% {
 			box-shadow: none;
 		}
-	}
-
-	:global(#mlp-control:target),
-	:global(#dropout-control:target),
-	:global(#model-layer-normalization-control:target),
-	:global(#dataset-control:target),
-	:global(#mlp-control.is-focused),
-	:global(#dropout-control.is-focused),
-	:global(#model-layer-normalization-control.is-focused),
-	:global(#dataset-control.is-focused) {
-		outline: 2px solid var(--color-purple-500);
 	}
 </style>
