@@ -54,6 +54,10 @@ export interface TrainingConfig {
 	batchSize: number;
 	dropout: DropoutConfig;
 	validation: ValidationConfig;
+	labelSmoothing: {
+		present: boolean;
+		value: number;
+	};
 	randomSeed: {
 		present: boolean;
 		value: string;

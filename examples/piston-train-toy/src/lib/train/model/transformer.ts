@@ -144,7 +144,7 @@ export class EncoderDecoderTransformer extends nn.Module {
 			this.decoder.dict.wordEmbedding
 		);
 
-		this.criterion = createCrossEntropyCriterion();
+		this.criterion = createCrossEntropyCriterion(config);
 	}
 
 	forward(
@@ -340,7 +340,7 @@ export class DecoderTransformer extends nn.Module {
 			this.decoder.dict.wordEmbedding
 		);
 
-		this.criterion = createCrossEntropyCriterion();
+		this.criterion = createCrossEntropyCriterion(config);
 	}
 
 	/**
@@ -514,7 +514,7 @@ export class EncoderTransformer extends nn.Module {
 			this.pooler = new Pooler(this.config.embeddingSize);
 		}
 
-		this.criterion = createCrossEntropyCriterion();
+		this.criterion = createCrossEntropyCriterion(config);
 	}
 
 	/**

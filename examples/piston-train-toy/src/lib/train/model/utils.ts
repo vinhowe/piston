@@ -1,4 +1,5 @@
 import type {
+	Config,
 	LayerNormalizationConfig,
 	NormalizationConfig,
 	PositionEncodingConfig
@@ -114,8 +115,11 @@ export function addPositionalEncodingToEmbeddings(
 	return embeddings;
 }
 
-export function createCrossEntropyCriterion() {
+export function createCrossEntropyCriterion(config: Config) {
 	return new CrossEntropyLoss({
+		labelSmoothing: config.training.labelSmoothing.present
+			? config.training.labelSmoothing.value
+			: 0.0,
 		ignoreIndex: -100
 	});
 }

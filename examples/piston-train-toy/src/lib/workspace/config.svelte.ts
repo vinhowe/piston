@@ -37,6 +37,10 @@ const CONFIG_DEFAULTS: Config = {
 			present: false,
 			steps: 50_000
 		},
+		labelSmoothing: {
+			present: false,
+			value: 1e-4
+		},
 		dropout: {
 			present: false,
 			embedding: 0.1,

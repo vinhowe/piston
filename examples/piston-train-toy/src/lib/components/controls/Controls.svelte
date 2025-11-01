@@ -904,6 +904,31 @@
 		</ToggleGroup>
 
 		<BorderedGroup title="Regularization" contentClass={sectionClass}>
+			<ToggleGroup
+				id="regularization-label-smoothing-group"
+				title="Label Smoothing"
+				citations={{
+					entries: [
+						{ name: 'Szegedy et al., 2016', url: 'https://ieeexplore.ieee.org/document/7780677' }
+					]
+				}}
+				contentClass={sectionClass}
+				showEnableToggle={true}
+				bind:enabled={config.training.labelSmoothing.present}
+				hasDefaultValue={equalsConfigDefault('training.labelSmoothing.present')}
+				onReset={() => resetConfigToDefaults('training.labelSmoothing.present')}
+			>
+				<Slider
+					id="regularization-label-smoothing-value"
+					bind:value={config.training.labelSmoothing.value}
+					min={1e-5}
+					max={1}
+					useLog
+					step={0.00001}
+					hasDefaultValue={equalsConfigDefault('training.labelSmoothing.value')}
+					onReset={() => resetConfigToDefaults('training.labelSmoothing.value')}
+				/>
+			</ToggleGroup>
 			<!-- Dropout -->
 			<ToggleGroup
 				id="dropout-control"
