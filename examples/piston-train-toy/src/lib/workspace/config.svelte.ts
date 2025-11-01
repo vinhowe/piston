@@ -152,6 +152,13 @@ const CONFIG_DEFAULTS: Config = {
 					base: 10000.0
 				}
 			},
+			normalization: {
+				qkNorm: {
+					present: true,
+					type: 'rmsnorm',
+					eps: 1e-5
+				}
+			},
 			mlp: {
 				present: true,
 				activation: 'relu2',

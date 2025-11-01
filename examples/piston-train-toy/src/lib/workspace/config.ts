@@ -132,6 +132,16 @@ export interface LayerNormalizationConfig {
 	};
 }
 
+export interface QKNormConfig {
+	present: boolean;
+	type: NormalizationType;
+	eps: number;
+}
+
+export interface NormalizationConfig {
+	qkNorm: QKNormConfig;
+}
+
 export type Activation = 'relu' | 'relu2' | 'gelu' | 'silu' | 'sigmoid' | 'swiglu' | 'tanh';
 
 export interface AttentionGatingSitesConfig {
@@ -177,6 +187,7 @@ export interface TransformerConfig {
 	attention: TransformerAttentionConfig;
 	positionalEncoding: PositionEncodingConfig;
 	initialization: InitializationConfig;
+	normalization: NormalizationConfig;
 	mlp: MLPConfig;
 }
 

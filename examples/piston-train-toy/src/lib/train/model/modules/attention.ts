@@ -107,6 +107,8 @@ abstract class CoreAttention extends nn.Module {
 		const B = q.size(0);
 		const T_q = q.size(2);
 
+		// Optional QK norm and gating
+		[q, k] = this.applyQKNorm(q, k);
 		[q, k, v] = this.applyQkvGating(input, q, k, v);
 
 		// Optional RoPE with separate offsets for q and k
@@ -208,6 +210,21 @@ abstract class CoreAttention extends nn.Module {
 					const mask = createCausalMask(queryLen, keyLen).broadcastTo(att.size());
 					return maskedFill(att, mask, -1e9);
 				})();
+	}
+
+	applyQKNorm(q: Tensor, k: Tensor): [Tensor, Tensor] {
+		if (this.config.normalization.qkNorm.present) {
+			if (this.config.normalization.qkNorm.type === 'rmsnorm') {
+				q = q.rmsNorm({ eps: this.config.normalization.qkNorm.eps });
+				k = k.rmsNorm({ eps: this.config.normalization.qkNorm.eps });
+			} else if (this.config.normalization.qkNorm.type === 'layernorm') {
+				q = q.layerNorm({ eps: this.config.normalization.qkNorm.eps });
+				k = k.layerNorm({ eps: this.config.normalization.qkNorm.eps });
+			} else {
+				throw new Error(`Unknown QKNorm type: ${this.config.normalization.qkNorm.type}`);
+			}
+		}
+		return [q, k];
 	}
 
 	/**

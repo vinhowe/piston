@@ -590,6 +590,45 @@
 					/>
 				</div>
 			</ToggleGroup>
+			<ToggleGroup
+				id="model-normalization-qk-norm-group"
+				title="Query-Key Normalization"
+				citations={{
+					entries: [
+						{
+							name: 'Henry et al., 2020',
+							url: 'https://aclanthology.org/2020.findings-emnlp.379/'
+						}
+					]
+				}}
+				showEnableToggle={true}
+				bind:enabled={config.model.transformer.normalization.qkNorm.present}
+				contentClass={sectionClass}
+				hasDefaultValue={equalsConfigDefault('model.transformer.normalization.qkNorm.present')}
+				onReset={() => resetConfigToDefaults('model.transformer.normalization.qkNorm.present')}
+			>
+				<SelectInput
+					id="model-normalization-qk-norm-type"
+					bind:value={config.model.transformer.normalization.qkNorm.type}
+					options={[
+						{ value: 'layernorm', text: 'LayerNorm' },
+						{ value: 'rmsnorm', text: 'RMSNorm' }
+					]}
+					hasDefaultValue={equalsConfigDefault('model.transformer.normalization.qkNorm.type')}
+					onReset={() => resetConfigToDefaults('model.transformer.normalization.qkNorm.type')}
+				/>
+				<Slider
+					id="model-normalization-qk-norm-epsilon"
+					label="Epsilon"
+					bind:value={config.model.transformer.normalization.qkNorm.eps}
+					min={1e-5}
+					max={1e-1}
+					step={1e-5}
+					useLog
+					hasDefaultValue={equalsConfigDefault('model.transformer.normalization.qkNorm.eps')}
+					onReset={() => resetConfigToDefaults('model.transformer.normalization.qkNorm.eps')}
+				/>
+			</ToggleGroup>
 		</BorderedGroup>
 		<ToggleGroup
 			id="initialization-control"

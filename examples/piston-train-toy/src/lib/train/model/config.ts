@@ -5,7 +5,8 @@ import type {
 	LayerNormalizationConfig,
 	MLPConfig,
 	PositionEncodingConfig,
-	TransformerAttentionConfig
+	TransformerAttentionConfig,
+	NormalizationConfig
 } from '$lib/workspace/config';
 
 export interface TransformerModuleConfig {
@@ -13,6 +14,7 @@ export interface TransformerModuleConfig {
 	embeddingSize: number;
 	attention: TransformerAttentionConfig;
 	layerNormalization: LayerNormalizationConfig;
+	normalization: NormalizationConfig;
 	mlp: MLPConfig;
 	positionalEncoding: PositionEncodingConfig;
 	dropout: DropoutConfig;
@@ -37,6 +39,7 @@ export function buildTransformerConfigCommon(
 		mlp: config.model.transformer.mlp,
 		positionalEncoding: config.model.transformer.positionalEncoding,
 		layerNormalization: config.model.layerNormalization,
+		normalization: config.model.transformer.normalization,
 		initialization: config.model.transformer.initialization,
 		dropout: (({ present, embedding: embd, transformer }: DropoutConfig) => {
 			return {
