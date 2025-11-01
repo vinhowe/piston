@@ -35,6 +35,13 @@ import {
 	EncoderTransformer
 } from './model/transformer';
 import {
+	type AnySchedulerState,
+	buildCheckpoint,
+	type CheckpointDataState,
+	type CheckpointExtra,
+	splitLoadedState
+} from './utils/checkpoint';
+import {
 	calculateBlockSize,
 	calculateVocabSize,
 	createCollateFn,
@@ -67,6 +74,7 @@ export class TrainingSession {
 	readonly runId: string;
 	private config: Config;
 	private readonly post: (e: RunWorkerEventWithoutRunId) => void;
+	private readonly resumeFrom?: Uint8Array<ArrayBufferLike>;
 
 	private paused = false;
 	private resolvePause: (() => void) | null = null;
@@ -104,12 +112,18 @@ export class TrainingSession {
 	private validationCollateFn: PistonCollateFnType<Tensor> | null = null;
 	private validationDataset: PistonDatasetType | null = null;
 
-	constructor(runId: string, config: Config, post: (e: WorkerEvent) => void) {
+	constructor(
+		runId: string,
+		config: Config,
+		post: (e: WorkerEvent) => void,
+		resumeFrom?: Uint8Array<ArrayBufferLike>
+	) {
 		this.runId = runId;
 		this.config = config;
 		this.post = (e: RunWorkerEventWithoutRunId) =>
 			// We only post the subset of events that have runId in the payload
 			(post as (e: RunWorkerEvent) => void)({ ...e, runId: this.runId });
+		this.resumeFrom = resumeFrom;
 	}
 
 	async pause() {
@@ -125,6 +139,32 @@ export class TrainingSession {
 	resume() {
 		this.paused = false;
 		this.post({ type: 'resumed' });
+	}
+
+	async save() {
+		try {
+			if (this.paused) {
+				try {
+					if (!this.model) {
+						// Defer save until model is ready
+						this.post({ type: 'log', level: 'info', message: 'Save requested before model ready' });
+						return;
+					}
+					await piston.gpu.markStep();
+					const buffer = await this.saveLatestCheckpoint();
+					this.post({ type: 'checkpoint', buffer });
+				} catch (e) {
+					this.post({
+						type: 'error',
+						message: String(e)
+					});
+				}
+			} else {
+				throw new Error('Saving during training is not supported');
+			}
+		} catch (e) {
+			this.post({ type: 'error', message: String(e) });
+		}
 	}
 
 	setVisualizationScript(example: string, script: string | null) {
@@ -212,6 +252,40 @@ export class TrainingSession {
 		}
 	}
 
+	async saveLatestCheckpoint(): Promise<Uint8Array<ArrayBufferLike>> {
+		if (!this.model) throw new Error('No model available to save');
+		await piston.gpu.markStep();
+		// Derive dataset state if available
+		let dataState: CheckpointDataState | undefined = undefined;
+		if (this.trainDataset) {
+			if (this.trainDataset instanceof NaturalLanguageDataset) {
+				dataState = {
+					blockSize: this.blockSize,
+					natural: this.trainDataset.exportState()
+				};
+			} else if (this.trainDataset instanceof ToyDataset) {
+				dataState = {
+					blockSize: this.blockSize,
+					toy: {
+						cursor: this.trainDataset.cursor,
+						baseSeed: this.trainDataset.baseSeed,
+						datasetName: this.config.data.dataset
+					}
+				};
+			}
+		}
+		const { tensors, extra } = buildCheckpoint(
+			this.model,
+			this.optimizer!,
+			this.stepCount,
+			this.config ? JSON.parse(JSON.stringify(this.config)) : null,
+			this.scheduler,
+			dataState,
+			this.startTimeMs ?? undefined
+		);
+		return piston.save(tensors, extra);
+	}
+
 	private logMetrics(
 		data: { [metricName: string]: Omit<StepData, 'step'> },
 		metadata?: { step?: number }
@@ -227,6 +301,43 @@ export class TrainingSession {
 		// Log initial memory
 		const initialMemoryMB = Number(piston.gpu.usageBytes()) / (1024 * 1024);
 		console.debug(`Initial memory: ${initialMemoryMB} MB`);
+
+		// If resuming from a checkpoint, parse and use checkpoint config
+		let resumePayload: {
+			modelState: Record<string, piston.Tensor>;
+			optimizerPacked?: { state: Record<number, unknown>; paramGroups: piston.ParamGroupConfig[] };
+			schedulerState?: unknown;
+			numSteps: number;
+			config: Config;
+			dataState?: CheckpointDataState;
+			startTimeMs?: number;
+		} | null = null;
+
+		if (this.resumeFrom) {
+			const loaded = piston.load(this.resumeFrom, piston.gpu);
+			const split = splitLoadedState(
+				loaded as { state: Record<string, Tensor>; extra?: CheckpointExtra }
+			);
+			resumePayload = {
+				modelState: split.modelState,
+				optimizerPacked: split.optimizerState as unknown as {
+					state: Record<number, unknown>;
+					paramGroups: piston.ParamGroupConfig[];
+				},
+				schedulerState: split.schedulerState,
+				numSteps: split.numSteps,
+				config: split.config,
+				dataState: split.dataState,
+				startTimeMs: split.startTimeMs
+			};
+			if (resumePayload.config) {
+				this.config = resumePayload.config as Config;
+			}
+			// If blockSize present in extras, prefer it
+			if (split.dataState && split.dataState.blockSize !== undefined) {
+				this.blockSize = split.dataState.blockSize;
+			}
+		}
 
 		// Determine model type and create appropriate dataloader/model
 		const isEncoderOnly = this.config.model.topology === 'encoder';
@@ -249,7 +360,22 @@ export class TrainingSession {
 		const trainGenerator = seededRandom(seed);
 		const maskGenerator = isEncoderOnly ? forkRandom(trainGenerator) : null;
 
-		this.trainDataset = buildDataset(this.config, trainGenerator, 'train');
+		const trainDataset: PistonDatasetType = buildDataset(this.config, trainGenerator, 'train');
+		// Restore dataset state if present
+		if (resumePayload && resumePayload.dataState) {
+			const dsState = resumePayload.dataState;
+			if (trainDataset instanceof NaturalLanguageDataset && dsState.natural) {
+				await trainDataset.importState(dsState.natural);
+			} else if (trainDataset instanceof ToyDataset && dsState.toy) {
+				// Restore cursor and baseSeed for toy datasets
+				trainDataset.cursor = dsState.toy.cursor | 0;
+				if (typeof dsState.toy.baseSeed === 'number') {
+					trainDataset.baseSeed = dsState.toy.baseSeed;
+				}
+			}
+		}
+		this.trainDataset = trainDataset;
+
 		const validationDisabled =
 			('disableValidation' in this.trainDataset && this.trainDataset.disableValidation) || false;
 
@@ -332,10 +458,13 @@ export class TrainingSession {
 		// Create model
 		this.model = createModel(this.config, vocabSize, blockSize);
 
-		initializeModel(this.config, this.model);
+		// If starting from scratch, initialize model parameters
+		if (!resumePayload) {
+			initializeModel(this.config, this.model);
 
-		// We need to flatten down initialization to the constant tensors they're on top of
-		await piston.gpu.markStep();
+			// We need to flatten down initialization to the constant tensors they're on top of
+			await piston.gpu.markStep();
+		}
 
 		// Build or refresh capture plan using CaptureManager
 		this.captureManager = new CaptureManager();
@@ -357,14 +486,33 @@ export class TrainingSession {
 			maskGenerator,
 			this.trainDataset
 		);
+
+		// If resuming, load model state BEFORE creating the optimizer so param identities match
+		let startStep = 0;
+		if (resumePayload) {
+			this.model.loadStateDict(resumePayload.modelState, { strict: false });
+			startStep = (resumePayload.numSteps ?? 0) + 1;
+			this.stepCount = startStep;
+			// If checkpoint carried a startTimeMs, use it for wall-clock continuity
+			if (typeof resumePayload.startTimeMs === 'number') {
+				this.startTimeMs = resumePayload.startTimeMs;
+			}
+		}
+
 		// Create optimizer based on model type, using the (possibly restored) model parameters
-		this.optimizer = configureOptimizerForModel(
+		const optimizer = configureOptimizerForModel(
 			this.model,
 			isEncoderOnly,
 			isEncoderDecoder,
 			this.config.optimizer,
 			piston.gpu
 		);
+		this.optimizer = optimizer;
+
+		// If resuming, load optimizer state NOW that groups refer to current model parameters
+		if (resumePayload && resumePayload.optimizerPacked) {
+			optimizer.loadStateDict(resumePayload.optimizerPacked as piston.StateDict);
+		}
 
 		// Create learning rate scheduler if configured
 		if (this.config.optimizer.lrScheduler.present) {
@@ -398,6 +546,11 @@ export class TrainingSession {
 				default:
 					throw new Error(`Unknown scheduler type: ${lrConfig.type}`);
 			}
+		}
+
+		// If resuming, load scheduler state after it is created
+		if (resumePayload && this.scheduler && resumePayload.schedulerState) {
+			this.scheduler.loadStateDict(resumePayload.schedulerState as AnySchedulerState);
 		}
 
 		this.model.train();
@@ -717,6 +870,17 @@ export class TrainingSession {
 					// Update last log time and step
 					this.lastLogTime = currentTime;
 					this.lastLogStep = this.stepCount;
+				}
+
+				// Trigger periodic restart if configured
+				const restartEvery = this.config.training.restartEverySteps ?? 0;
+				const willRestart = restartEvery > 0 && (this.stepCount + 1) % restartEvery === 0;
+				if (willRestart) {
+					console.debug(`Routine restart at step ${this.stepCount}`);
+					await piston.gpu.markStep();
+					const bytes = await this.saveLatestCheckpoint();
+					this.post({ type: 'restart', buffer: bytes });
+					return { done: true, value: 'restarted' };
 				}
 			} finally {
 				finalWeakModeForStep[Symbol.dispose]();

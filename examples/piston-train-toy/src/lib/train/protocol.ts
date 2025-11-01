@@ -7,11 +7,12 @@ type WithRunId = { runId: string };
 export type WorkerCommand =
 	| {
 			type: 'start';
-			data: { runId: string; config: Config };
+			data: { runId: string; config: Config; resumeFrom?: Uint8Array<ArrayBufferLike> };
 	  }
 	| { type: 'pause' }
 	| { type: 'resume' }
 	| { type: 'step' }
+	| { type: 'save' }
 	| { type: 'stop' }
 	| {
 			type: 'visualizer.updateScript';
@@ -64,6 +65,8 @@ export type RunWorkerEventWithoutRunId =
 			height: number;
 			queries: unknown[];
 	  }
+	| { type: 'checkpoint'; buffer: Uint8Array<ArrayBufferLike> }
+	| { type: 'restart'; buffer: Uint8Array<ArrayBufferLike> }
 	| { type: 'paused' }
 	| { type: 'resumed' }
 	| { type: 'complete' }

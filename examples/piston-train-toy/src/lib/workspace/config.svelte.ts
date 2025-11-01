@@ -53,7 +53,8 @@ const CONFIG_DEFAULTS: Config = {
 		vramLimitMb: {
 			present: true,
 			value: 4096
-		}
+		},
+		restartEverySteps: 1000
 	},
 	data: {
 		dataset: 'sort',

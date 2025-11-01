@@ -63,6 +63,7 @@ export interface TrainingConfig {
 	cachingEnabled: boolean;
 	inplaceSupport: boolean;
 	enableVisualization: boolean;
+	restartEverySteps: number;
 }
 
 export interface TransformerAttentionConfig {

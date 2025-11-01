@@ -150,6 +150,47 @@ export async function initializeWorker() {
 						void releaseScreenWakeLock();
 						break;
 
+					case 'restart':
+						console.log(`[Main] Worker requested restart for run ${data.runId}`);
+						const buffer = data.buffer as Uint8Array<ArrayBufferLike>;
+						const runId = data.runId as string;
+						// Terminate and recreate worker
+						trainWorker?.terminate();
+						workerReady.current = false;
+						// Ensure training state reflects continuity across restart
+						trainingState.current = 'training';
+						initializeWorker().then(() => {
+							// Send start with resumeFrom to resume same run id
+							trainWorker!.postMessage({
+								type: 'start',
+								data: { runId, config: $state.snapshot(config), resumeFrom: buffer }
+							});
+						});
+						break;
+
+					case 'checkpoint':
+						let url;
+						const uint8array = data.buffer as Uint8Array<ArrayBufferLike> | undefined;
+						if (uint8array && typeof URL !== 'undefined' && typeof Blob !== 'undefined') {
+							const blob = new Blob([uint8array.buffer as ArrayBuffer], {
+								type: 'application/octet-stream'
+							});
+							url = URL.createObjectURL(blob);
+						}
+
+						if (!url) {
+							console.error('[Main] checkpoint did not include a URL or buffer');
+							break;
+						}
+
+						const a = document.createElement('a');
+						a.href = url;
+						a.download = `${currentRun.current?.runId}.safetensors`;
+						document.body.appendChild(a);
+						a.click();
+						document.body.removeChild(a);
+						break;
+
 					case 'error':
 						if (data.name === 'VRAMLimitExceededError') {
 							console.error(`[Main] VRAM limit exceeded for run ${data.runId}:`, data.message);
@@ -205,6 +246,13 @@ export function workerStartTraining() {
 
 	trainingState.current = 'training';
 	void acquireScreenWakeLock();
+}
+
+export function workerRequestSave() {
+	if (!trainWorker) {
+		throw new Error('Worker not initialized');
+	}
+	trainWorker.postMessage({ type: 'save' });
 }
 
 export async function workerStopTraining() {

@@ -10,6 +10,7 @@
 		hasWebGPU,
 		isMobile,
 		restartTraining,
+		saveModel,
 		selectTab,
 		setupUI,
 		startTraining,
@@ -27,6 +28,7 @@
 	} from '$lib/workspace/workers.svelte';
 	import {
 		ChartLine,
+		DownloadIcon,
 		Info,
 		PauseIcon,
 		PlayIcon,
@@ -182,6 +184,9 @@
 							class="p-1 border-b border-panel-border-base shrink-0 flex items-center justify-between"
 						>
 							<span class="font-medium">{currentRun.current?.runId}</span>
+							<button class="flex items-center gap-1 cursor-pointer" onclick={saveModel}>
+								<DownloadIcon class="w-3.5 h-3.5 shrink-0" strokeWidth={iconStrokeWidth} />
+							</button>
 						</div>
 					{/if}
 					<div class="p-1 border-b border-panel-border-base shrink-0">

@@ -5,6 +5,7 @@ import {
 	trainingState,
 	workerPauseTraining,
 	workerReady,
+	workerRequestSave,
 	workerResumeTraining,
 	workerStartTraining,
 	workerStep,
@@ -212,6 +213,10 @@ export function switchToMetrics() {
 
 export function toggleConfig() {
 	configOpen.current = !configOpen.current;
+}
+
+export function saveModel() {
+	workerRequestSave();
 }
 
 // Function to start training

@@ -169,6 +169,10 @@ self.addEventListener('message', async (event) => {
 	const data: unknown = (raw as { data?: unknown }).data;
 
 	switch (type) {
+		case 'save': {
+			session?.save();
+			break;
+		}
 		case 'pause': {
 			session?.pause();
 			break;
@@ -239,14 +243,19 @@ self.addEventListener('message', async (event) => {
 		}
 		case 'start':
 			try {
-				const { runId: runIdFromData, config } = data as {
+				const {
+					runId: runIdFromData,
+					config,
+					resumeFrom
+				} = data as {
 					runId: string;
 					config: Config;
+					resumeFrom?: Uint8Array<ArrayBufferLike>;
 				};
 				currentExecutionSource = `[Training:${runIdFromData}]`;
 
 				console.info(`Starting training for run ${runIdFromData}`);
-				session = new TrainingSession(runIdFromData, config, postEvent);
+				session = new TrainingSession(runIdFromData, config, postEvent, resumeFrom);
 				if (pendingVisualizerCanvas) {
 					try {
 						session.initVisualizerCanvas(
