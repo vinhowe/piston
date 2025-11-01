@@ -85,6 +85,7 @@ export interface TransformerAttentionConfig {
 		present: boolean;
 		queryHeadsPerKeyValueHead: number;
 	};
+	gating: AttentionGatingConfig;
 }
 
 export interface DataConfig {
@@ -129,6 +130,20 @@ export interface LayerNormalizationConfig {
 }
 
 export type Activation = 'relu' | 'relu2' | 'gelu' | 'silu' | 'sigmoid' | 'swiglu' | 'tanh';
+
+export interface AttentionGatingSitesConfig {
+	afterSdpaOutput: boolean;
+	afterValueProjection: boolean;
+	afterKeyProjection: boolean;
+	afterQueryProjection: boolean;
+	afterFinalOutputProjection: boolean;
+}
+
+export interface AttentionGatingConfig {
+	present: boolean;
+	activation: Activation;
+	sites: AttentionGatingSitesConfig;
+}
 
 export interface MLPConfig {
 	present: boolean;

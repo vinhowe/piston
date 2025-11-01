@@ -126,6 +126,17 @@ const CONFIG_DEFAULTS: Config = {
 				groupedQueryAttention: {
 					present: false,
 					queryHeadsPerKeyValueHead: 2
+				},
+				gating: {
+					present: true,
+					activation: 'sigmoid',
+					sites: {
+						afterSdpaOutput: true,
+						afterValueProjection: false,
+						afterKeyProjection: false,
+						afterQueryProjection: false,
+						afterFinalOutputProjection: false
+					}
 				}
 			},
 			positionalEncoding: {

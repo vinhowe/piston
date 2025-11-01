@@ -304,6 +304,78 @@
 						)}
 				/>
 			</ToggleGroup>
+
+			<ToggleGroup
+				id="attention-gating-group"
+				title="Gating"
+				citations={{
+					entries: [{ name: 'Qiu et al., 2025', url: 'https://arxiv.org/abs/2505.06708' }]
+				}}
+				showEnableToggle={true}
+				bind:enabled={config.model.transformer.attention.gating.present}
+				contentClass={sectionClass}
+				hasDefaultValue={equalsConfigDefault('model.transformer.attention.gating.present')}
+				onReset={() => resetConfigToDefaults('model.transformer.attention.gating.present')}
+			>
+				<ActivationPicker
+					id="attention-gating-activation"
+					bind:value={config.model.transformer.attention.gating.activation}
+					hasDefaultValue={equalsConfigDefault('model.transformer.attention.gating.activation')}
+					onReset={() => resetConfigToDefaults('model.transformer.attention.gating.activation')}
+				/>
+				<CheckboxInput
+					id="attention-gating-after-sdpa-output"
+					label="After SDPA Output"
+					bind:checked={config.model.transformer.attention.gating.sites.afterSdpaOutput}
+					hasDefaultValue={equalsConfigDefault(
+						'model.transformer.attention.gating.sites.afterSdpaOutput'
+					)}
+					onReset={() =>
+						resetConfigToDefaults('model.transformer.attention.gating.sites.afterSdpaOutput')}
+				/>
+				<CheckboxInput
+					id="attention-gating-after-value-projection"
+					label="After Value Projection"
+					bind:checked={config.model.transformer.attention.gating.sites.afterValueProjection}
+					hasDefaultValue={equalsConfigDefault(
+						'model.transformer.attention.gating.sites.afterValueProjection'
+					)}
+					onReset={() =>
+						resetConfigToDefaults('model.transformer.attention.gating.sites.afterValueProjection')}
+				/>
+				<CheckboxInput
+					id="attention-gating-after-key-projection"
+					label="After Key Projection"
+					bind:checked={config.model.transformer.attention.gating.sites.afterKeyProjection}
+					hasDefaultValue={equalsConfigDefault(
+						'model.transformer.attention.gating.sites.afterKeyProjection'
+					)}
+					onReset={() =>
+						resetConfigToDefaults('model.transformer.attention.gating.sites.afterKeyProjection')}
+				/>
+				<CheckboxInput
+					id="attention-gating-after-query-projection"
+					label="After Query Projection"
+					bind:checked={config.model.transformer.attention.gating.sites.afterQueryProjection}
+					hasDefaultValue={equalsConfigDefault(
+						'model.transformer.attention.gating.sites.afterQueryProjection'
+					)}
+					onReset={() =>
+						resetConfigToDefaults('model.transformer.attention.gating.sites.afterQueryProjection')}
+				/>
+				<CheckboxInput
+					id="attention-gating-after-final-output-projection"
+					label="After Final Output Projection"
+					bind:checked={config.model.transformer.attention.gating.sites.afterFinalOutputProjection}
+					hasDefaultValue={equalsConfigDefault(
+						'model.transformer.attention.gating.sites.afterFinalOutputProjection'
+					)}
+					onReset={() =>
+						resetConfigToDefaults(
+							'model.transformer.attention.gating.sites.afterFinalOutputProjection'
+						)}
+				/>
+			</ToggleGroup>
 		</ToggleGroup>
 
 		<!-- MLP -->

@@ -4,6 +4,7 @@ import type { SelfAttentionCache } from '../cache';
 import type { TransformerModuleConfig } from '../config';
 
 import { createCausalMask, maskedFill } from '../utils';
+import { SimpleHadamardGate } from './gate';
 
 abstract class CoreAttention extends nn.Module {
 	protected readonly nHeads: number;
@@ -17,6 +18,11 @@ abstract class CoreAttention extends nn.Module {
 	protected alibi?: AlibiEmbedding;
 	protected readonly isCausal: boolean;
 	protected readonly config: TransformerModuleConfig;
+	protected readonly gateAfterSdpa?: SimpleHadamardGate;
+	protected readonly gateAfterQ?: SimpleHadamardGate;
+	protected readonly gateAfterK?: SimpleHadamardGate;
+	protected readonly gateAfterV?: SimpleHadamardGate;
+	protected readonly gateAfterFinal?: SimpleHadamardGate;
 
 	constructor(embeddingSize: number, config: TransformerModuleConfig, isCausal: boolean = false) {
 		super();
@@ -32,9 +38,49 @@ abstract class CoreAttention extends nn.Module {
 		this.isCausal = isCausal;
 
 		this.config = config;
+
+		const gatingConfig = config.attention.gating;
+		if (gatingConfig?.present) {
+			const controlDim = this.embeddingSize;
+			const act = gatingConfig.activation;
+			if (gatingConfig.sites.afterSdpaOutput) {
+				this.gateAfterSdpa = new SimpleHadamardGate(controlDim, this.embeddingSize, act);
+			}
+			if (gatingConfig.sites.afterFinalOutputProjection) {
+				this.gateAfterFinal = new SimpleHadamardGate(controlDim, this.embeddingSize, act);
+			}
+			if (gatingConfig.sites.afterQueryProjection) {
+				this.gateAfterQ = new SimpleHadamardGate(controlDim, this.headDim, act);
+			}
+			if (gatingConfig.sites.afterKeyProjection) {
+				this.gateAfterK = new SimpleHadamardGate(controlDim, this.headDim, act);
+			}
+			if (gatingConfig.sites.afterValueProjection) {
+				this.gateAfterV = new SimpleHadamardGate(controlDim, this.headDim, act);
+			}
+		}
+	}
+
+	protected applyQkvGating(
+		control: Tensor,
+		q: Tensor,
+		k: Tensor,
+		v: Tensor
+	): [Tensor, Tensor, Tensor] {
+		if (this.gateAfterQ) {
+			q = this.gateAfterQ.forward(q, control);
+		}
+		if (this.gateAfterK) {
+			k = this.gateAfterK.forward(k, control);
+		}
+		if (this.gateAfterV) {
+			v = this.gateAfterV.forward(v, control);
+		}
+		return [q, k, v];
 	}
 
 	protected runAttention(
+		input: Tensor,
 		q: Tensor,
 		k: Tensor,
 		v: Tensor,
@@ -46,6 +92,8 @@ abstract class CoreAttention extends nn.Module {
 	): [Tensor, SelfAttentionCache | null] {
 		const B = q.size(0);
 		const T_q = q.size(2);
+
+		[q, k, v] = this.applyQkvGating(input, q, k, v);
 
 		// Optional RoPE with separate offsets for q and k
 		if (options.ropeOffsets) {
@@ -78,9 +126,17 @@ abstract class CoreAttention extends nn.Module {
 		att = this.attnDropout ? this.attnDropout.forward(att) : att;
 
 		let y = att.matmul(vCat).transpose(1, 2).view([B, T_q, this.embeddingSize]);
+		if (this.gateAfterSdpa) {
+			y = this.gateAfterSdpa.forward(y, input);
+		}
 
 		// Apply output projection
 		y = this.cProj.forward(y);
+
+		// Optional gating after final output projection
+		if (this.gateAfterFinal) {
+			y = this.gateAfterFinal.forward(y, input);
+		}
 
 		if (this.residDropout) {
 			y = this.residDropout.forward(y);
@@ -212,7 +268,7 @@ export class SelfAttention extends CoreAttention {
 		const qkv = this.projectQkv(input);
 		const [q, k, v] = qkv;
 		const pastLen = options.cache?.length ?? 0;
-		const [y, newCache] = this.runAttention(q, k, v, {
+		const [y, newCache] = this.runAttention(input, q, k, v, {
 			attentionMask: options.attentionMask ?? null,
 			cache: options.cache ?? null,
 			ropeOffsets: { qOffset: pastLen, kOffset: pastLen }
@@ -281,7 +337,7 @@ export class CrossAttention extends CoreAttention {
 			returnCache = { k, v, length: keyValue.size(1) };
 		}
 
-		const [y, _ignored] = this.runAttention(q, k, v, {
+		const [y, _ignored] = this.runAttention(query, q, k, v, {
 			attentionMask: options.attentionMask ?? null,
 			// No KV concatenation for cross-attention; K/V are static from encoder
 			cache: null,
