@@ -47,6 +47,10 @@ export interface ValidationConfig {
 
 export interface TrainingConfig {
 	logSteps: number;
+	limitTraining: {
+		present: boolean;
+		steps: number;
+	};
 	batchSize: number;
 	dropout: DropoutConfig;
 	validation: ValidationConfig;

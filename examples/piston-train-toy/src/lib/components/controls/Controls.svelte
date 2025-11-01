@@ -585,6 +585,26 @@
 			</ToggleGroup>
 		</ToggleGroup>
 
+		<ToggleGroup
+			id="training-limit-training-steps-group"
+			title="Limit Training Steps"
+			showEnableToggle={true}
+			bind:enabled={config.training.limitTraining.present}
+			contentClass={sectionClass}
+			hasDefaultValue={equalsConfigDefault('training.limitTraining.present')}
+			onReset={() => resetConfigToDefaults('training.limitTraining.present')}
+		>
+			<Slider
+				id="training-limit-training-steps-value"
+				bind:value={config.training.limitTraining.steps}
+				min={1}
+				max={50_000}
+				step={1}
+				hasDefaultValue={equalsConfigDefault('training.limitTraining.steps')}
+				onReset={() => resetConfigToDefaults('training.limitTraining.steps')}
+			/>
+		</ToggleGroup>
+
 		<BorderedGroup title="Regularization" contentClass={sectionClass}>
 			<!-- Dropout -->
 			<ToggleGroup

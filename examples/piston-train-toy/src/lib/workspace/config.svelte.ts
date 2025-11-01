@@ -33,6 +33,10 @@ const CONFIG_DEFAULTS: Config = {
 				subsetSize: 4
 			}
 		},
+		limitTraining: {
+			present: false,
+			steps: 50_000
+		},
 		dropout: {
 			present: false,
 			embedding: 0.1,

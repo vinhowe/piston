@@ -577,7 +577,19 @@ export class TrainingSession {
 			// Reset peak GPU memory tracking at the start of the step
 			piston.gpu.markUsageBytesStep();
 
-			const loggingStep = manual || this.stepCount % this.config.training.logSteps === 0;
+			let isLastStep = false;
+			if (
+				this.config.training.limitTraining.present &&
+				this.stepCount + 1 >= this.config.training.limitTraining.steps
+			) {
+				console.log(
+					`Stopping training at step ${this.stepCount} because it reached the limit of ${this.config.training.limitTraining.steps} steps`
+				);
+				isLastStep = true;
+			}
+
+			const loggingStep =
+				manual || isLastStep || this.stepCount % this.config.training.logSteps === 0;
 
 			let captureSession: piston.CaptureSession | null = null;
 			if (loggingStep && this.captureManager && this.config.visualization.target === 'train') {
@@ -707,7 +719,7 @@ export class TrainingSession {
 
 				if (
 					this.config.training.validation.present &&
-					this.stepCount % this.config.training.validation.valSteps === 0 &&
+					(this.stepCount % this.config.training.validation.valSteps === 0 || isLastStep) &&
 					this.validationExamples &&
 					this.validationDataset &&
 					this.validationCollateFn
@@ -881,6 +893,10 @@ export class TrainingSession {
 					const bytes = await this.saveLatestCheckpoint();
 					this.post({ type: 'restart', buffer: bytes });
 					return { done: true, value: 'restarted' };
+				}
+
+				if (isLastStep) {
+					return { done: true, value: 'completed' };
 				}
 			} finally {
 				finalWeakModeForStep[Symbol.dispose]();
