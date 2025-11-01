@@ -81,6 +81,10 @@ export interface TrainingConfig {
 export interface TransformerAttentionConfig {
 	present: boolean;
 	nKeyValueHeads: number;
+	groupedQueryAttention: {
+		present: boolean;
+		queryHeadsPerKeyValueHead: number;
+	};
 }
 
 export interface DataConfig {

@@ -268,6 +268,42 @@
 				hasDefaultValue={equalsConfigDefault('model.transformer.attention.nKeyValueHeads')}
 				onReset={() => resetConfigToDefaults('model.transformer.attention.nKeyValueHeads')}
 			/>
+			<ToggleGroup
+				id="model-attention-grouped-query-attention-group"
+				title="Grouped-Query Attention (GQA)"
+				citations={{
+					entries: [
+						{ name: 'Ainslie et al., 2023', url: 'https://aclanthology.org/2023.emnlp-main.298/' }
+					]
+				}}
+				showEnableToggle={true}
+				bind:enabled={config.model.transformer.attention.groupedQueryAttention.present}
+				contentClass={sectionClass}
+				hasDefaultValue={equalsConfigDefault(
+					'model.transformer.attention.groupedQueryAttention.present'
+				)}
+				onReset={() =>
+					resetConfigToDefaults('model.transformer.attention.groupedQueryAttention.present')}
+			>
+				<Slider
+					id="model-attention-grouped-query-attention-query-heads-per-key-value-head"
+					label="Number of Query Heads per Key-Value Head ($h_&lbrace;\text&lbrace;q&rbrace;&rbrace;/h_&lbrace;\text&lbrace;kv&rbrace;&rbrace;$)"
+					bind:value={
+						config.model.transformer.attention.groupedQueryAttention.queryHeadsPerKeyValueHead
+					}
+					min={2}
+					max={32}
+					step={1}
+					base={2}
+					hasDefaultValue={equalsConfigDefault(
+						'model.transformer.attention.groupedQueryAttention.queryHeadsPerKeyValueHead'
+					)}
+					onReset={() =>
+						resetConfigToDefaults(
+							'model.transformer.attention.groupedQueryAttention.queryHeadsPerKeyValueHead'
+						)}
+				/>
+			</ToggleGroup>
 		</ToggleGroup>
 
 		<!-- MLP -->

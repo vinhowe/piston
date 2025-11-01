@@ -122,7 +122,11 @@ const CONFIG_DEFAULTS: Config = {
 			},
 			attention: {
 				present: true,
-				nKeyValueHeads: 4
+				nKeyValueHeads: 4,
+				groupedQueryAttention: {
+					present: false,
+					queryHeadsPerKeyValueHead: 2
+				}
 			},
 			positionalEncoding: {
 				present: true,
@@ -521,7 +525,11 @@ export function getLatestRunDataset() {
 }
 
 const transformerHiddenSize = $derived(
-	config.model.transformer.headDim * config.model.transformer.attention.nKeyValueHeads
+	config.model.transformer.headDim *
+		(config.model.transformer.attention.groupedQueryAttention.present
+			? config.model.transformer.attention.groupedQueryAttention.queryHeadsPerKeyValueHead
+			: 1) *
+		config.model.transformer.attention.nKeyValueHeads
 );
 
 const mlpIntermediateSize = $derived(

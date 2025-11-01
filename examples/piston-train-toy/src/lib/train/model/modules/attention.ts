@@ -21,7 +21,11 @@ abstract class CoreAttention extends nn.Module {
 	constructor(embeddingSize: number, config: TransformerModuleConfig, isCausal: boolean = false) {
 		super();
 
-		this.nHeads = config.attention.nKeyValueHeads;
+		this.nHeads =
+			config.attention.nKeyValueHeads *
+			(config.attention.groupedQueryAttention.present
+				? config.attention.groupedQueryAttention.queryHeadsPerKeyValueHead
+				: 1);
 		this.nKvHeads = config.attention.nKeyValueHeads;
 		this.embeddingSize = embeddingSize;
 		this.headDim = embeddingSize / this.nHeads;

@@ -24,7 +24,10 @@ export function buildTransformerConfigCommon(
 	vocabSize: number
 ): TransformerModuleConfig {
 	const effectiveHeads = config.model.transformer.attention.present
-		? config.model.transformer.attention.nKeyValueHeads
+		? config.model.transformer.attention.nKeyValueHeads *
+			(config.model.transformer.attention.groupedQueryAttention.present
+				? config.model.transformer.attention.groupedQueryAttention.queryHeadsPerKeyValueHead
+				: 1)
 		: 1;
 
 	return {
