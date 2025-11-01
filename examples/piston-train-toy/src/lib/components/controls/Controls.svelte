@@ -215,6 +215,35 @@
 			onReset={() => resetConfigToDefaults('model.transformer.headDim')}
 		/>
 
+		<ToggleGroup
+			id="model-round-vocab-size-to-nearest-multiple-group"
+			title="Round Token Vocabulary Size to Nearest Multiple"
+			citations={{
+				entries: [
+					{ name: 'Karpathy, 2023', url: 'https://x.com/karpathy/status/1621578354024677377' },
+					{
+						name: 'NVIDIA Docs',
+						url: 'http://web.archive.org/web/20250912215737/https://docs.nvidia.com/deeplearning/performance/dl-performance-matrix-multiplication/index.html#requirements-tc__table_usc_swx_lmb'
+					}
+				]
+			}}
+			showEnableToggle={true}
+			bind:enabled={config.model.roundVocabSizeToNearestMultiple.present}
+			hasDefaultValue={equalsConfigDefault('model.roundVocabSizeToNearestMultiple.present')}
+			onReset={() => resetConfigToDefaults('model.roundVocabSizeToNearestMultiple.present')}
+		>
+			<Slider
+				id="model-round-vocab-size-to-nearest-multiple-value"
+				bind:value={config.model.roundVocabSizeToNearestMultiple.value}
+				min={2}
+				max={1024}
+				step={8}
+				base={2}
+				hasDefaultValue={equalsConfigDefault('model.roundVocabSizeToNearestMultiple.value')}
+				onReset={() => resetConfigToDefaults('model.roundVocabSizeToNearestMultiple.value')}
+			/>
+		</ToggleGroup>
+
 		<!-- Attention -->
 		<ToggleGroup
 			id="model-attention-control"

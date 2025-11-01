@@ -430,7 +430,7 @@ export class TrainingSession {
 		}
 
 		// Calculate vocab size using shared utility
-		const vocabSize = calculateVocabSize(this.trainDataset);
+		const vocabSize = calculateVocabSize(this.config, this.trainDataset);
 		const [trainDataloaderForSizing] = createDataloader(
 			this.config,
 			this.trainDataset,

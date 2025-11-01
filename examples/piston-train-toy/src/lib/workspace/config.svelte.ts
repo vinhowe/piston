@@ -84,6 +84,10 @@ const CONFIG_DEFAULTS: Config = {
 	model: {
 		topology: 'decoder',
 		layers: 1,
+		roundVocabSizeToNearestMultiple: {
+			present: false,
+			value: 64
+		},
 		encoderDecoder: {
 			encoderLayers: 1,
 			decoderLayers: 1
@@ -472,7 +476,7 @@ function datasetFromConfig(config: Config) {
 	const dataset = buildDataset(config, generator, 'train');
 	const [dataloader, collateFn] = createDataloader(config, dataset, generator, null);
 	const blockSize = calculateBlockSize(config, dataloader);
-	const vocabSize = calculateVocabSize(dataset);
+	const vocabSize = calculateVocabSize(config, dataset);
 
 	const collatedData = getCollatedSampleData(dataset, collateFn, 4);
 

@@ -161,6 +161,10 @@ export interface TransformerConfig {
 export interface ModelConfig {
 	topology: ModelType;
 	layers: number;
+	roundVocabSizeToNearestMultiple: {
+		present: boolean;
+		value: number;
+	};
 	encoderDecoder: {
 		decoderLayers: number;
 		encoderLayers: number;

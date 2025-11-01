@@ -41,10 +41,20 @@ type EncoderDecoderBlockSize = { source: number; target: number };
 /**
  * Calculate the vocabulary size based on the dataset and configuration
  */
-export function calculateVocabSize(dataset: PistonDatasetType): number {
-	return 'vocabSize' in dataset
-		? (dataset.vocabSize as number)
-		: Object.keys(dataset.tokenizer.vocab).length;
+export function calculateVocabSize(config: Config, dataset: PistonDatasetType): number {
+	let vocabSize =
+		'vocabSize' in dataset
+			? (dataset.vocabSize as number)
+			: Object.keys(dataset.tokenizer.vocab).length;
+
+	// Round vocab size up to nearest multiple if configured
+	if (config.model.roundVocabSizeToNearestMultiple.present) {
+		vocabSize =
+			Math.ceil(vocabSize / config.model.roundVocabSizeToNearestMultiple.value) *
+			config.model.roundVocabSizeToNearestMultiple.value;
+	}
+
+	return vocabSize;
 }
 
 export function calculateBlockSize<T>(
@@ -257,7 +267,7 @@ export function inspectModel(config: Config): {
 			const [dataloader] = createDataloader(config, dataset, generator, tensorWrap);
 			const isEncoderDecoder = config.model.topology === 'encoder-decoder';
 			const blockSizeOrSizes = calculateBlockSize(config, dataloader);
-			const vocabSize = calculateVocabSize(dataset);
+			const vocabSize = calculateVocabSize(config, dataset);
 			const model = createModel(config, vocabSize, blockSizeOrSizes);
 			const parameterCount = countParameters(model);
 
