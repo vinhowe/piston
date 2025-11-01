@@ -206,6 +206,7 @@ export interface TransformerConfig {
 export interface ModelConfig {
 	topology: ModelType;
 	layers: number;
+	tieEmbeddingsAndLmHead: boolean;
 	roundVocabSizeToNearestMultiple: {
 		present: boolean;
 		value: number;

@@ -84,6 +84,7 @@ const CONFIG_DEFAULTS: Config = {
 	model: {
 		topology: 'decoder',
 		layers: 1,
+		tieEmbeddingsAndLmHead: false,
 		roundVocabSizeToNearestMultiple: {
 			present: false,
 			value: 64

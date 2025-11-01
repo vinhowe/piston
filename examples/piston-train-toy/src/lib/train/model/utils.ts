@@ -12,6 +12,7 @@ import {
 	int32,
 	type Module as ModuleType,
 	nn,
+	Parameter,
 	type Tensor
 } from '@piston-ml/piston-web';
 
@@ -163,8 +164,17 @@ export function maybeCreateFinalLayerNorm(
 /**
  * Build a language modeling head using standard nn.Linear with optional weight tying.
  */
-export function buildLmHead(embeddingSize: number, vocabSize: number): nn.Linear {
-	return new nn.Linear(embeddingSize, vocabSize, false);
+export function buildLmHead(
+	embeddingSize: number,
+	vocabSize: number,
+	tieEmbeddings: boolean,
+	tiedEmbeddings?: nn.Embedding
+): nn.Linear {
+	const head = new nn.Linear(embeddingSize, vocabSize, false);
+	if (tieEmbeddings && tiedEmbeddings) {
+		head.weight = new Parameter(tiedEmbeddings.weight);
+	}
+	return head;
 }
 
 export function maybeApplyLogitsSoftcap(

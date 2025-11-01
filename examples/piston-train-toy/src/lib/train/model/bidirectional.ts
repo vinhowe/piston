@@ -16,8 +16,14 @@ export class MLMHead extends nn.Module {
 	 * @param hiddenSize - Hidden dimension
 	 * @param vocabSize - Vocabulary size
 	 * @param layerNormalization - Layer normalization configuration
+	 * @param embeddings - Optional embedding layer to share weights with
 	 */
-	constructor(hiddenSize: number, vocabSize: number, layerNormalization: LayerNormalizationConfig) {
+	constructor(
+		hiddenSize: number,
+		vocabSize: number,
+		layerNormalization: LayerNormalizationConfig,
+		embeddings?: nn.Embedding
+	) {
 		super();
 
 		this.transform = new nn.Linear(hiddenSize, hiddenSize);
@@ -25,7 +31,14 @@ export class MLMHead extends nn.Module {
 			this.layernorm = createNorm(hiddenSize, layerNormalization);
 		}
 
-		this.decoder = new nn.Linear(hiddenSize, vocabSize, false);
+		if (embeddings) {
+			// Share weights with embedding layer
+			this.decoder = new nn.Linear(hiddenSize, vocabSize, false);
+			// Tie weights
+			this.decoder.weight = new nn.Parameter(embeddings.weight);
+		} else {
+			this.decoder = new nn.Linear(hiddenSize, vocabSize, false);
+		}
 	}
 
 	/**

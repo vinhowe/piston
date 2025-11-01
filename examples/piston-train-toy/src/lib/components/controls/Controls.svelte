@@ -215,6 +215,17 @@
 			onReset={() => resetConfigToDefaults('model.transformer.headDim')}
 		/>
 
+		<CheckboxInput
+			id="model-tie-embeddings-and-lm-head"
+			label="Tie Embeddings and LM Head"
+			citations={{
+				entries: [{ name: 'Press & Wolf, 2016', url: 'https://arxiv.org/abs/1608.05859' }]
+			}}
+			bind:checked={config.model.tieEmbeddingsAndLmHead}
+			hasDefaultValue={equalsConfigDefault('model.tieEmbeddingsAndLmHead')}
+			onReset={() => resetConfigToDefaults('model.tieEmbeddingsAndLmHead')}
+		/>
+
 		<ToggleGroup
 			id="model-round-vocab-size-to-nearest-multiple-group"
 			title="Round Token Vocabulary Size to Nearest Multiple"

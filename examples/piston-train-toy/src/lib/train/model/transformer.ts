@@ -137,7 +137,12 @@ export class EncoderDecoderTransformer extends nn.Module {
 		this.encoder = new nn.ModuleDict(encoderDict);
 		this.decoder = new nn.ModuleDict(decoderDict);
 
-		this.lmHead = buildLmHead(this.config.embeddingSize, this.config.vocabSize);
+		this.lmHead = buildLmHead(
+			this.config.embeddingSize,
+			this.config.vocabSize,
+			config.model.tieEmbeddingsAndLmHead,
+			this.decoder.dict.wordEmbedding
+		);
 
 		this.criterion = createCrossEntropyCriterion();
 	}
@@ -328,7 +333,12 @@ export class DecoderTransformer extends nn.Module {
 		this.decoder = new nn.ModuleDict(transformerDict);
 
 		// Output projection with optional weight tying to token embeddings
-		this.lmHead = buildLmHead(this.config.embeddingSize, this.config.vocabSize);
+		this.lmHead = buildLmHead(
+			this.config.embeddingSize,
+			this.config.vocabSize,
+			config.model.tieEmbeddingsAndLmHead,
+			this.decoder.dict.wordEmbedding
+		);
 
 		this.criterion = createCrossEntropyCriterion();
 	}
@@ -412,6 +422,7 @@ export type EncoderTransformerConfig = TransformerModuleConfig & {
 	};
 	mlmHead: {
 		present: boolean;
+		shareEmbeddings: boolean;
 	};
 };
 
@@ -449,6 +460,7 @@ export class EncoderTransformer extends nn.Module {
 			},
 			mlmHead: {
 				present: true,
+				shareEmbeddings: config.model.tieEmbeddingsAndLmHead
 			}
 		};
 
@@ -493,6 +505,7 @@ export class EncoderTransformer extends nn.Module {
 				this.config.embeddingSize,
 				this.config.vocabSize,
 				this.config.layerNormalization,
+				this.config.mlmHead.shareEmbeddings ? this.encoder.dict.wordEmbedding : undefined
 			);
 		}
 
