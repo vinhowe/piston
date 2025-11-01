@@ -106,7 +106,6 @@
 {/snippet}
 
 <div>
-	<!-- Task -->
 	<CollapsibleSection
 		title="Task"
 		isOpen={controlSectionsOpen.current.task}
@@ -116,7 +115,6 @@
 		<DatasetControls datasetName={config.data.dataset} />
 	</CollapsibleSection>
 
-	<!-- Model -->
 	<CollapsibleSection
 		title="Model Architecture"
 		isOpen={controlSectionsOpen.current.model}
@@ -255,7 +253,6 @@
 			/>
 		</ToggleGroup>
 
-		<!-- Attention -->
 		<ToggleGroup
 			id="model-attention-group"
 			title="Multi-Head Attention (MHA)"
@@ -399,7 +396,6 @@
 			</ToggleGroup>
 		</ToggleGroup>
 
-		<!-- MLP -->
 		<ToggleGroup
 			id="model-mlp-group"
 			title="Feed-Forward Network (MLP)"
@@ -542,7 +538,6 @@
 			{/if}
 		</ToggleGroup>
 
-		<!-- Normalization -->
 		<BorderedGroup title="Normalization" contentClass={sectionClass}>
 			<ToggleGroup
 				id="model-layer-normalization-group"
@@ -751,7 +746,6 @@
 		</ToggleGroup>
 	</CollapsibleSection>
 
-	<!-- Training -->
 	<CollapsibleSection
 		title="Training"
 		isOpen={controlSectionsOpen.current.training}
@@ -950,7 +944,6 @@
 					onReset={() => resetConfigToDefaults('training.labelSmoothing.value')}
 				/>
 			</ToggleGroup>
-			<!-- Dropout -->
 			<ToggleGroup
 				id="training-dropout-group"
 				title="Dropout"
@@ -1047,7 +1040,6 @@
 		</ToggleGroup>
 	</CollapsibleSection>
 
-	<!-- Optimizer Section -->
 	<CollapsibleSection
 		title="Optimizer"
 		isOpen={controlSectionsOpen.current.optimizer}
@@ -1131,7 +1123,6 @@
 			/>
 		</ToggleGroup>
 
-		<!-- Learning Rate Scheduler -->
 		<ToggleGroup
 			title="Learning Rate Scheduler"
 			id="lr-scheduler-control"
@@ -1286,7 +1277,6 @@
 		</div>
 	</CollapsibleSection>
 
-	<!-- Advanced Section -->
 	<CollapsibleSection
 		title="Advanced (debugging or profiling)"
 		isOpen={controlSectionsOpen.current.advanced}
