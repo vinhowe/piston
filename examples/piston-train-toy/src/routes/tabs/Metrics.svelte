@@ -4,6 +4,7 @@
 	import RunChart from '$lib/components/metrics/RunChart.svelte';
 	import ValidationCompletionsViewer from '$lib/components/metrics/validationCompletions/ValidationCompletionsViewer.svelte';
 	import ToggleChips from '$lib/components/ToggleChips.svelte';
+	import UserGuideTooltip from '$lib/components/UserGuideTooltip.svelte';
 	import { config } from '$lib/workspace/config.svelte';
 	import {
 		getCurrentRun,
@@ -11,14 +12,19 @@
 		getMetricNamesFromLastNRuns
 	} from '$lib/workspace/runs.svelte';
 	import {
+		getIconStrokeWidth,
 		metricsSectionsOpen,
 		metricVisibility,
-		toggleMetricsSection
+		toggleMetricsSection,
+		tourState
 	} from '$lib/workspace/ui.svelte';
 	import { sortWithPriority } from '$lib/workspace/utils';
 	import { updateVisualizerTarget } from '$lib/workspace/workers.svelte';
+	import { BotMessageSquare, ExternalLink } from 'lucide-svelte';
 
 	import Visualize from '../../lib/components/Visualize.svelte';
+
+	const iconStrokeWidth = $derived(getIconStrokeWidth());
 
 	// Derived state: Automatically tracks metric names from the last 5 runs
 	const metricNames = $derived(getMetricNamesFromLastNRuns(5));
@@ -70,6 +76,22 @@
 </script>
 
 <div class="p-2.5 md:p-4 overflow-auto overscroll-contain flex flex-col flex-1 min-h-0">
+	{#if !tourState.current.restartedExperiment}
+		<UserGuideTooltip icon={BotMessageSquare} class="mb-5 @md:mb-7">
+			Tinker with the experiment setup, then click <span class="font-semibold">New Changes</span>
+			to try out your changes. You can probably break it!
+			<a
+				href="https://github.com/vinhowe/piston/issues"
+				class="underline"
+				target="_blank"
+				rel="noopener noreferrer"
+				>Report issues on Github <ExternalLink
+					class="inline-block h-3.5 w-3.5 -translate-y-0.5"
+					strokeWidth={iconStrokeWidth}
+				/></a
+			>.
+		</UserGuideTooltip>
+	{/if}
 	{#if Object.keys(metricGroups).length === 0}
 		<div class="flex items-center justify-center h-32 text-neutral-500">
 			<p>No metrics available. Start training to see charts.</p>

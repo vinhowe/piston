@@ -16,7 +16,8 @@
 		stepForward,
 		stopTraining,
 		toggleConfig,
-		togglePause
+		togglePause,
+		tourState
 	} from '$lib/workspace/ui.svelte';
 	import {
 		cleanupWorkers,
@@ -81,6 +82,7 @@
 	hideBorder: boolean,
 	isActive: boolean,
 	disabled: boolean,
+	highlighted: boolean,
 	hasActivity: boolean,
 	onClick: () => void
 )}
@@ -89,7 +91,9 @@
 		type="button"
 		class="px-2 py-1 flex items-center gap-1.5 text-base border-b border-r border-panel-border-base {isActive
 			? 'bg-white' + (hideBorder ? ' border-b-transparent' : '')
-			: 'bg-panel'} {disabled ? 'opacity-50' : 'cursor-pointer'}"
+			: highlighted
+				? 'bg-gradient-to-t from-purple-800 to-purple-400 text-purple-100 animate-pulse font-medium'
+				: 'bg-panel'} {disabled ? 'opacity-50' : 'cursor-pointer'}"
 		onclick={onClick}
 		{disabled}
 	>
@@ -129,7 +133,10 @@
 						true,
 						configOpen.current !== false,
 						!hasWebGPU.current,
-						hasWebGPU.current && false,
+						hasWebGPU.current &&
+							((runCounter.current === 0 && !tourState.current.startedExperiment) ||
+								(shouldSuggestRestart && !tourState.current.restartedExperiment)),
+						false,
 						toggleConfig
 					)}
 				</div>
@@ -145,6 +152,7 @@
 					activeTab.current === 'about' && shouldShowTabContent,
 					false,
 					false,
+					false,
 					() => selectTab('about')
 				)}
 				{@render tabButton(
@@ -153,6 +161,7 @@
 					true,
 					activeTab.current === 'metrics' && shouldShowTabContent,
 					runCounter.current === 0,
+					false,
 					trainingState.current === 'training',
 					() => selectTab('metrics')
 				)}
@@ -182,6 +191,9 @@
 									color="green"
 									disabled={trainingState.current !== 'stopped' || !workerReady.current}
 									onclick={startTraining}
+									highlighted={workerReady.current &&
+										trainingState.current === 'stopped' &&
+										!tourState.current.startedExperiment}
 									class="w-full h-7.5"
 								>
 									<span class="flex items-center justify-center gap-1.5 w-full">
@@ -215,6 +227,7 @@
 									<ActionButton
 										color="blue"
 										class={`h-7.5 ${shouldSuggestRestart ? 'col-span-3' : 'col-span-1'}`}
+										highlighted={shouldSuggestRestart && !tourState.current.restartedExperiment}
 										onclick={restartTraining}
 									>
 										<span class="flex items-center justify-center gap-1.5 w-full">

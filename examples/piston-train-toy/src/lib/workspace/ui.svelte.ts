@@ -198,6 +198,14 @@ export const metricVisibility = new LocalStorage('metricVisibility', {});
 // Initialize configOpen from localStorage with no default (null means use media query)
 export const configOpen = new LocalStorage<boolean | null>('configOpen', null);
 
+export const tourState = new LocalStorage<{
+	startedExperiment: boolean;
+	restartedExperiment: boolean;
+}>('tourState', {
+	startedExperiment: false,
+	restartedExperiment: false
+});
+
 export function switchToMetrics() {
 	selectTab('metrics');
 }
@@ -217,8 +225,14 @@ export function startTraining() {
 		configOpen.current = false;
 	}
 
-	if (activeTab.current === 'about') {
+	// We don't want to wrench them away from the visualize tab, but if they're
+	// running an experiment, we want it to look like something is happening.
+	if (!tourState.current.startedExperiment || activeTab.current === 'about') {
 		switchToMetrics();
+	}
+
+	if (!tourState.current.startedExperiment) {
+		tourState.current.startedExperiment = true;
 	}
 
 	if (getShowLowDiversityDatasetError()) {
@@ -250,4 +264,7 @@ export function stepForward() {
 export async function restartTraining() {
 	await stopTraining();
 	startTraining();
+	if (!tourState.current.restartedExperiment) {
+		tourState.current.restartedExperiment = true;
+	}
 }
