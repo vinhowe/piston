@@ -137,6 +137,9 @@ const CONFIG_DEFAULTS: Config = {
 						afterQueryProjection: false,
 						afterFinalOutputProjection: false
 					}
+				},
+				sinks: {
+					present: false
 				}
 			},
 			positionalEncoding: {

@@ -1,4 +1,13 @@
-import { AlibiEmbedding, cat, Linear, nn, RotaryEmbedding, Tensor } from '@piston-ml/piston-web';
+import {
+	AlibiEmbedding,
+	cat,
+	gpu,
+	Linear,
+	nn,
+	RotaryEmbedding,
+	Tensor,
+	zeros
+} from '@piston-ml/piston-web';
 
 import type { SelfAttentionCache } from '../cache';
 import type { TransformerModuleConfig } from '../config';
@@ -16,6 +25,7 @@ abstract class CoreAttention extends nn.Module {
 	protected residDropout?: nn.Dropout;
 	protected rope?: RotaryEmbedding;
 	protected alibi?: AlibiEmbedding;
+	protected sinks?: nn.Parameter;
 	protected readonly isCausal: boolean;
 	protected readonly config: TransformerModuleConfig;
 	protected readonly gateAfterSdpa?: SimpleHadamardGate;
@@ -38,6 +48,10 @@ abstract class CoreAttention extends nn.Module {
 		this.isCausal = isCausal;
 
 		this.config = config;
+
+		if (config.attention.sinks?.present) {
+			this.sinks = new nn.Parameter(zeros([this.nHeads], { device: gpu }));
+		}
 
 		const gatingConfig = config.attention.gating;
 		if (gatingConfig?.present) {
@@ -121,9 +135,31 @@ abstract class CoreAttention extends nn.Module {
 			att = this.applyAttentionMask(att, options.attentionMask);
 		}
 
-		// Apply softmax over keys
+		// Append sinks bias column if configured: concatenate along last dim before softmax
+		if (this.sinks) {
+			// Shape to [B, nHeads, 1, 1] then broadcast to [B, nHeads, T_q, 1]
+			// TODO: Support proper expand (shouldn't be hard)
+			const sinksCol = this.sinks
+				.unsqueeze(0)
+				.unsqueeze(2)
+				.unsqueeze(3)
+				.broadcastTo([B, this.nHeads, T_q, 1]);
+			att = cat([att, sinksCol], { dim: 3 });
+		}
+
+		// Apply softmax over keys plus optional sink column
 		att = att.softmax(3);
 		att = this.attnDropout ? this.attnDropout.forward(att) : att;
+
+		if (this.sinks) {
+			// If sinks were appended, drop the sink column from attention before matmul with V
+			att = att.slice([
+				[0, B],
+				[0, this.nHeads],
+				[0, T_q],
+				[0, att.size(3) - 1]
+			]);
+		}
 
 		let y = att.matmul(vCat).transpose(1, 2).view([B, T_q, this.embeddingSize]);
 		if (this.gateAfterSdpa) {

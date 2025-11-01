@@ -86,6 +86,9 @@ export interface TransformerAttentionConfig {
 		queryHeadsPerKeyValueHead: number;
 	};
 	gating: AttentionGatingConfig;
+	sinks: {
+		present: boolean;
+	};
 }
 
 export interface DataConfig {

@@ -268,6 +268,16 @@
 				hasDefaultValue={equalsConfigDefault('model.transformer.attention.nKeyValueHeads')}
 				onReset={() => resetConfigToDefaults('model.transformer.attention.nKeyValueHeads')}
 			/>
+			<CheckboxInput
+				id="model-attention-sinks"
+				label="Attention Sinks"
+				citations={{
+					entries: [{ name: 'Gu et al., 2025', url: 'https://openreview.net/forum?id=78Nn4QJTEN' }]
+				}}
+				bind:checked={config.model.transformer.attention.sinks.present}
+				hasDefaultValue={equalsConfigDefault('model.transformer.attention.sinks.present')}
+				onReset={() => resetConfigToDefaults('model.transformer.attention.sinks.present')}
+			/>
 			<ToggleGroup
 				id="model-attention-grouped-query-attention-group"
 				title="Grouped-Query Attention (GQA)"
