@@ -807,6 +807,25 @@
 			onReset={() => resetConfigToDefaults('optimizer.lr')}
 		/>
 
+		<ToggleGroup
+			id="optimizer-warmup-steps-group"
+			title="Warmup Steps"
+			showEnableToggle={true}
+			bind:enabled={config.optimizer.warmupSteps.present}
+			hasDefaultValue={equalsConfigDefault('optimizer.warmupSteps.present')}
+			onReset={() => resetConfigToDefaults('optimizer.warmupSteps.present')}
+		>
+			<Slider
+				id="optimizer-warmup-steps-value"
+				bind:value={config.optimizer.warmupSteps.value}
+				min={0}
+				max={10_000}
+				step={1}
+				hasDefaultValue={equalsConfigDefault('optimizer.warmupSteps.value')}
+				onReset={() => resetConfigToDefaults('optimizer.warmupSteps.value')}
+			/>
+		</ToggleGroup>
+
 		<!-- Learning Rate Scheduler -->
 		<ToggleGroup
 			title="Learning Rate Scheduler"

@@ -7,6 +7,7 @@ import {
 	ExponentialLR,
 	LinearLR,
 	type LRScheduler,
+	SequentialLR,
 	StepLR,
 	type Tensor
 } from '@piston-ml/piston-web';
@@ -545,6 +546,19 @@ export class TrainingSession {
 					break;
 				default:
 					throw new Error(`Unknown scheduler type: ${lrConfig.type}`);
+			}
+
+			if (this.scheduler && this.config.optimizer.warmupSteps.present) {
+				const n = this.config.optimizer.warmupSteps.value;
+				if (n > 0) {
+					const warmup = new LinearLR(optimizer, 1e-8, 1.0, n);
+					this.scheduler = new SequentialLR(optimizer, [warmup, this.scheduler], [n]);
+				}
+			}
+		} else if (this.config.optimizer.warmupSteps.present) {
+			const n = this.config.optimizer.warmupSteps.value;
+			if (n > 0) {
+				this.scheduler = new LinearLR(optimizer, 1e-8, 1.0, n);
 			}
 		}
 

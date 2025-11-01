@@ -177,6 +177,7 @@ export interface OptimizerConfig {
 		value: number;
 		useWeightDecayGroups: boolean;
 	};
+	warmupSteps: { present: boolean; value: number };
 	lrScheduler: {
 		present: boolean;
 		type: string;

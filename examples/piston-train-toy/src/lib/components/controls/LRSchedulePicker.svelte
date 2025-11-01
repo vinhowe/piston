@@ -7,6 +7,7 @@
 		LinearLR,
 		type LRScheduler,
 		type Optimizer,
+		SequentialLR,
 		StepLR
 	} from '@piston-ml/piston-web';
 	import { MediaQuery } from 'svelte/reactivity';
@@ -90,6 +91,15 @@
 				points.push([step, baseLr]);
 			}
 			return points;
+		}
+
+		// Wrap scheduler with warmup if enabled
+		if (config.optimizer.warmupSteps.present && scheduler) {
+			const n = config.optimizer.warmupSteps.value | 0;
+			if (n > 0) {
+				const warm = new LinearLR(mockOptimizer, 1e-8, 1.0, n);
+				scheduler = new SequentialLR(mockOptimizer, [warm, scheduler], [n]);
+			}
 		}
 
 		// Generate points by stepping through the scheduler

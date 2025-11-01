@@ -145,6 +145,10 @@ const CONFIG_DEFAULTS: Config = {
 			value: 1e-2,
 			useWeightDecayGroups: true
 		},
+		warmupSteps: {
+			present: true,
+			value: 100
+		},
 		lrScheduler: {
 			present: true,
 			type: 'cosine',
