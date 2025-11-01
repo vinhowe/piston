@@ -44,6 +44,7 @@ import {
 } from './utils/checkpoint';
 import {
 	calculateBlockSize,
+	calculateParameterSum,
 	calculateVocabSize,
 	createCollateFn,
 	createDataloader,
@@ -465,6 +466,11 @@ export class TrainingSession {
 
 			// We need to flatten down initialization to the constant tensors they're on top of
 			await piston.gpu.markStep();
+
+			const parameterSum = new BigUint64Array(
+				new Float64Array([await (await calculateParameterSum(this.model).to('cpu')).item()]).buffer
+			);
+			console.debug(`Initialization parameter sum: ${parameterSum}`);
 		}
 
 		// Build or refresh capture plan using CaptureManager

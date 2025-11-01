@@ -1,6 +1,13 @@
 import type { Random } from 'random-js';
 
-import { CaptureIndexMode, DataLoader, type IndexState, Tensor, weak } from '@piston-ml/piston-web';
+import {
+	CaptureIndexMode,
+	DataLoader,
+	type IndexState,
+	Module,
+	Tensor,
+	weak
+} from '@piston-ml/piston-web';
 import * as piston from '@piston-ml/piston-web';
 
 import type { Config } from '../../workspace/config';
@@ -228,6 +235,11 @@ export function initializeModel(
 	model: DecoderTransformer | EncoderTransformer | EncoderDecoderTransformer
 ) {
 	initTransformerParameters(model, config);
+}
+
+export function calculateParameterSum(model: Module): Tensor {
+	const sums = model.parameters().map((param) => param.sum());
+	return piston.stack(sums).sum();
 }
 
 export function countParameters(
