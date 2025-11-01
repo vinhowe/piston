@@ -138,8 +138,20 @@ export interface QKNormConfig {
 	eps: number;
 }
 
+export interface SoftcapConfig {
+	attention: {
+		present: boolean;
+		value: number;
+	};
+	logits: {
+		present: boolean;
+		value: number;
+	};
+}
+
 export interface NormalizationConfig {
 	qkNorm: QKNormConfig;
+	softcap: SoftcapConfig;
 }
 
 export type Activation = 'relu' | 'relu2' | 'gelu' | 'silu' | 'sigmoid' | 'swiglu' | 'tanh';

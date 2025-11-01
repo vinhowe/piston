@@ -22,6 +22,7 @@ import {
 	buildLmHead,
 	computeAutoregressiveCrossEntropyLoss,
 	createCrossEntropyCriterion,
+	maybeApplyLogitsSoftcap,
 	maybeCreateFinalLayerNorm,
 	maybeCreateLearnedPositionEmbedding,
 	maybeCreateSinusoidalEncoding
@@ -213,7 +214,9 @@ export class EncoderDecoderTransformer extends nn.Module {
 		}
 
 		// Project to vocabulary
-		const logits = this.lmHead.forward(hiddenStates);
+		let logits = this.lmHead.forward(hiddenStates);
+
+		logits = maybeApplyLogitsSoftcap(logits, this.config.normalization);
 
 		const loss = computeAutoregressiveCrossEntropyLoss(logits, targets, this.criterion);
 
@@ -387,7 +390,9 @@ export class DecoderTransformer extends nn.Module {
 		}
 
 		// Project to vocabulary
-		const logits = this.lmHead.forward(hiddenStates);
+		let logits = this.lmHead.forward(hiddenStates);
+
+		logits = maybeApplyLogitsSoftcap(logits, this.config.normalization);
 
 		const loss = computeAutoregressiveCrossEntropyLoss(logits, targets, this.criterion);
 
@@ -571,6 +576,7 @@ export class EncoderTransformer extends nn.Module {
 		let mlmLogits: Tensor | null = null;
 		if (this.mlmHead) {
 			mlmLogits = this.mlmHead.forward(hiddenStates);
+			mlmLogits = maybeApplyLogitsSoftcap(mlmLogits, this.config.normalization);
 		}
 
 		// Calculate MLM loss if targets are provided

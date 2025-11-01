@@ -14,6 +14,7 @@ import type { TransformerModuleConfig } from '../config';
 
 import { createCausalMask, maskedFill } from '../utils';
 import { SimpleHadamardGate } from './gate';
+import { applySoftcap } from './utils';
 
 abstract class CoreAttention extends nn.Module {
 	protected readonly nHeads: number;
@@ -123,6 +124,10 @@ abstract class CoreAttention extends nn.Module {
 
 		// Compute attention scores
 		let att = q.matmul(kCat, { transRhs: true }).div(Math.sqrt(this.headDim));
+
+		if (this.config.normalization.softcap.attention.present) {
+			att = applySoftcap(att, this.config.normalization.softcap.attention.value);
+		}
 
 		// Apply ALiBi if configured
 		if (this.alibi) {

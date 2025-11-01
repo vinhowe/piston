@@ -157,6 +157,16 @@ const CONFIG_DEFAULTS: Config = {
 					present: true,
 					type: 'rmsnorm',
 					eps: 1e-5
+				},
+				softcap: {
+					attention: {
+						present: false,
+						value: 30
+					},
+					logits: {
+						present: false,
+						value: 30
+					}
 				}
 			},
 			mlp: {

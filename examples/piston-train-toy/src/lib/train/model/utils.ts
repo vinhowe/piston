@@ -1,4 +1,8 @@
-import type { LayerNormalizationConfig, PositionEncodingConfig } from '$lib/workspace/config';
+import type {
+	LayerNormalizationConfig,
+	NormalizationConfig,
+	PositionEncodingConfig
+} from '$lib/workspace/config';
 
 import {
 	arange,
@@ -13,6 +17,7 @@ import {
 
 import { createNorm } from './modules/norm';
 import { SinusoidalEncoding } from './modules/positional';
+import { applySoftcap } from './modules/utils';
 
 /**
  * Create a causal (lower triangular) mask.
@@ -160,6 +165,16 @@ export function maybeCreateFinalLayerNorm(
  */
 export function buildLmHead(embeddingSize: number, vocabSize: number): nn.Linear {
 	return new nn.Linear(embeddingSize, vocabSize, false);
+}
+
+export function maybeApplyLogitsSoftcap(
+	logits: Tensor,
+	normalization: NormalizationConfig
+): Tensor {
+	if (normalization.softcap.logits.present) {
+		return applySoftcap(logits, normalization.softcap.logits.value);
+	}
+	return logits;
 }
 
 /**

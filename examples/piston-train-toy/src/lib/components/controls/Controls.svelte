@@ -629,6 +629,68 @@
 					onReset={() => resetConfigToDefaults('model.transformer.normalization.qkNorm.eps')}
 				/>
 			</ToggleGroup>
+			<BorderedGroup
+				id="model-normalization-softcap-group"
+				title="Logit Soft-Capping"
+				citations={{
+					entries: [
+						{
+							name: 'Gemma Team, 2024',
+							url: 'https://storage.googleapis.com/deepmind-media/gemma/gemma-2-report.pdf'
+						}
+					]
+				}}
+				contentClass={sectionClass}
+			>
+				<ToggleGroup
+					id="model-normalization-softcap-attention-group"
+					title="Attention"
+					showEnableToggle={true}
+					bind:enabled={config.model.transformer.normalization.softcap.attention.present}
+					hasDefaultValue={equalsConfigDefault(
+						'model.transformer.normalization.softcap.attention.present'
+					)}
+					onReset={() =>
+						resetConfigToDefaults('model.transformer.normalization.softcap.attention.present')}
+				>
+					<Slider
+						id="model-normalization-softcap-attention-value"
+						bind:value={config.model.transformer.normalization.softcap.attention.value}
+						min={0.1}
+						max={100}
+						step={0.1}
+						hasDefaultValue={equalsConfigDefault(
+							'model.transformer.normalization.softcap.attention.value'
+						)}
+						onReset={() =>
+							resetConfigToDefaults('model.transformer.normalization.softcap.attention.value')}
+					/>
+				</ToggleGroup>
+				<ToggleGroup
+					id="model-normalization-softcap-logits-group"
+					title="Final Logits"
+					showEnableToggle={true}
+					bind:enabled={config.model.transformer.normalization.softcap.logits.present}
+					hasDefaultValue={equalsConfigDefault(
+						'model.transformer.normalization.softcap.logits.present'
+					)}
+					onReset={() =>
+						resetConfigToDefaults('model.transformer.normalization.softcap.logits.present')}
+				>
+					<Slider
+						id="model-normalization-softcap-logits-value"
+						bind:value={config.model.transformer.normalization.softcap.logits.value}
+						min={0.1}
+						max={100}
+						step={0.1}
+						hasDefaultValue={equalsConfigDefault(
+							'model.transformer.normalization.softcap.logits.value'
+						)}
+						onReset={() =>
+							resetConfigToDefaults('model.transformer.normalization.softcap.logits.value')}
+					/>
+				</ToggleGroup>
+			</BorderedGroup>
 		</BorderedGroup>
 		<ToggleGroup
 			id="initialization-control"
