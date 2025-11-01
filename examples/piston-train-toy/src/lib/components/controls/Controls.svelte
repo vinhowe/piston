@@ -654,6 +654,7 @@
 					onReset={() => resetConfigToDefaults('model.transformer.normalization.qkNorm.eps')}
 				/>
 			</ToggleGroup>
+
 			<BorderedGroup
 				id="model-normalization-softcap-group"
 				title="Logit Soft-Capping"
