@@ -32,6 +32,17 @@ export default defineConfig((_) => ({
 		format: 'es',
 		plugins: () => [wasm(), sveltekit()]
 	},
+	resolve: {
+		dedupe: [
+			'@codemirror/state',
+			'@codemirror/view',
+			'@codemirror/language',
+			'@codemirror/lang-javascript',
+			'@codemirror/lint',
+			'codemirror',
+			'@lezer/highlight'
+		]
+	},
 	esbuild: {
 		supported: { 'top-level-await': true }
 	},

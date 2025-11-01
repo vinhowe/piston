@@ -12,9 +12,10 @@
 		subscribe
 	} from '$lib/attachments/echarts.svelte';
 	import { decodeSingle, PreTrainedTokenizer } from '$lib/train/tokenizer';
-	import { getLatestRunDataset } from '$lib/workspace/config.svelte';
+	import { config, getLatestRunDataset } from '$lib/workspace/config.svelte';
 	import { getLatestRun, runsMap } from '$lib/workspace/runs.svelte';
 	import { maxCompletions } from '$lib/workspace/ui.svelte';
+	import { updateVisualizerSelectedValidation } from '$lib/workspace/workers.svelte';
 	import { BarChart, HeatmapChart } from 'echarts/charts';
 	import { GridComponent, TooltipComponent, VisualMapComponent } from 'echarts/components';
 	import * as echarts from 'echarts/core';
@@ -184,6 +185,10 @@
 		const currentRunId = getLatestRun()?.runId ?? null;
 		if (lastRunId !== currentRunId) {
 			lastRunId = currentRunId;
+			updateVisualizerSelectedValidation({
+				exampleIndex: config.visualization.selectedValidation.exampleIndex,
+				tokenIndex: 0
+			});
 			hoveredFocus = null;
 			selectedProbsStep = null;
 		}
@@ -197,7 +202,7 @@
 
 		// Determine current focus (example + token step index)
 		const modelType = runConfig?.model.topology ?? 'decoder';
-		const focus = hoveredFocus;
+		const focus = hoveredFocus ?? config.visualization.selectedValidation;
 		const defaultExample = 0;
 		const exampleIndex = Math.max(
 			0,
@@ -642,6 +647,9 @@
 					.temperature}
 			</p>
 		{/if}
+		{#if config.visualization.target === 'validation'}
+			<span class="text-sm text-blue-700 font-medium">Visualizing Selected Example</span>
+		{/if}
 	</div>
 
 	{#if !completionsData}
@@ -650,6 +658,7 @@
 		</div>
 	{:else}
 		{@const visibleCompletionsNumberWidth = visibleCompletions.length.toString().length}
+		{@const focus = hoveredFocus ?? config.visualization.selectedValidation}
 		<div class="flex-1 min-h-0 flex">
 			<div
 				class="overflow-y-auto flex flex-wrap gap-1 md:gap-2 flex-1 min-h-0 -mb-2 md:-mb-3 pb-2 md:pb-3 items-start justify-start"
@@ -678,6 +687,21 @@
 									exampleIndex: index,
 									tokenIndex: hoveredFocus?.tokenIndex ?? 0
 								})}
+							onmouseleave={() => (hoveredFocus = null)}
+							onclick={() =>
+								updateVisualizerSelectedValidation({
+									exampleIndex: index,
+									tokenIndex: 0
+								})}
+							onkeydown={(e) => {
+								if (e.key === 'Enter' || e.key === ' ') {
+									e.preventDefault();
+									updateVisualizerSelectedValidation({
+										exampleIndex: index,
+										tokenIndex: 0
+									});
+								}
+							}}
 						>
 							{#if showEncoderGrid}
 								<div></div>
@@ -751,6 +775,11 @@
 												tokenIndex={sequenceTokenIndex}
 												onHover={(ei, ti) => (hoveredFocus = { exampleIndex: ei, tokenIndex: ti })}
 												onLeave={() => (hoveredFocus = null)}
+												onSelect={(ei, ti) =>
+													updateVisualizerSelectedValidation({
+														exampleIndex: ei,
+														tokenIndex: ti
+													})}
 											/>
 										{:else}
 											<CompletionsToken
@@ -762,6 +791,11 @@
 												tokenIndex={sequenceTokenIndex}
 												onHover={(ei, ti) => (hoveredFocus = { exampleIndex: ei, tokenIndex: ti })}
 												onLeave={() => (hoveredFocus = null)}
+												onSelect={(ei, ti) =>
+													updateVisualizerSelectedValidation({
+														exampleIndex: ei,
+														tokenIndex: ti
+													})}
 											/>
 										{/if}
 									{/each}
@@ -792,6 +826,11 @@
 											disabled={isPrompt}
 											onHover={(ei, ti) => (hoveredFocus = { exampleIndex: ei, tokenIndex: ti })}
 											onLeave={() => (hoveredFocus = null)}
+											onSelect={(ei, ti) =>
+												updateVisualizerSelectedValidation({
+													exampleIndex: ei,
+													tokenIndex: ti
+												})}
 										/>
 									{/each}
 								{/if}

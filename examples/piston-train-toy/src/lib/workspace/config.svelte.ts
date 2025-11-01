@@ -8,6 +8,7 @@ import { seededRandom } from '$lib/train/utils/random';
 import { SvelteURL, SvelteURLSearchParams } from 'svelte/reactivity';
 
 import { getCurrentRun, getLatestRun } from './runs.svelte';
+import { getVisualizationExampleOptions } from './visualizationExamples';
 
 export const MODEL_TYPES = [
 	'decoder',
@@ -48,6 +49,7 @@ const CONFIG_DEFAULTS: Config = {
 		sharedObjectAllocation: false,
 		cachingEnabled: false,
 		inplaceSupport: true,
+		enableVisualization: true,
 		vramLimitMb: {
 			present: true,
 			value: 4096
@@ -169,6 +171,15 @@ const CONFIG_DEFAULTS: Config = {
 			momentum: 0.95,
 			nsSteps: 5,
 			nesterov: true
+		}
+	},
+	visualization: {
+		script: null,
+		example: 'attention-probabilities',
+		target: 'validation',
+		selectedValidation: {
+			exampleIndex: 0,
+			tokenIndex: 0
 		}
 	},
 	version: 1
@@ -505,6 +516,21 @@ export function getMlpIntermediateSize() {
 }
 
 export function validateConfig() {
+	// There are a few things that can still slip through the cracks, so we deal with those here.
+
+	if (
+		config.visualization.selectedValidation.exampleIndex >= config.training.validation.batchSize
+	) {
+		config.visualization.selectedValidation.exampleIndex = 0;
+	}
+
+	if (
+		config.visualization.example !== 'custom' &&
+		!getVisualizationExampleOptions().some((e) => e.value === config.visualization.example)
+	) {
+		config.visualization.example = 'all-activations';
+	}
+
 	if (
 		config.training.validation.completions.present &&
 		config.training.validation.completions.amount === 'subset' &&

@@ -1,6 +1,7 @@
 import type { Config } from '$lib/workspace/config';
 import type { StepData } from '$lib/workspace/runs.svelte';
 
+import { getEffectiveVisualizationScript } from '$lib/workspace/visualizationExamples';
 import {
 	CosineAnnealingLR,
 	ExponentialLR,
@@ -11,6 +12,7 @@ import {
 } from '@piston-ml/piston-web';
 import * as piston from '@piston-ml/piston-web';
 
+import type { CaptureMatch, RemoteCaptureStep } from './capture';
 import type { BuiltData } from './data/pipeline';
 import type {
 	ToyAutoregressiveBatch,
@@ -21,6 +23,7 @@ import type {
 import type { RunWorkerEvent, RunWorkerEventWithoutRunId, WorkerEvent } from './protocol';
 import type { GeneratableModel, PistonCollateFnType, PistonDatasetType } from './types';
 
+import { CaptureManager, makeCaptureMatchRemote, runValidationExampleForCapture } from './capture';
 import { buildDataset, tensorWrap } from './data';
 import { filterDatasetByHeldoutSamples } from './data/filter';
 import { NaturalLanguageDataset } from './data/natural';
@@ -55,6 +58,7 @@ import {
 	type ValidationExamples,
 	type ValidationStep
 } from './validation';
+import { Visualizer } from './visualizer';
 
 // @ts-expect-error polyfill
 Symbol.dispose ||= Symbol.for('Symbol.dispose');
@@ -66,6 +70,18 @@ export class TrainingSession {
 
 	private paused = false;
 	private resolvePause: (() => void) | null = null;
+
+	private visualizer: Visualizer | null = null;
+	private visualizerDevice: GPUDevice | null = null;
+	private visualizerCanvas: OffscreenCanvas | null = null;
+	private visualizerLabelPaddingCssPx: number = 0;
+	private readonly currentVisualizationSelectedValidation: {
+		exampleIndex: number;
+		tokenIndex: number;
+	} = {
+		exampleIndex: 0,
+		tokenIndex: 0
+	};
 
 	private model!: GeneratableModel;
 	private optimizer!: piston.Optimizer;
@@ -79,6 +95,8 @@ export class TrainingSession {
 	private lastLogTime: number | null = null;
 	private lastLogStep: number | null = null;
 	private stepCount: number = 0;
+
+	private captureManager: CaptureManager | null = null;
 
 	private dataPipeline!: BuiltData;
 
@@ -107,6 +125,91 @@ export class TrainingSession {
 	resume() {
 		this.paused = false;
 		this.post({ type: 'resumed' });
+	}
+
+	setVisualizationScript(example: string, script: string | null) {
+		// If a model is already active, rebuild the plan immediately; otherwise setup() will build it
+		if (this.model) {
+			const newCaptureManager = new CaptureManager();
+			newCaptureManager.build(this.model, {
+				enabled: this.config.training.enableVisualization,
+				script: script ?? undefined
+			});
+			if (newCaptureManager.plan) {
+				this.captureManager = newCaptureManager;
+				this.config.visualization.example = example;
+				this.config.visualization.script = script;
+			}
+		}
+	}
+
+	setVisualizationTarget(target: 'train' | 'validation') {
+		this.config.visualization.target = target;
+	}
+
+	setVisualizationSelectedValidation({
+		exampleIndex,
+		tokenIndex
+	}: {
+		exampleIndex: number;
+		tokenIndex: number;
+	}) {
+		this.currentVisualizationSelectedValidation.exampleIndex = exampleIndex;
+		this.currentVisualizationSelectedValidation.tokenIndex = tokenIndex;
+	}
+
+	initVisualizerCanvas(canvas: OffscreenCanvas, labelPaddingCssPx: number = 0) {
+		// Dispose old visualizer if any
+		if (this.visualizer) {
+			this.visualizer.dispose();
+			this.visualizer = null;
+		}
+
+		this.visualizerCanvas = canvas;
+		this.visualizerLabelPaddingCssPx = labelPaddingCssPx;
+		const pistonDevice = piston.gpu.asWebGPUDevice();
+		if (!pistonDevice) {
+			throw new Error('Failed to get WebGPU device from piston.gpu');
+		}
+		this.visualizerDevice = pistonDevice;
+		this.visualizer = new Visualizer(this.visualizerDevice);
+		this.visualizer.init(this.visualizerCanvas);
+		this.visualizer.setCssLabelPadding(this.visualizerLabelPaddingCssPx);
+	}
+
+	resizeVisualizer(width: number) {
+		this.visualizer?.resize(width);
+	}
+
+	private async onCaptureMatches(step: number, matches: CaptureMatch[]) {
+		try {
+			await piston.gpu.markStep();
+			const captureStep: Omit<RemoteCaptureStep, 'step'> = {
+				type: 'capture',
+				matches: matches.map(makeCaptureMatchRemote)
+			};
+			this.logMetrics({ 'visualization/matches': captureStep }, { step });
+			const result = this.visualizer
+				? await this.visualizer.renderCapture(matches)
+				: { boxes: [], statsById: {}, width: 1, height: 1 };
+
+			this.post({
+				type: 'capture',
+				queries: this.captureManager?.queries ?? [],
+				step,
+				boxes: result.boxes.map((box) => ({ ...box, match: makeCaptureMatchRemote(box.match) })),
+				statsById: result.statsById,
+				width: result.width,
+				height: result.height
+			});
+		} catch (err) {
+			// Fall back to logging the error and continue
+			this.post({
+				type: 'log',
+				level: 'warn',
+				message: `Visualizer render failed: ${String(err)}`
+			});
+		}
 	}
 
 	private logMetrics(
@@ -234,6 +337,19 @@ export class TrainingSession {
 		// We need to flatten down initialization to the constant tensors they're on top of
 		await piston.gpu.markStep();
 
+		// Build or refresh capture plan using CaptureManager
+		this.captureManager = new CaptureManager();
+		const scriptToUse = this.config.training.enableVisualization
+			? getEffectiveVisualizationScript(
+					this.config.visualization.example,
+					this.config.visualization.script
+				)
+			: null;
+		this.captureManager.build(this.model, {
+			enabled: this.config.training.enableVisualization,
+			script: scriptToUse
+		});
+
 		// Build and store the training data pipeline (iterator bound to current dataset/collate)
 		this.dataPipeline = await buildDataPipeline(
 			this.config,
@@ -309,6 +425,13 @@ export class TrainingSession {
 			piston.gpu.markUsageBytesStep();
 
 			const loggingStep = manual || this.stepCount % this.config.training.logSteps === 0;
+
+			let captureSession: piston.CaptureSession | null = null;
+			if (loggingStep && this.captureManager && this.config.visualization.target === 'train') {
+				// Create session on top of weak mode for this step to capture forward ops
+				captureSession = this.captureManager.createSession();
+			}
+
 			const weakModeUntilAfterBackward = new WeakModeIfEnabled(
 				this.config.training.useWeakTensorReferences,
 				{
@@ -373,6 +496,16 @@ export class TrainingSession {
 				weakModeUntilAfterBackward.pin(loss);
 
 				loss.backward();
+
+				if (captureSession && this.onCaptureMatches) {
+					try {
+						const matches = this.captureManager!.finalize(captureSession, 0);
+						await this.onCaptureMatches(this.stepCount, matches);
+					} finally {
+						captureSession[Symbol.dispose]();
+					}
+					captureSession = null;
+				}
 			} finally {
 				weakModeUntilAfterBackward[Symbol.dispose]();
 			}
@@ -538,6 +671,41 @@ export class TrainingSession {
 						'speed/tokens_per_second': tokensPerSecond,
 						'speed/wall_clock_seconds': totalElapsedSeconds
 					};
+
+					if (
+						loggingStep &&
+						this.captureManager &&
+						this.validationExamples &&
+						this.validationCollateFn &&
+						this.onCaptureMatches &&
+						this.config.visualization.target === 'validation'
+					) {
+						// Create session on top of weak mode for this step to capture forward ops
+						captureSession = this.captureManager.createSession();
+
+						await runValidationExampleForCapture(
+							this.model,
+							this.validationExamples,
+							this.validationCollateFn,
+							this.currentVisualizationSelectedValidation.exampleIndex
+						);
+
+						// runValidationExampleForCapture actually ends up… training on the validation set,
+						// so we need to zero out the gradients here
+						this.optimizer.zeroGrad(true);
+
+						try {
+							const matches = this.captureManager!.finalize(
+								captureSession!,
+								this.currentVisualizationSelectedValidation.exampleIndex
+							);
+							await this.onCaptureMatches(this.stepCount, matches);
+						} finally {
+							captureSession![Symbol.dispose]();
+						}
+						captureSession = null;
+					}
+
 					// Log current learning rate if scheduler is present
 					const currentLr = this.optimizer.paramGroups[0].lr;
 					if (currentLr) {

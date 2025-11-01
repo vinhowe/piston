@@ -1,3 +1,6 @@
+import type { MatchBox } from '$lib/train/visualizer';
+import type { IndexState, TensorQuery } from '@piston-ml/piston-web';
+
 import { config } from './config.svelte';
 import { currentRun, log } from './runs.svelte';
 import { triggerLowDiversityDatasetError, triggerVramLimitFlash } from './ui.svelte';
@@ -9,6 +12,14 @@ export const workerVersion = $state({ current: 0 });
 export const trainingState = $state<{ current: 'training' | 'paused' | 'stopped' }>({
 	current: 'stopped'
 });
+
+// Visualizer layout state
+let visualizerBoxes = $state<MatchBox[] | null>(null);
+let visualizerQueries = $state<TensorQuery[] | null>(null);
+let visualizerLayoutStep = $state<number | null>(null);
+let visualizerLayoutRunId = $state<string | null>(null);
+let visualizerRenderWidth = $state<number | null>(null);
+let visualizerRenderHeight = $state<number | null>(null);
 
 // UA memory measurement state (main thread only)
 let uaMemoryInterval: ReturnType<typeof setInterval> | null = null;
@@ -93,6 +104,20 @@ export async function initializeWorker() {
 				const { type, ...data } = event.data;
 
 				switch (type) {
+					case 'visualizer.ready':
+						console.log('[Main] Visualizer ready');
+						break;
+					case 'capture':
+						visualizerQueries = data.queries as TensorQuery[];
+						visualizerBoxes = data.boxes as MatchBox[];
+						visualizerLayoutStep = data.step as number;
+						visualizerLayoutRunId = data.runId as string;
+						visualizerRenderWidth = data.width as number;
+						visualizerRenderHeight = data.height as number;
+						break;
+					case 'visualizer.error':
+						console.error('[Main] Visualizer error:', data.message);
+						break;
 					case 'ready':
 						console.log('[Main] Worker is ready');
 						resolve();
@@ -217,12 +242,17 @@ export function workerStep() {
 //
 
 let parameterCount = $state<number | null>(null);
+let modelIndex = $state<IndexState | null>(null);
 let modelInspectionRequestId = $state<string | null>(null);
 let isInspectingModel = $state(false);
 let modelInspectionWorker: Worker | null = $state(null);
 
 export function getParameterCount() {
 	return parameterCount;
+}
+
+export function getModelIndex() {
+	return modelIndex;
 }
 
 export function getIsInspectingModel() {
@@ -269,9 +299,11 @@ export function handleModelInspectionResponse(data: {
 	requestId: string;
 	parameterCount: number;
 	vocabSize: number;
+	modelIndex: IndexState;
 }) {
 	if (data.requestId === modelInspectionRequestId) {
 		parameterCount = data.parameterCount;
+		modelIndex = data.modelIndex;
 		isInspectingModel = false;
 		modelInspectionRequestId = null;
 	}
@@ -354,4 +386,70 @@ export function cleanupWorkers() {
 	lastUAMemoryBytes = null;
 
 	void releaseScreenWakeLock();
+}
+
+//
+// Visualizer APIs
+//
+// eslint-disable-next-line svelte/prefer-svelte-reactivity
+const canvasesWithAttemptedInitialization = new Set<HTMLCanvasElement>();
+export function initializeVisualizerCanvas(
+	canvas: HTMLCanvasElement,
+	labelPaddingCssPx: number = 0
+) {
+	if (!trainWorker) throw new Error('Worker not initialized');
+	if (canvasesWithAttemptedInitialization.has(canvas)) return;
+	const offscreen = canvas.transferControlToOffscreen();
+	trainWorker.postMessage(
+		{ type: 'visualizer.canvas', data: { canvas: offscreen, labelPaddingCssPx } },
+		[offscreen]
+	);
+	canvasesWithAttemptedInitialization.add(canvas);
+}
+
+export function resizeVisualizer(width: number) {
+	if (!trainWorker) return;
+	trainWorker.postMessage({ type: 'visualizer.resize', data: { width } });
+}
+
+export function getVisualizerLayout() {
+	return {
+		boxes: visualizerBoxes,
+		queries: visualizerQueries,
+		step: visualizerLayoutStep,
+		runId: visualizerLayoutRunId,
+		width: visualizerRenderWidth,
+		height: visualizerRenderHeight
+	};
+}
+
+export function getWorkerVersion() {
+	return workerVersion;
+}
+
+export function updateVisualizerScript(example: string, script: string | null) {
+	if (!trainWorker) return;
+	trainWorker.postMessage({ type: 'visualizer.updateScript', data: { example, script } });
+}
+
+export function updateVisualizerTarget(target: 'train' | 'validation') {
+	if (!trainWorker) return;
+	config.visualization.target = target;
+	trainWorker.postMessage({ type: 'visualizer.setTarget', data: { target } });
+}
+
+export function updateVisualizerSelectedValidation({
+	exampleIndex,
+	tokenIndex
+}: {
+	exampleIndex: number;
+	tokenIndex: number;
+}) {
+	if (!trainWorker) return;
+	config.visualization.selectedValidation.exampleIndex = exampleIndex;
+	config.visualization.selectedValidation.tokenIndex = tokenIndex;
+	trainWorker.postMessage({
+		type: 'visualizer.setSelectedValidation',
+		data: { exampleIndex, tokenIndex }
+	});
 }

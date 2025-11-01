@@ -62,6 +62,7 @@ export interface TrainingConfig {
 	sharedObjectAllocation: boolean;
 	cachingEnabled: boolean;
 	inplaceSupport: boolean;
+	enableVisualization: boolean;
 }
 
 export interface TransformerAttentionConfig {
@@ -190,10 +191,24 @@ export interface OptimizerConfig {
 	};
 }
 
+export interface VisualizationConfig {
+	// If null, the effective script comes from the selected example
+	script: string | null;
+	// Selected example id or "custom"
+	example: string;
+	// current training step or the selected validation example
+	target: 'train' | 'validation';
+	selectedValidation: {
+		exampleIndex: number;
+		tokenIndex: number;
+	};
+}
+
 export interface Config {
 	version: number;
 	training: TrainingConfig;
 	data: DataConfig;
 	model: ModelConfig;
 	optimizer: OptimizerConfig;
+	visualization: VisualizationConfig;
 }

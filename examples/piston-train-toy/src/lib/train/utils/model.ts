@@ -1,6 +1,6 @@
 import type { Random } from 'random-js';
 
-import { DataLoader, Tensor, weak } from '@piston-ml/piston-web';
+import { CaptureIndexMode, DataLoader, type IndexState, Tensor, weak } from '@piston-ml/piston-web';
 import * as piston from '@piston-ml/piston-web';
 
 import type { Config } from '../../workspace/config';
@@ -245,6 +245,7 @@ export function countParameters(
  */
 export function inspectModel(config: Config): {
 	parameterCount: number;
+	modelIndex: IndexState;
 	vocabSize: number;
 	blockSize: number;
 } {
@@ -260,31 +261,38 @@ export function inspectModel(config: Config): {
 			const model = createModel(config, vocabSize, blockSizeOrSizes);
 			const parameterCount = countParameters(model);
 
-			// Run the model forward with an input from the dataloader
-			if (model instanceof DecoderTransformer) {
-				model.forward(piston.zeros([1, blockSizeOrSizes as number], { dtype: piston.int32 }));
-			} else if (model instanceof EncoderTransformer) {
-				model.forward(piston.zeros([1, blockSizeOrSizes as number], { dtype: piston.int32 }));
-			} else if (model instanceof EncoderDecoderTransformer) {
-				model.forward(
-					piston.zeros([1, (blockSizeOrSizes as EncoderDecoderBlockSize).source], {
-						dtype: piston.int32
-					}),
-					piston.zeros([1, (blockSizeOrSizes as EncoderDecoderBlockSize).target], {
-						dtype: piston.int32
-					})
-				);
+			let indexMode: CaptureIndexMode | null = null;
+			try {
+				indexMode = new CaptureIndexMode(model);
+
+				// Run the model forward with an input from the dataloader
+				if (model instanceof DecoderTransformer) {
+					model.forward(piston.zeros([1, blockSizeOrSizes as number], { dtype: piston.int32 }));
+				} else if (model instanceof EncoderTransformer) {
+					model.forward(piston.zeros([1, blockSizeOrSizes as number], { dtype: piston.int32 }));
+				} else if (model instanceof EncoderDecoderTransformer) {
+					model.forward(
+						piston.zeros([1, (blockSizeOrSizes as EncoderDecoderBlockSize).source], {
+							dtype: piston.int32
+						}),
+						piston.zeros([1, (blockSizeOrSizes as EncoderDecoderBlockSize).target], {
+							dtype: piston.int32
+						})
+					);
+				}
+
+				console.debug(`Model has ${parameterCount} parameters with vocab size ${vocabSize}`);
+
+				const blockSize = isEncoderDecoder
+					? Math.max(
+							(blockSizeOrSizes as { source: number; target: number }).source,
+							(blockSizeOrSizes as { source: number; target: number }).target
+						)
+					: (blockSizeOrSizes as number);
+				return { parameterCount, vocabSize, blockSize, modelIndex: indexMode!.index };
+			} finally {
+				indexMode![Symbol.dispose]();
 			}
-
-			console.debug(`Model has ${parameterCount} parameters with vocab size ${vocabSize}`);
-
-			const blockSize = isEncoderDecoder
-				? Math.max(
-						(blockSizeOrSizes as { source: number; target: number }).source,
-						(blockSizeOrSizes as { source: number; target: number }).target
-					)
-				: (blockSizeOrSizes as number);
-			return { parameterCount, vocabSize, blockSize };
 		},
 		{
 			label: 'inspectModel'

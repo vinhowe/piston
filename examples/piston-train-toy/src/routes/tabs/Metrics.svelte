@@ -1,8 +1,10 @@
 <script lang="ts">
+	import RadioGroupInput from '$lib/components/controls/radio/RadioGroupInput.svelte';
 	import MetricsSection from '$lib/components/metrics/MetricsSection.svelte';
 	import RunChart from '$lib/components/metrics/RunChart.svelte';
 	import ValidationCompletionsViewer from '$lib/components/metrics/validationCompletions/ValidationCompletionsViewer.svelte';
 	import ToggleChips from '$lib/components/ToggleChips.svelte';
+	import { config } from '$lib/workspace/config.svelte';
 	import {
 		getCurrentRun,
 		getMetricGroups,
@@ -14,6 +16,9 @@
 		toggleMetricsSection
 	} from '$lib/workspace/ui.svelte';
 	import { sortWithPriority } from '$lib/workspace/utils';
+	import { updateVisualizerTarget } from '$lib/workspace/workers.svelte';
+
+	import Visualize from '../../lib/components/Visualize.svelte';
 
 	// Derived state: Automatically tracks metric names from the last 5 runs
 	const metricNames = $derived(getMetricNamesFromLastNRuns(5));
@@ -71,6 +76,31 @@
 		</div>
 	{:else}
 		<div class="space-y-6">
+			{#if config.training.enableVisualization}
+				<MetricsSection
+					title="Visualize"
+					groupName="visualize"
+					contentClass=""
+					isOpen={metricsSectionsOpen.current['visualize'] ?? true}
+					onToggle={() => toggleMetricsSection('visualize')}
+				>
+					{#snippet chips()}
+						{#if (runConfig ?? config).training.validation.present}
+							<RadioGroupInput
+								name="visualize"
+								class="self-end -translate-y-[0.5px]"
+								bind:value={() => config.visualization.target, updateVisualizerTarget}
+								options={[
+									{ value: 'validation', label: 'Selected Validation Example' },
+									{ value: 'train', label: 'Training Batch Example' }
+								]}
+							/>
+						{/if}
+					{/snippet}
+					<Visualize />
+				</MetricsSection>
+			{/if}
+
 			{#each Object.entries(metricGroups).sort(([a], [b]) => {
 				const order = ['validation', 'train', 'optimizer'];
 				const aPriority = order.indexOf(a);

@@ -49,7 +49,10 @@
 	// Check if current config is different from the config used to start the run
 	const shouldSuggestRestart = $derived.by(() => {
 		if (!currentRun.current?.config || !config) return false;
-		return JSON.stringify(config) !== JSON.stringify(currentRun.current.config);
+		// We can hot-update the visualization config without restarting the run, so we exclude it
+		const { visualization: _1, ...newConfig } = config;
+		const { visualization: _2, ...runConfig } = currentRun.current.config;
+		return JSON.stringify(newConfig) !== JSON.stringify(runConfig);
 	});
 
 	onMount(() => {

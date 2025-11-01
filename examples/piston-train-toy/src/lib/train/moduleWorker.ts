@@ -6,6 +6,7 @@ import { TrainingSession } from './session';
 import { inspectModel } from './utils/model';
 
 let session: TrainingSession | undefined;
+let pendingVisualizerCanvas: { canvas: OffscreenCanvas; labelPaddingCssPx: number } | null = null;
 
 // Console Interception
 const originalConsole = {
@@ -183,6 +184,59 @@ self.addEventListener('message', async (event) => {
 			await session.step({ manual: true });
 			break;
 		}
+		case 'visualizer.updateScript': {
+			try {
+				const { script, example } = data as { script: string; example: string };
+				session?.setVisualizationScript(example, script ?? null);
+				self.postMessage({ type: 'visualizer.ready' });
+			} catch (e) {
+				console.error('Failed to update visualizer script', e);
+				self.postMessage({ type: 'visualizer.error', message: String(e) });
+			}
+			break;
+		}
+		case 'visualizer.canvas': {
+			try {
+				const payload = data as { canvas: OffscreenCanvas; labelPaddingCssPx?: number };
+				const labelPaddingCssPx = payload.labelPaddingCssPx ?? 0;
+				pendingVisualizerCanvas = { canvas: payload.canvas, labelPaddingCssPx };
+				if (session) {
+					session.initVisualizerCanvas(payload.canvas, labelPaddingCssPx);
+				}
+				self.postMessage({ type: 'visualizer.ready' });
+			} catch (e) {
+				console.error('Visualizer init failed', e);
+				self.postMessage({ type: 'visualizer.error', message: String(e) });
+			}
+			break;
+		}
+		case 'visualizer.resize': {
+			try {
+				const { width } = data as { width: number };
+				session?.resizeVisualizer(width);
+			} catch (e) {
+				console.error('Visualizer resize failed', e);
+			}
+			break;
+		}
+		case 'visualizer.setTarget': {
+			try {
+				const { target } = data as { target: 'train' | 'validation' };
+				session?.setVisualizationTarget(target);
+			} catch (e) {
+				console.error('Visualizer set target failed', e);
+			}
+			break;
+		}
+		case 'visualizer.setSelectedValidation': {
+			try {
+				const { exampleIndex, tokenIndex } = data as { exampleIndex: number; tokenIndex: number };
+				session?.setVisualizationSelectedValidation({ exampleIndex, tokenIndex });
+			} catch (e) {
+				console.error('Visualizer set selected validation failed', e);
+			}
+			break;
+		}
 		case 'start':
 			try {
 				const { runId: runIdFromData, config } = data as {
@@ -193,6 +247,18 @@ self.addEventListener('message', async (event) => {
 
 				console.info(`Starting training for run ${runIdFromData}`);
 				session = new TrainingSession(runIdFromData, config, postEvent);
+				if (pendingVisualizerCanvas) {
+					try {
+						session.initVisualizerCanvas(
+							pendingVisualizerCanvas.canvas,
+							pendingVisualizerCanvas.labelPaddingCssPx
+						);
+						self.postMessage({ type: 'visualizer.ready' });
+					} catch (e) {
+						console.error('Visualizer init (deferred) failed', e);
+						self.postMessage({ type: 'visualizer.error', message: String(e) });
+					}
+				}
 				startTraining();
 			} catch (error: unknown) {
 				console.error('Training error:', error);
@@ -217,6 +283,7 @@ self.addEventListener('message', async (event) => {
 					type: 'modelInspection',
 					requestId,
 					parameterCount: result.parameterCount,
+					modelIndex: result.modelIndex,
 					vocabSize: result.vocabSize,
 					blockSize: result.blockSize
 				});

@@ -1,3 +1,4 @@
+import type { CaptureStep } from '$lib/train/capture';
 import type { ValidationStep } from '$lib/train/validation';
 
 import { generateMemorableName } from '$lib/workspace/utils';
@@ -169,6 +170,8 @@ export function log(
 		let stepData: StepData;
 		if (typeof value === 'number') {
 			stepData = { step: currentStep, y: value };
+		} else if ('matches' in value) {
+			stepData = { step: currentStep, ...value } as CaptureStep;
 		} else {
 			stepData = { step: currentStep, ...value } as ValidationStep;
 		}
@@ -208,6 +211,12 @@ export function getMetricGroups(metricNames: ReadonlyArray<string>): Record<stri
 	const allMetricNames = metricNames;
 
 	allMetricNames.forEach((metricName) => {
+		// For now we're just special-casing this, but we might want to bring it into the metrics view
+		// anyway
+		if (metricName === 'visualization/matches') {
+			return;
+		}
+
 		const parts = metricName.split('/');
 		const groupName = parts.length > 1 ? parts[0] : 'default';
 

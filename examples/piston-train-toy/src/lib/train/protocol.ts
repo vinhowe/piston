@@ -1,5 +1,6 @@
 import type { Config } from '$lib/workspace/config';
 import type { StepData } from '$lib/workspace/runs.svelte';
+import type { IndexState } from '@piston-ml/piston-web';
 
 type WithRunId = { runId: string };
 
@@ -12,6 +13,20 @@ export type WorkerCommand =
 	| { type: 'resume' }
 	| { type: 'step' }
 	| { type: 'stop' }
+	| {
+			type: 'visualizer.updateScript';
+			data: { example: string; script: string | null };
+	  }
+	| {
+			type: 'visualizer.canvas';
+			data: { canvas: OffscreenCanvas; labelPaddingCssPx?: number };
+	  }
+	| { type: 'visualizer.resize'; data: { width: number } }
+	| { type: 'visualizer.setTarget'; data: { target: 'train' | 'validation' } }
+	| {
+			type: 'visualizer.setSelectedValidation';
+			data: { exampleIndex: number; tokenIndex: number };
+	  }
 	| { type: 'inspectModel'; data: { requestId: string; config: Config } };
 
 type ReadyWorkerEvent = {
@@ -40,6 +55,15 @@ export type RunWorkerEventWithoutRunId =
 			data: { [metricName: string]: Omit<StepData, 'step'> };
 			metadata?: { step?: number };
 	  }
+	| {
+			type: 'capture';
+			step: number;
+			boxes: unknown[];
+			statsById: Record<string, unknown>;
+			width: number;
+			height: number;
+			queries: unknown[];
+	  }
 	| { type: 'paused' }
 	| { type: 'resumed' }
 	| { type: 'complete' }
@@ -53,10 +77,13 @@ export type WorkerEvent =
 	| LogWorkerEvent
 	| ErrorWorkerEvent
 	| RunWorkerEvent
+	| { type: 'visualizer.ready' }
+	| { type: 'visualizer.error'; message: string }
 	| {
 			type: 'modelInspection';
 			requestId: string;
 			parameterCount: number;
 			vocabSize: number;
+			modelIndex: IndexState;
 	  }
 	| { type: 'modelInspectionError'; requestId: string; message: string };

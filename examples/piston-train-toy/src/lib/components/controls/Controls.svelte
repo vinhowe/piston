@@ -502,6 +502,13 @@
 			onReset={() => resetConfigToDefaults('training.batchSize')}
 		/>
 
+		<CheckboxInput
+			label="Enable Activation Visualization"
+			bind:checked={config.training.enableVisualization}
+			hasDefaultValue={equalsConfigDefault('training.enableVisualization')}
+			onReset={() => resetConfigToDefaults('training.enableVisualization')}
+		/>
+
 		<ToggleGroup
 			id="validation-control"
 			title="Validation"
