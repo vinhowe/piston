@@ -177,7 +177,8 @@ const CONFIG_DEFAULTS: Config = {
 			mlp: {
 				present: true,
 				activation: 'relu2',
-				hiddenExpansionFactor: 4
+				hiddenExpansionFactor: 4,
+				variant: 'gated'
 			}
 		}
 	},

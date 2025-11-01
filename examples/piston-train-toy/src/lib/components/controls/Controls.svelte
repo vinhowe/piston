@@ -409,6 +409,27 @@
 			hasDefaultValue={equalsConfigDefault('model.transformer.mlp.present')}
 			onReset={() => resetConfigToDefaults('model.transformer.mlp.present')}
 		>
+			<SelectWithCitations
+				id="model-mlp-variant"
+				bind:value={config.model.transformer.mlp.variant}
+				options={[
+					{ value: 'standard', title: 'Standard' },
+					{
+						value: 'gated',
+						title: 'Gated',
+						citations: {
+							entries: [
+								{
+									name: 'Liu et al., 2021',
+									url: 'https://proceedings.neurips.cc/paper/2021/hash/4cc05b35c2f937c5bd9e7d41d3686fff-Abstract.html'
+								}
+							]
+						}
+					}
+				]}
+				hasDefaultValue={equalsConfigDefault('model.transformer.mlp.variant')}
+				onReset={() => resetConfigToDefaults('model.transformer.mlp.variant')}
+			/>
 			<ControlsStatistic label="MLP hidden dimension ($d_&lbrace;\text&lbrace;ff&rbrace;&rbrace;$)">
 				{getMlpIntermediateSize()}
 			</ControlsStatistic>

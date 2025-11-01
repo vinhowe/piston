@@ -178,6 +178,7 @@ export interface MLPConfig {
 	present: boolean;
 	activation: Activation;
 	hiddenExpansionFactor: number;
+	variant: 'standard' | 'gated';
 }
 
 export type ModelType = 'decoder' | 'encoder' | 'encoder-decoder';
