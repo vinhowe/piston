@@ -4,6 +4,7 @@ import { pin, type Tensor, weak } from '@piston-ml/piston-web';
 
 import { tensorWrap } from './data';
 import { generateStream } from './generate';
+import { RNNDecoder, RNNEncoder, RNNEncoderDecoder } from './model/rnn';
 import {
 	DecoderTransformer,
 	EncoderDecoderTransformer,
@@ -31,7 +32,7 @@ export type EncoderOnlyPredictionOptions = {
 };
 
 export async function generateDecoderCompletions(
-	model: DecoderTransformer,
+	model: DecoderTransformer | RNNDecoder,
 	startSequences: number[][],
 	options: DecoderGenerationOptions
 ): Promise<{ completions: TokenRollout[]; tokensPerSecond?: number }> {
@@ -78,7 +79,7 @@ export async function generateDecoderCompletions(
 }
 
 export async function generateEncoderDecoderCompletions(
-	model: EncoderDecoderTransformer,
+	model: EncoderDecoderTransformer | RNNEncoderDecoder,
 	sourceSequences: number[][],
 	options: EncoderDecoderGenerationOptions
 ): Promise<{ completions: TokenRollout[]; tokensPerSecond?: number }> {
@@ -126,7 +127,7 @@ export async function generateEncoderDecoderCompletions(
 }
 
 export async function predictEncoderOnlyCompletions(
-	model: EncoderTransformer,
+	model: EncoderTransformer | RNNEncoder,
 	inputs: number[][],
 	labels: number[][],
 	options: EncoderOnlyPredictionOptions
@@ -138,13 +139,17 @@ export async function predictEncoderOnlyCompletions(
 
 		const inputsTensor = tensorWrap(inputs);
 		let mlmLogits: Tensor | null = null;
-		if (attentionMask) {
-			const attentionMaskTensor = tensorWrap(attentionMask);
-			[, , mlmLogits] = model.forward(await inputsTensor.to('gpu'), {
-				attentionMask: await attentionMaskTensor.to('gpu')
-			});
+		if (model instanceof EncoderTransformer) {
+			if (attentionMask) {
+				const attentionMaskTensor = tensorWrap(attentionMask);
+				[, , mlmLogits] = model.forward(await inputsTensor.to('gpu'), {
+					attentionMask: await attentionMaskTensor.to('gpu')
+				});
+			} else {
+				[, , mlmLogits] = model.forward(await inputsTensor.to('gpu'));
+			}
 		} else {
-			[, , mlmLogits] = model.forward(await inputsTensor.to('gpu'));
+			[, mlmLogits] = model.forward(await inputsTensor.to('gpu'));
 		}
 
 		if (!mlmLogits) {

@@ -14,7 +14,12 @@ export type TokenRollout = {
 	tokenIds: number[];
 	probs: number[][];
 };
-export type StepData = Point | ValidationStep;
+
+export type VisualizationStep = BaseStepData & {
+	type: 'visualization';
+};
+
+export type StepData = Point | ValidationStep | CaptureStep;
 
 export type MetricData = {
 	metricName: string;

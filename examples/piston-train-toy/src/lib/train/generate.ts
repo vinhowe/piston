@@ -9,6 +9,7 @@ import { int32, tensor, WeakTensorFunctionMode } from '@piston-ml/piston-web';
 import type { GeneratableModel } from './types';
 
 import { createEmptyDecoderKVCache, type DecoderKVCache } from './model/cache';
+import { RNNDecoder, RNNEncoderDecoder } from './model/rnn';
 import { DecoderTransformer, EncoderDecoderTransformer } from './model/transformer';
 
 export interface GenerationConfig {
@@ -322,9 +323,16 @@ export async function* generateStream(
 	if (model instanceof EncoderDecoderTransformer) {
 		// This is a Transformer (encoder-decoder) model
 		return yield* generateTransformerStream(model, input, config);
-	} else if (model instanceof DecoderTransformer) {
+	} else if (model instanceof DecoderTransformer || model instanceof RNNDecoder) {
 		// This is a GPT (decoder-only) model
 		return yield* generateGPTStream(model as DecoderTransformer, input, config);
+	} else if (model instanceof RNNEncoderDecoder) {
+		// RNN encoder-decoder: reuse transformer-style generation loop
+		return yield* generateTransformerStream(
+			model as unknown as EncoderDecoderTransformer,
+			input,
+			config
+		);
 	} else {
 		throw new Error('Unsupported model type for generation');
 	}

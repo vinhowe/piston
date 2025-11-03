@@ -49,28 +49,37 @@ layer[0] ./.*Attention/ #* :label("attention weights") :scale(2)`;
 
 const MLP_ACTIVATIONS = `layer[0] .MLP @ * :label("mlp activations") :scale(2)`;
 
+const ATTENTION_PREDICATE = (config: Config) => {
+	return config.model.family === 'transformer';
+};
+
 export const VISUALIZATION_EXAMPLES: Record<string, VisualizationExample> = {
 	'attention-probabilities': {
 		label: 'Attention Probabilities',
-		script: ATTENTION_PROBABILITIES
+		script: ATTENTION_PROBABILITIES,
+		predicate: ATTENTION_PREDICATE
 	},
 	'attention-activations': {
 		label: 'Attention Activations',
-		script: ATTENTION_ACTIVATIONS
+		script: ATTENTION_ACTIVATIONS,
+		predicate: ATTENTION_PREDICATE
 	},
 	'attention-gradients': {
 		label: 'Attention Gradients',
-		script: ATTENTION_GRADIENTS
+		script: ATTENTION_GRADIENTS,
+		predicate: ATTENTION_PREDICATE
 	},
 	'attention-parameters': {
 		label: 'Attention Parameters',
-		script: ATTENTION_PARAMETERS
+		script: ATTENTION_PARAMETERS,
+		predicate: ATTENTION_PREDICATE
 	},
 	'mlp activations': {
 		label: 'MLP Activations',
-		script: MLP_ACTIVATIONS
+		script: MLP_ACTIVATIONS,
+		predicate: ATTENTION_PREDICATE
 	},
-	'kitchen-sink': { label: 'Kitchen Sink', script: KITCHEN_SINK },
+	'kitchen-sink': { label: 'Kitchen Sink', script: KITCHEN_SINK, predicate: ATTENTION_PREDICATE },
 	'all-activations': {
 		label: 'All Activations',
 		script: '* @ * :scale(3)'
@@ -118,7 +127,9 @@ export function getVisualizationExampleOptions(
 	config: Config
 ): Array<{ value: string; text: string }> {
 	return [
-		...Object.entries(VISUALIZATION_EXAMPLES).map(([id, e]) => ({ value: id, text: e.label })),
+		...Object.entries(VISUALIZATION_EXAMPLES)
+			.filter(([_, e]) => (e.predicate ? e.predicate(config) : true))
+			.map(([id, e]) => ({ value: id, text: e.label })),
 		{ value: 'custom', text: 'Custom' }
 	];
 }

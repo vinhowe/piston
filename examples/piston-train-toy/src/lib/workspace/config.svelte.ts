@@ -47,6 +47,9 @@ const CONFIG_DEFAULTS: Config = {
 			transformer: {
 				attention: 0.1,
 				residual: 0.1
+			},
+			rnn: {
+				interLayer: 0.1
 			}
 		},
 		randomSeed: {
@@ -86,6 +89,7 @@ const CONFIG_DEFAULTS: Config = {
 		}
 	},
 	model: {
+		family: 'transformer',
 		topology: 'decoder',
 		layers: 1,
 		tieEmbeddingsAndLmHead: false,
@@ -103,6 +107,10 @@ const CONFIG_DEFAULTS: Config = {
 			transformer: {
 				present: true,
 				position: 'pre'
+			},
+			rnn: {
+				withinCell: true,
+				betweenLayers: false
 			}
 		},
 		transformer: {
@@ -179,6 +187,56 @@ const CONFIG_DEFAULTS: Config = {
 				activation: 'relu2',
 				hiddenExpansionFactor: 4,
 				variant: 'gated'
+			}
+		},
+		rnn: {
+			cellType: 'lstm',
+			embedding: {
+				type: 'learned',
+				learned: {
+					size: 16
+				}
+			},
+			separateHiddenSize: {
+				present: false,
+				value: 16
+			},
+			initialization: {
+				present: true,
+				xavierInputColumns: {
+					present: true,
+					distribution: 'uniform'
+				},
+				orthogonalRecurrentColumns: true,
+				perGateOrthogonalBlocks: true,
+				zeroBiases: true,
+				gru: {
+					updateGateBias: {
+						present: false,
+						value: 0.0
+					}
+				},
+				lstm: {
+					forgetGateBias: {
+						present: true,
+						value: 1.0
+					}
+				}
+			},
+			hiddenStateProjection: {
+				present: false,
+				size: 16
+			},
+			encoder: {
+				bidirectional: false
+			},
+			encoderDecoderAttention: {
+				present: false,
+				type: 'additive',
+				inputFeedingProjection: true,
+				multiplicative: {
+					scaleByInverseSqrtHiddenSize: true
+				}
 			}
 		}
 	},
@@ -592,7 +650,7 @@ export function validateConfig() {
 
 	if (
 		config.visualization.example !== 'custom' &&
-		!getVisualizationExampleOptions().some((e) => e.value === config.visualization.example)
+		!getVisualizationExampleOptions(config).some((e) => e.value === config.visualization.example)
 	) {
 		config.visualization.example = 'all-activations';
 	}

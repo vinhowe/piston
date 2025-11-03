@@ -1,12 +1,16 @@
 import type {
 	Config,
-	DropoutConfig,
-	InitializationConfig,
 	LayerNormalizationConfig,
 	MLPConfig,
 	PositionEncodingConfig,
+	RNNDropoutConfig,
+	RNNEmbeddingConfig,
+	RNNHiddenStateProjectionConfig,
+	RNNInitializationConfig,
 	TransformerAttentionConfig,
-	NormalizationConfig
+	TransformerDropoutConfig,
+	TransformerInitializationConfig,
+	TransformerNormalizationConfig
 } from '$lib/workspace/config';
 
 export interface TransformerModuleConfig {
@@ -14,11 +18,63 @@ export interface TransformerModuleConfig {
 	embeddingSize: number;
 	attention: TransformerAttentionConfig;
 	layerNormalization: LayerNormalizationConfig;
-	normalization: NormalizationConfig;
+	normalization: TransformerNormalizationConfig;
 	mlp: MLPConfig;
 	positionalEncoding: PositionEncodingConfig;
-	dropout: DropoutConfig;
-	initialization: InitializationConfig;
+	dropout: TransformerDropoutConfig;
+	initialization: TransformerInitializationConfig;
+}
+
+export interface RNNModuleConfig {
+	cellType: 'gru' | 'lstm' | 'rnn';
+	embeddingSize: number;
+	vocabSize: number;
+	hiddenSize: number;
+	baseHiddenSize: number;
+	projectionSize?: number;
+	embedding: RNNEmbeddingConfig;
+	dropout: RNNDropoutConfig;
+	layerNormalization: LayerNormalizationConfig;
+	initialization: RNNInitializationConfig;
+	hiddenStateProjection: RNNHiddenStateProjectionConfig;
+	tieEmbeddingsAndLmHead: boolean;
+}
+
+export function buildRNNConfigCommon(config: Config, vocabSize: number): RNNModuleConfig {
+	const effectiveEmbeddingSize =
+		config.model.rnn.embedding.type === 'learned'
+			? config.model.rnn.embedding.learned.size
+			: vocabSize;
+	const rawHiddenSize = config.model.rnn.separateHiddenSize.present
+		? config.model.rnn.separateHiddenSize.value
+		: effectiveEmbeddingSize;
+	const projectionSize = config.model.rnn.hiddenStateProjection.present
+		? config.model.rnn.hiddenStateProjection.size
+		: undefined;
+	const baseHiddenSize = projectionSize ?? rawHiddenSize;
+
+	return {
+		vocabSize: vocabSize,
+		cellType: config.model.rnn.cellType,
+		embeddingSize: effectiveEmbeddingSize,
+		hiddenSize: rawHiddenSize,
+		baseHiddenSize,
+		projectionSize,
+		embedding: config.model.rnn.embedding,
+		layerNormalization: config.model.layerNormalization,
+		hiddenStateProjection: config.model.rnn.hiddenStateProjection,
+		initialization: config.model.rnn.initialization,
+		tieEmbeddingsAndLmHead: config.model.tieEmbeddingsAndLmHead,
+		dropout: (({ present, embedding: embd, rnn }: RNNDropoutConfig) => {
+			return {
+				present,
+				embedding: present ? embd : 0,
+				rnn: {
+					interLayer: present ? rnn.interLayer : 0
+				}
+			};
+		})(config.training.dropout)
+	};
 }
 
 export function buildTransformerConfigCommon(
@@ -41,7 +97,7 @@ export function buildTransformerConfigCommon(
 		layerNormalization: config.model.layerNormalization,
 		normalization: config.model.transformer.normalization,
 		initialization: config.model.transformer.initialization,
-		dropout: (({ present, embedding: embd, transformer }: DropoutConfig) => {
+		dropout: (({ present, embedding: embd, transformer }: TransformerDropoutConfig) => {
 			return {
 				present,
 				embedding: present ? embd : 0,

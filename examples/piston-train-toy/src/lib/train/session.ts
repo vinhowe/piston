@@ -21,6 +21,7 @@ import type {
 	ToyEncoderDecoderBatch,
 	ToySequence
 } from './data/toy/dataset';
+import type { RNNEncoder, RNNEncoderDecoder } from './model/rnn';
 import type { RunWorkerEvent, RunWorkerEventWithoutRunId, WorkerEvent } from './protocol';
 import type { GeneratableModel, PistonCollateFnType, PistonDatasetType } from './types';
 
@@ -632,13 +633,19 @@ export class TrainingSession {
 					const [inputIds, bertLabels, attentionMask] = tensors;
 
 					let computedLoss: Tensor | null = null;
-					[, , , computedLoss] = (this.model as EncoderTransformer).forward(
-						await inputIds.to('gpu'),
-						{
-							attentionMask: await attentionMask.to('gpu'),
+					if (this.model instanceof EncoderTransformer) {
+						[, , , computedLoss] = (this.model as EncoderTransformer).forward(
+							await inputIds.to('gpu'),
+							{
+								attentionMask: await attentionMask.to('gpu'),
+								targets: await bertLabels.to('gpu')
+							}
+						);
+					} else {
+						[, , computedLoss] = (this.model as RNNEncoder).forward(await inputIds.to('gpu'), {
 							targets: await bertLabels.to('gpu')
-						}
-					);
+						});
+					}
 
 					if (!computedLoss) {
 						throw new Error('No loss tensor returned from encoder-only model');
@@ -646,14 +653,23 @@ export class TrainingSession {
 
 					loss = computedLoss;
 				} else if (this.config.model.topology === 'encoder-decoder') {
-					// For Transformer: batch contains [encoderInputs, decoderInputs, decoderTargets]
+					// For Transformer or RNN seq2seq: batch contains [encoderInputs, decoderInputs, decoderTargets]
 					const { tensors } = batch as ToyEncoderDecoderBatch<Tensor>;
 					const [encoderInputs, decoderInputs, decoderTargets] = tensors;
-					const [, computedLoss] = (this.model as EncoderDecoderTransformer).forward(
-						await encoderInputs.to('gpu'),
-						await decoderInputs.to('gpu'),
-						{ targets: await decoderTargets.to('gpu') }
-					);
+					let computedLoss: Tensor | null;
+					if (this.model instanceof EncoderDecoderTransformer) {
+						[, computedLoss] = (this.model as EncoderDecoderTransformer).forward(
+							await encoderInputs.to('gpu'),
+							await decoderInputs.to('gpu'),
+							{ targets: await decoderTargets.to('gpu') }
+						);
+					} else {
+						[, computedLoss] = (this.model as RNNEncoderDecoder).forward(
+							await encoderInputs.to('gpu'),
+							await decoderInputs.to('gpu'),
+							{ targets: await decoderTargets.to('gpu') }
+						);
+					}
 
 					if (!computedLoss) {
 						throw new Error('No loss tensor returned from encoder-decoder model');

@@ -335,7 +335,7 @@
 		applyEffectiveScript();
 	}
 
-	const exampleOptions = $derived(getVisualizationExampleOptions());
+	const exampleOptions = $derived(getVisualizationExampleOptions(config));
 
 	function moveEditorToQueryStart(idx: number | null | undefined) {
 		if (idx == null || idx < 0) return;

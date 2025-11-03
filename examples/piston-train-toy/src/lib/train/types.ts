@@ -12,6 +12,7 @@ import type {
 	ToyEncoderDecoderBatch,
 	ToySequence
 } from './data/toy/dataset';
+import type { RNNDecoder, RNNEncoder, RNNEncoderDecoder } from './model/rnn';
 import type {
 	DecoderTransformer,
 	EncoderDecoderTransformer,
@@ -50,6 +51,23 @@ export type ToyEncoderDecoderCollateFnType<W> = CollateFn<
 	ToyEncoderDecoderBatch<W>
 >;
 
+export type NaturalAutoregressiveCollateFnType<W> = CollateFn<
+	NaturalCollateInput,
+	NaturalLanguageAutoregressiveBatch<W>
+>;
+export type NaturalBidirectionalCollateFnType<W> = CollateFn<
+	NaturalCollateInput,
+	NaturalLanguageBidirectionalBatch<W>
+>;
+
+export type AutoregressiveCollateFnType<W> =
+	| ToyAutoregressiveCollateFnType<W>
+	| NaturalAutoregressiveCollateFnType<W>;
+
+export type BidirectionalCollateFnType<W> =
+	| ToyBidirectionalCollateFnType<W>
+	| NaturalBidirectionalCollateFnType<W>;
+
 export type EncoderDecoderCollateFnType<W> = CollateFn<ToyCollateInput, ToyEncoderDecoderBatch<W>>;
 
 export type NaturalCollateFnType<W> = CollateFn<NaturalCollateInput, NaturalBatchType<W>>;
@@ -60,6 +78,13 @@ export type NaturalDataloaderType<W> = DataLoader<number[], NaturalBatchType<W>>
 export type ToyDataloaderType<W> = DataLoader<ToySequence, ToyBatchType<W>>;
 export type PistonDataloaderType<W> = ToyDataloaderType<W> | NaturalDataloaderType<W>;
 
-export type GeneratableModel = DecoderTransformer | EncoderTransformer | EncoderDecoderTransformer;
+export type AutoregressiveModelType = DecoderTransformer | RNNDecoder;
+export type BidirectionalModelType = EncoderTransformer | RNNEncoder;
+export type EncoderDecoderModelType = EncoderDecoderTransformer | RNNEncoderDecoder;
+
+export type GeneratableModel =
+	| AutoregressiveModelType
+	| BidirectionalModelType
+	| EncoderDecoderModelType;
 
 export type PistonDatasetType = ToyDatasetLike | NaturalLanguageDataset;

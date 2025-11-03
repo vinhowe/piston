@@ -27,7 +27,13 @@ export interface DropoutConfig {
 		attention: number;
 		residual: number;
 	};
+	rnn: {
+		interLayer: number;
+	};
 }
+
+export type TransformerDropoutConfig = Omit<DropoutConfig, 'rnn'>;
+export type RNNDropoutConfig = Omit<DropoutConfig, 'transformer'>;
 
 export interface ValidationCompletionsConfig {
 	present: boolean;
@@ -134,6 +140,10 @@ export interface LayerNormalizationConfig {
 		present: boolean;
 		position: LayerNormPosition;
 	};
+	rnn: {
+		withinCell: boolean;
+		betweenLayers: boolean;
+	};
 }
 
 export interface QKNormConfig {
@@ -153,7 +163,7 @@ export interface SoftcapConfig {
 	};
 }
 
-export interface NormalizationConfig {
+export interface TransformerNormalizationConfig {
 	qkNorm: QKNormConfig;
 	softcap: SoftcapConfig;
 }
@@ -182,6 +192,46 @@ export interface MLPConfig {
 }
 
 export type ModelType = 'decoder' | 'encoder' | 'encoder-decoder';
+export type ModelFamily = 'transformer' | 'rnn';
+
+export interface MultiplicativeRNNAttentionConfig {
+	scaleByInverseSqrtHiddenSize: boolean;
+}
+
+export interface RNNAttentionConfig {
+	present: boolean;
+	type: 'additive' | 'multiplicative';
+	inputFeedingProjection: boolean;
+	multiplicative: MultiplicativeRNNAttentionConfig;
+}
+
+export interface RNNHiddenStateProjectionConfig {
+	present: boolean;
+	size: number;
+}
+
+export interface RNNEmbeddingConfig {
+	type: 'learned' | 'one-hot';
+	learned: {
+		size: number;
+	};
+}
+
+export interface RNNConfig {
+	cellType: 'lstm' | 'gru' | 'rnn';
+	// RNN token embedding configuration
+	embedding: RNNEmbeddingConfig;
+	separateHiddenSize: {
+		present: boolean;
+		value: number;
+	};
+	initialization: RNNInitializationConfig;
+	hiddenStateProjection: RNNHiddenStateProjectionConfig;
+	encoder: {
+		bidirectional: boolean;
+	};
+	encoderDecoderAttention: RNNAttentionConfig;
+}
 
 export type ProjectionInitializationStrategy = 'layer-scaled' | 'zero';
 export interface ProjectionInitializationConfig {
@@ -189,7 +239,7 @@ export interface ProjectionInitializationConfig {
 	strategy: ProjectionInitializationStrategy;
 }
 
-export interface InitializationConfig {
+export interface TransformerInitializationConfig {
 	present: boolean;
 	std: number;
 	projections: {
@@ -199,16 +249,49 @@ export interface InitializationConfig {
 	};
 }
 
+export interface LSTMInitializationConfig {
+	forgetGateBias: {
+		present: boolean;
+		value: number;
+	};
+}
+
+export type XavierInitializationDistribution = 'uniform' | 'normal';
+
+export interface RNNInitializationConfig {
+	present: boolean;
+	xavierInputColumns: {
+		present: boolean;
+		distribution: XavierInitializationDistribution;
+	};
+	orthogonalRecurrentColumns: boolean;
+	perGateOrthogonalBlocks: boolean;
+	zeroBiases: boolean;
+	gru: {
+		updateGateBias: {
+			present: boolean;
+			value: number;
+		};
+	};
+	lstm: {
+		forgetGateBias: {
+			present: boolean;
+			value: number;
+		};
+	};
+}
+
 export interface TransformerConfig {
 	headDim: number;
 	attention: TransformerAttentionConfig;
 	positionalEncoding: PositionEncodingConfig;
-	initialization: InitializationConfig;
-	normalization: NormalizationConfig;
+	initialization: TransformerInitializationConfig;
+	normalization: TransformerNormalizationConfig;
 	mlp: MLPConfig;
 }
 
 export interface ModelConfig {
+	family: ModelFamily;
 	topology: ModelType;
 	layers: number;
 	tieEmbeddingsAndLmHead: boolean;
@@ -222,6 +305,7 @@ export interface ModelConfig {
 	};
 	layerNormalization: LayerNormalizationConfig;
 	transformer: TransformerConfig;
+	rnn: RNNConfig;
 }
 
 export interface OptimizerConfig {

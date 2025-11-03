@@ -35,12 +35,13 @@ import {
 	toyDatasetEncoderDecoderCollate
 } from '../data/toy/collate';
 import { type ToyDatasetLike, type ToySequence } from '../data/toy/dataset';
+import { RNNDecoder, RNNEncoder, RNNEncoderDecoder } from '../model/rnn';
 import {
 	DecoderTransformer,
 	EncoderDecoderTransformer,
 	EncoderTransformer
 } from '../model/transformer';
-import { initTransformerParameters } from './init';
+import { initRNNParameters, initTransformerParameters } from './init';
 import { parseSeed, seededRandom } from './random';
 
 type EncoderDecoderBlockSize = { source: number; target: number };
@@ -209,7 +210,13 @@ export function createModel(
 	config: Config,
 	vocabSize: number,
 	blockSize: number | { source: number; target: number }
-): DecoderTransformer | EncoderTransformer | EncoderDecoderTransformer {
+):
+	| DecoderTransformer
+	| EncoderTransformer
+	| EncoderDecoderTransformer
+	| RNNDecoder
+	| RNNEncoder
+	| RNNEncoderDecoder {
 	const isEncoderOnly = config.model.topology === 'encoder';
 	const isDecoderOnly = config.model.topology === 'decoder';
 	const isEncoderDecoder = config.model.topology === 'encoder-decoder';
@@ -221,20 +228,42 @@ export function createModel(
 	}
 
 	if (isEncoderOnly) {
-		return new EncoderTransformer(config, vocabSize, blockSize as number);
+		if (config.model.family === 'rnn') {
+			return new RNNEncoder(config, vocabSize);
+		} else {
+			return new EncoderTransformer(config, vocabSize, blockSize as number);
+		}
 	} else if (isEncoderDecoder) {
 		const { source, target } = blockSize as { source: number; target: number };
-		return new EncoderDecoderTransformer(config, vocabSize, source, target);
+		if (config.model.family === 'rnn') {
+			return new RNNEncoderDecoder(config, vocabSize);
+		} else {
+			return new EncoderDecoderTransformer(config, vocabSize, source, target);
+		}
 	} else {
-		return new DecoderTransformer(config, vocabSize, blockSize as number);
+		if (config.model.family === 'rnn') {
+			return new RNNDecoder(config, vocabSize);
+		} else {
+			return new DecoderTransformer(config, vocabSize, blockSize as number);
+		}
 	}
 }
 
 export function initializeModel(
 	config: Config,
-	model: DecoderTransformer | EncoderTransformer | EncoderDecoderTransformer
+	model:
+		| DecoderTransformer
+		| EncoderTransformer
+		| EncoderDecoderTransformer
+		| RNNDecoder
+		| RNNEncoder
+		| RNNEncoderDecoder
 ) {
-	initTransformerParameters(model, config);
+	if (config.model.family === 'rnn') {
+		initRNNParameters(model, config);
+	} else {
+		initTransformerParameters(model, config);
+	}
 }
 
 export function calculateParameterSum(model: Module): Tensor {
@@ -243,7 +272,13 @@ export function calculateParameterSum(model: Module): Tensor {
 }
 
 export function countParameters(
-	model: DecoderTransformer | EncoderTransformer | EncoderDecoderTransformer
+	model:
+		| DecoderTransformer
+		| EncoderTransformer
+		| EncoderDecoderTransformer
+		| RNNDecoder
+		| RNNEncoder
+		| RNNEncoderDecoder
 ): number {
 	let totalParams = 0;
 
@@ -288,11 +323,14 @@ export function inspectModel(config: Config): {
 				indexMode = new CaptureIndexMode(model);
 
 				// Run the model forward with an input from the dataloader
-				if (model instanceof DecoderTransformer) {
+				if (model instanceof DecoderTransformer || model instanceof RNNDecoder) {
 					model.forward(piston.zeros([1, blockSizeOrSizes as number], { dtype: piston.int32 }));
-				} else if (model instanceof EncoderTransformer) {
+				} else if (model instanceof EncoderTransformer || model instanceof RNNEncoder) {
 					model.forward(piston.zeros([1, blockSizeOrSizes as number], { dtype: piston.int32 }));
-				} else if (model instanceof EncoderDecoderTransformer) {
+				} else if (
+					model instanceof EncoderDecoderTransformer ||
+					model instanceof RNNEncoderDecoder
+				) {
 					model.forward(
 						piston.zeros([1, (blockSizeOrSizes as EncoderDecoderBlockSize).source], {
 							dtype: piston.int32

@@ -20,6 +20,7 @@ import type {
 } from './types';
 import type { ValidationExamples } from './validation';
 
+import { RNNDecoder, RNNEncoder, RNNEncoderDecoder } from './model/rnn';
 import {
 	DecoderTransformer,
 	EncoderDecoderTransformer,
@@ -131,13 +132,13 @@ export async function runValidationExampleForCapture(
 
 		let loss: Tensor | null = null;
 		let modelName = '';
-		if (model instanceof DecoderTransformer) {
+		if (model instanceof DecoderTransformer || model instanceof RNNDecoder) {
 			const [inputs, targets] = collated.tensors;
 			[, loss] = model.forward(await inputs.to('gpu'), {
 				targets: await targets.to('gpu')
 			});
 			modelName = 'decoder-only';
-		} else if (model instanceof EncoderDecoderTransformer) {
+		} else if (model instanceof EncoderDecoderTransformer || model instanceof RNNEncoderDecoder) {
 			const [encoderInputs, decoderInputs, decoderTargets] = (
 				collated as EncoderDecoderBatchType<Tensor>
 			).tensors;
@@ -145,14 +146,19 @@ export async function runValidationExampleForCapture(
 				targets: await decoderTargets.to('gpu')
 			});
 			modelName = 'encoder-decoder';
-		} else if (model instanceof EncoderTransformer) {
+		} else if (model instanceof EncoderTransformer || model instanceof RNNEncoder) {
 			// Encoder-only: compute MLM loss over masked tokens
 			const [inputs, labels, attentionMask] = (collated as BidirectionalBatchType<Tensor>).tensors;
 			modelName = 'encoder-only';
-			[, , , loss] = model.forward(await inputs.to('gpu'), {
-				attentionMask: await attentionMask.to('gpu'),
-				targets: await labels.to('gpu')
-			});
+			if (model instanceof EncoderTransformer) {
+				[, , , loss] = model.forward(await inputs.to('gpu'), {
+					attentionMask: await attentionMask.to('gpu'),
+					targets: await labels.to('gpu')
+				});
+			} else {
+				// No attention mask here
+				[, , loss] = model.forward(await inputs.to('gpu'), { targets: await labels.to('gpu') });
+			}
 		} else {
 			throw new Error('Unsupported model for validation');
 		}

@@ -22,6 +22,7 @@ import {
 	toyDatasetEncoderDecoderCollate
 } from './data/toy/collate';
 import { type ToyDatasetLike, type ToySequence } from './data/toy/dataset';
+import { RNNDecoder, RNNEncoder, RNNEncoderDecoder } from './model/rnn';
 import {
 	DecoderTransformer,
 	EncoderDecoderTransformer,
@@ -196,7 +197,7 @@ export async function computeToyValidationMetrics(
 
 	const maxTokens = Math.max(...valExamples.targets.map((t) => t.length));
 
-	if (isDecoderOnly && model instanceof DecoderTransformer) {
+	if (isDecoderOnly && (model instanceof DecoderTransformer || model instanceof RNNDecoder)) {
 		const prompts = valExamples.prompts.map((prompt) =>
 			prompt.length > 0 ? prompt : [dataset.bosId!]
 		);
@@ -208,7 +209,10 @@ export async function computeToyValidationMetrics(
 		});
 		completions = result.completions;
 		tokensPerSecond = result.tokensPerSecond;
-	} else if (isEncoderDecoder && model instanceof EncoderDecoderTransformer) {
+	} else if (
+		isEncoderDecoder &&
+		(model instanceof EncoderDecoderTransformer || model instanceof RNNEncoderDecoder)
+	) {
 		const sources = valExamples.prompts.map((prompt) =>
 			prompt.length > 0 ? prompt : [dataset.bosId!]
 		);
@@ -222,7 +226,7 @@ export async function computeToyValidationMetrics(
 		completions = result.completions;
 		tokensPerSecond = result.tokensPerSecond;
 	} else {
-		if (model instanceof EncoderTransformer) {
+		if (model instanceof EncoderTransformer || model instanceof RNNEncoder) {
 			const result = await predictEncoderOnlyCompletions(
 				model,
 				valExamples.prompts,
@@ -313,7 +317,7 @@ export async function computeNaturalValidationMetrics(
 
 	const contextSize = dataset.contextSize;
 
-	if (isDecoderOnly && model instanceof DecoderTransformer) {
+	if (isDecoderOnly && (model instanceof DecoderTransformer || model instanceof RNNDecoder)) {
 		// promptLen = Math.max(Math.floor(contextSize / 4), 1);
 		promptLen = 8;
 		const eosId = dataset.eosId as number;
@@ -343,8 +347,8 @@ export async function computeNaturalValidationMetrics(
 		const labels = collated.tensors[1]; // -100 for unmasked
 		encoderOnlyTargets = labels;
 
-		if (model instanceof EncoderTransformer) {
-			const attentionMask = collated.tensors[2];
+		if (model instanceof EncoderTransformer || model instanceof RNNEncoder) {
+			const attentionMask = model instanceof EncoderTransformer ? collated.tensors[2] : undefined;
 			const result = await predictEncoderOnlyCompletions(model, inputs, labels, {
 				attentionMask,
 				temperature: valConfig.temperature
@@ -487,13 +491,13 @@ export async function computeLikelihoodMetrics(
 
 			let loss: Tensor | null = null;
 			let modelName = '';
-			if (model instanceof DecoderTransformer) {
+			if (model instanceof DecoderTransformer || model instanceof RNNDecoder) {
 				const [inputs, targets] = collated.tensors;
 				[, loss] = model.forward(await inputs.to('gpu'), {
 					targets: await targets.to('gpu')
 				});
 				modelName = 'decoder-only';
-			} else if (model instanceof EncoderDecoderTransformer) {
+			} else if (model instanceof EncoderDecoderTransformer || model instanceof RNNEncoderDecoder) {
 				const [encoderInputs, decoderInputs, decoderTargets] = (
 					collated as EncoderDecoderBatchType<Tensor>
 				).tensors;
@@ -501,15 +505,20 @@ export async function computeLikelihoodMetrics(
 					targets: await decoderTargets.to('gpu')
 				});
 				modelName = 'encoder-decoder';
-			} else if (model instanceof EncoderTransformer) {
+			} else if (model instanceof EncoderTransformer || model instanceof RNNEncoder) {
 				// Encoder-only: compute MLM loss over masked tokens
 				const [inputs, labels, attentionMask] = (collated as BidirectionalBatchType<Tensor>)
 					.tensors;
 				modelName = 'encoder-only';
-				[, , , loss] = model.forward(await inputs.to('gpu'), {
-					attentionMask: await attentionMask.to('gpu'),
-					targets: await labels.to('gpu')
-				});
+				if (model instanceof EncoderTransformer) {
+					[, , , loss] = model.forward(await inputs.to('gpu'), {
+						attentionMask: await attentionMask.to('gpu'),
+						targets: await labels.to('gpu')
+					});
+				} else {
+					// No attention mask here
+					[, , loss] = model.forward(await inputs.to('gpu'), { targets: await labels.to('gpu') });
+				}
 			} else {
 				throw new Error('Unsupported model for validation');
 			}

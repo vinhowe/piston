@@ -1,8 +1,9 @@
 import type {
 	Config,
 	LayerNormalizationConfig,
-	NormalizationConfig,
-	PositionEncodingConfig
+	PositionEncodingConfig,
+	RNNEmbeddingConfig,
+	TransformerNormalizationConfig
 } from '$lib/workspace/config';
 
 import {
@@ -17,7 +18,10 @@ import {
 	type Tensor
 } from '@piston-ml/piston-web';
 
+import type { RNNModuleConfig } from './config';
+
 import { createNorm } from './modules/norm';
+import { OneHotEmbedding } from './modules/oneHot';
 import { SinusoidalEncoding } from './modules/positional';
 import { applySoftcap } from './modules/utils';
 
@@ -138,6 +142,21 @@ export function maybeCreateLearnedPositionEmbedding(
 	return undefined;
 }
 
+export type RNNWordEmbedding = nn.Embedding | OneHotEmbedding;
+
+/**
+ * Create a possibly one-hot RNN word embeddings module based on the embedding config
+ */
+export function createPossiblyOneHotRNNWordEmbedding(
+	embeddings: RNNEmbeddingConfig,
+	vocabSize: number,
+	embeddingSize: number
+): RNNWordEmbedding {
+	return embeddings.type === 'learned'
+		? new nn.Embedding(vocabSize, embeddingSize)
+		: new OneHotEmbedding(vocabSize);
+}
+
 /**
  * Optionally create sinusoidal encoding module based on positional encoding config
  */
@@ -181,9 +200,30 @@ export function buildLmHead(
 	return head;
 }
 
+export function buildLmHeadRNN(
+	config: RNNModuleConfig,
+	tiedEmbeddings?: RNNWordEmbedding
+): nn.Module<[Tensor], Tensor> {
+	const canTie = config.embedding.type === 'learned' && config.tieEmbeddingsAndLmHead;
+	const inFeatures = canTie ? config.embeddingSize : config.baseHiddenSize;
+	let lmHead: nn.Module<[Tensor], Tensor> = buildLmHead(
+		inFeatures,
+		config.vocabSize,
+		canTie,
+		canTie ? (tiedEmbeddings as nn.Embedding) : undefined
+	);
+	if (canTie && config.baseHiddenSize !== config.embeddingSize) {
+		lmHead = new nn.Sequential(
+			new nn.Linear(config.baseHiddenSize, config.embeddingSize) as nn.Module,
+			lmHead as nn.Module
+		) as nn.Module<[Tensor], Tensor>;
+	}
+	return lmHead;
+}
+
 export function maybeApplyLogitsSoftcap(
 	logits: Tensor,
-	normalization: NormalizationConfig
+	normalization: TransformerNormalizationConfig
 ): Tensor {
 	if (normalization.softcap.logits.present) {
 		return applySoftcap(logits, normalization.softcap.logits.value);

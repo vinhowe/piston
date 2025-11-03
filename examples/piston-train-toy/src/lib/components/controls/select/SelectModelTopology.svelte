@@ -50,35 +50,73 @@
 		{
 			value: 'decoder',
 			title: 'Decoder-only',
-			citations: {
-				entries: [
-					{
-						name: 'Radford et al., 2019',
-						url: 'https://cdn.openai.com/research-covers/language-unsupervised/language_understanding_paper.pdf'
-					}
-				],
-				extra: '; GPT-series'
-			}
+			citations:
+				config.model.family === 'transformer'
+					? {
+							entries: [
+								{
+									name: 'Radford et al., 2019',
+									url: 'https://cdn.openai.com/research-covers/language-unsupervised/language_understanding_paper.pdf'
+								}
+							],
+							extra: '; GPT-series'
+						}
+					: {
+							entries: [
+								{
+									name: 'Mikolov et al., 2010',
+									url: 'https://www.isca-archive.org/interspeech_2010/mikolov10_interspeech.html'
+								}
+							],
+							extra: '; RNN LM'
+						}
 		},
 		{
 			value: 'encoder-decoder',
 			title: 'Encoder-Decoder',
-			citations: {
-				entries: [
-					{
-						name: 'Vaswani et al., 2017',
-						url: 'https://arxiv.org/abs/1706.03762'
-					}
-				],
-				extra: '; Transformer'
-			}
+			citations:
+				config.model.family === 'transformer'
+					? {
+							entries: [
+								{
+									name: 'Vaswani et al., 2017',
+									url: 'https://arxiv.org/abs/1706.03762'
+								}
+							],
+							extra: '; Transformer'
+						}
+					: {
+							entries: [
+								{
+									name: 'Sutskever et al.',
+									url: 'https://papers.nips.cc/paper_files/paper/2014/hash/5a18e133cbf9f257297f410bb7eca942-Abstract.html'
+								},
+								{
+									name: 'Cho et al., 2014',
+									url: 'https://aclanthology.org/D14-1179/'
+								}
+							],
+							extra: '; seq2seq'
+						}
 		},
 		{
 			value: 'encoder',
 			title: 'Encoder-only',
-			citations: {
-				entries: [{ name: 'Devlin et al., 2019; BERT', url: 'https://aclanthology.org/N19-1423/' }]
-			}
+			citations:
+				config.model.family === 'transformer'
+					? {
+							entries: [
+								{ name: 'Devlin et al., 2019; BERT', url: 'https://aclanthology.org/N19-1423/' }
+							]
+						}
+					: {
+							entries: [
+								{
+									name: 'Schuster & Paliwal, 1997; BiRNN',
+									url: 'https://ieeexplore.ieee.org/document/650093'
+								}
+							]
+						}
 		}
 	]);
 
