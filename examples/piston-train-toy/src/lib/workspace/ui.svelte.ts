@@ -207,6 +207,32 @@ export const tourState = new LocalStorage<{
 	restartedExperiment: false
 });
 
+export function openConfigAndScrollToControl(
+	controlId: string,
+	sectionsToOpen: Array<keyof typeof controlSectionsOpen.current>,
+	{ useLabelFor = false }: { useLabelFor?: boolean } = {}
+) {
+	// Ensure left panel is open
+	configOpen.current = true;
+	// Open requested sections
+	for (const s of sectionsToOpen) {
+		controlSectionsOpen.current[s] = true;
+	}
+	// Scroll after a brief delay to allow layout to settle
+	setTimeout(() => {
+		const el = useLabelFor
+			? document.querySelector(`label[for="${controlId}"]`)
+			: document.getElementById(controlId);
+		if (el) {
+			el.scrollIntoView({ behavior: 'instant', block: 'center' });
+			// Manage manual focus class
+			const prev = document.querySelector('.is-focused');
+			if (prev && prev !== el) prev.classList.remove('is-focused');
+			el.classList.add('is-focused');
+		}
+	}, 100);
+}
+
 export function switchToMetrics() {
 	selectTab('metrics');
 }

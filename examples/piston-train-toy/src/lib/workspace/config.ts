@@ -359,6 +359,8 @@ export interface VisualizationConfig {
 
 export interface Config {
 	version: number;
+	// Currently selected layered preset id; null means no preset
+	preset: string | null;
 	training: TrainingConfig;
 	data: DataConfig;
 	model: ModelConfig;

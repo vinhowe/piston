@@ -8,8 +8,10 @@
 		getHiddenSize,
 		getMlpIntermediateSize,
 		resetConfigToDefaults,
+		setPreset,
 		validateConfig
 	} from '$lib/workspace/config.svelte';
+	import { getPresetOptions } from '$lib/workspace/presets';
 	import { controlSectionsOpen, toggleControlSection } from '$lib/workspace/ui.svelte';
 	import { getParameterCount, triggerModelInspection } from '$lib/workspace/workers.svelte';
 	import { untrack } from 'svelte';
@@ -68,6 +70,21 @@
 
 		// Trigger parameter count when config changes, but triggerParameterCount itself needs to be untracked
 		untrack(() => triggerModelInspection());
+	});
+
+	// Preset selection wiring: local selection drives setPreset, stays in sync with config
+	let lastAppliedPreset = $state<string | null>(null);
+	let selectedPresetId = $state<string>('');
+	$effect(() => {
+		const id = selectedPresetId || null;
+		if (id && id !== lastAppliedPreset) {
+			lastAppliedPreset = id;
+			setPreset(id);
+		}
+	});
+	$effect(() => {
+		const current = (config.preset ?? '') as string;
+		if (current !== selectedPresetId) selectedPresetId = current;
 	});
 </script>
 
@@ -195,6 +212,16 @@
 {/snippet}
 
 <div>
+	<div class="p-1">
+		<SelectInput
+			label="Preset"
+			bind:value={selectedPresetId}
+			options={getPresetOptions()}
+			hasDefaultValue={false}
+			onReset={undefined}
+		/>
+	</div>
+
 	<CollapsibleSection
 		title="Task"
 		isOpen={controlSectionsOpen.current.task}
@@ -1731,5 +1758,20 @@
 		50% {
 			box-shadow: none;
 		}
+	}
+
+	:global(#model-attention-gating-group.is-focused),
+	:global(#model-transformer-normalization-qk-norm-group.is-focused),
+	:global(#model-mlp-group.is-focused),
+	:global(#model-initialization-group.is-focused),
+	:global(#optimizer-lr-scheduler-group.is-focused),
+	:global(#training-dropout-group.is-focused),
+	:global(#training-clip-grad-norm-group.is-focused),
+	:global(#model-rnn-layer-normalization-group.is-focused),
+	:global(label[for='model-rnn-bidirectional-encoder-checkbox'].is-focused),
+	:global(#model-rnn-encoder-decoder-attention-group.is-focused),
+	:global(#model-rnn-cell-type-select.is-focused),
+	:global(#dataset-select.is-focused) {
+		outline: 2px solid var(--color-purple-500);
 	}
 </style>

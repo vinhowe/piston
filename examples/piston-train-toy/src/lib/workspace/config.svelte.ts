@@ -7,6 +7,7 @@ import { calculateBlockSize, calculateVocabSize, createDataloader } from '$lib/t
 import { seededRandom } from '$lib/train/utils/random';
 import { SvelteURL, SvelteURLSearchParams } from 'svelte/reactivity';
 
+import { getPresetLayers } from './presets';
 import { getCurrentRun, getLatestRun } from './runs.svelte';
 import { getVisualizationExampleOptions } from './visualizationExamples';
 
@@ -17,6 +18,7 @@ export const MODEL_TYPES = [
 ] as const satisfies readonly ModelType[];
 
 const CONFIG_DEFAULTS: Config = {
+	preset: null,
 	training: {
 		logSteps: 5,
 		batchSize: 32,
@@ -305,6 +307,22 @@ const CONFIG_DEFAULTS: Config = {
 	version: 1
 };
 
+function computeEffectiveDefaults(presetId: string | null | undefined): Config {
+	// Start from root defaults
+	const base = JSON.parse(JSON.stringify(CONFIG_DEFAULTS)) as Config;
+	if (presetId) {
+		const layers = getPresetLayers(presetId);
+		for (const layer of layers) {
+			mergeDeep(
+				base as unknown as Record<string, unknown>,
+				layer as unknown as Record<string, unknown>
+			);
+		}
+		base.preset = presetId;
+	}
+	return base;
+}
+
 /**
  * Parses a value based on the type of the default value in the config. This is not wildly general,
  * but it seems to work for the current config.
@@ -401,11 +419,13 @@ function mergeDeep(target: Record<string, unknown>, source: Record<string, unkno
  * @returns The initial config.
  */
 function getInitialConfig(): Config {
-	// Start with effective defaults
-	const base: Config = JSON.parse(JSON.stringify(CONFIG_DEFAULTS));
+	// Start with effective defaults, possibly from URL 'preset'
+	let base: Config = JSON.parse(JSON.stringify(CONFIG_DEFAULTS));
 	if (typeof window !== 'undefined' && window.location && window.URLSearchParams) {
 		try {
 			const params = new URLSearchParams(window.location.search);
+			const presetFromUrl = params.get('preset');
+			base = computeEffectiveDefaults(presetFromUrl);
 			const configOverrides = buildConfigFromUrlParams(params, base);
 			const initial = JSON.parse(JSON.stringify(base));
 			mergeDeep(initial, configOverrides);
@@ -419,6 +439,7 @@ function getInitialConfig(): Config {
 }
 
 export const config = $state(getInitialConfig());
+const configDefaults = $derived(computeEffectiveDefaults(config.preset));
 
 /**
  * Resets one or more config values to their defaults using dot-separated paths.
@@ -427,10 +448,7 @@ export function resetConfigToDefaults(paths: string | string[]) {
 	const pathList = Array.isArray(paths) ? paths : [paths];
 
 	for (const path of pathList) {
-		const defaultValue = getValueAtPath(
-			CONFIG_DEFAULTS as unknown as Record<string, unknown>,
-			path
-		);
+		const defaultValue = getValueAtPath(configDefaults as unknown as Record<string, unknown>, path);
 		if (defaultValue === undefined) {
 			console.warn(`resetConfigToDefaults: Unknown config path "${path}"`);
 			continue;
@@ -449,13 +467,13 @@ function deepClone<T>(value: T): T {
 }
 
 export function getConfigDefaultValue(path: string): unknown {
-	const val = getValueAtPath(CONFIG_DEFAULTS as unknown as Record<string, unknown>, path);
+	const val = getValueAtPath(configDefaults as unknown as Record<string, unknown>, path);
 	return deepClone(val);
 }
 
 export function equalsConfigDefault(path: string): boolean {
 	const current = getValueAtPath(config as unknown as Record<string, unknown>, path);
-	const def = getValueAtPath(CONFIG_DEFAULTS as unknown as Record<string, unknown>, path);
+	const def = getValueAtPath(configDefaults as unknown as Record<string, unknown>, path);
 	return valuesDeepEqual(current, def);
 }
 
@@ -539,9 +557,10 @@ export function initSharedConfigUrlSync() {
 			const configSnapshot = $state.snapshot(config);
 			const flatParams = flattenNonDefault(
 				configSnapshot,
-				CONFIG_DEFAULTS as unknown as Record<string, unknown>
+				configDefaults as unknown as Record<string, unknown>
 			);
-
+			// Always include preset when set, so shared URLs preserve selection
+			if (configSnapshot.preset) flatParams['preset'] = String(configSnapshot.preset);
 			const searchParamsString = new SvelteURLSearchParams(flatParams).toString();
 
 			const currentUrl = new SvelteURL(window.location.href);
@@ -553,6 +572,21 @@ export function initSharedConfigUrlSync() {
 			}
 		});
 	}
+}
+
+export function setPreset(presetId: string) {
+	if (config.preset === presetId) return;
+	const next = computeEffectiveDefaults(presetId);
+	// Replace config fields in-place because we've made config a const and I don't want to figure
+	// that out right now.
+	config['preset'] = next.preset;
+	config['training'] = deepClone(next.training);
+	config['data'] = deepClone(next.data);
+	config['model'] = deepClone(next.model);
+	config['optimizer'] = deepClone(next.optimizer);
+	config['visualization'] = deepClone(next.visualization);
+	config['version'] = next.version;
+	validateConfig();
 }
 
 function ensureDatasetSupportsModelType() {
