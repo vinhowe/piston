@@ -1,0 +1,9 @@
+cff-version: 1.2.0
+message: "If you use Piston or Sequence Toy in your research, please cite them as below."
+authors:
+- family-names: "Howe"
+  given-names: "Thomas Vincent"
+  orcid: "https://orcid.org/0009-0007-9729-0014"
+title: "Piston and Sequence Toy"
+version: 0.0.0
+url: "https://github.com/vinhowe/piston"
