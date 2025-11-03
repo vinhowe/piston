@@ -50,7 +50,8 @@ export default defineConfig((_) => ({
 		]
 	},
 	esbuild: {
-		supported: { 'top-level-await': true }
+		supported: { 'top-level-await': true },
+		keepNames: true
 	},
 	server: {
 		fs: {
