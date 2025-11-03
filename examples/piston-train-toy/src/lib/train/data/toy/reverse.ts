@@ -50,6 +50,13 @@ export const REVERSE_CONFIG_DEFAULTS: ReverseConfig = {
 	includeColon: REVERSE_CONFIG_METADATA.parameters.includeColon.default
 };
 
+export const REVERSE_SHORT_DESCRIPTIONS = {
+	sequenceLength: 'seq len',
+	maxNumber: 'max num',
+	includeCommas: 'incl `,`',
+	includeColon: 'incl `:`'
+};
+
 export class ReverseDataset extends ToyDataset<ReverseConfig> {
 	/**
 	 * For reverse dataset:

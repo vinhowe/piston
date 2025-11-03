@@ -58,6 +58,13 @@ export const SLAPJACK_CONFIG_DEFAULTS: SlapjackConfig = {
 	// onlyTrainOnSlaps: SLAPJACK_CONFIG_METADATA.parameters.onlyTrainOnSlaps.default,
 };
 
+export const SLAPJACK_SHORT_DESCRIPTIONS = {
+	sequenceLength: 'seq len',
+	slapOnDoubles: 'slap doubles',
+	slapOnSandwiches: 'slap sandw',
+	includeColon: 'incl `:`'
+};
+
 const CARDS = 'A23456789JQK';
 
 export class SlapjackDataset extends ToyDataset<SlapjackConfig> {

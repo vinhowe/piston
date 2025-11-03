@@ -66,6 +66,13 @@ export const MARKED_ADDITION_CONFIG_DEFAULTS: MarkedAdditionConfig = {
 	includeEqualsToken: MARKED_ADDITION_CONFIG_METADATA.parameters.includeEqualsToken.default
 };
 
+export const MARKED_ADDITION_SHORT_DESCRIPTIONS = {
+	sequenceLength: 'seq len',
+	maxInputValue: 'max in num',
+	maxSumValue: 'max sum',
+	includeEqualsToken: 'include ='
+};
+
 export class MarkedAdditionDataset extends ToyDataset<MarkedAdditionConfig> {
 	/**
 	 * Vocab design:

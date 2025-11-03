@@ -28,6 +28,10 @@ export const ZEROS_CONFIG_DEFAULTS: ZerosConfig = {
 	sequenceLength: ZEROS_CONFIG_METADATA.parameters.sequenceLength.default
 };
 
+export const ZEROS_SHORT_DESCRIPTIONS = {
+	sequenceLength: 'seq len'
+};
+
 export class ZerosDataset extends ToyDataset<ZerosConfig> {
 	/**
 	 * For zeros dataset (baseline/debug task):

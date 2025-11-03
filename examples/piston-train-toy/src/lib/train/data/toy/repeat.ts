@@ -50,6 +50,13 @@ export const REPEAT_CONFIG_DEFAULTS: RepeatConfig = {
 	includeColon: REPEAT_CONFIG_METADATA.parameters.includeColon.default
 };
 
+export const REPEAT_SHORT_DESCRIPTIONS = {
+	sequenceLength: 'seq len',
+	maxNumber: 'max num',
+	includeCommas: 'incl `,`',
+	includeColon: 'incl `:`'
+};
+
 export class RepeatDataset extends ToyDataset<RepeatConfig> {
 	/**
 	 * For repeat dataset:

@@ -48,6 +48,13 @@ export const SORT_CONFIG_DEFAULTS: SortConfig = {
 	includeColon: SORT_CONFIG_METADATA.parameters.includeColon.default
 };
 
+export const SORT_SHORT_DESCRIPTIONS = {
+	sequenceLength: 'seq len',
+	maxNumber: 'max num',
+	includeCommas: 'incl `,`',
+	includeColon: 'incl `:`'
+};
+
 export class SortDataset extends ToyDataset<SortConfig> {
 	/**
 	 * For sort dataset:

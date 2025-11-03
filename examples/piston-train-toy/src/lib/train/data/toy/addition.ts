@@ -33,6 +33,11 @@ export const ADDITION_CONFIG_DEFAULTS: AdditionConfig = {
 	includeExpressionTokens: ADDITION_CONFIG_METADATA.parameters.includeExpressionTokens.default
 };
 
+export const ADDITION_SHORT_DESCRIPTIONS = {
+	maxNumber: 'max num',
+	includeExpressionTokens: 'expr tokens'
+};
+
 export class AdditionDataset extends ToyDataset<AdditionConfig> {
 	/**
 	 * Tokenizer for addition.

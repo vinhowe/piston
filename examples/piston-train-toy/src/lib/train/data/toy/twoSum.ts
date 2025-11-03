@@ -50,6 +50,13 @@ export const TWO_SUM_CONFIG_DEFAULTS: TwoSumConfig = {
 	includeExpressionTokens: TWO_SUM_CONFIG_METADATA.parameters.includeExpressionTokens.default
 };
 
+export const TWO_SUM_SHORT_DESCRIPTIONS = {
+	sequenceLength: 'seq len',
+	maxNumber: 'max num',
+	includeCommas: 'incl `,`',
+	includeExpressionTokens: 'incl expr toks'
+};
+
 export class TwoSumDataset extends ToyDataset<TwoSumConfig> {
 	/**
 	 * For Two-Sum dataset:

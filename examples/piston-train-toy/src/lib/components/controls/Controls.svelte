@@ -12,6 +12,7 @@
 		validateConfig
 	} from '$lib/workspace/config.svelte';
 	import { getPresetOptions } from '$lib/workspace/presets';
+	import { runsMap } from '$lib/workspace/runs.svelte';
 	import { controlSectionsOpen, toggleControlSection } from '$lib/workspace/ui.svelte';
 	import { getParameterCount, triggerModelInspection } from '$lib/workspace/workers.svelte';
 	import { untrack } from 'svelte';
@@ -24,6 +25,7 @@
 	import DatasetControls from './DatasetControls.svelte';
 	import LRSchedulePicker from './LRSchedulePicker.svelte';
 	import NumberInput from './NumberInput.svelte';
+	import RunsTable from './RunsTable.svelte';
 	import SelectInput from './select/SelectInput.svelte';
 	import SelectModelTopology from './select/SelectModelTopology.svelte';
 	import SelectWithCitations from './select/SelectWithCitations.svelte';
@@ -221,6 +223,17 @@
 			onReset={undefined}
 		/>
 	</div>
+
+	{#if runsMap.size >= 1}
+		<CollapsibleSection
+			title="Runs"
+			isOpen={controlSectionsOpen.current.runs}
+			ontoggle={() => toggleControlSection('runs')}
+			contentClass="w-full"
+		>
+			<RunsTable />
+		</CollapsibleSection>
+	{/if}
 
 	<CollapsibleSection
 		title="Task"

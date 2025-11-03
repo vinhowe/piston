@@ -73,6 +73,14 @@ export const COPY_MEMORY_CONFIG_DEFAULTS: CopyMemoryConfig = {
 	includeSeparators: COPY_MEMORY_CONFIG_METADATA.parameters.includeSeparators.default
 };
 
+export const COPY_MEMORY_SHORT_DESCRIPTIONS = {
+	prefixLength: 'prefix',
+	distractorLength: 'distractor',
+	vocabSize: 'vocab',
+	recallTokenEnabled: 'recall',
+	includeSeparators: 'separators'
+};
+
 export class CopyMemoryDataset extends ToyDataset<CopyMemoryConfig> {
 	/**
 	 * Vocab:

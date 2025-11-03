@@ -54,6 +54,12 @@ export const TEMPORAL_ORDER_CONFIG_DEFAULTS: TemporalOrderConfig = {
 	includeSeparators: TEMPORAL_ORDER_CONFIG_METADATA.parameters.includeSeparators.default
 };
 
+export const TEMPORAL_ORDER_SHORT_DESCRIPTIONS = {
+	sequenceLength: 'seq len',
+	vocabSize: 'vocab',
+	includeSeparators: 'incl `,`'
+};
+
 export class TemporalOrderDataset extends ToyDataset<TemporalOrderConfig> {
 	/**
 	 * Vocab:

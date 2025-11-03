@@ -42,6 +42,12 @@ export const MODULAR_ADDITION_CONFIG_DEFAULTS: ModularAdditionConfig = {
 		MODULAR_ADDITION_CONFIG_METADATA.parameters.includeExpressionTokens.default
 };
 
+export const MODULAR_ADDITION_SHORT_DESCRIPTIONS = {
+	maxNumber: 'max num',
+	modulo: 'mod',
+	includeExpressionTokens: 'incl expr toks'
+};
+
 export class ModularAdditionDataset extends ToyDataset<ModularAdditionConfig> {
 	/**
 	 * Tokenizer for modular addition.

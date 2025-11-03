@@ -170,6 +170,7 @@ export function getIconStrokeWidth() {
 
 // Initialize sectionsOpen from localStorage or use defaults
 export const controlSectionsOpen = new LocalStorage('controlSectionsOpen', {
+	runs: true,
 	training: true,
 	task: true,
 	model: true,

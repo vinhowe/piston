@@ -50,6 +50,12 @@ export const RANDOM_CONFIG_DEFAULTS: RandomConfig = {
 	vocabSize: RANDOM_CONFIG_METADATA.parameters.vocabSize.default
 };
 
+export const RANDOM_SHORT_DESCRIPTIONS = {
+	sequenceLength: 'seq len',
+	responseLength: 'resp len',
+	vocabSize: 'vocab'
+};
+
 export class RandomDataset extends ToyDataset<RandomConfig> {
 	/**
 	 * For the random dataset:

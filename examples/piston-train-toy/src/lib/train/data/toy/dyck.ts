@@ -45,6 +45,12 @@ export const DYCK_CONFIG_DEFAULTS: DyckConfig = {
 	onlyTrainOnClosingBrackets: DYCK_CONFIG_METADATA.parameters.onlyTrainOnClosingBrackets.default
 };
 
+export const DYCK_SHORT_DESCRIPTIONS = {
+	sequenceLength: 'seq len',
+	order: 'order',
+	onlyTrainOnClosingBrackets: 'only train `)`'
+};
+
 export class DyckDataset extends ToyDataset<DyckConfig> {
 	/**
 	 * For Dyck dataset:

@@ -38,6 +38,11 @@ export const PARITY_CONFIG_DEFAULTS: ParityConfig = {
 	includeColon: PARITY_CONFIG_METADATA.parameters.includeColon.default
 };
 
+export const PARITY_SHORT_DESCRIPTIONS = {
+	sequenceLength: 'seq len',
+	includeColon: 'include :'
+};
+
 export class ParityDataset extends ToyDataset<ParityConfig> {
 	/**
 	 * For parity dataset:
