@@ -18,13 +18,7 @@ function tscAlias(options) {
   };
 }
 
-const createConfig = ({
-  format,
-  input,
-  outputFile,
-  browser = false,
-  minify = false,
-}) => {
+const createConfig = ({ format, input, outputFile, browser = false, minify = false }) => {
   const plugins = [
     // Resolve node modules
     resolve({
@@ -49,12 +43,14 @@ const createConfig = ({
 
   // Add minification for production builds
   if (minify) {
-    plugins.push(terser({
-      mangle: {
-        // We do this so that we can keep track of module scopes
-        keep_classnames: true,
-      },
-    }));
+    plugins.push(
+      terser({
+        mangle: {
+          // We do this so that we can keep track of module scopes in CQL
+          keep_classnames: true,
+        },
+      }),
+    );
   }
 
   return {
@@ -73,12 +69,7 @@ const createConfig = ({
     },
     // Make sure we externalize the @piston-ml/piston-web dependency, and the CodeMirror/Lezer
     // packages.
-    external: [
-      "@piston-ml/piston-web-wasm",
-      /@codemirror\/[^/]+/,
-      // /@lezer\/[^/]+/,
-      "codemirror"
-    ],
+    external: ["@piston-ml/piston-web-wasm", /@codemirror\/[^/]+/, "codemirror"],
     plugins,
     // Ensure WASM imports are properly handled
     onwarn(warning, warn) {
