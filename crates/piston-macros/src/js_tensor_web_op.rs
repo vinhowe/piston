@@ -737,8 +737,10 @@ fn build_options_struct(
         attrs.push(quote! { #[tsify(type = #lit)] });
 
         // Determine serde `with` strategy for JsValue-backed fields.
-        // - For Tensor and TensorOrScalar (and their Option variants), use crate::js_util::try_from_js_value_preserve
-        // - For other JsValue-backed types (Dims, Dim, ShapeWithOneHole, NormOrd), use serde_wasm_bindgen::preserve
+        // - For Tensor and TensorOrScalar (and their Option variants), use
+        //   crate::js_util::try_from_js_value_preserve
+        // - For other JsValue-backed types (Dims, Dim, ShapeWithOneHole, NormOrd), use
+        //   serde_wasm_bindgen::preserve
         let is_tensor_like = is_type(&p.ty, "Tensor")
             || is_optional_of_type(&p.ty, "Tensor")
             || is_type(&p.ty, "TensorOrScalar")
