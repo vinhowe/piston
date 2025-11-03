@@ -29,6 +29,7 @@
 	import {
 		ChartLine,
 		DownloadIcon,
+		ExternalLink,
 		Info,
 		PauseIcon,
 		PlayIcon,
@@ -117,6 +118,16 @@
 		class="w-full py-0.5 px-1.5 flex items-center justify-between text-purple-900 bg-purple-200 border-b border-purple-300 gap-8"
 	>
 		<span class="uppercase font-mono font-semibold tracking-wider text-xs"> Sequence Toy </span>
+		<div class="flex items-center gap-3 font-medium">
+			<a
+				href="https://github.com/vinhowe/piston"
+				target="_blank"
+				rel="noopener noreferrer"
+				class="flex items-center gap-1 underline"
+			>
+				Github <ExternalLink class="inline-block h-3.5 w-3.5" strokeWidth={iconStrokeWidth} />
+			</a>
+		</div>
 	</div>
 	<div
 		class="w-full flex-1 min-h-0 relative flex flex-col sm:grid sm:grid-cols-[max-content_1fr] sm:grid-rows-[min-content_1fr] overflow-x-hidden"
