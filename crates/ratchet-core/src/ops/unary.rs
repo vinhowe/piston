@@ -5,7 +5,7 @@ use derive_new::new;
 use encase::ShaderType;
 use half::f16;
 use inline_wgsl::wgsl;
-use ratchet_macros::WgslMetadata;
+use ratchet_macros::{IrFields, WgslMetadata};
 use strum_macros::EnumIter;
 
 use crate::{
@@ -19,7 +19,7 @@ use crate::{
 use test_strategy::Arbitrary;
 
 #[cfg_attr(test, derive(Arbitrary))]
-#[derive(Debug, Clone, EnumIter)]
+#[derive(Debug, Clone, EnumIter, Hash, IrFields)]
 pub enum UnaryOp {
     Gelu,
     Tanh,
@@ -28,13 +28,17 @@ pub enum UnaryOp {
     Sin,
     Cos,
     Abs,
+    Square,
     Sqrt,
     Relu,
+    Relu2,
     Floor,
     Ceil,
     Neg,
+    Reciprocal,
     Silu,
     Sigmoid,
+    Swiglu,
 }
 
 impl UnaryOp {
@@ -47,13 +51,17 @@ impl UnaryOp {
             UnaryOp::Sin => "sin".into(),
             UnaryOp::Cos => "cos".into(),
             UnaryOp::Abs => "abs".into(),
+            UnaryOp::Square => "square".into(),
             UnaryOp::Sqrt => "sqrt".into(),
             UnaryOp::Relu => "relu".into(),
+            UnaryOp::Relu2 => "relu2".into(),
             UnaryOp::Floor => "floor".into(),
             UnaryOp::Ceil => "ceil".into(),
             UnaryOp::Neg => "neg".into(),
+            UnaryOp::Reciprocal => "reciprocal".into(),
             UnaryOp::Silu => "silu".into(),
             UnaryOp::Sigmoid => "sigmoid".into(),
+            UnaryOp::Swiglu => "swiglu".into(),
         }
     }
 
@@ -61,15 +69,16 @@ impl UnaryOp {
         match self {
             UnaryOp::Tanh => "safe_tanh".into(),
             UnaryOp::Neg => "-".into(),
+            UnaryOp::Reciprocal => "1.0 / ".into(),
             _ => self.kernel_name(),
         }
     }
 }
 
-#[derive(new, Debug, Clone)]
+#[derive(new, Debug, Clone, IrFields)]
 pub struct Unary {
-    input: Tensor,
-    op: UnaryOp,
+    pub input: Tensor,
+    pub op: UnaryOp,
 }
 
 impl KernelRenderable for UnaryKernels {
@@ -122,12 +131,22 @@ impl KernelRenderable for UnaryKernels {
             UnaryOp::Sigmoid => {
                 kernel_builder.write_global(Unary::render_sigmoid::<P>());
             }
+            UnaryOp::Square => {
+                kernel_builder.write_global(Unary::render_square::<P>());
+            }
             UnaryOp::Silu => {
                 kernel_builder.write_global(Unary::render_sigmoid::<P>());
                 kernel_builder.write_global(Unary::render_silu::<P>());
             }
             UnaryOp::Relu => {
                 kernel_builder.write_global(Unary::render_relu::<P>());
+            }
+            UnaryOp::Relu2 => {
+                kernel_builder.write_global(Unary::render_relu2::<P>());
+            }
+            UnaryOp::Swiglu => {
+                kernel_builder.write_global(Unary::render_sigmoid::<P>());
+                kernel_builder.write_global(Unary::render_swiglu::<P>());
             }
             _ => {}
         };
@@ -204,6 +223,15 @@ impl Unary {
         }
     }
 
+    fn render_relu2<P: WgslPrimitive>() -> String {
+        let accessor = P::render_type();
+
+        wgsl! {
+            fn relu2(val: 'accessor) -> 'accessor {
+                return max(val, 'accessor(0.0)) * max(val, 'accessor(0.0));
+            }
+        }
+    }
     fn render_silu<P: WgslPrimitive>() -> String {
         let accessor = P::render_type();
 
@@ -221,6 +249,26 @@ impl Unary {
         wgsl! {
             fn sigmoid(val: 'accessor) -> 'accessor {
                 return select('one / ('one + exp(-val)), exp(val) / ('one + exp(val)), val >= 'accessor(0.));
+            }
+        }
+    }
+
+    fn render_swiglu<P: WgslPrimitive>() -> String {
+        let accessor = P::render_type();
+
+        wgsl! {
+            fn swiglu(val: 'accessor) -> 'accessor {
+                return val * val * sigmoid(val);
+            }
+        }
+    }
+
+    fn render_square<P: WgslPrimitive>() -> String {
+        let accessor = P::render_type();
+
+        wgsl! {
+            fn square(val: 'accessor) -> 'accessor {
+                return val * val;
             }
         }
     }
@@ -247,13 +295,17 @@ impl Operation for Unary {
             UnaryOp::Sin => "Sin",
             UnaryOp::Cos => "Cos",
             UnaryOp::Abs => "Abs",
+            UnaryOp::Square => "Square",
             UnaryOp::Sqrt => "Sqrt",
             UnaryOp::Relu => "Relu",
+            UnaryOp::Relu2 => "Relu2",
             UnaryOp::Floor => "Floor",
             UnaryOp::Ceil => "Ceil",
             UnaryOp::Neg => "Neg",
+            UnaryOp::Reciprocal => "Reciprocal",
             UnaryOp::Silu => "Silu",
             UnaryOp::Sigmoid => "Sigmoid",
+            UnaryOp::Swiglu => "Swiglu",
         }
     }
 
@@ -261,6 +313,7 @@ impl Operation for Unary {
         Ok(self.input.storage_view().clone())
     }
 
+    #[inline]
     fn srcs(&self) -> RVec<&Tensor> {
         rvec![&self.input]
     }
@@ -375,8 +428,6 @@ mod tests {
         B: usize,
         #[strategy(1..=128usize)]
         M: usize,
-        #[strategy(1..=128usize)]
-        N: usize,
     }
 
     fn ground_truth(a: &Tensor, op: &UnaryOp, args: &str) -> anyhow::Result<Tensor> {
@@ -409,8 +460,8 @@ def {}(a):
     }
 
     fn run_unary_trial(prob: UnaryProblem, device: Device) -> anyhow::Result<()> {
-        let UnaryProblem { op, B, M, N: _ } = prob;
-        let a = Tensor::randn::<f32>(shape![B, M], Device::CPU);
+        let UnaryProblem { op, B, M } = prob;
+        let a = Tensor::randn::<f32>(0., 1., shape![B, M], Device::CPU);
 
         let args = match op {
             UnaryOp::Gelu => "approximate=\"tanh\"",
@@ -427,15 +478,18 @@ def {}(a):
             UnaryOp::Sin => a.sin()?,
             UnaryOp::Cos => a.cos()?,
             UnaryOp::Abs => a.abs()?,
+            UnaryOp::Square => a.square()?,
             UnaryOp::Sqrt => a.sqrt()?,
             UnaryOp::Relu => a.relu()?,
+            UnaryOp::Relu2 => a.relu2()?,
             UnaryOp::Floor => a.floor()?,
             UnaryOp::Ceil => a.ceil()?,
             UnaryOp::Neg => a.neg()?,
+            UnaryOp::Reciprocal => a.recip()?,
             UnaryOp::Silu => a.silu()?,
             UnaryOp::Sigmoid => a.sigmoid()?,
-        }
-        .resolve()?;
+            UnaryOp::Swiglu => a.swiglu()?,
+        };
 
         let (atol, rtol) = match op {
             UnaryOp::Gelu | UnaryOp::Tanh => (5e-2, 5e-2),
@@ -449,12 +503,14 @@ def {}(a):
 
     #[proptest(cases = 256)]
     fn test_unary_gpu(prob: UnaryProblem) {
+        let _ = env_logger::builder().try_init();
         let device = Device::request_device(DeviceRequest::GPU).unwrap();
         run_unary_trial(prob, device).unwrap();
     }
 
     #[proptest(cases = 256)]
     fn test_unary_cpu(prob: UnaryProblem) {
+        let _ = env_logger::builder().try_init();
         let device = Device::request_device(DeviceRequest::CPU).unwrap();
         run_unary_trial(prob, device).unwrap();
     }

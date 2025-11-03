@@ -1,8 +1,9 @@
 use derive_new::new;
+use ratchet_macros::IrFields;
 
 use super::*;
 
-#[derive(new, Debug, Clone)]
+#[derive(new, Debug, Clone, IrFields)]
 pub struct GroupNorm {
     pub norm: Norm,
     pub num_groups: usize,
@@ -45,9 +46,9 @@ def manual_group_norm(input, scale, bias, num_groups):
             N,
         } = problem;
 
-        let input = Tensor::randn::<f32>(shape![B, C, N], Device::CPU);
-        let scale = Tensor::randn::<f32>(shape![C], Device::CPU);
-        let bias = Some(Tensor::randn::<f32>(shape![C], Device::CPU));
+        let input = Tensor::randn::<f32>(0., 1., shape![B, C, N], Device::CPU);
+        let scale = Tensor::randn::<f32>(0., 1., shape![C], Device::CPU);
+        let bias = Some(Tensor::randn::<f32>(0., 1., shape![C], Device::CPU));
 
         let ground = ground_truth(&input, &scale, bias.as_ref(), num_groups)?;
 
@@ -55,9 +56,7 @@ def manual_group_norm(input, scale, bias, num_groups):
         let scale_gpu = scale.to(device)?;
         let bias_gpu = bias.map(|b| b.to(device)).transpose()?;
 
-        let result = input_gpu
-            .group_norm(num_groups, scale_gpu, bias_gpu, 1e-5)?
-            .resolve()?;
+        let result = input_gpu.group_norm(num_groups, scale_gpu, bias_gpu, 1e-5)?;
 
         let ours = result.to(&Device::CPU)?;
 
@@ -67,7 +66,7 @@ def manual_group_norm(input, scale, bias, num_groups):
 
     #[derive(Arbitrary, Debug)]
     struct GroupNormProblem {
-        #[map(|num_groups: u32| #C/2 )]
+        #[map(|_num_groups: u32| #C/2 )]
         num_groups: usize,
         #[strategy(1..=1usize)]
         B: usize,

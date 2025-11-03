@@ -1,4 +1,4 @@
-use crate::{shape, RVec};
+use crate::{shape, RVec, Strides};
 use encase::impl_wrapper;
 use std::{
     ops::{RangeFrom, RangeTo},
@@ -100,6 +100,11 @@ impl Shape {
         self.0.retain(|x| *x != 1);
     }
 
+    #[inline]
+    pub fn unsqueeze(&mut self, dim: usize) {
+        self.0.insert(dim, 1);
+    }
+
     pub fn drain<R>(&mut self, range: R) -> smallvec::Drain<'_, [usize; 4]>
     where
         R: std::ops::RangeBounds<usize>,
@@ -133,6 +138,22 @@ impl Shape {
             shape.0.insert(0, current_dim_size)
         }
         Some(shape)
+    }
+
+    /// Returns true if the strides are C contiguous (aka row major).
+    pub fn is_contiguous(&self, strides: &Strides) -> bool {
+        let strides_vec = strides.to_vec();
+        if self.0.len() != strides_vec.len() {
+            return false;
+        }
+        let mut acc = 1;
+        for (&stride, &dim) in strides_vec.iter().zip(self.0.iter()).rev() {
+            if dim > 1 && stride != acc {
+                return false;
+            }
+            acc *= dim as isize;
+        }
+        true
     }
 
     pub fn transpose(&mut self) {
@@ -261,6 +282,12 @@ impl From<&Shape> for glam::IVec3 {
 impl From<Shape> for glam::IVec3 {
     fn from(shape: Shape) -> Self {
         (&shape).into()
+    }
+}
+
+impl From<Shape> for RVec<usize> {
+    fn from(shape: Shape) -> Self {
+        shape.0
     }
 }
 

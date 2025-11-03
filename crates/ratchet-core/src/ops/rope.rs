@@ -1,7 +1,7 @@
 use derive_new::new;
 use encase::ShaderType;
 use half::f16;
-use ratchet_macros::WgslMetadata;
+use ratchet_macros::{IrFields, WgslMetadata};
 
 use crate::gpu::dtype::WgslDType;
 use crate::{
@@ -13,12 +13,15 @@ use crate::{
 use crate::{GPUOperation, Kernel, KernelRenderable};
 use inline_wgsl::wgsl;
 
-#[derive(new, Debug, Clone)]
+#[derive(new, Debug, Clone, IrFields)]
 pub struct RoPE {
-    input: Tensor,
-    dim: usize,
-    base: f32,
-    offset: usize,
+    pub(crate) input: Tensor,
+    pub(crate) dim: usize,
+    pub(crate) base: f32,
+    pub(crate) offset: usize,
+    // Doing things this way, with a backward field in an op, is a little bit inelegant, but it's
+    // so nicely consolidated
+    pub(crate) backward: bool,
 }
 
 impl RoPE {
@@ -36,6 +39,10 @@ impl RoPE {
 
     pub fn offset(&self) -> usize {
         self.offset
+    }
+
+    pub fn backward(&self) -> bool {
+        self.backward
     }
 }
 
@@ -73,6 +80,7 @@ impl Operation for RoPE {
         Ok(self.input.storage_view().clone())
     }
 
+    #[inline]
     fn srcs(&self) -> RVec<&Tensor> {
         rvec![&self.input]
     }
@@ -86,12 +94,31 @@ impl GPUOperation for RoPE {
     type KernelEnum = RoPEKernels;
 
     fn select_kernel(&self) -> Self::KernelEnum {
-        RoPEKernels::Standard(self.clone())
+        if self.backward {
+            RoPEKernels::Backward(self.clone())
+        } else {
+            RoPEKernels::Forward(self.clone())
+        }
     }
 }
 
 pub enum RoPEKernels {
-    Standard(RoPE),
+    Forward(RoPE),
+    Backward(RoPE),
+}
+
+fn rope_body(is_backward: bool) -> String {
+    if is_backward {
+        wgsl! {
+            let rx1 = x1 * costheta + x2 * sintheta;
+            let rx2 = -x1 * sintheta + x2 * costheta;
+        }
+    } else {
+        wgsl! {
+            let rx1 = x1 * costheta - x2 * sintheta;
+            let rx2 = x1 * sintheta + x2 * costheta;
+        }
+    }
 }
 
 impl KernelRenderable for RoPEKernels {
@@ -126,10 +153,17 @@ impl KernelRenderable for RoPEKernels {
             device.compute_features().clone(),
         );
         self.register_bindings::<P>(&mut kernel_builder, inplace)?;
+
+        let (is_backward, inner) = match self {
+            RoPEKernels::Forward(x) => (false, x),
+            RoPEKernels::Backward(x) => (true, x),
+        };
+
         kernel_builder.render_metadata(&self.metadata(dst, &self.kernel_element(dst))?);
 
-        let dt = P::T::DT;
+        let body_code = rope_body(is_backward);
 
+        let dt = P::T::DT;
         kernel_builder.write_main(wgsl! {
             if(global_invocation_id.y >= metadata.seq_len) {
               return;
@@ -153,8 +187,7 @@ impl KernelRenderable for RoPEKernels {
             let x1 = in[in_index_1];
             let x2 = in[in_index_2];
 
-            let rx1 = x1 * costheta - x2 * sintheta;
-            let rx2 = x1 * sintheta + x2 * costheta;
+            'body_code
 
             in[out_index_1] = rx1;
             in[out_index_2] = rx2;
@@ -169,7 +202,8 @@ impl Kernel for RoPEKernels {
 
     fn kernel_name(&self) -> String {
         match self {
-            RoPEKernels::Standard(_) => "rope".to_string(),
+            RoPEKernels::Forward(_) => "rope_forward".to_string(),
+            RoPEKernels::Backward(_) => "rope_backward".to_string(),
         }
     }
 
@@ -184,7 +218,11 @@ impl Kernel for RoPEKernels {
     }
 
     fn metadata(&self, dst: &Tensor, _: &KernelElement) -> Result<Self::Metadata, OperationError> {
-        let RoPEKernels::Standard(inner) = self;
+        let inner = match self {
+            RoPEKernels::Forward(x) => x,
+            RoPEKernels::Backward(x) => x,
+        };
+
         let mut input_shape = inner.input.shape().clone();
         let SL = input_shape[2];
         let mut out_shape = dst.shape().clone();
@@ -212,11 +250,14 @@ impl Kernel for RoPEKernels {
         const WGSZ: usize = 1;
         let workgroup_size = wgs![WGSX as _, WGSY as _, WGSZ as _];
 
-        let RoPEKernels::Standard(inner) = self;
+        let inner = match self {
+            RoPEKernels::Forward(x) => x,
+            RoPEKernels::Backward(x) => x,
+        };
         let [_, _, SL, HD]: [usize; 4] = inner.input.shape().try_into()?;
         let mat_size = SL * HD;
 
-        let total_x = inner.dim / 2; //solve pairs
+        let total_x = inner.dim / 2; // solve pairs
         let total_y = SL;
         let total_z = inner.input.shape().numel() / mat_size;
 
@@ -237,7 +278,10 @@ impl Kernel for RoPEKernels {
         workgroup_size: &WorkgroupSize,
     ) -> Result<KernelSource, OperationError> {
         let kernel_element = self.kernel_element(dst);
-        let RoPEKernels::Standard(inner) = self;
+        let inner = match self {
+            RoPEKernels::Forward(x) => x,
+            RoPEKernels::Backward(x) => x,
+        };
         match (inner.input.dt(), &kernel_element) {
             (DType::F32, KernelElement::Scalar) => {
                 self.render::<Scalar<f32>>(inplace, dst, workgroup_size)
@@ -299,11 +343,11 @@ def mlx_rope(input, dim, offset):
             offset,
         } = problem;
         let shape = shape![BS, NH, SL, HD];
-        let a = Tensor::randn::<f32>(shape, Device::CPU);
+        let a = Tensor::randn::<f32>(0., 1., shape, Device::CPU);
         let ground = ground_truth(&a, dim, offset).unwrap();
 
         let a = a.to(&device).unwrap();
-        let b = a.rope(dim, 10000.0, offset).unwrap().resolve().unwrap();
+        let b = a.rope(dim, 10000.0, offset).unwrap();
 
         let ours = b.to(&Device::CPU).unwrap();
         //println!("ours = \n{:#?}\n", ours.to_ndarray_view::<f32>());

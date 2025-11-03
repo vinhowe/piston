@@ -5,6 +5,7 @@ mod workgroup_gemv;
 
 pub use gemm::*;
 pub use quantized::*;
+use ratchet_macros::IrFields;
 pub use subgroup_gemv::*;
 pub use workgroup_gemv::*;
 
@@ -378,7 +379,7 @@ impl MatmulSpec {
     }
 }
 
-#[derive(derive_new::new, Debug, Clone)]
+#[derive(derive_new::new, Debug, Clone, IrFields)]
 pub struct Matmul {
     pub(crate) lhs: Tensor,
     pub(crate) rhs: Tensor,
@@ -494,6 +495,7 @@ impl Operation for Matmul {
         Ok(StorageView::new(dst_shape, self.rhs.dt(), dst_strides))
     }
 
+    #[inline]
     fn srcs(&self) -> RVec<&Tensor> {
         if let Some(bias) = &self.bias {
             rvec![&self.lhs, &self.rhs, bias]
@@ -918,7 +920,12 @@ def matmul(a, b{}):
         };
 
         let bias = if has_bias {
-            Some(Tensor::randn::<f32>(shape![N], cpu_device.clone()))
+            Some(Tensor::randn::<f32>(
+                0.0,
+                1.0,
+                shape![N],
+                cpu_device.clone(),
+            ))
         } else {
             None
         };
@@ -927,17 +934,15 @@ def matmul(a, b{}):
         println!("RHS shape: {:?}", rhs_shape);
         println!("Bias: {:?}", bias.as_ref().map(|b| b.shape()));
 
-        let a = Tensor::randn::<f32>(lhs_shape, cpu_device.clone());
-        let b = Tensor::randn::<f32>(rhs_shape, cpu_device.clone());
+        let a = Tensor::randn::<f32>(0.0, 1.0, lhs_shape, cpu_device.clone());
+        let b = Tensor::randn::<f32>(0.0, 1.0, rhs_shape, cpu_device.clone());
         let ground = ground_truth(&a, &b, bias.as_ref(), trans_lhs, trans_rhs, trans_dst)?;
         println!("Ground shape: {:?}", ground.shape());
 
         let a_gpu = a.to(device)?;
         let b_gpu = b.to(device)?;
         let bias_gpu = bias.as_ref().map(|b| b.to(device)).transpose()?;
-        let c_gpu = a_gpu
-            .gemm(b_gpu, bias_gpu, trans_lhs, trans_rhs, trans_dst)?
-            .resolve()?;
+        let c_gpu = a_gpu.gemm(b_gpu, bias_gpu, trans_lhs, trans_rhs, trans_dst)?;
 
         let d_gpu = c_gpu.to(&Device::CPU)?;
         println!("RATCHET SGEMM\n{:?}\n", d_gpu);
@@ -951,14 +956,14 @@ def matmul(a, b{}):
     fn test_qgemm() -> anyhow::Result<()> {
         let device = Device::request_device(DeviceRequest::GPU).unwrap();
         let cpu_device = Device::request_device(DeviceRequest::CPU)?;
-        let a = Tensor::randn::<f32>(shape![6, 1500, 64], cpu_device.clone());
-        let b = Tensor::randn::<f32>(shape![6, 64, 1500], cpu_device.clone());
+        let a = Tensor::randn::<f32>(0.0, 1.0, shape![6, 1500, 64], cpu_device.clone());
+        let b = Tensor::randn::<f32>(0.0, 1.0, shape![6, 64, 1500], cpu_device.clone());
         let ground = ground_truth(&a, &b, None, false, false, false)?;
 
         let aq = quantize::<Q8_0F>(&a);
         let a_gpu = aq.to(&device)?;
         let b_gpu = b.to(&device)?;
-        let c_gpu = a_gpu.matmul(b_gpu, false, false)?.resolve()?;
+        let c_gpu = a_gpu.matmul(b_gpu, false, false)?;
         let ours = c_gpu.to(&Device::CPU)?;
 
         println!("RATCHET QUANT\n{:?}\n", ours);
@@ -975,9 +980,14 @@ def matmul(a, b{}):
 
         let device = Device::request_device(DeviceRequest::GPU).unwrap();
         let cpu_device = Device::request_device(DeviceRequest::CPU)?;
-        let a = Tensor::randn::<f32>(shape![2, 175, 240], cpu_device.clone());
-        let b = Tensor::randn::<f32>(shape![2, 240, 182], cpu_device.clone());
-        let bias = Some(Tensor::randn::<f32>(shape![182], cpu_device.clone()));
+        let a = Tensor::randn::<f32>(0.0, 1.0, shape![2, 175, 240], cpu_device.clone());
+        let b = Tensor::randn::<f32>(0.0, 1.0, shape![2, 240, 182], cpu_device.clone());
+        let bias = Some(Tensor::randn::<f32>(
+            0.0,
+            1.0,
+            shape![182],
+            cpu_device.clone(),
+        ));
 
         let TRANS_LHS = false;
         let TRANS_RHS = false;
@@ -995,9 +1005,7 @@ def matmul(a, b{}):
 
         let b_gpu = b.to(&device)?;
         let bias_gpu = bias.as_ref().map(|b| b.to(&device)).transpose()?;
-        let c_gpu = a_gpu
-            .gemm(b_gpu, bias_gpu, TRANS_LHS, TRANS_RHS, TRANS_DST)?
-            .resolve()?;
+        let c_gpu = a_gpu.gemm(b_gpu, bias_gpu, TRANS_LHS, TRANS_RHS, TRANS_DST)?;
         let ours = c_gpu.to(&Device::CPU)?;
 
         println!("RATCHET\n{:?}\n", ours.to_ndarray_view::<f32>());
@@ -1014,8 +1022,8 @@ def matmul(a, b{}):
 
         let device = Device::request_device(DeviceRequest::GPU).unwrap();
         let cpu_device = Device::request_device(DeviceRequest::CPU)?;
-        let a = Tensor::randn::<f32>(shape![1, 51865, 384], cpu_device.clone());
-        let b = Tensor::randn::<f32>(shape![1, 1, 384], cpu_device.clone());
+        let a = Tensor::randn::<f32>(0.0, 1.0, shape![1, 51865, 384], cpu_device.clone());
+        let b = Tensor::randn::<f32>(0.0, 1.0, shape![1, 1, 384], cpu_device.clone());
 
         let TRANS_LHS = false;
         let TRANS_RHS = true;
@@ -1032,9 +1040,7 @@ def matmul(a, b{}):
         };
 
         let b_gpu = b.to(&device)?;
-        let c_gpu = a_gpu
-            .gemm(b_gpu, None, TRANS_LHS, TRANS_RHS, TRANS_DST)?
-            .resolve()?;
+        let c_gpu = a_gpu.gemm(b_gpu, None, TRANS_LHS, TRANS_RHS, TRANS_DST)?;
         let ours = c_gpu.to(&Device::CPU)?;
 
         println!("RATCHET\n{:?}\n", ours.to_ndarray_view::<f32>());

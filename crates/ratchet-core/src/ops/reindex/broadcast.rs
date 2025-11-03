@@ -3,6 +3,7 @@ use encase::ShaderType;
 use ratchet_macros::WgslMetadata;
 
 use crate::{rvec, OpGuards, Operation, OperationError, RVec, Shape, StorageView, Strides, Tensor};
+use ratchet_macros::IrFields;
 
 #[derive(Debug, WgslMetadata, ShaderType, derive_new::new)]
 pub struct BroadcastMeta {
@@ -14,7 +15,7 @@ pub struct BroadcastMeta {
     dst_numel: u32,
 }
 
-#[derive(new, Debug, Clone)]
+#[derive(new, Debug, Clone, IrFields)]
 pub struct Broadcast {
     pub src: Tensor,
     to: Shape,
@@ -115,7 +116,10 @@ mod tests {
                     (Just(original_shape), to)
                 })
                 .prop_map(|(original_shape, to)| BroadcastProblem {
-                    op: Broadcast::new(Tensor::randn::<f32>(original_shape, Device::CPU), to),
+                    op: Broadcast::new(
+                        Tensor::randn::<f32>(0., 1., original_shape, Device::CPU),
+                        to,
+                    ),
                 })
                 .boxed()
         }
@@ -147,7 +151,7 @@ def slice(a):
 
         let a_gpu = a.to(&device)?;
         let ground = ground_truth(&a, &op.to.as_torch())?;
-        let ours = a_gpu.broadcast_to(op.to.clone())?.resolve()?;
+        let ours = a_gpu.broadcast_to(op.to.clone())?;
         let d_gpu = ours.to(&Device::CPU)?;
         ground.all_close(&d_gpu, 1e-5, 1e-5)?;
         Ok(())
@@ -170,7 +174,7 @@ def slice(a):
         let device = Device::request_device(DeviceRequest::GPU).unwrap();
         let prob = BroadcastProblem {
             op: Broadcast::new(
-                Tensor::randn::<f32>(shape![1], Device::CPU),
+                Tensor::randn::<f32>(0., 1., shape![1], Device::CPU),
                 shape![4, 32, 128, 128],
             ),
         };

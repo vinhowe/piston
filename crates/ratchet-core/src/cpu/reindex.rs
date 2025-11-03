@@ -29,7 +29,7 @@ impl CPUOperation for Permute {
 }
 
 fn apply_permute<T: TensorDType>(p: &Permute, dst: Tensor) -> Result<Tensor, OperationError> {
-    let perm: [usize; 4] = p.promote().try_into().unwrap();
+    let perm: [usize; 4] = p.promote().as_slice().try_into().unwrap();
     let Permute { src, dims: _ } = p;
     let result = permute(&src.to_vec::<T>()?, src.shape(), dst.shape(), perm);
     cpu_store_result(&dst, &result);
@@ -54,11 +54,10 @@ fn permute<T: TensorDType>(
     let src_strides = &Strides::from(src_shape);
     let dst_strides = &Strides::from(dst_shape);
 
-    let src_shape: [usize; 4] = src_shape.try_into().unwrap();
-    let src_strides: [usize; 4] = src_strides.try_into().unwrap();
-    let dst_strides: [usize; 4] = dst_strides.try_into().unwrap();
+    let src_strides: [usize; 4] = src_strides.into();
+    let dst_strides: [usize; 4] = dst_strides.into();
 
-    for i in 0..result.len() {
+    (0..result.len()).for_each(|i| {
         let dst_index = offset_to_ndindex(i, dst_strides);
         let mut src_index = [0; 4];
         src_index[perm[0]] = dst_index[0];
@@ -67,7 +66,7 @@ fn permute<T: TensorDType>(
         src_index[perm[3]] = dst_index[3];
         let src_offset = nd_index_to_offset(src_index, src_strides);
         result[i] = src[src_offset]
-    }
+    });
     result
 }
 
@@ -114,7 +113,7 @@ pub(crate) fn slice<T: TensorDType>(
         dst_dots.push(dst_shape[d + 1..].iter().product::<usize>().max(1));
     }
 
-    for i in 0..dst.len() {
+    (0..dst.len()).for_each(|i| {
         let mut src_index = 0;
         let mut tmp = i;
         for d in 0..dst_shape.len() {
@@ -123,7 +122,7 @@ pub(crate) fn slice<T: TensorDType>(
             src_index += (coord + start[d]) * src_strides[d] as usize;
         }
         dst[i] = src[src_index];
-    }
+    });
 
     dst
 }
@@ -195,8 +194,8 @@ fn generic_broadcast<T: TensorDType>(
     let dst_strides = &Strides::from(dst_shape);
 
     let src_shape: [usize; 4] = src_shape.try_into().unwrap();
-    let src_strides: [usize; 4] = src_strides.try_into().unwrap();
-    let dst_strides: [usize; 4] = dst_strides.try_into().unwrap();
+    let src_strides: [usize; 4] = src_strides.into();
+    let dst_strides: [usize; 4] = dst_strides.into();
 
     fn select(a: [usize; 4], b: [usize; 4], t: [bool; 4]) -> [usize; 4] {
         let mut result = [0; 4];
@@ -213,12 +212,12 @@ fn generic_broadcast<T: TensorDType>(
         src_shape[2] != 1,
         src_shape[3] != 1,
     ];
-    for i in 0..result.len() {
+    (0..result.len()).for_each(|i| {
         let dst_index = offset_to_ndindex(i, dst_strides);
         let src_index = select(dst_index, [0; 4], shape_onedim_lookup);
         let src_offset = nd_index_to_offset(src_index, src_strides);
         result[i] = src[src_offset]
-    }
+    });
 }
 
 #[inline]

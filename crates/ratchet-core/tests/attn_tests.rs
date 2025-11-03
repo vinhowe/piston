@@ -68,16 +68,16 @@ def scaled_dot_product_attention(input, qw, kw, vw) -> torch.Tensor:
     #[test]
     pub fn test_sdpa() -> anyhow::Result<()> {
         let _ = env_logger::builder().is_test(true).try_init();
-        let input = Tensor::randn::<f32>(shape![1, 128, 256], Device::CPU);
-        let qw = Tensor::randn::<f32>(shape![256, 256], Device::CPU);
-        let kw = Tensor::randn::<f32>(shape![256, 256], Device::CPU);
-        let vw = Tensor::randn::<f32>(shape![256, 256], Device::CPU);
+        let input = Tensor::randn::<f32>(0., 1., shape![1, 128, 256], Device::CPU);
+        let qw = Tensor::randn::<f32>(0., 1., shape![256, 256], Device::CPU);
+        let kw = Tensor::randn::<f32>(0., 1., shape![256, 256], Device::CPU);
+        let vw = Tensor::randn::<f32>(0., 1., shape![256, 256], Device::CPU);
         let cpu_test_case = AttentionTest::new(input, qw, kw, vw, None);
         let ground = sdpa_ground(&cpu_test_case)?;
 
         let device = Device::request_device(DeviceRequest::GPU)?;
         let gpu_test_case = cpu_test_case.to_gpu(device.clone());
-        let out = sdpa_cfg(&gpu_test_case, device.clone())?.resolve()?;
+        let out = sdpa_cfg(&gpu_test_case, device.clone())?;
         let out_cpu = out.to(&Device::CPU)?;
         println!("OURS: {:?}\n", out_cpu);
         println!("GROUND: {:?}", ground);
@@ -158,16 +158,16 @@ def qkv_attention(input, qw, kw, vw, n_heads):
     #[test]
     pub fn test_mha() -> anyhow::Result<()> {
         let _ = env_logger::builder().is_test(true).try_init();
-        let input = Tensor::randn::<f32>(shape![1, 64, 384], Device::CPU);
-        let qw = Tensor::randn::<f32>(shape![1, 384, 384], Device::CPU);
-        let kw = Tensor::randn::<f32>(shape![1, 384, 384], Device::CPU);
-        let vw = Tensor::randn::<f32>(shape![1, 384, 384], Device::CPU);
+        let input = Tensor::randn::<f32>(0., 1., shape![1, 64, 384], Device::CPU);
+        let qw = Tensor::randn::<f32>(0., 1., shape![1, 384, 384], Device::CPU);
+        let kw = Tensor::randn::<f32>(0., 1., shape![1, 384, 384], Device::CPU);
+        let vw = Tensor::randn::<f32>(0., 1., shape![1, 384, 384], Device::CPU);
         let cpu_test_case = AttentionTest::new(input, qw, kw, vw, Some(6));
         let ground = mha_ground(&cpu_test_case)?;
 
         let device = Device::request_device(DeviceRequest::GPU)?;
         let gpu_test_case = cpu_test_case.to_gpu(device.clone());
-        let out = mha_cfg(&gpu_test_case, device.clone())?.resolve()?;
+        let out = mha_cfg(&gpu_test_case, device.clone())?;
         let out_cpu = out.to(&Device::CPU)?;
         println!("OURS: {:?}\n", out_cpu);
         println!("GROUND: {:?}", ground);

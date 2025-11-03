@@ -1,23 +1,57 @@
+#[cfg(feature = "debug")]
+use crate::gpu::BindGroupLayoutEntryDescriptor;
 use crate::gpu::{
     BindGroupDescriptor, BindGroupLayoutHandle, ComputePipelineHandle, GpuBindGroup, WgpuDevice,
     WorkgroupCount,
 };
-use crate::{drvec, rvec, KernelKey, OperationError, RVec, Tensor};
+#[cfg(feature = "debug")]
+use crate::TensorId;
+use crate::{drvec, rvec, KernelKey, OperationError, PooledGPUBuffer, RVec, Tensor};
 use derive_new::new;
+use std::sync::Arc;
 use wgpu::DynamicOffset;
 
+#[derive(Debug, new)]
+pub struct CompiledCopy {
+    src: Arc<PooledGPUBuffer>,
+    dst: Arc<PooledGPUBuffer>,
+    size: u64,
+}
+
+impl CompiledCopy {
+    pub fn src(&self) -> &Arc<PooledGPUBuffer> {
+        &self.src
+    }
+
+    pub fn dst(&self) -> &Arc<PooledGPUBuffer> {
+        &self.dst
+    }
+
+    pub fn size(&self) -> u64 {
+        self.size
+    }
+}
+
 //Compiled op represents a single kernel invocation
-//TODO: We need to be more general here, enum with encoder.copy_buffer_to_buffer as a COPY, and
-//compiledOp as compute
 #[derive(Debug, new)]
 pub struct CompiledOp {
-    pipeline_handle: ComputePipelineHandle,
-    workgroup_count: WorkgroupCount,
-    storage_groups: RVec<GpuBindGroup>,
-    offset: DynamicOffset, //offset into the metadata uniform buffer
+    pub(crate) pipeline_handle: ComputePipelineHandle,
+    pub(crate) workgroup_count: WorkgroupCount,
+    pub(crate) storage_groups: RVec<GpuBindGroup>,
+    pub(crate) offset: DynamicOffset, //offset into the metadata uniform buffer
     pub kernel_key: KernelKey,
     #[cfg(feature = "debug")]
-    pub debug_buffer: Option<Arc<wgpu::Buffer>>,
+    pub debug_buffer: Option<(TensorId, Arc<wgpu::Buffer>)>,
+    #[cfg(feature = "debug")]
+    pub debug_input_buffers: Option<RVec<(TensorId, Arc<wgpu::Buffer>)>>,
+    #[cfg(feature = "debug")]
+    pub storage_bind_group_layout_entries: RVec<BindGroupLayoutEntryDescriptor>,
+}
+
+#[derive(Debug)]
+pub enum Compiled {
+    Copy(CompiledCopy),
+    Compute(CompiledOp),
 }
 
 impl CompiledOp {

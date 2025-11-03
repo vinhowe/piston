@@ -1,4 +1,4 @@
-use rustc_hash::FxHashMap;
+use crate::HashMap;
 use std::fmt::Debug;
 
 use crate::{
@@ -13,6 +13,8 @@ use encase::{internal::WriteInto, ShaderType};
 pub enum DynMetaField {
     Vec4U32(glam::UVec4),
     U32(u32),
+    F32(f32),
+    I32(i32),
 }
 
 impl DynMetaField {
@@ -20,6 +22,8 @@ impl DynMetaField {
         match self {
             DynMetaField::Vec4U32(_) => "vec4<u32>".to_string(),
             DynMetaField::U32(_) => "u32".to_string(),
+            DynMetaField::F32(_) => "f32".to_string(),
+            DynMetaField::I32(_) => "i32".to_string(),
         }
     }
 }
@@ -36,10 +40,22 @@ impl From<u32> for DynMetaField {
     }
 }
 
+impl From<f32> for DynMetaField {
+    fn from(value: f32) -> Self {
+        Self::F32(value)
+    }
+}
+
+impl From<i32> for DynMetaField {
+    fn from(value: i32) -> Self {
+        Self::I32(value)
+    }
+}
+
 #[derive(Debug)]
 pub struct DynKernelMetadata {
     //Can't use a trait object here, ShaderType has assoc type
-    fields: FxHashMap<String, DynMetaField>,
+    fields: HashMap<String, DynMetaField>,
 }
 
 impl Default for DynKernelMetadata {
@@ -51,7 +67,7 @@ impl Default for DynKernelMetadata {
 impl DynKernelMetadata {
     pub fn new() -> Self {
         Self {
-            fields: FxHashMap::default(),
+            fields: HashMap::default(),
         }
     }
 
@@ -81,6 +97,8 @@ impl KernelMetadata for DynKernelMetadata {
             let _ = match f {
                 DynMetaField::Vec4U32(v) => uniform.write_struct_member(v)?,
                 DynMetaField::U32(u) => uniform.write_struct_member(u)?,
+                DynMetaField::F32(f) => uniform.write_struct_member(f)?,
+                DynMetaField::I32(i) => uniform.write_struct_member(i)?,
             };
         }
         Ok(uniform.write_struct_end()? - UNIFORM_ALIGN as u64)

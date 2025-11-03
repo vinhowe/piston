@@ -1,9 +1,11 @@
 use crate::{rvec, OpGuards, Operation, Shape, StorageView, Strides, Tensor};
 
-#[derive(Debug, derive_new::new, Clone)]
+use ratchet_macros::IrFields;
+
+#[derive(Debug, derive_new::new, Clone, IrFields)]
 pub struct View {
-    src: Tensor,
-    shape: Shape,
+    pub(crate) src: Tensor,
+    pub(crate) shape: Shape,
 }
 
 impl View {
@@ -32,6 +34,7 @@ impl Operation for View {
         Ok(StorageView::new(self.shape.clone(), self.src.dt(), strides))
     }
 
+    #[inline]
     fn srcs(&self) -> crate::RVec<&Tensor> {
         rvec![&self.src]
     }

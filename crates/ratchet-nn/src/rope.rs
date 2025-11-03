@@ -35,8 +35,9 @@ pub struct RotaryInput {
 
 impl Module for RotaryEmbedding {
     type Input = RotaryInput;
+    type Output = Tensor;
 
-    fn schedule(&self, input: Self::Input) -> anyhow::Result<Tensor> {
+    fn schedule(&self, input: Self::Input) -> anyhow::Result<Self::Output> {
         let RotaryInput { input, offset } = input;
         input.rope(self.dim, self.base, offset)
     }

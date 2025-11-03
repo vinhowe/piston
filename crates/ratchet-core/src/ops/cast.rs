@@ -2,7 +2,7 @@ use derive_new::new;
 use encase::ShaderType;
 use half::f16;
 use inline_wgsl::wgsl;
-use ratchet_macros::WgslMetadata;
+use ratchet_macros::{IrFields, WgslMetadata};
 
 use crate::{
     gpu::BindGroupLayoutDescriptor, rvec, Array, BindingMode, BuiltIn, DType, GPUOperation, Kernel,
@@ -11,7 +11,7 @@ use crate::{
     WorkgroupSize, Workload,
 };
 
-#[derive(new, Debug, Clone)]
+#[derive(new, Debug, Clone, IrFields)]
 pub struct Cast {
     input: Tensor,
     dst_dt: DType,
@@ -121,6 +121,7 @@ impl Operation for Cast {
         Ok(StorageView::new(shape, self.dst_dt, strides))
     }
 
+    #[inline]
     fn srcs(&self) -> RVec<&Tensor> {
         rvec![&self.input]
     }
@@ -209,6 +210,15 @@ impl Kernel for CastKernels {
             (DType::F16, KernelElement::Vec4) => {
                 self.render::<Vec4<f16>>(inplace, dst, workgroup_size)
             }
+            (DType::I32, KernelElement::Scalar) => {
+                self.render::<Scalar<i32>>(inplace, dst, workgroup_size)
+            }
+            (DType::I32, KernelElement::Vec2) => {
+                self.render::<Vec2<i32>>(inplace, dst, workgroup_size)
+            }
+            (DType::I32, KernelElement::Vec4) => {
+                self.render::<Vec4<i32>>(inplace, dst, workgroup_size)
+            }
             _ => unimplemented!("Cannot cast {:?} -> {:?}", inner.input.dt(), inner.dst_dt),
         }
     }
@@ -251,11 +261,11 @@ def cast(a):
             return Ok(());
         }
         let CastProblem { dst_dt, B, M, N } = prob;
-        let input = Tensor::randn::<f32>(shape![B, M, N], Device::CPU);
+        let input = Tensor::randn::<f32>(0., 1., shape![B, M, N], Device::CPU);
         let ground = ground_truth(&input, dst_dt)?;
 
         let input = input.to(&device)?;
-        let casted = input.cast(dst_dt)?.resolve()?;
+        let casted = input.cast(dst_dt)?;
 
         let casted = casted.to(&Device::CPU)?;
         match dst_dt {

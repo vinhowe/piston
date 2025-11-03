@@ -3,6 +3,7 @@ use half::f16;
 
 use crate::{storage::DeviceStorage, DType, Device, DeviceError, GPUBuffer, Shape, TensorDType};
 
+use maybe_async::maybe_async;
 use std::{alloc::Layout, fmt::Debug, mem::MaybeUninit, sync::Arc};
 
 #[derive(derive_new::new, Debug, PartialEq, Eq)]
@@ -104,6 +105,18 @@ impl CPUBuffer {
         Self::new(raw)
     }
 
+    pub fn ones<T: TensorDType>(shape: &Shape) -> Self {
+        match T::dt() {
+            DType::Q8_0H(_) => Self::from_slice(&vec![1u8; shape.numel()], shape),
+            DType::Q8_0F(_) => Self::from_slice(&vec![1u8; shape.numel()], shape),
+            DType::F16 => Self::from_slice(&vec![f16::from_f32(1.0); shape.numel()], shape),
+            DType::I32 => Self::from_slice(&vec![1i32; shape.numel()], shape),
+            DType::F32 => Self::from_slice(&vec![1.0f32; shape.numel()], shape),
+            DType::U32 => Self::from_slice(&vec![1u32; shape.numel()], shape),
+            _ => unimplemented!("Unable to create ones for {:?}", T::dt()),
+        }
+    }
+
     pub fn from_disk<T: TensorDType, R: std::io::BufRead + std::io::Seek>(
         reader: &mut R,
         shape: &Shape,
@@ -117,7 +130,9 @@ impl CPUBuffer {
         let buf_slice =
             unsafe { std::slice::from_raw_parts_mut(buf.as_mut_ptr() as *mut u8, n_bytes) };
         reader.read_exact(buf_slice).unwrap();
-        let buf = unsafe { std::mem::transmute::<_, Vec<u8>>(buf) };
+        let buf = unsafe {
+            std::mem::transmute::<std::vec::Vec<std::mem::MaybeUninit<u8>>, std::vec::Vec<u8>>(buf)
+        };
         Ok(Self::from_bytes(&buf, dt.size_of()))
     }
 
@@ -145,7 +160,7 @@ impl CPUBuffer {
     }
 }
 
-#[cfg_attr(target_arch = "wasm32", async_trait::async_trait)]
+#[maybe_async]
 impl DeviceStorage for CPUBuffer {
     fn to_device(&self, device: &Device) -> Result<GPUBuffer, DeviceError> {
         let gpu_device = device.try_gpu()?;
@@ -154,13 +169,7 @@ impl DeviceStorage for CPUBuffer {
         Ok(GPUBuffer::from_bytes(bytes, layout.align(), gpu_device))
     }
 
-    #[cfg(target_arch = "wasm32")]
     async fn to_cpu(&self, _device: &Device) -> Result<CPUBuffer, DeviceError> {
-        Ok(self.clone())
-    }
-
-    #[cfg(not(target_arch = "wasm32"))]
-    fn to_cpu(&self, _device: &Device) -> Result<CPUBuffer, DeviceError> {
         Ok(self.clone())
     }
 

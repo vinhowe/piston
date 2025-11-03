@@ -13,8 +13,9 @@ use crate::{
 };
 use derive_new::new;
 use inline_wgsl::wgsl;
+use ratchet_macros::IrFields;
 
-#[derive(new, Debug, Clone)]
+#[derive(new, Debug, Clone, IrFields)]
 pub struct Norm {
     pub(crate) input: Tensor,
     pub(crate) scale: Tensor,
@@ -61,6 +62,7 @@ impl Operation for NormOp {
         Ok(input.storage_view().clone())
     }
 
+    #[inline]
     fn srcs(&self) -> RVec<&Tensor> {
         match self {
             NormOp::LayerNorm(Norm {
@@ -83,7 +85,7 @@ impl Operation for NormOp {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, IrFields)]
 pub enum NormOp {
     LayerNorm(Norm),
     RMSNorm(Norm),
@@ -441,11 +443,11 @@ def manual_rms_norm(input, scale):
 
     fn run_norm_trial(device: &Device, problem: NormProblem) -> anyhow::Result<()> {
         let NormProblem { var, B, M, N } = problem;
-        let input = Tensor::randn::<f32>(shape![B, M, N], Device::CPU);
-        let scale = Tensor::randn::<f32>(shape![N], Device::CPU);
+        let input = Tensor::randn::<f32>(0., 1., shape![B, M, N], Device::CPU);
+        let scale = Tensor::randn::<f32>(0., 1., shape![N], Device::CPU);
 
         let bias = match var {
-            NormVariant::LayerNorm => Some(Tensor::randn::<f32>(shape![N], Device::CPU)),
+            NormVariant::LayerNorm => Some(Tensor::randn::<f32>(0., 1., shape![N], Device::CPU)),
             NormVariant::RMSNorm => None,
         };
 
@@ -459,8 +461,8 @@ def manual_rms_norm(input, scale):
         let bias_gpu = bias.map(|b| b.to(device)).transpose()?;
 
         let result = match var {
-            NormVariant::LayerNorm => input_gpu.layer_norm(scale_gpu, bias_gpu, 1e-5)?.resolve()?,
-            NormVariant::RMSNorm => input_gpu.rms_norm(scale_gpu, 1e-5)?.resolve()?,
+            NormVariant::LayerNorm => input_gpu.layer_norm(scale_gpu, bias_gpu, 1e-5)?,
+            NormVariant::RMSNorm => input_gpu.rms_norm(scale_gpu, 1e-5)?,
         };
 
         let ours = result.to(&Device::CPU)?;

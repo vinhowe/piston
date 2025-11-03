@@ -1,10 +1,22 @@
 /// Unique identifier for tensors.
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
-pub struct TensorId(usize);
+pub struct TensorId(pub(crate) usize);
 
 impl std::fmt::Debug for TensorId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "T{}", self.0)
+    }
+}
+
+impl Ord for TensorId {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.0.cmp(&other.0)
+    }
+}
+
+impl PartialOrd for TensorId {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
     }
 }
 

@@ -1,14 +1,14 @@
-///WebGPU is very specific about buffer alignment.
-///Since in Ratchet, any buffer may be copied back from GPU -> CPU, all buffers have a size
-///that is a multiple of COPY_BUFFER_ALIGNMENT (4 bytes).
-///
-///However, WebGPU also has more stringent alignment for storage buffer offsets.
-///This is controlled by `min_storage_buffer_offset_alignment` in wgpu::Limits.
-///This defaults to 256
-///
-///For quantized data types in Ratchet, each "segment" of quantized block (mins, scales, qs, zero
-///point etc.) is extracted and put into separate segments. Thus, these segments must be aligned to
-///256.
+//!WebGPU is very specific about buffer alignment.
+//!Since in Ratchet, any buffer may be copied back from GPU -> CPU, all buffers have a size
+//!that is a multiple of COPY_BUFFER_ALIGNMENT (4 bytes).
+//!
+//!However, WebGPU also has more stringent alignment for storage buffer offsets.
+//!This is controlled by `min_storage_buffer_offset_alignment` in wgpu::Limits.
+//!This defaults to 256
+//!
+//!For quantized data types in Ratchet, each "segment" of quantized block (mins, scales, qs, zero
+//!point etc.) is extracted and put into separate segments. Thus, these segments must be aligned to
+//!256.
 
 ///The `Align` trait provides methods to calculate the alignment of a usize, and to align a usize
 pub trait Align {

@@ -8,7 +8,7 @@ use npyz::{DType as NpyDType, TypeStr};
 use std::{cmp::max, num::NonZeroU64};
 use wgpu::{BufferAddress, BufferSize};
 
-#[derive(Debug, Copy, Clone, PartialEq, Default)]
+#[derive(Debug, Copy, Clone, PartialEq, Default, Hash)]
 pub enum DType {
     F16,
     BF16,

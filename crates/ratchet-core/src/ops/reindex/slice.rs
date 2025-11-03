@@ -1,5 +1,5 @@
 use encase::ShaderType;
-use ratchet_macros::WgslMetadata;
+use ratchet_macros::{IrFields, WgslMetadata};
 
 use crate::{prelude::*, OpGuards, OperationError, StorageView, Strides};
 use crate::{Operation, RVec};
@@ -19,10 +19,10 @@ pub struct SliceMeta {
 /// # Slice
 ///
 /// This is a temporary, user hostile implementation.
-#[derive(derive_new::new, Debug, Clone)]
+#[derive(derive_new::new, Debug, Clone, IrFields)]
 pub struct Slice {
     pub src: Tensor,
-    indices: RVec<Range<usize>>,
+    pub indices: RVec<Range<usize>>,
 }
 
 impl Slice {
@@ -134,7 +134,7 @@ mod tests {
                         let indices = sub_slices.into_iter().map(|sub| sub.0).collect();
                         SliceProblem {
                             op: Slice::new(
-                                Tensor::randn::<f32>(shape.clone(), Device::CPU),
+                                Tensor::randn::<f32>(0., 1., shape.clone(), Device::CPU),
                                 indices,
                             ),
                         }
@@ -165,7 +165,7 @@ def slice(a):
 
         let a_gpu = a.to(&device)?;
         let ground = ground_truth(&a, &op.as_torch())?;
-        let ours = a_gpu.slice(&op.indices)?.resolve()?;
+        let ours = a_gpu.slice(&op.indices)?;
         let d_gpu = ours.to(&Device::CPU)?;
         ground.all_close(&d_gpu, 1e-5, 1e-5)?;
         Ok(())

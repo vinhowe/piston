@@ -7,6 +7,7 @@ use broadcast::BroadcastMeta;
 use half::f16;
 pub use permute::Permute;
 use permute::PermuteMeta;
+use ratchet_macros::IrFields;
 pub use slice::Slice;
 
 use derive_new::new;
@@ -21,7 +22,7 @@ use crate::{
 };
 use glam::UVec4;
 
-#[derive(new, Debug, Clone)]
+#[derive(new, Debug, Clone, IrFields)]
 pub enum Reindex {
     Permute(Permute),
     Slice(Slice),
@@ -154,6 +155,9 @@ impl Kernel for ReindexKernels {
             }
             (DType::F16, KernelElement::Scalar) => {
                 self.render::<Scalar<f16>>(inplace, dst, workgroup_size)
+            }
+            (DType::I32, KernelElement::Scalar) => {
+                self.render::<Scalar<i32>>(inplace, dst, workgroup_size)
             }
             _ => Err(OperationError::CompileError(format!(
                 "Unsupported dtype {:?} or kernel element {:?}",
@@ -288,6 +292,7 @@ impl Operation for Reindex {
         }
     }
 
+    #[inline]
     fn srcs(&self) -> RVec<&Tensor> {
         match self {
             Reindex::Permute(p) => p.srcs(),

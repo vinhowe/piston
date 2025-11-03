@@ -2,7 +2,7 @@
 use derive_new::new;
 use encase::ShaderType;
 use half::f16;
-use ratchet_macros::WgslMetadata;
+use ratchet_macros::{IrFields, WgslMetadata};
 
 use crate::{
     gpu::{dtype::WgslDType, BindGroupLayoutDescriptor, WorkgroupCount},
@@ -12,13 +12,13 @@ use crate::{
 };
 use inline_wgsl::wgsl;
 
-#[derive(new, Debug, Clone)]
+#[derive(new, Debug, Clone, IrFields)]
 pub struct Conv {
-    input: Tensor,
-    weight: Tensor,
-    bias: Option<Tensor>,
-    stride: usize,
-    padding: usize,
+    pub input: Tensor,
+    pub weight: Tensor,
+    pub bias: Option<Tensor>,
+    pub stride: usize,
+    pub padding: usize,
     //dilation: usize, TODO: implement dilation
 }
 
@@ -123,6 +123,7 @@ impl KernelRenderable for ConvKernels {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 #[derive(Debug, derive_new::new, ShaderType, WgslMetadata)]
 pub struct ConvMeta {
     stride: u32,
@@ -176,6 +177,7 @@ impl Operation for Conv {
         Ok(StorageView::new(out_shape, input_t.dt(), out_strides))
     }
 
+    #[inline]
     fn srcs(&self) -> RVec<&Tensor> {
         rvec![&self.input, &self.weight, self.bias.as_ref().unwrap()]
     }
@@ -322,19 +324,15 @@ def conv(input, filters, bias, stride, padding):
             Cout,
             stride,
         } = problem;
-        let input = Tensor::randn::<f32>(shape![1, Cin, Lin], Device::CPU);
-        let weight = Tensor::randn::<f32>(shape![Cout, Cin, 3], Device::CPU);
-        let bias = Tensor::randn::<f32>(shape![Cout], Device::CPU);
+        let input = Tensor::randn::<f32>(0., 1., shape![1, Cin, Lin], Device::CPU);
+        let weight = Tensor::randn::<f32>(0., 1., shape![Cout, Cin, 3], Device::CPU);
+        let bias = Tensor::randn::<f32>(0., 1., shape![Cout], Device::CPU);
         let ground = ground_truth(&input, &weight, &bias, stride, 1).unwrap();
 
         let input = input.to(device).unwrap();
         let weight = weight.to(device).unwrap();
         let bias = bias.to(device).unwrap();
-        let ours = input
-            .conv1d(weight, Some(bias), stride, 1)
-            .unwrap()
-            .resolve()
-            .unwrap();
+        let ours = input.conv1d(weight, Some(bias), stride, 1).unwrap();
         let ours = ours.to(&Device::CPU).unwrap();
 
         println!("ours = {:?}", ours);

@@ -130,7 +130,7 @@ pub fn dequantize_inner<Q: Quantized>(quantized: &[u8], elements: usize) -> Vec<
 }
 
 pub fn dequantize(quantized: Tensor) -> Tensor {
-    return match quantized.dt() {
+    match quantized.dt() {
         DType::Q8_0F(_) => {
             let elements = quantized.shape().numel();
             let original_shape = quantized.shape().clone();
@@ -160,7 +160,7 @@ pub fn dequantize(quantized: Tensor) -> Tensor {
             Tensor::from_data(&dequantized, original_shape, Device::CPU)
         }
         dt => panic!("Unsupported dtype {dt}"),
-    };
+    }
 }
 
 #[cfg(test)]
@@ -175,7 +175,7 @@ mod tests {
     where
         Q::FP: std::fmt::Display + num_traits::Float + Default,
     {
-        let ground = Tensor::randn::<Q::FP>(shape![64, 64], Device::CPU);
+        let ground = Tensor::randn::<Q::FP>(0., 1., shape![64, 64], Device::CPU);
         let q = quantize::<Q>(&ground);
         let dq = dequantize(q);
         ground.all_close(&dq, atol, rtol).unwrap();

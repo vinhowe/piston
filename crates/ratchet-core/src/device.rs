@@ -2,6 +2,15 @@ use crate::{
     gpu::{AllocatorError, PoolError, WgpuDevice},
     DType,
 };
+use parking_lot::RwLock;
+use rand::{rngs::StdRng, SeedableRng};
+use std::{
+    env,
+    sync::{Arc, OnceLock},
+};
+
+// Global RNG state
+static DEVICE_RNG: OnceLock<Arc<RwLock<StdRng>>> = OnceLock::new();
 
 #[derive(Clone, Debug, thiserror::Error)]
 pub enum DeviceError {
@@ -34,6 +43,23 @@ pub enum Device {
     GPU(WgpuDevice),
 }
 
+// Helper function to get a seeded RNG based on env var or entropy
+fn get_seeded_rng() -> StdRng {
+    if let Ok(seed_str) = env::var("RATCHET_SEED") {
+        if let Ok(seed) = seed_str.parse::<u64>() {
+            return StdRng::seed_from_u64(seed);
+        }
+    }
+    StdRng::from_entropy()
+}
+
+// Helper to get or initialize the global RNG
+fn get_global_rng() -> Arc<RwLock<StdRng>> {
+    DEVICE_RNG
+        .get_or_init(|| Arc::new(RwLock::new(get_seeded_rng())))
+        .clone()
+}
+
 impl std::fmt::Debug for Device {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -59,8 +85,20 @@ impl Device {
         }
     }
 
+    pub fn set_seed(&self, seed: u64) {
+        *get_global_rng().write() = StdRng::seed_from_u64(seed);
+    }
+
+    pub fn get_rng(&self) -> Arc<RwLock<StdRng>> {
+        // Store Arc in a local variable to extend its lifetime
+        get_global_rng()
+    }
+
     #[cfg(target_arch = "wasm32")]
     pub async fn request_device(request: DeviceRequest) -> Result<Self, DeviceError> {
+        // Initialize global RNG if not already done
+        let _ = get_global_rng();
+
         match request {
             DeviceRequest::CPU => Ok(Device::CPU),
             DeviceRequest::GPU => Ok(Device::GPU(WgpuDevice::new().await?)),
@@ -69,6 +107,9 @@ impl Device {
 
     #[cfg(not(target_arch = "wasm32"))]
     pub fn request_device(request: DeviceRequest) -> Result<Self, DeviceError> {
+        // Initialize global RNG if not already done
+        let _ = get_global_rng();
+
         match request {
             DeviceRequest::CPU => Ok(Device::CPU),
             DeviceRequest::GPU => Ok(Device::GPU(pollster::block_on(async {

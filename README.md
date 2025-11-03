@@ -1,53 +1,17 @@
-<div align="center">
-<img width="550px" height="200px" src="https://github.com/FL33TW00D/ratchet/raw/master/.github/ratchet.png">
-<p><a href="https://huggingface.co/spaces/FL33TW00D-HF/ratchet-whisper">Demo Site</a> | <a href="https://discord.gg/XFe33KQTG4">Discord</a> | <a href="https://github.com/users/FL33TW00D/projects/3">Roadmap</a></p>
 <p align="center">
-A web-first, cross-platform ML developer toolkit
+  <b>For the time being, I don't have instructions on how to run this. You're on your own for a tiny bit :)</b>
+</p>
+
+<div align="center">
+<img width="200px" src="https://github.com/vinhowe/ratchet-backward/raw/master/.github/ratchet.png">
+<p align="center">
+<code>(backward)</code>
 </p>
 <br>
 </div>
 
-We are on a mission to bring fast, cross platform GPU accelerated inference on native + browser.
+This is a fork of [Ratchet](https://github.com/huggingface/ratchet), hacked and butchered to add backpropogation, to show that it is technically possible to train language models in a (WebGPU-enabled) browser.
 
-> [!NOTE]  
-> Ratchet is currently in active development. We are working on the engine, adding more models and improving compatibility. Please, reach out if you'd like to help!
+Currently this project is a proof-of-concept—it is possible to slowly train a small GPT-2-like language model, in Chrome, from scratch, on an M1 Pro MacBook.
 
-## Getting Started
-
-The easiest way to experience Ratchet is to check out our [Hugging Face spaces](https://huggingface.co/FL33TW00D-HF):
-- [Whisper](https://huggingface.co/spaces/FL33TW00D-HF/ratchet-whisper)
-- [Phi](https://huggingface.co/spaces/FL33TW00D-HF/ratchet-phi)
-
-To dig deeper, check out the [examples](https://github.com/FL33TW00D/ratchet/tree/master/examples)
-
-We welcome contributions from the community. If you have any ideas or suggestions, please feel free to open an issue or pull request.
-
-### Javascript
-
-```javascript
-// Asynchronous loading & caching with IndexedDB
-let model = await Model.load(AvailableModels.WHISPER_TINY, Quantization.Q8, (p: number) => setProgress(p))
-let result = await model.run({ input });
-```
-
-### Rust
-
-Rust crate & CLI coming soon...
-
-## Philosophy
-
-We want a toolkit for developers to make integrating performant AI functionality into existing production applications easy.
-The following principles will help us accomplish this:
-1. **Inference only**
-2. **WebGPU/CPU only**
-3. First class quantization support
-4. Lazy computation
-5. Inplace by default
-
-## Supported Models
-- Whisper
-- Phi 2 & 3
-- Moondream
-
-## Upcoming Models
-- Gemini 2 2B
+I picked Ratchet because it is simple enough to reason about, but it thoughtfully supports WebGPU's lazy execution model. Much of my implementation beyond Ratchet is adapted from the [Candle](https://github.com/huggingface/candle) project.

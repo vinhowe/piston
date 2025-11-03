@@ -1,7 +1,7 @@
 use derive_new::new;
 use encase::ShaderType;
 use half::f16;
-use ratchet_macros::WgslMetadata;
+use ratchet_macros::{IrFields, WgslMetadata};
 
 use crate::{
     gpu::{BindGroupLayoutDescriptor, WorkgroupCount},
@@ -11,11 +11,11 @@ use crate::{
 };
 use inline_wgsl::wgsl;
 
-#[derive(new, Debug, Clone)]
+#[derive(new, Debug, Clone, IrFields)]
 pub struct IndexSelect {
-    src: Tensor,
-    indices: Tensor,
-    dim: usize,
+    pub src: Tensor,
+    pub indices: Tensor,
+    pub dim: usize,
 }
 
 impl IndexSelect {
@@ -59,6 +59,7 @@ impl Operation for IndexSelect {
         ))
     }
 
+    #[inline]
     fn srcs(&self) -> RVec<&Tensor> {
         rvec![&self.src, &self.indices]
     }
@@ -329,7 +330,7 @@ def index_select(input, indices):
             input_shape,
             indices,
         } = problem;
-        let mut input = Tensor::randn::<f32>(input_shape, Device::CPU);
+        let mut input = Tensor::randn::<f32>(0., 1., input_shape, Device::CPU);
 
         let ground_truth = ground_truth(&input, &indices, 0).unwrap();
         if quant {
@@ -339,7 +340,7 @@ def index_select(input, indices):
         let input = input.to(&device).unwrap();
         let indices = indices.to(&device).unwrap();
 
-        let result = input.index_select(indices, 0).unwrap().resolve().unwrap();
+        let result = input.index_select(indices, 0).unwrap();
         let x = result.to(&Device::CPU).unwrap();
         println!("X: {:?}", x);
         println!("Ground Truth: {:?}", ground_truth);

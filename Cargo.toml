@@ -5,10 +5,11 @@ members = [
     "crates/ratchet-web",
     "crates/ratchet-loader",
     "crates/ratchet-models",
-    "crates/ratchet-nn", 
-    "crates/ratchet-hub", 
-    "crates/ratchet-cli", 
-    "crates/ratchet-macros", 
+    "crates/ratchet-nn",
+    "crates/ratchet-hub",
+    "crates/ratchet-cli",
+    "crates/ratchet-macros",
+    "crates/ratchet-datasets",
 ]
 resolver = "2"
 edition = "2021"
@@ -20,26 +21,32 @@ debug-assertions = true
 [profile.release]
 panic = 'abort'
 lto = "fat"
-codegen-units = 1 
+codegen-units = 1
 
 [profile.profiling]
 inherits = "release"
 debug = 2
 
 [workspace.dependencies]
-wgpu = { git = "https://github.com/FL33TW00D/wgpu", branch = "feature/multi-dim-compute-subgroups", features = ["fragile-send-sync-non-atomic-wasm"] }
-bytemuck = { version = "1.14.0", features=["wasm_simd", "aarch64_simd", "extern_crate_alloc"] }
+wgpu = { git = "https://github.com/vinhowe/wgpu", branch = "feature/multi-dim-compute-subgroups", features = [
+    "fragile-send-sync-non-atomic-wasm",
+] }
+bytemuck = { version = "1.14.0", features = [
+    "wasm_simd",
+    "aarch64_simd",
+    "extern_crate_alloc",
+] }
 num-traits = "0.2.17"
 half = { version = "2.3.1", features = ["num-traits", "bytemuck"] }
 derive-new = "0.6.0"
 log = "0.4.20"
 thiserror = "1.0.56"
 byteorder = "1.5.0"
-npyz = { version = "0.8.3"}
+npyz = { version = "0.8.3" }
 hf-hub = "0.3.2"
 serde = "1.0"
 anyhow = "1.0.79"
-tokenizers = "0.19.1" 
+tokenizers = "0.19.1"
 
 js-sys = "0.3.64"
 wasm-bindgen = "0.2.91"
@@ -58,7 +65,10 @@ glam = "0.28.0"
 globwalk = "0.8.1"
 gloo-net = { version = "0.5.0", default-features = false }
 hound = "3.5.1"
-image = { version = "0.25.1", default-features = false, features = ["jpeg", "png"] }
+image = { version = "0.25.1", default-features = false, features = [
+    "jpeg",
+    "png",
+] }
 indexed_db_futures = "0.4.1"
 itertools = "0.12.1"
 lazy_static = "1.4.0"
@@ -66,7 +76,7 @@ ndarray = "0.15.6"
 ndarray-stats = "0.5.1"
 num = "0.4.1"
 numpy = "0.20.0"
-parking_lot = "0.12.1"
+parking_lot = { version = "0.12.1", features = ["send_guard"] }
 pathdiff = "0.2.1"
 pollster = "0.3.0"
 proptest = "1.4.0"
@@ -76,6 +86,7 @@ rand_distr = "0.4.3"
 realfft = "3.3.0"
 regex = "1.10.3"
 rustc-hash = "1.1.0"
+safetensors = "0.4.1"
 serde-wasm-bindgen = "0.6.5"
 serde_bytes = "0.11.14"
 serde_json = "1.0.114"
@@ -93,3 +104,7 @@ wasm-bindgen-futures = "0.4.42"
 web-sys = "0.3.69"
 web-time = "1.0.0"
 futures-intrusive = "0.5.0"
+memmap2 = "0.9.5"
+maybe-async = "0.2"
+async-trait = "0.1.77"
+bitvec = { version = "1", default-features = false, features = ["alloc"] }

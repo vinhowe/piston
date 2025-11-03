@@ -2,6 +2,7 @@ use derive_new::new;
 use glam::UVec4;
 use half::f16;
 use inline_wgsl::wgsl;
+use ratchet_macros::IrFields;
 
 use crate::{
     gpu::BindGroupLayoutDescriptor, rvec, Array, BindingMode, BuiltIn, DType, DynKernelMetadata,
@@ -10,11 +11,13 @@ use crate::{
     WgslKernelBuilder, WgslPrimitive, WorkgroupSize, Workload,
 };
 
-#[derive(new, Debug, Clone)]
+#[derive(new, Debug, Clone, IrFields)]
 pub struct Concat {
     pub inputs: RVec<Tensor>,
     pub dim: usize,
 }
+
+const MAX_INPUTS: usize = 8;
 
 impl Concat {
     pub fn inputs(&self) -> &[Tensor] {
@@ -122,6 +125,7 @@ impl Operation for Concat {
         Ok(StorageView::new(output_shape, first.dt(), output_strides))
     }
 
+    #[inline]
     fn srcs(&self) -> RVec<&Tensor> {
         self.inputs.iter().collect()
     }
@@ -130,7 +134,7 @@ impl Operation for Concat {
 impl OpGuards for Concat {
     fn check_shapes(&self) {
         assert!(self.inputs.len() > 1);
-        assert!(self.inputs.len() <= 8); //We only generate kernels for up to 8 inputs
+        assert!(self.inputs.len() <= MAX_INPUTS); //We only generate kernels for up to 8 inputs
         let first = &self.inputs[0];
         assert!(self
             .inputs
@@ -253,6 +257,15 @@ impl Kernel for ConcatKernels {
             (DType::F16, KernelElement::Vec4) => {
                 self.render::<Vec4<f16>>(inplace, dst, workgroup_size)
             }
+            (DType::I32, KernelElement::Scalar) => {
+                self.render::<Scalar<i32>>(inplace, dst, workgroup_size)
+            }
+            (DType::I32, KernelElement::Vec2) => {
+                self.render::<Vec2<i32>>(inplace, dst, workgroup_size)
+            }
+            (DType::I32, KernelElement::Vec4) => {
+                self.render::<Vec4<i32>>(inplace, dst, workgroup_size)
+            }
             _ => Err(OperationError::CompileError(format!(
                 "Unsupported dtype {:?} or kernel element {:?}",
                 dst.dt(),
@@ -309,7 +322,7 @@ def permute(*tensors):
             t.to(&device)?;
         }
         let t_rvec = RVec::from(tensors);
-        let ours = Tensor::cat(t_rvec, dim)?.resolve()?;
+        let ours = Tensor::cat(t_rvec, dim)?;
         let result = ours.to(&Device::CPU)?;
         println!("Ground: {:?}\n", ground);
         println!("Ours: {:?}", result);
@@ -319,11 +332,11 @@ def permute(*tensors):
 
     #[test]
     fn test_concat_gpu() {
-        let t0 = Tensor::randn::<f32>(shape![4, 2, 50, 128], Device::CPU);
-        let t1 = Tensor::randn::<f32>(shape![4, 2, 13, 128], Device::CPU);
-        let t2 = Tensor::randn::<f32>(shape![4, 2, 77, 128], Device::CPU);
-        let t3 = Tensor::randn::<f32>(shape![4, 2, 55, 128], Device::CPU);
-        let t4 = Tensor::randn::<f32>(shape![4, 2, 11, 128], Device::CPU);
+        let t0 = Tensor::randn::<f32>(0., 1., shape![4, 2, 50, 128], Device::CPU);
+        let t1 = Tensor::randn::<f32>(0., 1., shape![4, 2, 13, 128], Device::CPU);
+        let t2 = Tensor::randn::<f32>(0., 1., shape![4, 2, 77, 128], Device::CPU);
+        let t3 = Tensor::randn::<f32>(0., 1., shape![4, 2, 55, 128], Device::CPU);
+        let t4 = Tensor::randn::<f32>(0., 1., shape![4, 2, 11, 128], Device::CPU);
 
         let dim = 2;
         let device = Device::request_device(DeviceRequest::GPU).unwrap();
@@ -339,11 +352,11 @@ def permute(*tensors):
 
     #[test]
     fn test_concat_cpu() {
-        let t0 = Tensor::randn::<f32>(shape![4, 2, 50, 128], Device::CPU);
-        let t1 = Tensor::randn::<f32>(shape![4, 2, 13, 128], Device::CPU);
-        let t2 = Tensor::randn::<f32>(shape![4, 2, 77, 128], Device::CPU);
-        let t3 = Tensor::randn::<f32>(shape![4, 2, 55, 128], Device::CPU);
-        let t4 = Tensor::randn::<f32>(shape![4, 2, 11, 128], Device::CPU);
+        let t0 = Tensor::randn::<f32>(0., 1., shape![4, 2, 50, 128], Device::CPU);
+        let t1 = Tensor::randn::<f32>(0., 1., shape![4, 2, 13, 128], Device::CPU);
+        let t2 = Tensor::randn::<f32>(0., 1., shape![4, 2, 77, 128], Device::CPU);
+        let t3 = Tensor::randn::<f32>(0., 1., shape![4, 2, 55, 128], Device::CPU);
+        let t4 = Tensor::randn::<f32>(0., 1., shape![4, 2, 11, 128], Device::CPU);
 
         let dim = 2;
         let device = Device::request_device(DeviceRequest::CPU).unwrap();

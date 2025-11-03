@@ -7,6 +7,7 @@ use crate::{rvec, Align, BufferSegment, DType, RVec, TensorDType};
 use derive_new::new;
 use half::f16;
 use num_traits::{AsPrimitive, Float, FromPrimitive, NumAssign};
+use std::hash::{Hash, Hasher};
 
 /// # Bindings
 ///
@@ -81,6 +82,16 @@ where
     }
 }
 
+macro_rules! impl_hash_q {
+    ($type:ty) => {
+        impl Hash for $type {
+            fn hash<H: Hasher>(&self, state: &mut H) {
+                self.0 .0.hash(state);
+            }
+        }
+    };
+}
+
 //We make these unit types for the sake of type safety.
 #[derive(Debug, Copy, Clone, PartialEq, Default)]
 pub struct Q8_0F(Q8_0<f32>);
@@ -91,6 +102,8 @@ impl Segments for Q8_0F {
     }
 }
 
+impl_hash_q!(Q8_0F);
+
 #[derive(Debug, Copy, Clone, PartialEq, Default)]
 pub struct Q8_0H(Q8_0<f16>);
 
@@ -99,6 +112,8 @@ impl Segments for Q8_0H {
         self.0.segments(numel)
     }
 }
+
+impl_hash_q!(Q8_0H);
 
 // ================== Q4 ==================
 #[derive(Debug, Clone, PartialEq)]
@@ -164,6 +179,9 @@ impl Segments for Q4_KH {
         self.0.segments(numel)
     }
 }
+
+impl_hash_q!(Q4_KH);
+impl_hash_q!(Q4_KF);
 
 pub trait Quantized {
     type FP: TensorDType + Float + NumAssign + AsPrimitive<i32> + FromPrimitive + Copy + PartialEq;

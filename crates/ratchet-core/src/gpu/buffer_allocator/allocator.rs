@@ -4,11 +4,12 @@ use crate::{
         BufferDescriptor, BufferPool, BufferUsagesExt, CpuUniform, GpuBufferHandle,
         PooledGPUBuffer, TensorUsageRecords, WgpuDevice, UNIFORM_ALIGN,
     },
-    DeviceError, Tensor, TensorId,
+    DeviceError, GpuCompileKey, Tensor, TensorId,
 };
+use crate::{HashMap, LazyOp};
 use parking_lot::RwLock;
-use rustc_hash::FxHashMap;
-use std::{borrow::Cow, sync::Arc};
+use std::num::NonZero;
+use std::{borrow::Cow, collections::BTreeMap};
 use wgpu::BufferUsages;
 
 #[derive(Clone, Debug, thiserror::Error)]
@@ -66,10 +67,17 @@ impl BufferAllocator {
             contents
         };
 
-        let buf = self.pool.write().get_or_create(desc, device, true);
-        device.queue().write_buffer(&buf.inner, 0, &contents);
-        device.queue().submit(None);
-        device.poll(wgpu::Maintain::Wait);
+        let buf = self.pool.write().get_or_create(desc, device, false);
+        let mut buffer_view = device.queue().write_buffer_with(
+            &buf.inner,
+            0,
+            NonZero::try_from(contents.len() as u64).unwrap(),
+        );
+        buffer_view
+            .as_mut()
+            .unwrap()
+            .copy_from_slice(contents.as_ref());
+        drop(buffer_view);
         buf
     }
 
@@ -85,10 +93,17 @@ impl BufferAllocator {
             false,
         );
 
-        let resource = self.pool.write().get_or_create(&desc, device, true);
-        device
-            .queue()
-            .write_buffer(&resource.inner, 0, uniform.as_slice());
+        let resource = self.pool.write().get_or_create(&desc, device, false);
+        let mut buffer_view = device.queue().write_buffer_with(
+            &resource.inner,
+            0,
+            NonZero::try_from(uniform.len() as u64).unwrap(),
+        );
+        buffer_view
+            .as_mut()
+            .unwrap()
+            .copy_from_slice(uniform.as_slice());
+        drop(buffer_view);
         resource
     }
 
@@ -111,7 +126,7 @@ impl BufferAllocator {
             if current_size >= required_size {
                 let size_diff = usize::abs_diff(current_size, required_size);
 
-                if closest_size_diff.map_or(true, |diff| size_diff < diff) {
+                if closest_size_diff.is_none_or(|diff| size_diff < diff) {
                     closest_index = Some(idx);
                     closest_size_diff = Some(size_diff);
                 }
@@ -124,7 +139,7 @@ impl BufferAllocator {
 
         match closest_index {
             Some(idx) => free.remove(idx),
-            None => self.create_buffer(&descriptor, device, true),
+            None => self.create_buffer(&descriptor, device, false),
         }
     }
 
@@ -138,26 +153,62 @@ impl BufferAllocator {
     /// 2. If the operation has an inplace kernel available
     /// 3. If our PARENT (i.e the buffer we are about to apply an operation to) has multiple consumers
     ///    if it has multiple consumers, you can't inplace
-    fn determine_tensor_source(source: &Tensor) -> &Tensor {
-        let mut true_source = source;
+    fn determine_tensor_source<'a>(
+        source: &'a Tensor,
+        gpu_compile_keys: &HashMap<TensorId, GpuCompileKey>,
+    ) -> &'a Tensor {
+        let old_source_id = source.id();
+        let mut candidate = source;
+        log::trace!("Determining source for {:?}", old_source_id);
+
+        // If we start on a view, we need to iterate unconditionally
+        // until we find a non-view operation
+        while let LazyOp::View(_) = candidate.op() {
+            log::trace!("Stepping through view: {:?}", candidate.id());
+            candidate = candidate.op().srcs().first().unwrap();
+        }
+
+        let mut true_source = candidate;
+
         loop {
-            if true_source.op().srcs().is_empty() || !true_source.op().supports_inplace() {
+            if candidate.op().srcs().is_empty()
+                || !true_source.op().supports_inplace()
+                || candidate.is_variable()
+            {
                 //If no sources, we are at the root
                 //Or if the operation doesn't support inplace
                 break;
             }
             //TODO: operations should define their "inplace" source
             //doesn't necessarily have to be the zeroth
-            let to_modify = true_source.op().srcs()[0];
-            if Arc::strong_count(&to_modify.inner) > 1 {
-                //If the source has multiple consumers, we can't inplace
-                //so we break here
+            let to_modify = candidate.op().srcs()[0];
+            log::trace!("To modify source: {:?}", to_modify.id());
+
+            if gpu_compile_keys
+                .get(&candidate.id())
+                .map(|key| !key.can_inplace())
+                .unwrap_or_else(|| !matches!(candidate.op(), LazyOp::View(_)))
+            {
                 break;
             }
-
-            true_source = to_modify;
+            if !matches!(to_modify.op(), LazyOp::View(_)) {
+                log::trace!("Found non-view source: {:?}", to_modify.id());
+                true_source = to_modify;
+            }
+            candidate = to_modify;
+            log::trace!("Candidate: {:?}", candidate.id());
         }
-        log::trace!("Traversed to true source: {:?}", true_source.id());
+
+        // If true source is a view, panic
+        if let LazyOp::View(_) = true_source.op() {
+            log::warn!("True source is a view: {:?}", true_source.id());
+        }
+
+        log::trace!(
+            "Traversed {:?} to true source: {:?}",
+            old_source_id,
+            true_source.id()
+        );
         true_source
     }
 
@@ -167,26 +218,28 @@ impl BufferAllocator {
     //3. When we encounter the producer of a tensor, we stop recording the interval.
     fn calculate_usage_records(
         execution_order: &[&Tensor],
-    ) -> FxHashMap<TensorId, TensorUsageRecord> {
+        gpu_compile_keys: &HashMap<TensorId, GpuCompileKey>,
+    ) -> HashMap<TensorId, TensorUsageRecord> {
         let mut records =
-            FxHashMap::with_capacity_and_hasher(execution_order.len(), Default::default());
+            HashMap::with_capacity_and_hasher(execution_order.len(), Default::default());
         let topo_len = execution_order.len() - 1;
         for (iter, t) in execution_order.iter().rev().enumerate() {
             if t.resolved() {
                 continue;
             }
+
             for source in t.op().srcs() {
                 if source.resolved() {
                     continue;
                 }
-                let true_source = Self::determine_tensor_source(source);
+                let true_source = Self::determine_tensor_source(source, gpu_compile_keys);
                 records
                     .entry(true_source.id())
                     .or_insert_with(|| TensorUsageRecord {
                         id: None,
                         producer: None,
+                        is_variable: None,
                         last_consumer: topo_len - iter,
-                        #[cfg(debug_assertions)]
                         last_consumer_id: t.id(),
                         size: true_source.num_bytes(),
                     });
@@ -195,6 +248,7 @@ impl BufferAllocator {
             if let Some(record) = records.get_mut(&t.id()) {
                 record.id = Some(t.id());
                 record.producer = Some(topo_len - iter);
+                record.is_variable = Some(t.is_variable());
             }
         }
 
@@ -209,30 +263,44 @@ impl BufferAllocator {
     pub fn greedy_by_size(
         &self,
         execution_order: &[&Tensor],
-        assignments: &mut FxHashMap<TensorId, PooledGPUBuffer>,
+        output_tensors: &BTreeMap<TensorId, &Tensor>,
+        assignments: &mut HashMap<TensorId, PooledGPUBuffer>,
+        gpu_compile_keys: &HashMap<TensorId, GpuCompileKey>,
+        use_shared_buffers: bool,
         device: &WgpuDevice,
     ) -> Result<(), DeviceError> {
-        let record_map = Self::calculate_usage_records(execution_order);
+        let record_map = Self::calculate_usage_records(execution_order, gpu_compile_keys);
         let records = TensorUsageRecords::from(record_map);
         let mut shared_objects: Vec<PooledGPUBuffer> = Vec::with_capacity(records.0.len());
 
         for record in records.0.iter() {
-            let record_producer = record.producer.unwrap();
+            let should_be_shared = use_shared_buffers
+                && !(record.is_variable.unwrap_or(false)
+                    || output_tensors.get(&record.last_consumer_id).is_some());
+
             let mut best_obj = None;
-            for obj in shared_objects.iter() {
-                let mut suitable = true;
-                for inner_r in records.0.iter() {
-                    let max_first = std::cmp::max(record_producer, inner_r.producer.unwrap());
-                    let min_last = std::cmp::min(record.last_consumer, inner_r.last_consumer);
-                    if max_first <= min_last && assignments.get(&inner_r.id.unwrap()) == Some(obj) {
-                        suitable = false;
-                        break;
+
+            if should_be_shared {
+                let record_producer = record.producer.unwrap();
+                for obj in shared_objects.iter() {
+                    let mut suitable = true;
+                    for inner_r in records.0.iter() {
+                        let max_first = std::cmp::max(record_producer, inner_r.producer.unwrap());
+                        let min_last = std::cmp::min(record.last_consumer, inner_r.last_consumer);
+                        if max_first <= min_last
+                            && assignments.get(&inner_r.id.unwrap()) == Some(obj)
+                        {
+                            suitable = false;
+                            break;
+                        }
+                    }
+                    if suitable {
+                        // log::debug!("Suitable for {:?}: {:?}", record.id.unwrap(), obj);
+                        best_obj = Some(obj);
                     }
                 }
-                if suitable {
-                    best_obj = Some(obj);
-                }
             }
+
             if let Some(obj) = best_obj {
                 assignments.insert(record.id.unwrap(), (*obj).clone());
             } else {
@@ -243,7 +311,9 @@ impl BufferAllocator {
                     device,
                     false,
                 );
-                shared_objects.push(buf.clone());
+                if should_be_shared {
+                    shared_objects.push(buf.clone());
+                }
                 assignments.insert(record.id.unwrap(), buf);
             }
         }
@@ -254,7 +324,7 @@ impl BufferAllocator {
                 continue;
             }
             for source in t.op().srcs() {
-                let true_source = Self::determine_tensor_source(source);
+                let true_source = Self::determine_tensor_source(source, gpu_compile_keys);
                 if true_source.id() != source.id() {
                     if let Some(buf) = assignments.get(&true_source.id()) {
                         assignments.insert(source.id(), buf.clone());
@@ -265,8 +335,8 @@ impl BufferAllocator {
 
         //We use `immediate` = false here in create_buffer
         //and submit the queue after all allocations are done.
-        device.queue().submit(None);
-        device.poll(wgpu::Maintain::Wait);
+        // device.queue().submit(None);
+        // device.poll(wgpu::Maintain::Wait);
         Ok(())
     }
 
@@ -283,11 +353,14 @@ impl BufferAllocator {
     pub fn allocate_cfg(
         &self,
         execution_order: &[&Tensor],
+        output_tensors: &BTreeMap<TensorId, &Tensor>,
+        gpu_compile_keys: &HashMap<TensorId, GpuCompileKey>,
+        use_shared_buffers: bool,
         device: &WgpuDevice,
-    ) -> Result<FxHashMap<TensorId, PooledGPUBuffer>, DeviceError> {
+    ) -> Result<HashMap<TensorId, PooledGPUBuffer>, DeviceError> {
         let mut free = Vec::with_capacity(execution_order.len()); //TODO: switch to BTreeMap
         let mut assignments =
-            FxHashMap::with_capacity_and_hasher(execution_order.len(), Default::default());
+            HashMap::with_capacity_and_hasher(execution_order.len(), Default::default());
         //Assignments already needs all of the constants in it.
         for t in execution_order.iter().rev().filter(|t| t.resolved()) {
             //Consts are immediately resolved
@@ -302,30 +375,59 @@ impl BufferAllocator {
         }
 
         //Allocate intermediates
-        self.greedy_by_size(execution_order, &mut assignments, device)?;
+        self.greedy_by_size(
+            execution_order,
+            output_tensors,
+            &mut assignments,
+            gpu_compile_keys,
+            use_shared_buffers,
+            device,
+        )?;
 
-        //The output tensor is a special case.
+        //The output tensors are a special case.
         //We know we need an allocation for the output.
         //We traverse upwards until we find the first non-inplace operation, and use it's buffer.
         //It's also handy to treat output as different, as we can handle getting data back to CPU
         //more efficiently in future.
-        let output = execution_order.last().unwrap();
-        let output_source = Self::determine_tensor_source(output);
-        let output_buffer = assignments
-            .get(&output_source.id())
-            .cloned()
-            .unwrap_or_else(|| {
-                self.graph_allocate(
-                    BufferDescriptor::new(
-                        output_source.num_bytes() as _,
-                        BufferUsages::standard(),
-                        false,
-                    ),
-                    &mut free,
-                    device,
-                )
-            });
-        assignments.insert(output.id(), output_buffer);
+        for output in output_tensors.values() {
+            log::debug!("Allocating output: {:?}", output.id());
+            let output_source = Self::determine_tensor_source(output, gpu_compile_keys);
+            let output_buffer = assignments
+                .get(&output_source.id())
+                .cloned()
+                .unwrap_or_else(|| {
+                    self.graph_allocate(
+                        BufferDescriptor::new(
+                            output_source.num_bytes() as _,
+                            BufferUsages::standard(),
+                            false,
+                        ),
+                        &mut free,
+                        device,
+                    )
+                });
+            assignments.insert(output.id(), output_buffer);
+        }
+
+        #[cfg(debug_assertions)]
+        {
+            let mut output_allocations = BTreeMap::new();
+            for t in execution_order.iter() {
+                if let Some(allocation) = assignments.get(&t.id()) {
+                    if output_tensors.contains_key(&t.id()) {
+                        output_allocations.insert(allocation.global_id(), t.id());
+                    } else if let Some(output_id) = output_allocations.get(&allocation.global_id())
+                    {
+                        panic!(
+                            "Allocation {:?} used by output tensor {:?} was reused by tensor {:?}",
+                            allocation.global_id(),
+                            output_id,
+                            t.id()
+                        );
+                    }
+                }
+            }
+        }
 
         log::debug!(
             "Total bytes allocated: {}kb",
@@ -337,5 +439,9 @@ impl BufferAllocator {
         );
 
         Ok(assignments)
+    }
+
+    pub fn usage_bytes(&self) -> u64 {
+        self.pool.read().total_gpu_size_in_bytes()
     }
 }
