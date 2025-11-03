@@ -1,0 +1,129 @@
+{
+  "name": "@piston-ml/piston-web",
+  "version": "0.0.0",
+  "homepage": "https://piston.vin.how",
+  "type": "module",
+  "main": "./dist/piston.module.mjs",
+  "module": "./dist/piston.module.mjs",
+  "types": "./dist/types/index.d.ts",
+  "source": "src/index.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/types/index.d.ts",
+      "browser": "./dist/browser.module.mjs",
+      "import": "./dist/piston.module.mjs",
+      "default": "./dist/piston.module.mjs"
+    }
+  },
+  "sideEffects": false,
+  "files": [
+    "dist"
+  ],
+  "author": "Vin Howe <vin@vin.how>",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/vinhowe/piston.git"
+  },
+  "bugs": {
+    "url": "https://github.com/vinhowe/piston/issues"
+  },
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "scripts": {
+    "build:grammar": "lezer-generator src/cql/cql.grammar -o src/cql/lezer-parser.ts",
+    "build:node": "rollup --config rollup.config.ts -i src/index.ts --configPlugin typescript",
+    "build:browser": "rollup --config rollup.config.ts -i src/browser.ts --configPlugin typescript",
+    "build": "npm run build:grammar && rollup --config rollup.config.ts --configPlugin typescript",
+    "format": "prettier --write '{src,test}/**/**.ts'",
+    "lint": "eslint src/**/*.ts --ext .js,.ts",
+    "prebuild": "rimraf dist",
+    "release": "npm run build && np && npx jsr publish",
+    "postversion": "node ./jsr.release.js",
+    "start": "rollup --config rollup.config.ts -w --configPlugin typescript",
+    "test": "npm run build:grammar && vitest run",
+    "test:ui": "npm run build:grammar && vitest --ui",
+    "test:watch": "npm run build:grammar && vitest",
+    "test:browser": "npm run build:grammar && vitest --browser",
+    "test:prod": "npm run lint && npm run build:grammar && vitest run --coverage"
+  },
+  "lint-staged": {
+    "{src,test}/**/**.ts": [
+      "eslint"
+    ]
+  },
+  "config": {
+    "commitizen": {
+      "path": "node_modules/cz-conventional-changelog"
+    }
+  },
+  "commitlint": {
+    "extends": [
+      "@commitlint/config-conventional"
+    ]
+  },
+  "dependencies": {
+    "@codemirror/autocomplete": "^6.19.1",
+    "@codemirror/language": "^6.11.1",
+    "@codemirror/lint": "^6.8.5",
+    "@codemirror/state": "^6.5.2",
+    "@codemirror/view": "^6.37.2",
+    "@huggingface/jinja": "^0.5.1",
+    "@lezer/highlight": "^1.2.3",
+    "@lezer/javascript": "^1.5.4",
+    "@piston-ml/piston-web-wasm": "link:../../target/pkg/piston-web",
+    "codemirror": "^6.0.1",
+    "random-js": "^2.1.0"
+  },
+  "devDependencies": {
+    "@commitlint/cli": "^19.8.0",
+    "@commitlint/config-conventional": "^19.8.0",
+    "@eslint/js": "^9.31.0",
+    "@lezer/common": "^1.3.0",
+    "@lezer/generator": "^1.8.0",
+    "@lezer/lr": "^1.4.2",
+    "@rollup/plugin-alias": "^5.1.1",
+    "@rollup/plugin-commonjs": "^28.0.3",
+    "@rollup/plugin-node-resolve": "^16.0.1",
+    "@rollup/plugin-terser": "^0.4.4",
+    "@rollup/plugin-typescript": "^12.1.2",
+    "@rollup/plugin-wasm": "^6.2.2",
+    "@types/node": "^22.15.21",
+    "@typescript-eslint/eslint-plugin": "^8.26.1",
+    "@typescript-eslint/parser": "^8.26.1",
+    "@vitest/browser": "^3.1.4",
+    "@vitest/browser-playwright": "^4.0.6",
+    "@vitest/ui": "^3.1.4",
+    "commitizen": "^4.3.0",
+    "coveralls": "^3.1.1",
+    "cross-env": "^7.0.3",
+    "cz-conventional-changelog": "^3.3.0",
+    "eslint": "^9.22.0",
+    "eslint-config-prettier": "^10.1.1",
+    "eslint-plugin-perfectionist": "^4.10.1",
+    "eslint-plugin-prettier": "^5.2.3",
+    "globals": "^15.14.0",
+    "husky": "^9.1.7",
+    "lint-staged": "^15.5.0",
+    "microbundle": "^0.15.1",
+    "np": "^10.2.0",
+    "playwright": "^1.55.0",
+    "prettier": "^3.5.3",
+    "rimraf": "^6.0.1",
+    "rollup": "^4.46.2",
+    "shelljs": "^0.9.1",
+    "ts-node": "^10.9.1",
+    "tsc-alias": "^1.8.11",
+    "tslib": "^2.5.0",
+    "typescript": "^5.1.3",
+    "typescript-eslint": "^8.38.0",
+    "vite-tsconfig-paths": "^5.1.4",
+    "vitest": "^4.0.6"
+  },
+  "husky": {
+    "hooks": {
+      "pre-commit": "lint-staged"
+    }
+  }
+}

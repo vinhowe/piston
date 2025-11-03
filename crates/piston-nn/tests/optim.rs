@@ -1,0 +1,174 @@
+use piston::{
+    Device, DeviceRequest, Tensor, TensorOptions,
+    test_utils::{to_vec0_round, to_vec1_round},
+    zeros,
+};
+use piston_nn::{AdamW, Linear, Module, Optimizer, ParamsAdamW, SGD};
+
+type OptimizerFactory<O> = fn(Vec<Tensor>) -> anyhow::Result<O>;
+
+fn run_linear_regression<O: Optimizer>(optimizer: OptimizerFactory<O>) -> anyhow::Result<()> {
+    let _ = env_logger::builder().is_test(true).try_init();
+    let device = Device::request_device(DeviceRequest::GPU).unwrap();
+    let w_gen = Tensor::from_data(vec![3f32, 1.], (1, 2), TensorOptions::new())?.to(&device)?;
+    let b_gen = Tensor::from_data(vec![-2f32], (1, 1), TensorOptions::new())?.to(&device)?;
+    let r#gen = Linear::new(w_gen, Some(b_gen));
+    let sample_xs = Tensor::from_data(
+        vec![2f32, 1., 7., 4., -4., 12., 5., 8.],
+        (4, 2),
+        TensorOptions::new(),
+    )?;
+    let sample_xs = sample_xs.to(&device)?;
+    let sample_ys = r#gen.schedule(sample_xs.clone())?;
+
+    // Now use backprop to run a linear regression between samples and get the coefficients back.
+    let w = zeros((1, 2), TensorOptions::new().device(device.clone()))?;
+    let b = zeros((1, 1), TensorOptions::new().device(device.clone()))?;
+    let mut opt = optimizer(vec![w.clone(), b.clone()])?;
+    let lin = Linear::new(w.clone(), Some(b.clone()));
+
+    for _step in 0..100 {
+        let ys = lin.schedule(sample_xs.clone())?;
+        let loss = ys.sub(sample_ys.clone())?.square()?.sum(0, false)?;
+        loss.backward()?;
+        opt.backward_step(&device)?;
+        // device.try_gpu().unwrap().mark_step().unwrap();
+        let b = b.to(&Device::CPU)?;
+        let w = w.to(&Device::CPU)?;
+        println!("b: {:?}, w: {:?}", b.to_vec::<f32>(), w.to_vec::<f32>());
+        let loss_cpu = loss.clone().to(&Device::CPU)?;
+        let loss_vec = loss_cpu.to_vec::<f32>()?;
+        println!("loss: {:?}", loss_vec[0]);
+    }
+
+    let b = b.to(&Device::CPU)?;
+    let w = w.to(&Device::CPU)?;
+    println!("b: {:?}, w: {:?}", b.to_vec::<f32>(), w.to_vec::<f32>());
+    assert_eq!(to_vec0_round(&b, 4)?, 0.7872);
+    assert_eq!(to_vec1_round(&w, 4)?, &[2.7257, 0.7097]);
+    Ok(())
+}
+
+#[test]
+fn sgd_linear_regression() -> anyhow::Result<()> {
+    fn optimizer(vars: Vec<Tensor>) -> anyhow::Result<SGD> {
+        SGD::new(vars, 0.001)
+    }
+    run_linear_regression(optimizer)
+}
+
+#[test]
+fn adamw_linear_regression() -> anyhow::Result<()> {
+    fn optimizer(vars: Vec<Tensor>) -> anyhow::Result<AdamW> {
+        let params = ParamsAdamW {
+            lr: 0.5,
+            ..Default::default()
+        };
+        AdamW::new(vars, params)
+    }
+    run_linear_regression(optimizer)
+}
+
+fn gradient_descent(optimizer: OptimizerFactory<impl Optimizer>) -> anyhow::Result<()> {
+    let _ = env_logger::builder().is_test(true).try_init();
+
+    let device = Device::request_device(DeviceRequest::GPU).unwrap();
+    let target = Tensor::from_data(vec![5.0], 1, TensorOptions::new())?.to(&device)?;
+
+    // Initialize variable at 0.0 (shape is scalar)
+    let w = Tensor::from_data(vec![0.0], 1, TensorOptions::new())?.to(&device)?;
+
+    let mut opt = optimizer(vec![w.clone()])?;
+
+    for step in 0..100 {
+        // Compute loss = (w - target)^2
+        let loss = w.clone().sub(target.clone())?.square()?;
+
+        // Backpropagate
+        loss.backward()?;
+        opt.backward_step(&device)?;
+
+        // Print debug info
+        let current_w = w.to(&Device::CPU)?.to_vec::<f32>()?;
+        let current_loss = loss.to(&Device::CPU)?.to_vec::<f32>()?;
+        #[cfg(feature = "plotting")]
+        println!(
+            "Step {step}: w = {:.4}, loss = {:.4} (fmt: {})",
+            current_w[0],
+            current_loss[0],
+            w.to(&Device::CPU)?.plot_fmt()
+        );
+        println!(
+            "Step {step}: w = {:.4}, loss = {:.4}",
+            current_w[0], current_loss[0],
+        );
+    }
+
+    let final_w = w.to(&Device::CPU)?.to_vec::<f32>()?;
+    assert!(
+        (final_w[0] - target.to(&Device::CPU)?.to_vec::<f32>()?[0]).abs() < 0.1,
+        "Final w should be close to 5.0"
+    );
+    Ok(())
+}
+
+#[test]
+fn sgd_gradient_descent() -> anyhow::Result<()> {
+    fn optimizer(vars: Vec<Tensor>) -> anyhow::Result<SGD> {
+        SGD::new(vars, 0.1)
+    }
+    gradient_descent(optimizer)
+}
+
+#[test]
+fn adamw_gradient_descent() -> anyhow::Result<()> {
+    fn optimizer(vars: Vec<Tensor>) -> anyhow::Result<AdamW> {
+        let params = ParamsAdamW {
+            lr: 0.2,
+            ..Default::default()
+        };
+        AdamW::new(vars, params)
+    }
+    gradient_descent(optimizer)
+}
+
+#[test]
+fn test_intermediate() -> anyhow::Result<()> {
+    let device = Device::request_device(DeviceRequest::GPU).unwrap();
+    let w_gen = Tensor::from_data(vec![3f32, 1.], (1, 2), TensorOptions::new())?.to(&device)?;
+    let b_gen = Tensor::from_data(vec![-2f32], (1, 1), TensorOptions::new())?.to(&device)?;
+    let r#gen = Linear::new(w_gen.clone(), Some(b_gen.clone()));
+    let sample_xs = Tensor::from_data(
+        vec![2f32, 1., 7., 4., -4., 12., 5., 8.],
+        (4, 2),
+        TensorOptions::new(),
+    )?;
+    let sample_xs = sample_xs.to(&device)?;
+    let sample_ys = r#gen.schedule(sample_xs.clone())?;
+
+    // Now use backprop to run a linear regression between samples and get the coefficients back.
+    let w = Tensor::from_data(vec![0f32, 0.], (1, 2), TensorOptions::new())?.to(&device)?;
+    // let b = Parameter::from_data(vec![0f32], 1, Device::CPU);
+    let b = Tensor::from_data(vec![0f32], (1, 1), TensorOptions::new())?.to(&device)?;
+    let lin = Linear::new(w.clone(), Some(b.clone()));
+
+    let ys = lin.schedule(sample_xs.clone())?;
+    let loss = ys.sub(sample_ys.clone())?.square()?;
+
+    // Print loss
+    println!("loss: {:?}", loss.to(&Device::CPU)?.to_vec::<f32>()?);
+
+    loss.backward()?;
+    // TODO(vinhowe): we'd need to make this a concern of the optimizer or otherwise extract the
+    // list of variables. Should be a simple pytorchish interface for this.
+    // for (i, (_id, g)) in gen_grads.iter().enumerate() {
+    //     let g_clone = g.clone();
+    //     println!(
+    //         "gen_grads[{}]: (op {:?}) {:?}",
+    //         i,
+    //         g_clone.clone().op().name(),
+    //         g_clone.to(&Device::CPU)?.to_vec::<f32>()?
+    //     );
+    // }
+    Ok(())
+}

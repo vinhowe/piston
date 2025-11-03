@@ -14,8 +14,6 @@ Cargo.lock
 *.pdb
 .python-version
 
-crates/ratchet-core/kernel-generated/**
-**/*.svg
 fixtures/
 **/.DS_Store
 
@@ -30,3 +28,9 @@ venv/
 
 # proptest regression tests
 proptest-regressions/
+
+# samply profile
+profile.json
+
+# webdriver configs
+webdriver.json

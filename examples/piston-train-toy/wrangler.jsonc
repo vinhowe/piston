@@ -1,0 +1,12 @@
+{
+	"name": "piston-train-toy",
+	"compatibility_date": "2025-07-11",
+	"assets": {
+		"directory": "./build/"
+	},
+	"exclude": [
+		"./static/tokenized",
+		"./static/tokenizer",
+		"./data"
+	]
+}

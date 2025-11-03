@@ -1,10 +1,31 @@
 {
-  "name": "ratchet-repo",
+  "name": "piston-repo",
   "version": "0.0.0",
-  "packageManager": "pnpm@8.15.8",
+  "packageManager": "pnpm@10.15.0",
   "private": true,
   "devDependencies": {
     "pkg-pr-new": "0.0.15",
-    "wasm-pack": "0.12.1"
+    "wasm-pack": "0.13.1"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ],
+    "overrides": {
+      "@codemirror/lang-javascript": "^6.2.4",
+      "@codemirror/language": "^6.11.1",
+      "@codemirror/state": "^6.5.2",
+      "@codemirror/view": "^6.37.2",
+      "@lezer/highlight": "^1.2.1",
+      "codemirror": "^6.0.1"
+    }
+  },
+  "scripts": {
+    "build": "pnpm -r build",
+    "test": "pnpm -r test",
+    "lint": "pnpm -r lint",
+    "changeset": "changeset",
+    "version": "changeset version",
+    "publish": "pnpm build && changeset publish"
   }
 }

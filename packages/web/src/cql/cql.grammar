@@ -1,0 +1,166 @@
+// Capture Query Language (CQL)
+// A Frankenstein's monster of features from CSS, JS, and Python grammars.
+
+@precedence {
+  attribute @left,
+  structure @left
+}
+
+@skip { space | Comment | blankLine }
+
+@top Script { Statement* }
+
+Statement {
+  SelectorLine
+}
+
+SelectorLine {
+  spec (newline | eof)
+}
+
+spec {
+  ModuleSelector { moduleselector } (OpSpec | ParamSpec | ModuleSpec)? |
+  OpSpec |
+  ParamSpec
+}
+
+OpSpec {
+  (OpSentinel { "@" } OpSelector { opselector } !structure facetchain? Slice? JsPipe? ~selector)
+}
+
+ParamSpec {
+  ParamSentinel { "#" } ParamName !structure facetchain? Slice? JsPipe? ~selector
+}
+
+ParamName {
+  Identifier | UniversalSelector | RegExp
+}
+
+ModuleSpec {
+  modulefacetchain Slice? JsPipe? ~selector |
+  SliceMod JsPipe? ~selector |
+  JsPipe ~selector
+}
+
+ModuleFacet {
+  ":" (ModuleSelectInput { "input" } | ModuleSelectOutput { "output" })
+}
+
+GradientFacet { ":" GradientFacetIdent { "grad"("ient")? } }
+
+NormFacet { ":" NormFacetIdent { "norm" } }
+
+ScaleFacet { ":" ScaleFacetIdent { "scale" } "(" ScaleArg ")" }
+
+ScaleArg { Percent | Float | Integer }
+
+Float { Integer "." Integer }
+
+Percent { Integer "%" | Float "%" }
+
+LabelFacet { ":" LabelFacetIdent { "label" } "(" String ")" }
+
+modulefacetchain { (ModuleFacet | !structure facetchain)+ }
+
+facetchain { (GradientFacet | NormFacet | ScaleFacet | LabelFacet)+ }
+
+moduleselector {
+  UniversalSelector |
+  NameSelector { ~item IndexableIdentifier ~item } |
+  TypeSelector { ~item "." IndexableIdentifier ~item } |
+  RegExpNameSelector { ~item RegExp ~item } |
+  RegExpTypeSelector { ~item "." RegExp ~item } |
+  ChildSelector { moduleselector? !structure ChildOp moduleselector } |
+  DescendantSelector { moduleselector !structure descendantOp moduleselector } |
+  SiblingSelector { moduleselector? !structure SiblingOp moduleselector }
+}
+
+opselector {
+  NameSelector { ~item idorwildcard ~item } |
+  SiblingSelector { opselector? !structure SiblingOp opselector }
+}
+
+idorwildcard {
+  Identifier | UniversalSelector | RegExp
+}
+
+IndexableIdentifier {
+  Identifier Index?
+}
+
+SliceMod { ":" Slice }
+
+SliceItem {
+  Integer |
+  Integer? ":" Integer? (":" Integer?)? |
+  "..."
+}
+
+Slice {
+  "[" commaSep<SliceItem>? "]"
+}
+
+indexedexpression {
+  "[" Integer "]"
+}
+
+Index {
+  indexedexpression
+}
+
+JsPipe {
+  "|" (JsBlock | JsStatement)
+}
+
+@skip {} {
+  blankLine {
+    blankLineStart space? Comment? (newline | eof)
+  }
+}
+
+@external tokens descendant from "./lezer-tokens" {
+  descendantOp
+}
+
+@external tokens identifiers from "./lezer-tokens" {
+  Identifier
+}
+
+@external tokens newlines from "./lezer-tokens" { newline, blankLineStart, eof }
+
+@external tokens js from "./lezer-tokens" { JsBlock, JsStatement }
+
+commaSep<expr> { expr ("," expr)* ","? }
+
+@tokens {
+  UniversalSelector { "*" }
+
+  ChildOp { ">" ">"? }
+
+  SiblingOp { "~" | "+" }
+
+  space { ($[ \t\f] | "\\" $[\n\r])+ }
+
+  Integer {
+    ("+" | "-")? @digit ("_"? @digit)*
+  }
+
+  String {
+    '"' (![\\\n"] | "\\" _)* '"'? |
+    "'" (![\\\n'] | "\\" _)* "'"?
+  }
+
+  Comment[isolate] { "//" ![\n\r]* }
+
+  RegExp { "/" (![/\\\n[] | "\\" ![\n] | "[" (![\n\\\]] | "\\" ![\n])* "]")+ ("/" $[gimsuy]*)? }
+
+  "..."[@name=Ellipsis]
+
+  "=" "=>"
+  "(" ")" "[" "]" "{" "}"
+  "@" "#" "." "," ";" ":"
+}
+
+@external propSource cqlHighlighting from "./highlight"
+
+@detectDelim

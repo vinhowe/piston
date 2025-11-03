@@ -1,0 +1,269 @@
+use crate::cpu::binary::{add, mul, sub};
+use crate::cpu::reindex::broadcast;
+use crate::cpu::unary::unary_map_inplace;
+use crate::cpu::utils::cpu_store_result;
+use crate::reindex::broadcast_vector;
+use crate::{
+    CPUOperation, DType, GroupNorm, InvariantError, Norm, NormOp, OpTensor, OperationError, Shape,
+    TensorDType,
+};
+use core::iter::Sum;
+use half::{bf16, f16};
+use maybe_async::maybe_async;
+use num::Float;
+use num_traits::NumOps;
+
+#[maybe_async(AFIT)]
+#[cfg_attr(target_arch = "wasm32", async_trait::async_trait)]
+impl CPUOperation for NormOp {
+    #[maybe_async]
+    async fn apply_cpu(&self, dst: OpTensor) -> Result<OpTensor, OperationError> {
+        match self {
+            NormOp::LayerNorm(n) => apply_layer_norm(n, dst).await,
+            NormOp::RMSNorm(n) => apply_rms_norm(n, dst).await,
+            NormOp::GroupNorm(g) => apply_group_norm(g, dst).await,
+        }
+    }
+}
+
+#[maybe_async]
+async fn apply_layer_norm(
+    Norm {
+        input,
+        scale,
+        bias,
+        eps,
+    }: &Norm,
+    dst: OpTensor,
+) -> Result<OpTensor, OperationError> {
+    if let Some(scale) = scale
+        && input.dtype() != scale.dtype()
+    {
+        return Err(InvariantError::DTypeMismatch {
+            expected: input.dtype(),
+            actual: scale.dtype(),
+        }
+        .into());
+    }
+    if let Some(b) = bias
+        && b.dtype() != input.dtype()
+    {
+        return Err(InvariantError::DTypeMismatch {
+            expected: input.dtype(),
+            actual: b.dtype(),
+        }
+        .into());
+    }
+
+    match input.dtype() {
+        DType::F32 => layer_norm::<f32>(input, scale.as_ref(), bias, *eps, &dst).await?,
+        DType::F16 => layer_norm::<f16>(input, scale.as_ref(), bias, *eps, &dst).await?,
+        DType::BF16 => layer_norm::<bf16>(input, scale.as_ref(), bias, *eps, &dst).await?,
+        _ => todo!(),
+    };
+
+    Ok(dst)
+}
+
+#[inline]
+fn square<T: TensorDType + NumOps>(src: &mut [T]) {
+    unary_map_inplace(src, |x| x * x)
+}
+
+#[inline]
+fn rsqrt<T: TensorDType + Float>(src: &mut [T]) {
+    unary_map_inplace(src, |x| <T as TensorDType>::one() / x.sqrt())
+}
+
+#[inline]
+fn mean<T>(src: &[T], shape: &Shape, dim: usize) -> Vec<T>
+where
+    T: TensorDType + Float + NumOps + for<'a> Sum<&'a T>,
+{
+    assert_eq!(src.len(), shape.numel());
+    let mean_dim = shape.numel() / shape[dim];
+    let mut result = vec![T::zero(); mean_dim];
+    let step = src.len() / mean_dim;
+    let n = T::from(step as f32).unwrap();
+
+    (0..src.len())
+        .step_by(step)
+        .enumerate()
+        .for_each(|(i, chunk)| {
+            result[i] = src[chunk..chunk + step].iter().sum::<T>() / n;
+        });
+    result
+}
+
+#[maybe_async]
+async fn layer_norm<T>(
+    input: &OpTensor,
+    scale: Option<&OpTensor>,
+    bias: &Option<OpTensor>,
+    eps: f32,
+    dst: &OpTensor,
+) -> Result<(), OperationError>
+where
+    T: TensorDType + Float + NumOps + for<'a> Sum<&'a T>,
+{
+    let src_shape = input.shape();
+    let rank = input.dim();
+    let N = src_shape[rank - 1];
+    let norm_shape = N;
+
+    let input = input.to_vec::<T>().await?;
+    let scale = match scale {
+        Some(s) => Some(s.to_vec::<T>().await?),
+        None => None,
+    };
+    let bias = match bias {
+        Some(b) => Some(b.to_vec::<T>().await?),
+        None => None,
+    };
+
+    let mut x = input.clone();
+
+    let mu = mean(&x, src_shape, rank - 1);
+    let mut mu2 = mu.clone();
+    square(&mut mu2);
+    let mut x2 = input.clone();
+    square(&mut x2);
+    let mut x2 = mean(&x2, src_shape, rank - 1);
+
+    sub(&mut x2, &mu2);
+
+    let mut mu_b = vec![T::zero(); x.len()];
+    broadcast_vector(&mu, &mut mu_b);
+    sub(&mut x, &mu_b);
+
+    let eps_vec = vec![T::from(eps).unwrap(); x2.len()];
+    add(&mut x2, &eps_vec);
+    rsqrt(&mut x2);
+
+    let mut v = vec![T::zero(); x.len()];
+    broadcast_vector(&x2, &mut v);
+    mul(&mut x, &v);
+
+    if let Some(scale) = scale {
+        let scale_b = broadcast(&scale, norm_shape, src_shape);
+        mul(&mut x, &scale_b);
+    }
+
+    if let Some(bias) = bias {
+        let bias_b = broadcast(&bias, norm_shape, src_shape);
+        add(&mut x, &bias_b);
+    }
+
+    cpu_store_result(dst, &x);
+
+    Ok(())
+}
+
+#[maybe_async]
+async fn apply_rms_norm(
+    Norm {
+        input,
+        scale,
+        bias,
+        eps,
+    }: &Norm,
+    dst: OpTensor,
+) -> Result<OpTensor, OperationError> {
+    if let Some(scale) = scale
+        && input.dtype() != scale.dtype()
+    {
+        return Err(InvariantError::DTypeMismatch {
+            expected: input.dtype(),
+            actual: scale.dtype(),
+        }
+        .into());
+    }
+    if let Some(b) = bias
+        && b.dtype() != input.dtype()
+    {
+        return Err(InvariantError::DTypeMismatch {
+            expected: input.dtype(),
+            actual: b.dtype(),
+        }
+        .into());
+    }
+
+    match input.dtype() {
+        DType::F32 => rms_norm::<f32>(input, scale.as_ref(), *eps, &dst).await?,
+        DType::F16 => rms_norm::<f16>(input, scale.as_ref(), *eps, &dst).await?,
+        DType::BF16 => rms_norm::<bf16>(input, scale.as_ref(), *eps, &dst).await?,
+        _ => todo!(),
+    };
+
+    Ok(dst)
+}
+
+#[maybe_async]
+async fn rms_norm<T>(
+    input: &OpTensor,
+    scale: Option<&OpTensor>,
+    eps: f32,
+    dst: &OpTensor,
+) -> Result<(), OperationError>
+where
+    T: TensorDType + Float + NumOps + for<'a> Sum<&'a T>,
+{
+    let src_shape = input.shape();
+    let rank = input.dim();
+    let N = src_shape[rank - 1];
+
+    let mut x = input.to_vec::<T>().await?;
+    let scale = match scale {
+        Some(s) => Some(s.to_vec::<T>().await?),
+        None => None,
+    };
+
+    let mut x2 = x.clone();
+    square(&mut x2);
+    let mut x2 = mean(&x2, src_shape, rank - 1);
+    let eps_vec = vec![T::from(eps).unwrap(); x2.len()];
+    add(&mut x2, &eps_vec);
+    rsqrt(&mut x2);
+
+    let mut v = vec![T::zero(); x.len()];
+    broadcast_vector(&x2, &mut v);
+    mul(&mut x, &v);
+
+    if let Some(scale) = scale {
+        let scale_b = broadcast(&scale, (N,), src_shape);
+        mul(&mut x, &scale_b);
+    }
+
+    cpu_store_result(dst, &x);
+
+    Ok(())
+}
+
+#[maybe_async]
+async fn apply_group_norm(_n: &GroupNorm, dst: OpTensor) -> Result<OpTensor, OperationError> {
+    //let result = norm(&b.src.to_vec::<T>()?, b.src.shape(), b.to());
+    //cpu_store_result(&dst, &result);
+    Ok(dst)
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{
+        cpu::norm::{mean, square},
+        shape,
+    };
+
+    #[test]
+    fn debug_square() {
+        let mut a = vec![0.0, 1.0, 2.0, 3.0, 4.0, 5.0];
+        square(&mut a);
+        println!("{a:?}");
+    }
+    #[test]
+    fn debug_mean() {
+        let a = vec![0.0, 1.0, 2.0, 3.0, 4.0, 5.0];
+        let shape = shape!(2, 3);
+        let result = mean(&a, &shape, 1);
+        println!("{result:?}");
+    }
+}

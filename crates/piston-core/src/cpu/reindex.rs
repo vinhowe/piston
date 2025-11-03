@@ -1,0 +1,346 @@
+use super::utils::cpu_store_result;
+use crate::{
+    Broadcast, CPUOperation, DType, Flip, OpTensor, OperationError, Permute, Reindex, Shape, Slice,
+    Stride, TensorDType,
+};
+use half::{bf16, f16};
+use maybe_async::maybe_async;
+
+#[maybe_async(AFIT)]
+#[cfg_attr(target_arch = "wasm32", async_trait::async_trait)]
+impl CPUOperation for Reindex {
+    #[maybe_async]
+    async fn apply_cpu(&self, dst: OpTensor) -> Result<OpTensor, OperationError> {
+        match self {
+            Reindex::Permute(p) => p.apply_cpu(dst).await,
+            Reindex::Slice(s) => s.apply_cpu(dst).await,
+            Reindex::Broadcast(b) => b.apply_cpu(dst).await,
+            Reindex::Flip(f) => f.apply_cpu(dst).await,
+        }
+    }
+}
+
+#[maybe_async(AFIT)]
+#[cfg_attr(target_arch = "wasm32", async_trait::async_trait)]
+impl CPUOperation for Permute {
+    #[maybe_async]
+    async fn apply_cpu(&self, dst: OpTensor) -> Result<OpTensor, OperationError> {
+        match dst.dtype() {
+            DType::F32 => apply_permute::<f32>(self, dst).await,
+            DType::BF16 => apply_permute::<bf16>(self, dst).await,
+            DType::F16 => apply_permute::<f16>(self, dst).await,
+            DType::I32 => apply_permute::<i32>(self, dst).await,
+            DType::U32 => apply_permute::<u32>(self, dst).await,
+            _ => todo!(),
+        }
+    }
+}
+
+#[maybe_async]
+async fn apply_permute<T: TensorDType>(
+    p: &Permute,
+    dst: OpTensor,
+) -> Result<OpTensor, OperationError> {
+    let perm: [usize; 4] = p.promote().as_slice().try_into().unwrap();
+    let Permute { src, dims: _ } = p;
+    let result = permute(&src.to_vec::<T>().await?, src.shape(), dst.shape(), perm);
+    cpu_store_result(&dst, &result);
+    Ok(dst)
+}
+
+// TODO: Optimize.
+// This generic implementation is almost a direct copy from the gpu impl,
+// and can definitely be way more performant.
+fn permute<T: TensorDType, SrcShape: Into<Shape>, DstShape: Into<Shape>>(
+    src: &[T],
+    src_shape: SrcShape,
+    dst_shape: DstShape,
+    perm: [usize; 4],
+) -> Vec<T> {
+    // We now know that these will always be len 4, same as gpu impl.
+    let src_shape = &Shape::promote(src_shape.into(), 4);
+    let dst_shape = &Shape::promote(dst_shape.into(), 4);
+
+    let mut result = vec![T::zero(); src_shape.numel()];
+
+    let src_stride = &Stride::from(src_shape);
+    let dst_stride = &Stride::from(dst_shape);
+
+    let src_stride: [usize; 4] = src_stride.into();
+    let dst_stride: [usize; 4] = dst_stride.into();
+
+    (0..result.len()).for_each(|i| {
+        let dst_index = offset_to_ndindex(i, dst_stride);
+        let mut src_index = [0; 4];
+        src_index[perm[0]] = dst_index[0];
+        src_index[perm[1]] = dst_index[1];
+        src_index[perm[2]] = dst_index[2];
+        src_index[perm[3]] = dst_index[3];
+        let src_offset = nd_index_to_offset(src_index, src_stride);
+        result[i] = src[src_offset]
+    });
+    result
+}
+
+#[maybe_async(AFIT)]
+#[cfg_attr(target_arch = "wasm32", async_trait::async_trait)]
+impl CPUOperation for Slice {
+    #[maybe_async]
+    async fn apply_cpu(&self, dst: OpTensor) -> Result<OpTensor, OperationError> {
+        match dst.dtype() {
+            DType::F32 => apply_slice::<f32>(self, dst).await,
+            DType::BF16 => apply_slice::<bf16>(self, dst).await,
+            DType::F16 => apply_slice::<f16>(self, dst).await,
+            DType::I32 => apply_slice::<i32>(self, dst).await,
+            DType::U32 => apply_slice::<u32>(self, dst).await,
+            _ => todo!(),
+        }
+    }
+}
+
+#[maybe_async]
+async fn apply_slice<T: TensorDType>(s: &Slice, dst: OpTensor) -> Result<OpTensor, OperationError> {
+    let (start, stop): (Vec<_>, Vec<_>) = s.indices().iter().map(|r| (r.start, r.end)).unzip();
+    let result = slice(&s.src.to_vec::<T>().await?, s.src.stride(), &start, &stop);
+
+    cpu_store_result(&dst, &result);
+    Ok(dst)
+}
+
+pub(crate) fn slice<T: TensorDType>(
+    src: &[T],
+    src_stride: &Stride,
+    start: &[usize],
+    stop: &[usize],
+) -> Vec<T> {
+    assert!(start.len() == stop.len());
+    assert!(start.len() == src_stride.rank());
+    start.iter().zip(stop.iter()).for_each(|(s, t)| {
+        assert!(s < t);
+    });
+
+    let dst_shape: Vec<usize> = stop.iter().zip(start.iter()).map(|(s, t)| s - t).collect();
+    let dst_numel: usize = dst_shape.iter().product();
+
+    let mut dst = vec![T::zero(); dst_numel];
+
+    let mut dst_dots = vec![];
+    for d in 0..dst_shape.len() {
+        dst_dots.push(dst_shape[d + 1..].iter().product::<usize>().max(1));
+    }
+
+    (0..dst.len()).for_each(|i| {
+        let mut src_index = 0;
+        let mut tmp = i;
+        for d in 0..dst_shape.len() {
+            let coord = tmp / dst_dots[d];
+            tmp %= dst_dots[d];
+            src_index += (coord + start[d]) * src_stride[d] as usize;
+        }
+        dst[i] = src[src_index];
+    });
+
+    dst
+}
+
+#[maybe_async(AFIT)]
+#[cfg_attr(target_arch = "wasm32", async_trait::async_trait)]
+impl CPUOperation for Broadcast {
+    #[maybe_async]
+    async fn apply_cpu(&self, dst: OpTensor) -> Result<OpTensor, OperationError> {
+        match dst.dtype() {
+            DType::F32 => apply_broadcast::<f32>(self, dst).await,
+            DType::BF16 => apply_broadcast::<bf16>(self, dst).await,
+            DType::F16 => apply_broadcast::<f16>(self, dst).await,
+            DType::I32 => apply_broadcast::<i32>(self, dst).await,
+            DType::U32 => apply_broadcast::<u32>(self, dst).await,
+            _ => todo!(),
+        }
+    }
+}
+
+#[maybe_async(AFIT)]
+#[cfg_attr(target_arch = "wasm32", async_trait::async_trait)]
+impl CPUOperation for Flip {
+    #[maybe_async]
+    async fn apply_cpu(&self, dst: OpTensor) -> Result<OpTensor, OperationError> {
+        match dst.dtype() {
+            DType::F32 => apply_flip::<f32>(self, dst).await,
+            DType::BF16 => apply_flip::<bf16>(self, dst).await,
+            DType::F16 => apply_flip::<f16>(self, dst).await,
+            DType::I32 => apply_flip::<i32>(self, dst).await,
+            DType::U32 => apply_flip::<u32>(self, dst).await,
+            _ => todo!(),
+        }
+    }
+}
+
+#[maybe_async]
+async fn apply_flip<T: TensorDType>(f: &Flip, dst: OpTensor) -> Result<OpTensor, OperationError> {
+    let result = flip_cpu::<T, _>(&f.src.to_vec::<T>().await?, f.src.shape(), &f.dims);
+    super::utils::cpu_store_result(&dst, &result);
+    Ok(dst)
+}
+
+fn flip_cpu<T: TensorDType, SrcShape: Into<Shape>>(
+    src: &[T],
+    src_shape: SrcShape,
+    dims: &[usize],
+) -> Vec<T> {
+    let src_shape = &Shape::promote(src_shape.into(), 4);
+    let src_stride = &Stride::from(src_shape);
+
+    let src_shape_arr: [usize; 4] = src_shape.try_into().unwrap();
+    let src_stride_arr: [usize; 4] = src_stride.into();
+
+    let dst_numel = src_shape.numel();
+    let mut result = vec![T::zero(); dst_numel];
+
+    // Build promoted flip mask
+    let pad_len = 0;
+    let mut mask = [false; 4];
+    for &d in dims.iter() {
+        let pd = d + pad_len;
+        if pd < 4 {
+            mask[pd] = true;
+        }
+    }
+
+    // dst_shape == src_shape for flip
+    let dst_stride_arr = src_stride_arr;
+
+    (0..dst_numel).for_each(|i| {
+        let dst_index = offset_to_ndindex(i, dst_stride_arr);
+        let mut src_index = [0usize; 4];
+        for ax in 0..4 {
+            src_index[ax] = if mask[ax] {
+                src_shape_arr[ax] - 1 - dst_index[ax]
+            } else {
+                dst_index[ax]
+            };
+        }
+        let src_offset = nd_index_to_offset(src_index, src_stride_arr);
+        result[i] = src[src_offset];
+    });
+
+    result
+}
+
+#[maybe_async]
+async fn apply_broadcast<T: TensorDType>(
+    b: &Broadcast,
+    dst: OpTensor,
+) -> Result<OpTensor, OperationError> {
+    let result = broadcast(&b.src.to_vec::<T>().await?, b.src.shape(), b.to());
+    cpu_store_result(&dst, &result);
+    Ok(dst)
+}
+
+pub(crate) fn broadcast_vector<T: TensorDType>(src: &[T], dst: &mut [T]) {
+    let chunk_size = dst.len() / src.len();
+
+    (0..dst.len())
+        .step_by(chunk_size)
+        .enumerate()
+        .for_each(|(i, chunk)| {
+            dst[chunk..chunk + chunk_size].fill(src[i]);
+        });
+}
+
+pub(crate) fn broadcast<T: TensorDType, SrcShape: Into<Shape>, DstShape: Into<Shape>>(
+    src: &[T],
+    src_shape: SrcShape,
+    dst_shape: DstShape,
+) -> Vec<T> {
+    let src_shape = src_shape.into();
+    let dst_shape = dst_shape.into();
+    let mut result = vec![T::zero(); dst_shape.numel()];
+
+    if src_shape.is_scalar() {
+        // Life is simple
+        result.fill(src[0]);
+    } else if src_shape.is_vector() {
+        // If from is a vector and the first dimension is the broadcasting dimension
+        if src_shape[0] > 1 && src_shape[0] == dst_shape[0] {
+            broadcast_vector(src, &mut result)
+        } else {
+            generic_broadcast(src, &mut result, src_shape, dst_shape)
+        }
+    } else {
+        generic_broadcast(src, &mut result, src_shape, dst_shape)
+    }
+
+    result
+}
+
+// TODO: Optimize.
+// This generic implementation is almost a direct copy from the gpu impl,
+// and can definitely be way more performant.
+fn generic_broadcast<T: TensorDType, SrcShape: Into<Shape>, DstShape: Into<Shape>>(
+    src: &[T],
+    result: &mut [T],
+    src_shape: SrcShape,
+    dst_shape: DstShape,
+) {
+    // We now know that these will always be len 4, same as gpu impl.
+    let src_shape = &Shape::promote(src_shape.into(), 4);
+    let dst_shape = &Shape::promote(dst_shape.into(), 4);
+
+    let src_stride = &Stride::from(src_shape);
+    let dst_stride = &Stride::from(dst_shape);
+
+    let src_shape: [usize; 4] = src_shape.try_into().unwrap();
+    let src_stride: [usize; 4] = src_stride.into();
+    let dst_stride: [usize; 4] = dst_stride.into();
+
+    fn select(a: [usize; 4], b: [usize; 4], t: [bool; 4]) -> [usize; 4] {
+        let mut result = [0; 4];
+        result[0] = if t[0] { a[0] } else { b[0] };
+        result[1] = if t[1] { a[1] } else { b[1] };
+        result[2] = if t[2] { a[2] } else { b[2] };
+        result[3] = if t[3] { a[3] } else { b[3] };
+        result
+    }
+
+    let shape_onedim_lookup: [bool; 4] = [
+        src_shape[0] != 1,
+        src_shape[1] != 1,
+        src_shape[2] != 1,
+        src_shape[3] != 1,
+    ];
+    (0..result.len()).for_each(|i| {
+        let dst_index = offset_to_ndindex(i, dst_stride);
+        let src_index = select(dst_index, [0; 4], shape_onedim_lookup);
+        let src_offset = nd_index_to_offset(src_index, src_stride);
+        result[i] = src[src_offset]
+    });
+}
+
+#[inline]
+fn offset_to_ndindex(offset: usize, stride: [usize; 4]) -> [usize; 4] {
+    let mut indices = [0; 4];
+    let mut remaining = offset;
+
+    let idx = remaining / stride[0];
+    indices[0] = idx;
+    remaining -= idx * stride[0];
+
+    let idx = remaining / stride[1];
+    indices[1] = idx;
+    remaining -= idx * stride[1];
+
+    let idx = remaining / stride[2];
+    indices[2] = idx;
+    remaining -= idx * stride[2];
+
+    indices[3] = remaining;
+    indices
+}
+
+#[inline]
+fn nd_index_to_offset(ndindex: [usize; 4], stride: [usize; 4]) -> usize {
+    ndindex[0] * stride[0]
+        + ndindex[1] * stride[1]
+        + ndindex[2] * stride[2]
+        + ndindex[3] * stride[3]
+}

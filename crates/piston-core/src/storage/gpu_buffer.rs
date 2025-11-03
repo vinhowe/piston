@@ -1,0 +1,216 @@
+use crate::{
+    Device, DeviceError, MIN_STORAGE_BUFFER_SIZE, Shape, TensorDType,
+    gpu::{BufferDescriptor, WgpuDevice},
+    gpu::{BufferUsagesExt, PooledGPUBuffer},
+    storage::{CPUBuffer, DeviceStorage},
+};
+
+use bytemuck::NoUninit;
+use half::f16;
+use maybe_async::maybe_async;
+use wgpu::BufferUsages;
+
+use crate::DType;
+
+#[derive(Clone, Debug, derive_new::new)]
+pub struct GPUBuffer {
+    pub(crate) inner: PooledGPUBuffer,
+    pub(crate) alignment: usize,
+    pub(crate) cpu_size: Option<usize>,
+}
+
+impl GPUBuffer {
+    pub fn from_slice<T: NoUninit>(data: &[T], shape: &Shape, device: &WgpuDevice) -> Self {
+        assert_eq!(data.len(), shape.numel());
+        Self::from_bytes(
+            bytemuck::cast_slice(data),
+            std::mem::align_of::<T>(),
+            device,
+        )
+    }
+
+    //We have to use from_bytes here, as buffers may be reused and we need to
+    //ensure that the buffer is zeroed
+    pub fn zeros<T: TensorDType>(shape: &Shape, device: &WgpuDevice) -> Self {
+        Self::from_bytes(
+            vec![0; shape.numel() * T::dtype().size_of()].as_slice(),
+            T::dtype().size_of(),
+            device,
+        )
+    }
+
+    pub fn ones<T: TensorDType>(shape: &Shape, device: &WgpuDevice) -> Self {
+        match T::dtype() {
+            DType::Q8_0H(_) => Self::from_slice(&vec![1u8; shape.numel()], shape, device),
+            DType::Q8_0F(_) => Self::from_slice(&vec![1u8; shape.numel()], shape, device),
+            DType::F16 => Self::from_slice(&vec![f16::from_f32(1.0); shape.numel()], shape, device),
+            DType::F32 => Self::from_slice(&vec![1f32; shape.numel()], shape, device),
+            DType::I32 => Self::from_slice(&vec![1i32; shape.numel()], shape, device),
+            DType::U32 => Self::from_slice(&vec![1u32; shape.numel()], shape, device),
+            _ => unimplemented!(),
+        }
+    }
+
+    /// # Safety
+    ///
+    /// We don't check the provided shape here.
+    /// The caller should ensure that this data is laid out correctly.
+    /// We also require that all of the elements have the same alignment.
+    pub unsafe fn from_quantized<T: NoUninit>(data: &[T], device: &WgpuDevice) -> Self {
+        let bytes: &[u8] = bytemuck::cast_slice(data);
+        Self::from_bytes(bytes, std::mem::align_of::<T>(), device)
+    }
+
+    pub(crate) fn from_bytes(bytes: &[u8], alignment: usize, device: &WgpuDevice) -> Self {
+        let num_bytes = bytes.len();
+        let mut min_bytes = [0; MIN_STORAGE_BUFFER_SIZE];
+        let bytes = if num_bytes < MIN_STORAGE_BUFFER_SIZE {
+            min_bytes[..num_bytes].copy_from_slice(bytes);
+            &min_bytes
+        } else {
+            bytes
+        };
+        let cpu_size = if num_bytes < MIN_STORAGE_BUFFER_SIZE {
+            Some(num_bytes)
+        } else {
+            None
+        };
+
+        let inner = device
+            .get_or_create_buffer_init(
+                &BufferDescriptor::new(num_bytes as _, BufferUsages::standard(), false),
+                bytes.into(),
+            )
+            .unwrap();
+        device.queue().submit(None);
+        device.poll(wgpu::PollType::wait_indefinitely()).unwrap();
+        Self {
+            inner,
+            alignment,
+            cpu_size,
+        }
+    }
+
+    /// Returns true if the buffer has all the given usages.
+    pub(crate) fn validate_usages(&self, usages: BufferUsages) -> Result<(), DeviceError> {
+        match self.inner.usage().contains(usages) {
+            true => Ok(()),
+            false => Err(DeviceError::InvalidBufferUsage(self.inner.usage(), usages)),
+        }
+    }
+
+    pub fn inner(&self) -> &PooledGPUBuffer {
+        &self.inner
+    }
+
+    pub fn usage(&self) -> BufferUsages {
+        self.inner.usage()
+    }
+
+    #[allow(unused)]
+    pub fn deep_clone(&self, device: &WgpuDevice) -> Self {
+        let clone = device
+            .get_or_create_buffer(
+                &BufferDescriptor::new(self.inner.size(), self.inner.usage(), false),
+                true,
+            )
+            .unwrap();
+        let mut encoder =
+            device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
+        encoder.copy_buffer_to_buffer(&self.inner, 0, &clone, 0, self.inner.size());
+        device.queue().submit(Some(encoder.finish()));
+        device.poll(wgpu::PollType::wait_indefinitely());
+        Self {
+            inner: clone,
+            alignment: self.alignment,
+            cpu_size: self.cpu_size,
+        }
+    }
+
+    pub fn from_disk<T: TensorDType, R: std::io::BufRead + std::io::Seek>(
+        reader: &mut R,
+        shape: &Shape,
+        device: &Device,
+    ) -> Result<Self, DeviceError> {
+        //There is no faster way to do this
+        CPUBuffer::from_disk::<T, R>(reader, shape)?.to_device(device)
+    }
+
+    // pub fn trim_id(id: wgpu::Id<wgpu::Buffer>) -> Option<String> {
+    //     let id = format!("{id:?}");
+    //     let trimmed = id.trim_start_matches("Id(").trim_end_matches(')');
+    //     if trimmed.len() > 12 && trimmed.chars().all(|c| c.is_numeric()) {
+    //         Some(trimmed[12..].to_string())
+    //     } else {
+    //         None
+    //     }
+    // }
+
+    #[cfg(feature = "plotting")]
+    pub fn plot_fmt(&self) -> String {
+        // let id_string = Self::trim_id(self.inner().global_id()).unwrap_or_default();
+        format!(
+            "GPU:\n({:?})\n{} bytes",
+            // id_string,
+            self.inner.handle,
+            self.inner.size()
+        )
+    }
+}
+
+#[maybe_async]
+impl DeviceStorage for GPUBuffer {
+    fn to_device(&self, _: &Device) -> Result<GPUBuffer, DeviceError> {
+        Ok(self.clone())
+    }
+
+    async fn to_cpu(&self, device: &Device) -> Result<CPUBuffer, DeviceError> {
+        self.validate_usages(BufferUsages::COPY_SRC)?;
+        let device = device.try_gpu()?;
+        let storage =
+            wgpu_buffer_to_cpu_buffer(&self.inner, self.alignment, self.cpu_size, device).await;
+        Ok(storage)
+    }
+
+    fn n_bytes(&self) -> usize {
+        self.inner.size() as usize
+    }
+
+    fn dump(&self, _: DType, _: bool) -> String {
+        let mut result = String::new();
+        // let id_string = Self::trim_id(self.inner().global_id()).unwrap_or_default();
+        // result.push_str(&format!("GPU Buffer #{id_string}\n"));
+        result.push_str(&format!("Size: {} bytes\n", self.inner.size()));
+        result
+    }
+}
+
+#[maybe_async]
+pub async fn wgpu_buffer_to_cpu_buffer(
+    src_buf: &wgpu::Buffer,
+    alignment: usize,
+    cpu_size: Option<usize>,
+    device: &WgpuDevice,
+) -> CPUBuffer {
+    assert!(src_buf.usage().contains(wgpu::BufferUsages::COPY_SRC));
+    let buffer_slice = src_buf.slice(..);
+    #[cfg(target_arch = "wasm32")]
+    let (tx, rx) = futures_intrusive::channel::shared::oneshot_channel();
+    #[cfg(not(target_arch = "wasm32"))]
+    let (tx, rx) = std::sync::mpsc::channel();
+
+    let buffer_size = cpu_size.unwrap_or(src_buf.size() as usize);
+
+    wgpu::util::DownloadBuffer::read_buffer(device, device.queue(), &buffer_slice, move |buffer| {
+        tx.send(match buffer {
+            Ok(db) => Ok(CPUBuffer::from_bytes(&db[..buffer_size], alignment)),
+            Err(error) => Err(error),
+        })
+        .expect("Failed to send result of read_buffer");
+    });
+    device.poll(wgpu::PollType::wait_indefinitely()).unwrap();
+    #[cfg(target_arch = "wasm32")]
+    return rx.receive().await.unwrap().unwrap();
+    #[cfg(not(target_arch = "wasm32"))]
+    return rx.recv().unwrap().unwrap();
+}

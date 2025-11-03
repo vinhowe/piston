@@ -1,0 +1,1790 @@
+<script lang="ts">
+	export const ssr = false;
+
+	import {
+		config,
+		equalsConfigDefault,
+		getCurrentDataset,
+		getHiddenSize,
+		getMlpIntermediateSize,
+		resetConfigToDefaults,
+		setPreset,
+		validateConfig
+	} from '$lib/workspace/config.svelte';
+	import { getPresetOptions } from '$lib/workspace/presets';
+	import { runsMap } from '$lib/workspace/runs.svelte';
+	import { controlSectionsOpen, toggleControlSection } from '$lib/workspace/ui.svelte';
+	import { getParameterCount, triggerModelInspection } from '$lib/workspace/workers.svelte';
+	import { untrack } from 'svelte';
+
+	import ActivationPicker from './ActivationPicker.svelte';
+	import BorderedGroup from './BorderedGroup.svelte';
+	import CheckboxInput from './checkbox/CheckboxInput.svelte';
+	import CollapsibleSection from './CollapsibleSection.svelte';
+	import ControlsStatistic from './ControlsStatistic.svelte';
+	import DatasetControls from './DatasetControls.svelte';
+	import LRSchedulePicker from './LRSchedulePicker.svelte';
+	import NumberInput from './NumberInput.svelte';
+	import RunsTable from './RunsTable.svelte';
+	import SelectInput from './select/SelectInput.svelte';
+	import SelectModelTopology from './select/SelectModelTopology.svelte';
+	import SelectWithCitations from './select/SelectWithCitations.svelte';
+	import Slider from './Slider.svelte';
+	import TextInput from './TextInput.svelte';
+	import ToggleGroup from './ToggleGroup.svelte';
+
+	const sectionClass = 'p-1 space-y-1 flex flex-col';
+	// Put a little bit of padding at the bottom of collapsible sections to demarcate the end of the section
+	const collapsibleSectionClass = 'p-1 space-y-1 flex flex-col';
+
+	// Model comparison data for parameter count display
+	const attentionModelComparisons = {
+		decoder: { name: 'GPT-2 small', params: 124_000_000 },
+		encoder: { name: 'BERT base', params: 110_000_000 },
+		'encoder-decoder': { name: 'T5 Small', params: 60_000_000 }
+	};
+
+	// Derived reactive variable for parameter comparison
+	const parameterComparison = $derived.by(() => {
+		const paramCount = getParameterCount();
+		const modelType = config.model.topology;
+
+		if (!paramCount || !(modelType in attentionModelComparisons)) return null;
+
+		const comparison =
+			attentionModelComparisons[modelType as keyof typeof attentionModelComparisons];
+		const nonBreakingName = comparison.name.replace(' ', '\xa0').replace('-', '\u2011');
+		const percentage = Math.round((paramCount / comparison.params) * 10000) / 100;
+		return `(${percentage}% of ${nonBreakingName} @ ${comparison.params / 1_000_000}M)`;
+	});
+
+	const currentDataset = $derived(getCurrentDataset());
+
+	$effect(() => {
+		validateConfig();
+	});
+
+	// Reactive parameter counting; trigger when model-relevant config changes
+	$effect(() => {
+		// Add dependency on both model and data config (data config influences vocab size)
+		JSON.stringify(config.model);
+		JSON.stringify(config.data);
+
+		// Trigger parameter count when config changes, but triggerParameterCount itself needs to be untracked
+		untrack(() => triggerModelInspection());
+	});
+
+	// Preset selection wiring: local selection drives setPreset, stays in sync with config
+	let lastAppliedPreset = $state<string | null>(null);
+	let selectedPresetId = $state<string>('');
+	$effect(() => {
+		const id = selectedPresetId || null;
+		if (id && id !== lastAppliedPreset) {
+			lastAppliedPreset = id;
+			setPreset(id);
+		}
+	});
+	$effect(() => {
+		const current = (config.preset ?? '') as string;
+		if (current !== selectedPresetId) selectedPresetId = current;
+	});
+</script>
+
+{#snippet parameterComparisonFunFact()}
+	{parameterComparison}
+{/snippet}
+
+{#snippet projectionBlock(configName: 'attention' | 'mlp' | 'lmHead', displayName: string)}
+	<ToggleGroup
+		id={`model-initialization-projections-group-${configName}`}
+		title={displayName}
+		showEnableToggle={true}
+		bind:enabled={config.model.transformer.initialization.projections[configName].present}
+		hasDefaultValue={equalsConfigDefault(
+			`model.transformer.initialization.projections.${configName}.present`
+		)}
+		onReset={() =>
+			resetConfigToDefaults(`model.transformer.initialization.projections.${configName}.present`)}
+	>
+		<SelectInput
+			id={`projections-strategy-${configName}`}
+			bind:value={config.model.transformer.initialization.projections[configName].strategy}
+			options={[
+				{ value: 'layer-scaled', text: 'Layer-Scaled' },
+				{ value: 'zero', text: 'Zero' }
+			]}
+			hasDefaultValue={equalsConfigDefault(
+				`model.transformer.initialization.projections.${configName}.strategy`
+			)}
+			onReset={() =>
+				resetConfigToDefaults(
+					`model.transformer.initialization.projections.${configName}.strategy`
+				)}
+		/>
+	</ToggleGroup>
+{/snippet}
+
+{#snippet layerNormalization()}
+	{#if config.model.family === 'rnn'}
+		<CheckboxInput
+			id="model-layer-normalization-rnn-within-cell"
+			label="Within RNN Cell"
+			bind:checked={config.model.layerNormalization.rnn.withinCell}
+			hasDefaultValue={equalsConfigDefault('model.layerNormalization.rnn.withinCell')}
+			onReset={() => resetConfigToDefaults('model.layerNormalization.rnn.withinCell')}
+		/>
+		<CheckboxInput
+			id="model-layer-normalization-rnn-between-layers"
+			label="Between Layers"
+			bind:checked={config.model.layerNormalization.rnn.betweenLayers}
+			hasDefaultValue={equalsConfigDefault('model.layerNormalization.rnn.betweenLayers')}
+			onReset={() => resetConfigToDefaults('model.layerNormalization.rnn.betweenLayers')}
+		/>
+	{/if}
+	{#if config.model.family === 'transformer' || config.model.layerNormalization.rnn.withinCell || config.model.layerNormalization.rnn.betweenLayers}
+		<SelectWithCitations
+			id="model-layer-normalization-type"
+			bind:value={config.model.layerNormalization.type}
+			options={[
+				{
+					value: 'layernorm',
+					title: 'LayerNorm',
+					citations: {
+						entries: [
+							{
+								name: 'Ba et al., 2016',
+								url: 'https://www.cs.utoronto.ca/~hinton/absps/LayerNormalization.pdf'
+							}
+						],
+						extra: '; Transformer, GPT-series'
+					}
+				},
+				{
+					value: 'rmsnorm',
+					title: 'RMSNorm',
+					citations: {
+						entries: [
+							{
+								name: 'Zhang & Sennrich, 2019',
+								url: 'https://proceedings.neurips.cc/paper_files/paper/2019/file/1e8a19426224ca89e83cef47f1e7f53b-Paper.pdf'
+							}
+						],
+						extra: '; Llama'
+					}
+				}
+			]}
+			hasDefaultValue={equalsConfigDefault('model.layerNormalization.type')}
+			onReset={() => resetConfigToDefaults('model.layerNormalization.type')}
+		/>
+		{#if config.model.family === 'transformer'}
+			<SelectWithCitations
+				id="model-layer-normalization-position"
+				label="Position"
+				bind:value={config.model.layerNormalization.transformer.position}
+				options={[
+					{
+						value: 'post',
+						title: 'Post-Norm',
+						citations: { extra: 'Transformer, GPT' }
+					},
+					{
+						value: 'pre',
+						title: 'Pre-Norm',
+						citations: {
+							extra: 'GPT-2, most recent models'
+						}
+					}
+				]}
+				hasDefaultValue={equalsConfigDefault('model.layerNormalization.transformer.position')}
+				onReset={() => resetConfigToDefaults('model.layerNormalization.transformer.position')}
+			/>
+		{/if}
+		<Slider
+			id="model-layer-normalization-epsilon"
+			label="Epsilon"
+			bind:value={config.model.layerNormalization.eps}
+			min={1e-5}
+			max={1e-1}
+			step={1e-5}
+			useLog
+			hasDefaultValue={equalsConfigDefault('model.layerNormalization.eps')}
+			onReset={() => resetConfigToDefaults('model.layerNormalization.eps')}
+		/>
+	{/if}
+{/snippet}
+
+<div>
+	<div class="p-1">
+		<SelectInput
+			label="Preset"
+			bind:value={selectedPresetId}
+			options={getPresetOptions()}
+			hasDefaultValue={false}
+			onReset={undefined}
+		/>
+	</div>
+
+	{#if runsMap.size >= 1}
+		<CollapsibleSection
+			title="Runs"
+			isOpen={controlSectionsOpen.current.runs}
+			ontoggle={() => toggleControlSection('runs')}
+			contentClass="w-full"
+		>
+			<RunsTable />
+		</CollapsibleSection>
+	{/if}
+
+	<CollapsibleSection
+		title="Task"
+		isOpen={controlSectionsOpen.current.task}
+		ontoggle={() => toggleControlSection('task')}
+		contentClass={collapsibleSectionClass}
+	>
+		<DatasetControls datasetName={config.data.dataset} />
+	</CollapsibleSection>
+
+	<CollapsibleSection
+		title="Model Architecture"
+		isOpen={controlSectionsOpen.current.model}
+		ontoggle={() => toggleControlSection('model')}
+		contentClass={collapsibleSectionClass}
+	>
+		<SelectWithCitations
+			id="model-family"
+			bind:value={config.model.family}
+			options={[
+				{
+					value: 'transformer',
+					title: 'Transformer',
+					citations: {
+						entries: [{ name: 'Vaswani et al., 2017', url: 'https://arxiv.org/abs/1706.03762' }]
+					}
+				},
+				{
+					value: 'rnn',
+					title: 'RNN',
+					citations: {
+						entries: [
+							{
+								name: 'Elman, 1990',
+								url: 'https://onlinelibrary.wiley.com/doi/abs/10.1207/s15516709cog1402_1'
+							}
+						]
+					}
+				}
+			]}
+			hasDefaultValue={equalsConfigDefault('model.family')}
+			onReset={() => resetConfigToDefaults('model.family')}
+		/>
+
+		<!-- Parameter count display -->
+		<div class="-space-y-px">
+			<ControlsStatistic
+				label="Trainable Parameters"
+				funFact={parameterComparison ? parameterComparisonFunFact : undefined}
+			>
+				{#if getParameterCount() !== null}
+					{getParameterCount()?.toLocaleString()}
+				{:else}
+					...,...
+				{/if}
+			</ControlsStatistic>
+			<ControlsStatistic label="Embedding Size ($d_&lbrace;\text&lbrace;model&rbrace;&rbrace;$)">
+				{getHiddenSize()}
+			</ControlsStatistic>
+			<ControlsStatistic label="Token Vocabulary Size">
+				{currentDataset.vocabSize}
+			</ControlsStatistic>
+			{#if config.model.topology === 'encoder-decoder'}
+				{@const blockSize = currentDataset.blockSize as { source: number; target: number }}
+				<ControlsStatistic label="Max Input Length">
+					{blockSize.source}
+				</ControlsStatistic>
+				<ControlsStatistic label="Max Output Length">
+					{blockSize.target}
+				</ControlsStatistic>
+			{:else}
+				<ControlsStatistic label="Max Context Length">
+					{currentDataset.blockSize}
+				</ControlsStatistic>
+			{/if}
+		</div>
+
+		<SelectModelTopology
+			id="model-topology"
+			bind:value={config.model.topology}
+			label="Topology"
+			hasDefaultValue={equalsConfigDefault('model.topology')}
+			onReset={() => resetConfigToDefaults('model.topology')}
+		/>
+
+		{#if config.model.family === 'rnn'}
+			<SelectWithCitations
+				id="model-rnn-cell-type-select"
+				label="RNN Cell"
+				bind:value={config.model.rnn.cellType}
+				options={[
+					{
+						value: 'lstm',
+						title: 'LSTM',
+						citations: {
+							entries: [
+								{
+									name: 'Hochreiter & Schmidhuber, 1997',
+									url: 'https://ieeexplore.ieee.org/abstract/document/6795963'
+								}
+							]
+						}
+					},
+					{
+						value: 'gru',
+						title: 'GRU',
+						citations: {
+							entries: [{ name: 'Cho et al., 2014', url: 'https://aclanthology.org/W14-4012/' }]
+						}
+					},
+					{
+						value: 'rnn',
+						title: 'RNN',
+						citations: {
+							entries: [
+								{
+									name: 'Elman, 1990',
+									url: 'https://onlinelibrary.wiley.com/doi/abs/10.1207/s15516709cog1402_1'
+								}
+							]
+						}
+					}
+				]}
+				hasDefaultValue={equalsConfigDefault('model.rnn.cellType')}
+				onReset={() => resetConfigToDefaults('model.rnn.cellType')}
+			/>
+		{/if}
+
+		{#if config.model.topology !== 'encoder-decoder'}
+			<Slider
+				id="model-layers"
+				label={config.model.topology === 'decoder'
+					? 'Decoder Layers ($N_d$)'
+					: 'Encoder Layers ($N_e$)'}
+				bind:value={config.model.layers}
+				min={1}
+				max={32}
+				step={1}
+				base={2}
+				hasDefaultValue={equalsConfigDefault('model.layers')}
+				onReset={() => resetConfigToDefaults('model.layers')}
+			/>
+		{:else}
+			<Slider
+				id="model-encoder-layers"
+				label="Encoder Layers ($N_e$)"
+				bind:value={config.model.encoderDecoder.encoderLayers}
+				min={1}
+				max={32}
+				step={1}
+				base={2}
+				hasDefaultValue={equalsConfigDefault('model.encoderDecoder.encoderLayers')}
+				onReset={() => resetConfigToDefaults('model.encoderDecoder.encoderLayers')}
+			/>
+			<Slider
+				id="model-decoder-layers"
+				label="Decoder Layers ($N_d$)"
+				bind:value={config.model.encoderDecoder.decoderLayers}
+				min={1}
+				max={32}
+				step={1}
+				base={2}
+				hasDefaultValue={equalsConfigDefault('model.encoderDecoder.decoderLayers')}
+				onReset={() => resetConfigToDefaults('model.encoderDecoder.decoderLayers')}
+			/>
+		{/if}
+
+		{#if config.model.family === 'transformer'}
+			<Slider
+				id="model-head-dim"
+				label="Head Dimension ($d_&lbrace;\text&lbrace;model&rbrace;&rbrace;/h$)"
+				bind:value={config.model.transformer.headDim}
+				min={8}
+				max={64}
+				step={8}
+				base={2}
+				hasDefaultValue={equalsConfigDefault('model.transformer.headDim')}
+				onReset={() => resetConfigToDefaults('model.transformer.headDim')}
+			/>
+		{/if}
+
+		{#if config.model.family !== 'rnn' || config.model.rnn.embedding.type !== 'one-hot'}
+			<CheckboxInput
+				id="model-tie-embeddings-and-lm-head"
+				label="Tie Embeddings and LM Head"
+				citations={{
+					entries: [{ name: 'Press & Wolf, 2016', url: 'https://arxiv.org/abs/1608.05859' }]
+				}}
+				bind:checked={config.model.tieEmbeddingsAndLmHead}
+				hasDefaultValue={equalsConfigDefault('model.tieEmbeddingsAndLmHead')}
+				onReset={() => resetConfigToDefaults('model.tieEmbeddingsAndLmHead')}
+			/>
+		{/if}
+
+		{#if config.model.family === 'rnn'}
+			{#if (config.model.family === 'rnn' && config.model.topology === 'encoder') || config.model.topology === 'encoder-decoder'}
+				<CheckboxInput
+					id="model-rnn-bidirectional-encoder-checkbox"
+					label="Bidirectional Encoder Layers"
+					bind:checked={config.model.rnn.encoder.bidirectional}
+					hasDefaultValue={equalsConfigDefault('model.rnn.encoder.bidirectional')}
+					onReset={() => resetConfigToDefaults('model.rnn.encoder.bidirectional')}
+				/>
+			{/if}
+			<BorderedGroup
+				id="model-rnn-word-embedding-group"
+				title="Word Embedding"
+				contentClass={sectionClass}
+			>
+				<SelectWithCitations
+					id="model-rnn-embedding-type-select"
+					bind:value={config.model.rnn.embedding.type}
+					options={[
+						{
+							value: 'learned',
+							title: 'Learned',
+							citations: {
+								entries: [
+									{
+										name: 'Mikolov et al., 2013',
+										url: 'https://papers.nips.cc/paper_files/paper/2013/hash/9aa42b31882ec039965f3c4923ce901b-Abstract.html'
+									}
+								],
+								extra: '—Word2Vec'
+							}
+						},
+						{ value: 'one-hot', title: 'One-Hot' }
+					]}
+					hasDefaultValue={equalsConfigDefault('model.rnn.embedding.type')}
+					onReset={() => resetConfigToDefaults('model.rnn.embedding.type')}
+				/>
+				{#if config.model.rnn.embedding.type === 'learned'}
+					<Slider
+						id="model-rnn-embedding-dimension"
+						label="Embedding Dimension ($H_&lbrace;\text&lbrace;in&rbrace;&rbrace;$)"
+						bind:value={config.model.rnn.embedding.learned.size}
+						min={8}
+						max={256}
+						step={8}
+						base={2}
+						hasDefaultValue={equalsConfigDefault('model.rnn.embedding.learned.size')}
+						onReset={() => resetConfigToDefaults('model.rnn.embedding.learned.size')}
+					/>
+				{/if}
+			</BorderedGroup>
+			<ToggleGroup
+				id="model-rnn-separate-hidden-dimension-group"
+				title="Separate Hidden Dimension"
+				showEnableToggle={true}
+				bind:enabled={config.model.rnn.separateHiddenSize.present}
+				hasDefaultValue={equalsConfigDefault('model.rnn.separateHiddenSize.present')}
+				onReset={() => resetConfigToDefaults('model.rnn.separateHiddenSize.present')}
+			>
+				<Slider
+					id="model-rnn-separate-hidden-dimension-value"
+					bind:value={config.model.rnn.separateHiddenSize.value}
+					label="Hidden Dimension ($H_&lbrace;\text&lbrace;cell&rbrace;&rbrace;$)"
+					min={8}
+					max={256}
+					step={8}
+					base={2}
+					hasDefaultValue={equalsConfigDefault('model.rnn.separateHiddenSize.value')}
+					onReset={() => resetConfigToDefaults('model.rnn.separateHiddenSize.value')}
+				/>
+			</ToggleGroup>
+			<ToggleGroup
+				id="model-rnn-hidden-state-projection-group"
+				title="Hidden State Projection"
+				showEnableToggle={true}
+				bind:enabled={config.model.rnn.hiddenStateProjection.present}
+				hasDefaultValue={equalsConfigDefault('model.rnn.hiddenStateProjection.present')}
+				onReset={() => resetConfigToDefaults('model.rnn.hiddenStateProjection.present')}
+			>
+				<Slider
+					id="model-rnn-hidden-state-projection-value"
+					bind:value={config.model.rnn.hiddenStateProjection.size}
+					label="Hidden State Projection Size"
+					min={8}
+					max={256}
+					step={8}
+					base={2}
+					hasDefaultValue={equalsConfigDefault('model.rnn.hiddenStateProjection.size')}
+					onReset={() => resetConfigToDefaults('model.rnn.hiddenStateProjection.size')}
+				/>
+			</ToggleGroup>
+		{/if}
+
+		<ToggleGroup
+			id="model-round-vocab-size-to-nearest-multiple-group"
+			title="Round Token Vocabulary Size to Nearest Multiple"
+			citations={{
+				entries: [
+					{ name: 'Karpathy, 2023', url: 'https://x.com/karpathy/status/1621578354024677377' },
+					{
+						name: 'NVIDIA Docs',
+						url: 'http://web.archive.org/web/20250912215737/https://docs.nvidia.com/deeplearning/performance/dl-performance-matrix-multiplication/index.html#requirements-tc__table_usc_swx_lmb'
+					}
+				]
+			}}
+			showEnableToggle={true}
+			bind:enabled={config.model.roundVocabSizeToNearestMultiple.present}
+			hasDefaultValue={equalsConfigDefault('model.roundVocabSizeToNearestMultiple.present')}
+			onReset={() => resetConfigToDefaults('model.roundVocabSizeToNearestMultiple.present')}
+		>
+			<Slider
+				id="model-round-vocab-size-to-nearest-multiple-value"
+				bind:value={config.model.roundVocabSizeToNearestMultiple.value}
+				min={2}
+				max={1024}
+				step={8}
+				base={2}
+				hasDefaultValue={equalsConfigDefault('model.roundVocabSizeToNearestMultiple.value')}
+				onReset={() => resetConfigToDefaults('model.roundVocabSizeToNearestMultiple.value')}
+			/>
+		</ToggleGroup>
+
+		{#if config.model.family === 'transformer'}
+			<ToggleGroup
+				id="model-attention-group"
+				title="Multi-Head Attention (MHA)"
+				showEnableToggle={true}
+				citations={{
+					entries: [{ name: 'Vaswani et al., 2017', url: 'https://arxiv.org/abs/1706.03762' }]
+				}}
+				contentClass={sectionClass}
+				bind:enabled={config.model.transformer.attention.present}
+				hasDefaultValue={equalsConfigDefault('model.transformer.attention.present')}
+				onReset={() => resetConfigToDefaults('model.transformer.attention.present')}
+			>
+				<Slider
+					id="model-attention-n-key-value-heads"
+					label="Number of Key-Value Heads ($h_&lbrace;\text&lbrace;kv&rbrace;&rbrace;$)"
+					bind:value={config.model.transformer.attention.nKeyValueHeads}
+					min={1}
+					max={32}
+					step={1}
+					base={2}
+					hasDefaultValue={equalsConfigDefault('model.transformer.attention.nKeyValueHeads')}
+					onReset={() => resetConfigToDefaults('model.transformer.attention.nKeyValueHeads')}
+				/>
+				<CheckboxInput
+					id="model-attention-sinks"
+					label="Attention Sinks"
+					citations={{
+						entries: [
+							{ name: 'Gu et al., 2025', url: 'https://openreview.net/forum?id=78Nn4QJTEN' }
+						]
+					}}
+					bind:checked={config.model.transformer.attention.sinks.present}
+					hasDefaultValue={equalsConfigDefault('model.transformer.attention.sinks.present')}
+					onReset={() => resetConfigToDefaults('model.transformer.attention.sinks.present')}
+				/>
+				<ToggleGroup
+					id="model-attention-grouped-query-attention-group"
+					title="Grouped-Query Attention (GQA)"
+					citations={{
+						entries: [
+							{ name: 'Ainslie et al., 2023', url: 'https://aclanthology.org/2023.emnlp-main.298/' }
+						]
+					}}
+					showEnableToggle={true}
+					bind:enabled={config.model.transformer.attention.groupedQueryAttention.present}
+					contentClass={sectionClass}
+					hasDefaultValue={equalsConfigDefault(
+						'model.transformer.attention.groupedQueryAttention.present'
+					)}
+					onReset={() =>
+						resetConfigToDefaults('model.transformer.attention.groupedQueryAttention.present')}
+				>
+					<Slider
+						id="model-attention-grouped-query-attention-query-heads-per-key-value-head"
+						label="Number of Query Heads per Key-Value Head ($h_&lbrace;\text&lbrace;q&rbrace;&rbrace;/h_&lbrace;\text&lbrace;kv&rbrace;&rbrace;$)"
+						bind:value={
+							config.model.transformer.attention.groupedQueryAttention.queryHeadsPerKeyValueHead
+						}
+						min={2}
+						max={32}
+						step={1}
+						base={2}
+						hasDefaultValue={equalsConfigDefault(
+							'model.transformer.attention.groupedQueryAttention.queryHeadsPerKeyValueHead'
+						)}
+						onReset={() =>
+							resetConfigToDefaults(
+								'model.transformer.attention.groupedQueryAttention.queryHeadsPerKeyValueHead'
+							)}
+					/>
+				</ToggleGroup>
+
+				<ToggleGroup
+					id="model-attention-gating-group"
+					title="Gating"
+					citations={{
+						entries: [{ name: 'Qiu et al., 2025', url: 'https://arxiv.org/abs/2505.06708' }]
+					}}
+					showEnableToggle={true}
+					bind:enabled={config.model.transformer.attention.gating.present}
+					contentClass={sectionClass}
+					hasDefaultValue={equalsConfigDefault('model.transformer.attention.gating.present')}
+					onReset={() => resetConfigToDefaults('model.transformer.attention.gating.present')}
+				>
+					<ActivationPicker
+						id="model-attention-gating-activation"
+						bind:value={config.model.transformer.attention.gating.activation}
+						hasDefaultValue={equalsConfigDefault('model.transformer.attention.gating.activation')}
+						onReset={() => resetConfigToDefaults('model.transformer.attention.gating.activation')}
+					/>
+					<CheckboxInput
+						id="model-attention-gating-after-sdpa-output"
+						label="After SDPA Output"
+						bind:checked={config.model.transformer.attention.gating.sites.afterSdpaOutput}
+						hasDefaultValue={equalsConfigDefault(
+							'model.transformer.attention.gating.sites.afterSdpaOutput'
+						)}
+						onReset={() =>
+							resetConfigToDefaults('model.transformer.attention.gating.sites.afterSdpaOutput')}
+					/>
+					<CheckboxInput
+						id="model-attention-gating-after-value-projection"
+						label="After Value Projection"
+						bind:checked={config.model.transformer.attention.gating.sites.afterValueProjection}
+						hasDefaultValue={equalsConfigDefault(
+							'model.transformer.attention.gating.sites.afterValueProjection'
+						)}
+						onReset={() =>
+							resetConfigToDefaults(
+								'model.transformer.attention.gating.sites.afterValueProjection'
+							)}
+					/>
+					<CheckboxInput
+						id="model-attention-gating-after-key-projection"
+						label="After Key Projection"
+						bind:checked={config.model.transformer.attention.gating.sites.afterKeyProjection}
+						hasDefaultValue={equalsConfigDefault(
+							'model.transformer.attention.gating.sites.afterKeyProjection'
+						)}
+						onReset={() =>
+							resetConfigToDefaults('model.transformer.attention.gating.sites.afterKeyProjection')}
+					/>
+					<CheckboxInput
+						id="model-attention-gating-after-query-projection"
+						label="After Query Projection"
+						bind:checked={config.model.transformer.attention.gating.sites.afterQueryProjection}
+						hasDefaultValue={equalsConfigDefault(
+							'model.transformer.attention.gating.sites.afterQueryProjection'
+						)}
+						onReset={() =>
+							resetConfigToDefaults(
+								'model.transformer.attention.gating.sites.afterQueryProjection'
+							)}
+					/>
+					<CheckboxInput
+						id="model-attention-gating-after-final-output-projection"
+						label="After Final Output Projection"
+						bind:checked={
+							config.model.transformer.attention.gating.sites.afterFinalOutputProjection
+						}
+						hasDefaultValue={equalsConfigDefault(
+							'model.transformer.attention.gating.sites.afterFinalOutputProjection'
+						)}
+						onReset={() =>
+							resetConfigToDefaults(
+								'model.transformer.attention.gating.sites.afterFinalOutputProjection'
+							)}
+					/>
+				</ToggleGroup>
+			</ToggleGroup>
+
+			<ToggleGroup
+				id="model-mlp-group"
+				title="Feed-Forward Network (MLP)"
+				showEnableToggle={true}
+				contentClass={sectionClass}
+				bind:enabled={config.model.transformer.mlp.present}
+				hasDefaultValue={equalsConfigDefault('model.transformer.mlp.present')}
+				onReset={() => resetConfigToDefaults('model.transformer.mlp.present')}
+			>
+				<SelectWithCitations
+					id="model-mlp-variant"
+					bind:value={config.model.transformer.mlp.variant}
+					options={[
+						{ value: 'standard', title: 'Standard' },
+						{
+							value: 'gated',
+							title: 'Gated',
+							citations: {
+								entries: [
+									{
+										name: 'Liu et al., 2021',
+										url: 'https://proceedings.neurips.cc/paper/2021/hash/4cc05b35c2f937c5bd9e7d41d3686fff-Abstract.html'
+									}
+								]
+							}
+						}
+					]}
+					hasDefaultValue={equalsConfigDefault('model.transformer.mlp.variant')}
+					onReset={() => resetConfigToDefaults('model.transformer.mlp.variant')}
+				/>
+				<ControlsStatistic
+					label="MLP hidden dimension ($d_&lbrace;\text&lbrace;ff&rbrace;&rbrace;$)"
+				>
+					{getMlpIntermediateSize()}
+				</ControlsStatistic>
+				<ActivationPicker
+					id="model-mlp-activation"
+					bind:value={config.model.transformer.mlp.activation}
+					hasDefaultValue={equalsConfigDefault('model.transformer.mlp.activation')}
+					onReset={() => resetConfigToDefaults('model.transformer.mlp.activation')}
+				/>
+				<Slider
+					id="model-mlp-hidden-expansion-factor"
+					label="Hidden Expansion Factor ($d_&lbrace;\text&lbrace;ff&rbrace;&rbrace;/d_&lbrace;\text&lbrace;model&rbrace;&rbrace;$)"
+					bind:value={config.model.transformer.mlp.hiddenExpansionFactor}
+					min={1}
+					max={16}
+					base={2}
+					step={1}
+					hasDefaultValue={equalsConfigDefault('model.transformer.mlp.hiddenExpansionFactor')}
+					onReset={() => resetConfigToDefaults('model.transformer.mlp.hiddenExpansionFactor')}
+				/>
+			</ToggleGroup>
+
+			<ToggleGroup
+				id="model-positional-encoding-group"
+				title="Positional Encoding"
+				showEnableToggle={true}
+				bind:enabled={config.model.transformer.positionalEncoding.present}
+				hasDefaultValue={equalsConfigDefault('model.transformer.positionalEncoding.present')}
+				onReset={() => resetConfigToDefaults('model.transformer.positionalEncoding.present')}
+			>
+				<SelectWithCitations
+					id="model-positional-encoding-type"
+					bind:value={config.model.transformer.positionalEncoding.type}
+					options={[
+						{
+							value: 'sinusoidal',
+							title: 'Sinusoidal',
+							citations: {
+								entries: [
+									{ name: 'Vaswani et al., 2017', url: 'https://arxiv.org/abs/1706.03762' }
+								],
+								extra: '; Transformer'
+							}
+						},
+						{
+							value: 'learned',
+							title: 'Learned',
+							citations: {
+								entries: [
+									{
+										name: 'Radford et al., 2018',
+										url: 'https://cdn.openai.com/research-covers/language-unsupervised/language_understanding_paper.pdf'
+									}
+								],
+								extra: '; GPT-series'
+							}
+						},
+						{
+							value: 'rope',
+							title: 'Rotary',
+							citations: {
+								entries: [
+									{
+										name: 'Su et al., 2021',
+										url: 'https://www.sciencedirect.com/science/article/pii/S0925231223011864'
+									}
+								],
+								extra: '; Llama'
+							}
+						},
+						{
+							value: 'alibi',
+							title: 'Alibi',
+							citations: {
+								entries: [
+									{ name: 'Press et al., 2021', url: 'https://openreview.net/forum?id=R8sQPpGCv0' }
+								],
+								extra: '; BLOOM, MPT'
+							}
+						}
+					]}
+					hasDefaultValue={equalsConfigDefault('model.transformer.positionalEncoding.type')}
+					onReset={() => resetConfigToDefaults('model.transformer.positionalEncoding.type')}
+				/>
+				{#if config.model.transformer.positionalEncoding.type === 'rope'}
+					<Slider
+						id="model-positional-encoding-rope-base"
+						label="Base"
+						bind:value={config.model.transformer.positionalEncoding.rope.base}
+						min={1}
+						max={10000}
+						step={1}
+						useLog
+						hasDefaultValue={equalsConfigDefault('model.transformer.positionalEncoding.rope.base')}
+						onReset={() => resetConfigToDefaults('model.transformer.positionalEncoding.rope.base')}
+					/>
+				{/if}
+				{#if config.model.transformer.positionalEncoding.type === 'alibi'}
+					<Slider
+						id="model-positional-encoding-alibi-max-bias"
+						label="Max Bias"
+						bind:value={config.model.transformer.positionalEncoding.alibi.maxBias}
+						min={1}
+						max={100}
+						step={1}
+						hasDefaultValue={equalsConfigDefault(
+							'model.transformer.positionalEncoding.alibi.maxBias'
+						)}
+						onReset={() =>
+							resetConfigToDefaults('model.transformer.positionalEncoding.alibi.maxBias')}
+					/>
+				{/if}
+			</ToggleGroup>
+		{/if}
+
+		{#if config.model.family === 'rnn'}
+			{#if config.model.topology === 'encoder-decoder'}
+				<ToggleGroup
+					title="RNN Encoder-Decoder Attention"
+					id="model-rnn-encoder-decoder-attention-group"
+					showEnableToggle={true}
+					bind:enabled={config.model.rnn.encoderDecoderAttention.present}
+					contentClass={sectionClass}
+					hasDefaultValue={equalsConfigDefault('model.rnn.encoderDecoderAttention.present')}
+					onReset={() => resetConfigToDefaults('model.rnn.encoderDecoderAttention.present')}
+				>
+					<SelectWithCitations
+						id="model-rnn-encoder-decoder-attention-type"
+						bind:value={config.model.rnn.encoderDecoderAttention.type}
+						options={[
+							{
+								value: 'additive',
+								title: 'Additive',
+								citations: {
+									entries: [
+										{ name: 'Bahdanau et al., 2015', url: 'https://arxiv.org/abs/1409.0473' }
+									]
+								}
+							},
+							{
+								value: 'multiplicative',
+								title: 'Multiplicative',
+								citations: {
+									entries: [
+										{ name: 'Luong et al., 2015', url: 'https://aclanthology.org/D15-1166/' }
+									]
+								}
+							}
+						]}
+						hasDefaultValue={equalsConfigDefault('model.rnn.encoderDecoderAttention.type')}
+						onReset={() => resetConfigToDefaults('model.rnn.encoderDecoderAttention.type')}
+					/>
+					{#if config.model.rnn.encoderDecoderAttention.type === 'multiplicative'}
+						<CheckboxInput
+							id="model-rnn-encoder-decoder-attention-multiplicative-scale-by-inverse-sqrt-hidden-size"
+							label="Scale by $1 / \sqrt&lbrace;\text&lbrace;hidden size&rbrace;&rbrace;$"
+							bind:checked={
+								config.model.rnn.encoderDecoderAttention.multiplicative.scaleByInverseSqrtHiddenSize
+							}
+							hasDefaultValue={equalsConfigDefault(
+								'model.rnn.encoderDecoderAttention.multiplicative.scaleByInverseSqrtHiddenSize'
+							)}
+							onReset={() =>
+								resetConfigToDefaults(
+									'model.rnn.encoderDecoderAttention.multiplicative.scaleByInverseSqrtHiddenSize'
+								)}
+						/>
+					{/if}
+					<CheckboxInput
+						id="model-rnn-encoder-decoder-attention-input-feeding-projection"
+						label="Input Feeding Projection"
+						bind:checked={config.model.rnn.encoderDecoderAttention.inputFeedingProjection}
+						hasDefaultValue={equalsConfigDefault(
+							'model.rnn.encoderDecoderAttention.inputFeedingProjection'
+						)}
+						onReset={() =>
+							resetConfigToDefaults('model.rnn.encoderDecoderAttention.inputFeedingProjection')}
+					/>
+				</ToggleGroup>
+			{/if}
+		{/if}
+
+		{#if config.model.family === 'transformer'}
+			<BorderedGroup title="Normalization" contentClass={sectionClass}>
+				<ToggleGroup
+					id="model-transformer-layer-normalization-group"
+					title="Layer Normalization"
+					showEnableToggle={true}
+					bind:enabled={config.model.layerNormalization.transformer.present}
+					contentClass={sectionClass}
+					hasDefaultValue={equalsConfigDefault('model.layerNormalization.transformer.present')}
+					onReset={() => resetConfigToDefaults('model.layerNormalization.transformer.present')}
+				>
+					{@render layerNormalization()}
+				</ToggleGroup>
+				<ToggleGroup
+					id="model-transformer-normalization-qk-norm-group"
+					title="Query-Key Normalization"
+					citations={{
+						entries: [
+							{
+								name: 'Henry et al., 2020',
+								url: 'https://aclanthology.org/2020.findings-emnlp.379/'
+							}
+						]
+					}}
+					showEnableToggle={true}
+					bind:enabled={config.model.transformer.normalization.qkNorm.present}
+					contentClass={sectionClass}
+					hasDefaultValue={equalsConfigDefault('model.transformer.normalization.qkNorm.present')}
+					onReset={() => resetConfigToDefaults('model.transformer.normalization.qkNorm.present')}
+				>
+					<SelectInput
+						id="model-transformer-normalization-qk-norm-type"
+						bind:value={config.model.transformer.normalization.qkNorm.type}
+						options={[
+							{ value: 'layernorm', text: 'LayerNorm' },
+							{ value: 'rmsnorm', text: 'RMSNorm' }
+						]}
+						hasDefaultValue={equalsConfigDefault('model.transformer.normalization.qkNorm.type')}
+						onReset={() => resetConfigToDefaults('model.transformer.normalization.qkNorm.type')}
+					/>
+					<Slider
+						id="model-transformer-normalization-qk-norm-epsilon"
+						label="Epsilon"
+						bind:value={config.model.transformer.normalization.qkNorm.eps}
+						min={1e-5}
+						max={1e-1}
+						step={1e-5}
+						useLog
+						hasDefaultValue={equalsConfigDefault('model.transformer.normalization.qkNorm.eps')}
+						onReset={() => resetConfigToDefaults('model.transformer.normalization.qkNorm.eps')}
+					/>
+				</ToggleGroup>
+
+				<BorderedGroup
+					id="model-transformer-normalization-softcap-group"
+					title="Logit Soft-Capping"
+					citations={{
+						entries: [
+							{
+								name: 'Gemma Team, 2024',
+								url: 'https://storage.googleapis.com/deepmind-media/gemma/gemma-2-report.pdf'
+							}
+						]
+					}}
+					contentClass={sectionClass}
+				>
+					<ToggleGroup
+						id="model-transformer-normalization-softcap-attention-group"
+						title="Attention"
+						showEnableToggle={true}
+						bind:enabled={config.model.transformer.normalization.softcap.attention.present}
+						hasDefaultValue={equalsConfigDefault(
+							'model.transformer.normalization.softcap.attention.present'
+						)}
+						onReset={() =>
+							resetConfigToDefaults('model.transformer.normalization.softcap.attention.present')}
+					>
+						<Slider
+							id="model-transformer-normalization-softcap-attention-value"
+							bind:value={config.model.transformer.normalization.softcap.attention.value}
+							min={0.1}
+							max={100}
+							step={0.1}
+							hasDefaultValue={equalsConfigDefault(
+								'model.transformer.normalization.softcap.attention.value'
+							)}
+							onReset={() =>
+								resetConfigToDefaults('model.transformer.normalization.softcap.attention.value')}
+						/>
+					</ToggleGroup>
+					<ToggleGroup
+						id="model-transformer-normalization-softcap-logits-group"
+						title="Final Logits"
+						showEnableToggle={true}
+						bind:enabled={config.model.transformer.normalization.softcap.logits.present}
+						hasDefaultValue={equalsConfigDefault(
+							'model.transformer.normalization.softcap.logits.present'
+						)}
+						onReset={() =>
+							resetConfigToDefaults('model.transformer.normalization.softcap.logits.present')}
+					>
+						<Slider
+							id="model-transformer-normalization-softcap-logits-value"
+							bind:value={config.model.transformer.normalization.softcap.logits.value}
+							min={0.1}
+							max={100}
+							step={0.1}
+							hasDefaultValue={equalsConfigDefault(
+								'model.transformer.normalization.softcap.logits.value'
+							)}
+							onReset={() =>
+								resetConfigToDefaults('model.transformer.normalization.softcap.logits.value')}
+						/>
+					</ToggleGroup>
+				</BorderedGroup>
+			</BorderedGroup>
+		{:else}
+			<BorderedGroup
+				id="model-rnn-layer-normalization-group"
+				title="Layer Normalization"
+				citations={{
+					entries: [
+						{
+							name: 'Ba et al., 2016',
+							url: 'https://www.cs.utoronto.ca/~hinton/absps/LayerNormalization.pdf'
+						}
+					]
+				}}
+				contentClass={sectionClass}
+			>
+				{@render layerNormalization()}
+			</BorderedGroup>
+		{/if}
+
+		<ToggleGroup
+			id="model-initialization-group"
+			title="Initialization"
+			showEnableToggle={true}
+			bind:enabled={config.model[config.model.family].initialization.present}
+			contentClass={sectionClass}
+			hasDefaultValue={equalsConfigDefault(`model.${config.model.family}.initialization.present`)}
+			onReset={() => resetConfigToDefaults(`model.${config.model.family}.initialization.present`)}
+		>
+			{#if config.model.family === 'transformer'}
+				<Slider
+					id="model-transformer-initialization-std"
+					label="Standard Deviation ($&sigma;$)"
+					bind:value={config.model.transformer.initialization.std}
+					min={0}
+					max={100}
+					useLog
+					step={0.0001}
+					hasDefaultValue={equalsConfigDefault('model.transformer.initialization.std')}
+					onReset={() => resetConfigToDefaults('model.transformer.initialization.std')}
+				/>
+				<BorderedGroup
+					id="model-transformer-initialization-projections-group"
+					contentClass={sectionClass}
+					title="Initialize Projections Separately"
+				>
+					{@render projectionBlock('attention', 'Attention')}
+					{@render projectionBlock('mlp', 'MLP')}
+					{@render projectionBlock('lmHead', 'LM Head')}
+				</BorderedGroup>
+			{:else if config.model.family === 'rnn'}
+				<CheckboxInput
+					id="model-rnn-initialization-orthogonal-recurrent-columns"
+					label="Orthogonal Recurrent Columns"
+					bind:checked={config.model.rnn.initialization.orthogonalRecurrentColumns}
+					hasDefaultValue={equalsConfigDefault(
+						`model.rnn.initialization.orthogonalRecurrentColumns`
+					)}
+					onReset={() =>
+						resetConfigToDefaults(`model.rnn.initialization.orthogonalRecurrentColumns`)}
+				/>
+				<CheckboxInput
+					id="model-rnn-initialization-per-gate-orthogonal-blocks"
+					label="Per Gate Orthogonal Blocks"
+					bind:checked={config.model.rnn.initialization.perGateOrthogonalBlocks}
+					hasDefaultValue={equalsConfigDefault(`model.rnn.initialization.perGateOrthogonalBlocks`)}
+					onReset={() => resetConfigToDefaults(`model.rnn.initialization.perGateOrthogonalBlocks`)}
+				/>
+				<CheckboxInput
+					id="model-rnn-initialization-zero-biases"
+					label="Zero Biases"
+					bind:checked={config.model.rnn.initialization.zeroBiases}
+					hasDefaultValue={equalsConfigDefault(`model.rnn.initialization.zeroBiases`)}
+					onReset={() => resetConfigToDefaults(`model.rnn.initialization.zeroBiases`)}
+				/>
+				<ToggleGroup
+					id="model-rnn-initialization-xavier-input-columns-group"
+					title="Xavier Initialize Input Columns"
+					showEnableToggle={true}
+					bind:enabled={config.model.rnn.initialization.xavierInputColumns.present}
+					hasDefaultValue={equalsConfigDefault(
+						`model.rnn.initialization.xavierInputColumns.present`
+					)}
+					onReset={() =>
+						resetConfigToDefaults(`model.rnn.initialization.xavierInputColumns.present`)}
+				>
+					<SelectInput
+						id="model-rnn-initialization-xavier-input-columns-distribution"
+						bind:value={config.model.rnn.initialization.xavierInputColumns.distribution}
+						options={[
+							{ value: 'uniform', text: 'Uniform' },
+							{ value: 'normal', text: 'Normal' }
+						]}
+						hasDefaultValue={equalsConfigDefault(
+							`model.rnn.initialization.xavierInputColumns.distribution`
+						)}
+						onReset={() =>
+							resetConfigToDefaults(`model.rnn.initialization.xavierInputColumns.distribution`)}
+					/>
+				</ToggleGroup>
+				{#if config.model.layerNormalization.type === 'layernorm'}
+					{#if config.model.rnn.cellType === 'gru'}
+						<ToggleGroup
+							id="model-rnn-initialization-gru-update-gate-bias-group"
+							title="GRU Update Gate Bias"
+							bind:enabled={config.model.rnn.initialization.gru.updateGateBias.present}
+							hasDefaultValue={equalsConfigDefault(
+								`model.rnn.initialization.gru.updateGateBias.present`
+							)}
+							onReset={() =>
+								resetConfigToDefaults(`model.rnn.initialization.gru.updateGateBias.present`)}
+						>
+							<Slider
+								id="model-rnn-initialization-gru-update-gate-bias-value"
+								bind:value={config.model.rnn.initialization.gru.updateGateBias.value}
+								min={0}
+								max={10}
+								step={0.01}
+								hasDefaultValue={equalsConfigDefault(
+									`model.rnn.initialization.gru.updateGateBias.value`
+								)}
+								onReset={() =>
+									resetConfigToDefaults(`model.rnn.initialization.gru.updateGateBias.value`)}
+							/>
+						</ToggleGroup>
+					{:else if config.model.rnn.cellType === 'lstm'}
+						<ToggleGroup
+							id="model-rnn-initialization-lstm-forget-gate-bias-group"
+							title="LSTM Forget Gate Bias"
+							bind:enabled={config.model.rnn.initialization.lstm.forgetGateBias.present}
+							hasDefaultValue={equalsConfigDefault(
+								`model.rnn.initialization.lstm.forgetGateBias.present`
+							)}
+							onReset={() =>
+								resetConfigToDefaults(`model.rnn.initialization.lstm.forgetGateBias.present`)}
+						>
+							<Slider
+								id="model-rnn-initialization-lstm-forget-gate-bias-value"
+								bind:value={config.model.rnn.initialization.lstm.forgetGateBias.value}
+								min={0}
+								max={10}
+								step={0.01}
+								hasDefaultValue={equalsConfigDefault(
+									`model.rnn.initialization.lstm.forgetGateBias.value`
+								)}
+								onReset={() =>
+									resetConfigToDefaults(`model.rnn.initialization.lstm.forgetGateBias.value`)}
+							/>
+						</ToggleGroup>
+					{/if}
+				{/if}
+			{/if}
+		</ToggleGroup>
+	</CollapsibleSection>
+
+	<CollapsibleSection
+		title="Training"
+		isOpen={controlSectionsOpen.current.training}
+		contentClass={collapsibleSectionClass}
+		ontoggle={() => toggleControlSection('training')}
+	>
+		<Slider
+			id="training-log-steps"
+			label="Log Metrics Every $n$ Steps"
+			bind:value={config.training.logSteps}
+			min={1}
+			max={100}
+			step={1}
+			hasDefaultValue={equalsConfigDefault('training.logSteps')}
+			onReset={() => resetConfigToDefaults('training.logSteps')}
+		/>
+
+		<Slider
+			id="training-batch-size"
+			label="Mini-Batch Size"
+			bind:value={config.training.batchSize}
+			min={1}
+			max={1024}
+			step={1}
+			base={2}
+			hasDefaultValue={equalsConfigDefault('training.batchSize')}
+			onReset={() => resetConfigToDefaults('training.batchSize')}
+		/>
+
+		<CheckboxInput
+			id="training-enable-visualization"
+			label="Enable Activation Visualization"
+			bind:checked={config.training.enableVisualization}
+			hasDefaultValue={equalsConfigDefault('training.enableVisualization')}
+			onReset={() => resetConfigToDefaults('training.enableVisualization')}
+		/>
+
+		<ToggleGroup
+			id="training-grad-norm-group"
+			title="Track Gradient Norm"
+			showEnableToggle={true}
+			bind:enabled={config.training.gradNorm.track}
+			contentClass={sectionClass}
+			hasDefaultValue={equalsConfigDefault('training.gradNorm.track')}
+			onReset={() => resetConfigToDefaults('training.gradNorm.track')}
+		>
+			<CheckboxInput
+				id="training-grad-norm-error-if-nonfinite"
+				label="Raise Error if Nonfinite"
+				bind:checked={config.training.gradNorm.errorIfNonfinite}
+				hasDefaultValue={equalsConfigDefault('training.gradNorm.errorIfNonfinite')}
+				onReset={() => resetConfigToDefaults('training.gradNorm.errorIfNonfinite')}
+			/>
+
+			<ToggleGroup
+				id="training-clip-grad-norm-group"
+				title="Clip Gradient Norm"
+				showEnableToggle={true}
+				bind:enabled={config.training.clipGradNorm.present}
+				contentClass={sectionClass}
+				hasDefaultValue={equalsConfigDefault('training.clipGradNorm.present')}
+				onReset={() => resetConfigToDefaults('training.clipGradNorm.present')}
+			>
+				<Slider
+					id="training-clip-grad-max-norm-value"
+					label="Max Norm"
+					bind:value={config.training.clipGradNorm.value}
+					min={0}
+					max={10}
+					step={0.01}
+					hasDefaultValue={equalsConfigDefault('training.clipGradNorm.value')}
+					onReset={() => resetConfigToDefaults('training.clipGradNorm.value')}
+				/>
+			</ToggleGroup>
+		</ToggleGroup>
+
+		<ToggleGroup
+			id="training-validation-group"
+			title="Validation"
+			showEnableToggle={true}
+			bind:enabled={config.training.validation.present}
+			contentClass={sectionClass}
+			hasDefaultValue={equalsConfigDefault('training.validation.present')}
+			onReset={() => resetConfigToDefaults('training.validation.present')}
+		>
+			<Slider
+				id="training-validation-val-steps"
+				label="Validate Every $k$ Steps"
+				bind:value={config.training.validation.valSteps}
+				min={1}
+				max={100}
+				step={1}
+				hasDefaultValue={equalsConfigDefault('training.validation.valSteps')}
+				onReset={() => resetConfigToDefaults('training.validation.valSteps')}
+			/>
+			<Slider
+				id="training-validation-batch-size"
+				label="Number of Examples Held-out for Validation"
+				bind:value={config.training.validation.batchSize}
+				min={1}
+				max={1024}
+				step={1}
+				base={2}
+				hasDefaultValue={equalsConfigDefault('training.validation.batchSize')}
+				onReset={() => resetConfigToDefaults('training.validation.batchSize')}
+			/>
+			<ToggleGroup
+				id="training-validation-completions-group"
+				title="Generation"
+				contentClass={sectionClass}
+				showEnableToggle={true}
+				bind:enabled={config.training.validation.completions.present}
+				hasDefaultValue={equalsConfigDefault('training.validation.completions.present')}
+				onReset={() => resetConfigToDefaults('training.validation.completions.present')}
+			>
+				<SelectInput
+					id="validation-completions-amount"
+					bind:value={config.training.validation.completions.amount}
+					options={[
+						{ value: 'all', text: 'All Validation Examples' },
+						{ value: 'subset', text: 'Subset of Validation Examples' }
+					]}
+					hasDefaultValue={equalsConfigDefault('training.validation.completions.amount')}
+					onReset={() => resetConfigToDefaults('training.validation.completions.amount')}
+				/>
+				{#if config.training.validation.completions.amount === 'subset'}
+					<Slider
+						id="validation-completions-subset-size"
+						bind:value={config.training.validation.completions.subsetSize}
+						min={1}
+						max={config.training.validation.batchSize}
+						step={1}
+						base={2}
+						hasDefaultValue={equalsConfigDefault('training.validation.completions.subsetSize')}
+						onReset={() => resetConfigToDefaults('training.validation.completions.subsetSize')}
+					/>
+				{/if}
+				<BorderedGroup title="Sampling" contentClass={sectionClass}>
+					<Slider
+						id="validation-completions-temperature"
+						label="Temperature"
+						bind:value={config.training.validation.temperature}
+						min={0}
+						max={1.2}
+						step={0.01}
+						hasDefaultValue={equalsConfigDefault('training.validation.temperature')}
+						onReset={() => resetConfigToDefaults('training.validation.temperature')}
+					/>
+				</BorderedGroup>
+			</ToggleGroup>
+		</ToggleGroup>
+
+		<ToggleGroup
+			id="training-limit-training-steps-group"
+			title="Limit Training Steps"
+			showEnableToggle={true}
+			bind:enabled={config.training.limitTraining.present}
+			contentClass={sectionClass}
+			hasDefaultValue={equalsConfigDefault('training.limitTraining.present')}
+			onReset={() => resetConfigToDefaults('training.limitTraining.present')}
+		>
+			<Slider
+				id="training-limit-training-steps-value"
+				bind:value={config.training.limitTraining.steps}
+				min={1}
+				max={50_000}
+				step={1}
+				hasDefaultValue={equalsConfigDefault('training.limitTraining.steps')}
+				onReset={() => resetConfigToDefaults('training.limitTraining.steps')}
+			/>
+		</ToggleGroup>
+
+		<BorderedGroup title="Regularization" contentClass={sectionClass}>
+			<ToggleGroup
+				id="regularization-label-smoothing-group"
+				title="Label Smoothing"
+				citations={{
+					entries: [
+						{ name: 'Szegedy et al., 2016', url: 'https://ieeexplore.ieee.org/document/7780677' }
+					]
+				}}
+				contentClass={sectionClass}
+				showEnableToggle={true}
+				bind:enabled={config.training.labelSmoothing.present}
+				hasDefaultValue={equalsConfigDefault('training.labelSmoothing.present')}
+				onReset={() => resetConfigToDefaults('training.labelSmoothing.present')}
+			>
+				<Slider
+					id="regularization-label-smoothing-value"
+					bind:value={config.training.labelSmoothing.value}
+					min={1e-5}
+					max={1}
+					useLog
+					step={0.00001}
+					hasDefaultValue={equalsConfigDefault('training.labelSmoothing.value')}
+					onReset={() => resetConfigToDefaults('training.labelSmoothing.value')}
+				/>
+			</ToggleGroup>
+
+			{#if config.model.family === 'transformer'}
+				<ToggleGroup
+					id="training-dropout-group"
+					title="Dropout"
+					citations={{
+						entries: [
+							{
+								name: 'Srivastava et al., 2014',
+								url: 'https://jmlr.org/papers/v15/srivastava14a.html'
+							}
+						]
+					}}
+					showEnableToggle={true}
+					bind:enabled={config.training.dropout.present}
+					contentClass={sectionClass}
+					hasDefaultValue={equalsConfigDefault('training.dropout.present')}
+					onReset={() => resetConfigToDefaults('training.dropout.present')}
+				>
+					<Slider
+						id="training-dropout-embedding"
+						label="Embedding Dropout Rate"
+						bind:value={config.training.dropout.embedding}
+						min={0}
+						max={1}
+						step={0.01}
+						hasDefaultValue={equalsConfigDefault('training.dropout.embedding')}
+						onReset={() => resetConfigToDefaults('training.dropout.embedding')}
+					/>
+					<Slider
+						id="training-dropout-attention"
+						label="Attention Dropout Rate"
+						bind:value={config.training.dropout.transformer.attention}
+						min={0}
+						max={1}
+						step={0.01}
+						hasDefaultValue={equalsConfigDefault('training.dropout.transformer.attention')}
+						onReset={() => resetConfigToDefaults('training.dropout.transformer.attention')}
+					/>
+					<Slider
+						id="training-dropout-residual"
+						label="Residual Dropout Rate"
+						bind:value={config.training.dropout.transformer.residual}
+						min={0}
+						max={1}
+						step={0.01}
+						hasDefaultValue={equalsConfigDefault('training.dropout.transformer.residual')}
+						onReset={() => resetConfigToDefaults('training.dropout.transformer.residual')}
+					/>
+				</ToggleGroup>
+			{/if}
+		</BorderedGroup>
+
+		<ToggleGroup
+			id="training-random-seed-group"
+			title="Random Seed"
+			showEnableToggle={true}
+			bind:enabled={config.training.randomSeed.present}
+			hasDefaultValue={equalsConfigDefault('training.randomSeed.present')}
+			onReset={() => resetConfigToDefaults('training.randomSeed.present')}
+		>
+			<TextInput
+				id="random-seed-input"
+				bind:value={config.training.randomSeed.value}
+				hasDefaultValue={equalsConfigDefault('training.randomSeed.value')}
+				onReset={() => resetConfigToDefaults('training.randomSeed.value')}
+			/>
+		</ToggleGroup>
+
+		<ToggleGroup
+			id="training-vram-limit-group"
+			title="GPU Memory Limit"
+			showEnableToggle={true}
+			bind:enabled={config.training.vramLimitMb.present}
+			hasDefaultValue={equalsConfigDefault('training.vramLimitMb.present')}
+			onReset={() => resetConfigToDefaults('training.vramLimitMb.present')}
+		>
+			<Slider
+				id="training-vram-limit-value"
+				bind:value={config.training.vramLimitMb.value}
+				unit="MB"
+				min={1}
+				max={2 ** 17}
+				step={1}
+				base={2}
+				tickFormatter={(value) => {
+					if (value >= 1024) {
+						const gb = value / 1024;
+						const gbStr = gb % 1 === 0 ? `${gb}GB` : `${gb.toFixed(1)}GB`;
+						return gbStr;
+					}
+					return `${value}MB`;
+				}}
+				hasDefaultValue={equalsConfigDefault('training.vramLimitMb.value')}
+				onReset={() => resetConfigToDefaults('training.vramLimitMb.value')}
+			/>
+		</ToggleGroup>
+	</CollapsibleSection>
+
+	<CollapsibleSection
+		title="Optimizer"
+		isOpen={controlSectionsOpen.current.optimizer}
+		ontoggle={() => toggleControlSection('optimizer')}
+		contentClass={collapsibleSectionClass}
+	>
+		<SelectWithCitations
+			id="optimizer-type"
+			bind:value={config.optimizer.type}
+			options={[
+				{
+					value: 'AdamW',
+					title: 'AdamW',
+					citations: {
+						entries: [
+							{
+								name: 'Loshchilov & Hutter, 2017',
+								url: 'https://openreview.net/forum?id=Bkg6RiCqY7'
+							}
+						]
+					}
+				},
+				{
+					value: 'Adam',
+					title: 'Adam',
+					citations: {
+						entries: [{ name: 'Kingma & Ba, 2014', url: 'https://arxiv.org/abs/1412.6980' }]
+					}
+				},
+				{
+					value: 'SGD',
+					title: 'SGD',
+					citations: {
+						entries: [
+							{ name: 'Robbins & Monro, 1951', url: 'https://www.jstor.org/stable/2236626?seq=1' }
+						]
+					}
+				},
+				{
+					value: 'Muon',
+					title: 'Muon with AdamW',
+					citations: {
+						entries: [
+							{ name: 'Jordan et al., 2024', url: 'https://kellerjordan.github.io/posts/muon/' }
+						]
+					}
+				}
+			]}
+			hasDefaultValue={equalsConfigDefault('optimizer.type')}
+			onReset={() => resetConfigToDefaults('optimizer.type')}
+		/>
+
+		<Slider
+			id="optimizer-learning-rate"
+			label="Learning Rate"
+			bind:value={config.optimizer.lr}
+			min={1e-5}
+			max={1e-2}
+			step={1e-5}
+			useLog
+			hasDefaultValue={equalsConfigDefault('optimizer.lr')}
+			onReset={() => resetConfigToDefaults('optimizer.lr')}
+		/>
+
+		<ToggleGroup
+			id="optimizer-warmup-steps-group"
+			title="Warmup Steps"
+			showEnableToggle={true}
+			bind:enabled={config.optimizer.warmupSteps.present}
+			hasDefaultValue={equalsConfigDefault('optimizer.warmupSteps.present')}
+			onReset={() => resetConfigToDefaults('optimizer.warmupSteps.present')}
+		>
+			<Slider
+				id="optimizer-warmup-steps-value"
+				bind:value={config.optimizer.warmupSteps.value}
+				min={0}
+				max={10_000}
+				step={1}
+				hasDefaultValue={equalsConfigDefault('optimizer.warmupSteps.value')}
+				onReset={() => resetConfigToDefaults('optimizer.warmupSteps.value')}
+			/>
+		</ToggleGroup>
+
+		<ToggleGroup
+			title="Learning Rate Scheduler"
+			id="optimizer-lr-scheduler-group"
+			showEnableToggle={true}
+			bind:enabled={config.optimizer.lrScheduler.present}
+			contentClass={sectionClass}
+			hasDefaultValue={equalsConfigDefault('optimizer.lrScheduler.present')}
+			onReset={() => resetConfigToDefaults('optimizer.lrScheduler.present')}
+		>
+			<LRSchedulePicker />
+		</ToggleGroup>
+
+		<ToggleGroup
+			id="optimizer-weight-decay-group"
+			title="Weight Decay"
+			contentClass={sectionClass}
+			showEnableToggle={true}
+			bind:enabled={config.optimizer.weightDecay.present}
+			hasDefaultValue={equalsConfigDefault('optimizer.weightDecay.present')}
+			onReset={() => resetConfigToDefaults('optimizer.weightDecay.present')}
+		>
+			<Slider
+				id="optimizer-weight-decay-value"
+				min={0.001}
+				max={1}
+				step={0.001}
+				bind:value={config.optimizer.weightDecay.value}
+				hasDefaultValue={equalsConfigDefault('optimizer.weightDecay.value')}
+				onReset={() => resetConfigToDefaults('optimizer.weightDecay.value')}
+			/>
+
+			<CheckboxInput
+				id="optimizer-use-weight-decay-groups"
+				label="Use Weight Decay Groups"
+				bind:checked={config.optimizer.weightDecay.useWeightDecayGroups}
+				hasDefaultValue={equalsConfigDefault('optimizer.weightDecay.useWeightDecayGroups')}
+				onReset={() => resetConfigToDefaults('optimizer.weightDecay.useWeightDecayGroups')}
+			/>
+		</ToggleGroup>
+
+		<div class="space-y-1">
+			{#if config.optimizer.type === 'Muon'}
+				<BorderedGroup title="Muon Settings" contentClass={sectionClass}>
+					<div class="grid grid-cols-2 gap-2">
+						<NumberInput
+							id="optimizer-muon-ns-steps"
+							label="N-S Steps"
+							step={1}
+							min={0}
+							max={10}
+							bind:value={config.optimizer.muon.nsSteps}
+							hasDefaultValue={equalsConfigDefault('optimizer.muon.nsSteps')}
+							onReset={() => resetConfigToDefaults('optimizer.muon.nsSteps')}
+						/>
+						<NumberInput
+							id="optimizer-muon-momentum"
+							label="Momentum"
+							step={0.001}
+							min={0}
+							max={1}
+							bind:value={config.optimizer.muon.momentum}
+							hasDefaultValue={equalsConfigDefault('optimizer.muon.momentum')}
+							onReset={() => resetConfigToDefaults('optimizer.muon.momentum')}
+						/>
+						<CheckboxInput
+							id="optimizer-muon-nesterov"
+							label="Nesterov"
+							bind:checked={config.optimizer.muon.nesterov}
+							class="col-span-2"
+							hasDefaultValue={equalsConfigDefault('optimizer.muon.nesterov')}
+							onReset={() => resetConfigToDefaults('optimizer.muon.nesterov')}
+						/>
+					</div>
+				</BorderedGroup>
+			{/if}
+			{#if config.optimizer.type === 'AdamW' || config.optimizer.type === 'Adam' || config.optimizer.type === 'Muon'}
+				{@const settingsName = config.optimizer.type === 'Adam' ? 'Adam' : 'AdamW'}
+				<BorderedGroup title={`${settingsName} Settings`} contentClass={sectionClass}>
+					<div class="grid grid-cols-2 gap-2">
+						<NumberInput
+							id="optimizer-adam-beta1"
+							label="Beta1"
+							step={0.001}
+							min={0}
+							max={1}
+							bind:value={config.optimizer.adam.beta1}
+							hasDefaultValue={equalsConfigDefault('optimizer.adam.beta1')}
+							onReset={() => resetConfigToDefaults('optimizer.adam.beta1')}
+						/>
+						<NumberInput
+							id="optimizer-adam-beta2"
+							label="Beta2"
+							step={0.001}
+							min={0}
+							max={1}
+							bind:value={config.optimizer.adam.beta2}
+							hasDefaultValue={equalsConfigDefault('optimizer.adam.beta2')}
+							onReset={() => resetConfigToDefaults('optimizer.adam.beta2')}
+						/>
+						<NumberInput
+							id="optimizer-adam-epsilon"
+							label="Epsilon"
+							step={1e-9}
+							min={0}
+							bind:value={config.optimizer.adam.eps}
+							hasDefaultValue={equalsConfigDefault('optimizer.adam.eps')}
+							onReset={() => resetConfigToDefaults('optimizer.adam.eps')}
+						/>
+						<CheckboxInput
+							id="optimizer-adam-amsgrad"
+							label="AMSGrad"
+							bind:checked={config.optimizer.adam.amsgrad}
+							class="col-span-2"
+							hasDefaultValue={equalsConfigDefault('optimizer.adam.amsgrad')}
+							onReset={() => resetConfigToDefaults('optimizer.adam.amsgrad')}
+						/>
+					</div>
+				</BorderedGroup>
+			{/if}
+
+			{#if config.optimizer.type === 'SGD'}
+				<div class="grid grid-cols-2 gap-2">
+					<NumberInput
+						id="optimizer-sgd-momentum"
+						label="Momentum"
+						step={0.01}
+						min={0}
+						max={1}
+						bind:value={config.optimizer.sgd.momentum}
+						hasDefaultValue={equalsConfigDefault('optimizer.sgd.momentum')}
+						onReset={() => resetConfigToDefaults('optimizer.sgd.momentum')}
+					/>
+					<NumberInput
+						id="optimizer-sgd-dampening"
+						label="Dampening"
+						step={0.01}
+						min={0}
+						bind:value={config.optimizer.sgd.dampening}
+						hasDefaultValue={equalsConfigDefault('optimizer.sgd.dampening')}
+						onReset={() => resetConfigToDefaults('optimizer.sgd.dampening')}
+					/>
+					<CheckboxInput
+						id="optimizer-sgd-nesterov"
+						label="Nesterov"
+						bind:checked={config.optimizer.sgd.nesterov}
+						class="col-span-2"
+						hasDefaultValue={equalsConfigDefault('optimizer.sgd.nesterov')}
+						onReset={() => resetConfigToDefaults('optimizer.sgd.nesterov')}
+					/>
+				</div>
+			{/if}
+		</div>
+	</CollapsibleSection>
+
+	<CollapsibleSection
+		title="Advanced (debugging or profiling)"
+		isOpen={controlSectionsOpen.current.advanced}
+		ontoggle={() => toggleControlSection('advanced')}
+		contentClass={collapsibleSectionClass}
+	>
+		<CheckboxInput
+			id="training-use-weak-tensor-references"
+			label="Use Weak Tensor References"
+			bind:checked={config.training.useWeakTensorReferences}
+			hasDefaultValue={equalsConfigDefault('training.useWeakTensorReferences')}
+			onReset={() => resetConfigToDefaults('training.useWeakTensorReferences')}
+		/>
+		<CheckboxInput
+			id="training-shared-object-allocation"
+			label="Shared Object Allocation"
+			bind:checked={config.training.sharedObjectAllocation}
+			hasDefaultValue={equalsConfigDefault('training.sharedObjectAllocation')}
+			onReset={() => resetConfigToDefaults('training.sharedObjectAllocation')}
+		/>
+		<CheckboxInput
+			id="training-inplace-buffer-reuse"
+			label="Inplace Buffer Reuse"
+			bind:checked={config.training.inplaceSupport}
+			hasDefaultValue={equalsConfigDefault('training.inplaceSupport')}
+			onReset={() => resetConfigToDefaults('training.inplaceSupport')}
+		/>
+	</CollapsibleSection>
+</div>
+
+<style>
+	:global(.error-flash) {
+		animation: error-flash 1s steps(1);
+	}
+
+	@keyframes error-flash {
+		0%,
+		100% {
+			box-shadow: none;
+		}
+		12.5% {
+			box-shadow: 0 0 0 calc(var(--spacing) * 0.75) var(--color-red-500);
+		}
+		25% {
+			box-shadow: none;
+		}
+		37.5% {
+			box-shadow: 0 0 0 calc(var(--spacing) * 0.75) var(--color-red-500);
+		}
+		50% {
+			box-shadow: none;
+		}
+	}
+
+	:global(#model-attention-gating-group.is-focused),
+	:global(#model-transformer-normalization-qk-norm-group.is-focused),
+	:global(#model-mlp-group.is-focused),
+	:global(#model-initialization-group.is-focused),
+	:global(#optimizer-lr-scheduler-group.is-focused),
+	:global(#training-dropout-group.is-focused),
+	:global(#training-clip-grad-norm-group.is-focused),
+	:global(#model-rnn-layer-normalization-group.is-focused),
+	:global(label[for='model-rnn-bidirectional-encoder-checkbox'].is-focused),
+	:global(#model-rnn-encoder-decoder-attention-group.is-focused),
+	:global(#model-rnn-cell-type-select.is-focused),
+	:global(#dataset-select.is-focused) {
+		outline: 2px solid var(--color-purple-500);
+	}
+</style>

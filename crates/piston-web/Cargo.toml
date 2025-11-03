@@ -1,0 +1,53 @@
+[package]
+name = "piston-web"
+description = "Train small neural networks in your browser with WebGPU"
+version = "0.0.0"
+edition = "2024"
+license = "MIT"
+repository = "https://github.com/vinhowe/piston"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[package.metadata.docs.rs]
+default-target = "wasm32-unknown-unknown"
+
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+strip = true
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[dependencies]
+piston-macros = { path = "../piston-macros" }
+piston = { path = "../piston-core" }
+half = { workspace = true }
+wasm-bindgen = { workspace = true }
+safetensors = { workspace = true }
+wasm-bindgen-futures = { workspace = true }
+js-sys = { workspace = true }
+anyhow.workspace = true
+serde = { workspace = true }
+serde-wasm-bindgen = { workspace = true }
+console_error_panic_hook = { workspace = true }
+console_log = { workspace = true }
+parking_lot = { workspace = true }
+log.workspace = true
+fern = { workspace = true }
+futures = "0.3.30"
+tsify = { workspace = true }
+
+[dependencies.web-sys]
+features = ['console', 'Window', 'Navigator']
+workspace = true
+
+[dev-dependencies]
+wasm-bindgen-test.workspace = true
+chrono = { workspace = true }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+getrandom = { workspace = true, features = ["js"] }
+
+[package.metadata.cargo-machete]
+ignored = ["tsify"]

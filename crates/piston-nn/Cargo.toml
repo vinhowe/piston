@@ -1,0 +1,45 @@
+[package]
+name = "piston-nn"
+version = "0.1.0"
+edition = "2024"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[features]
+pyo3 = ["piston/pyo3"]
+plotting = ["piston/plotting"]
+debug = ["piston/debug"]
+
+[dependencies]
+anyhow.workspace = true
+log.workspace = true
+derive-new = { workspace = true }
+piston = { path = "../piston-core" }
+piston-macros = { path = "../piston-macros" }
+wasm-bindgen = { workspace = true }
+wasm-bindgen-futures = { workspace = true }
+safetensors = { workspace = true }
+thiserror = { workspace = true }
+ndarray = { workspace = true }
+async-trait = { workspace = true }
+num-traits = { workspace = true }
+env_logger = { workspace = true }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+maybe-async = { workspace = true, features = ["is_sync"] }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+maybe-async = { workspace = true }
+
+[dev-dependencies]
+proptest = { workspace = true }
+test-strategy = { workspace = true }
+# hf-hub = { workspace = true }
+tokenizers = { version = "0.19.1", default-features = false, features = [
+    "unstable_wasm",
+] }
+wasm-bindgen-test = { workspace = true }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies.web-sys]
+features = ["Blob", "Url"]
+workspace = true

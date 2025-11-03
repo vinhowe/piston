@@ -1,14 +1,8 @@
-<p align="center">
-  <b>For the time being, I don't have instructions on how to run this. You're on your own for a tiny bit :)</b>
-</p>
+# sequence toy + Piston library
 
-<div align="center">
-<img width="200px" src="https://github.com/vinhowe/ratchet-backward/raw/master/.github/ratchet.png">
-<p align="center">
-<code>(backward)</code>
-</p>
-<br>
-</div>
+Train small sequence models in your browser with WebGPU.
+
+## Attribution
 
 This is a fork of [Ratchet](https://github.com/huggingface/ratchet), hacked and butchered to add backpropogation, to show that it is technically possible to train language models in a (WebGPU-enabled) browser.
 

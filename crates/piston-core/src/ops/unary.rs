@@ -1,0 +1,774 @@
+use num_traits::One;
+use std::borrow::Cow;
+
+use derive_new::new;
+use encase::ShaderType;
+use half::f16;
+use inline_wgsl::wgsl;
+use piston_macros::{IrFields, WgslMetadata};
+use strum_macros::EnumIter;
+
+use crate::{
+    Array, BindingMode, BuiltIn, DType, GPUOperation, Kernel, KernelElement, KernelRenderable,
+    KernelSource, OpGuards, OpTensor, Operation, OperationError, RVec, Scalar, StorageView, Stride,
+    Vec2, Vec4, WgslKernelBuilder, WgslPrimitive, WorkgroupSize, Workload,
+    gpu::{BindGroupLayoutDescriptor, dtype::WgslDType},
+    rvec,
+};
+
+#[cfg(test)]
+use test_strategy::Arbitrary;
+
+#[cfg_attr(test, derive(Arbitrary))]
+#[derive(Debug, Clone, EnumIter, Hash, IrFields)]
+pub enum UnaryOp {
+    Gelu,
+    Tanh,
+    Exp,
+    Log,
+    Sin,
+    Cos,
+    Abs,
+    Square,
+    Sqrt,
+    Relu,
+    Relu2,
+    Floor,
+    Ceil,
+    Neg,
+    Reciprocal,
+    Silu,
+    Sigmoid,
+    Swiglu,
+    LogicalNot,
+    IsNan,
+    IsInf,
+}
+
+impl UnaryOp {
+    pub fn kernel_name(&self) -> Cow<'static, str> {
+        match self {
+            UnaryOp::Gelu => "gelu".into(),
+            UnaryOp::Tanh => "tanh".into(),
+            UnaryOp::Exp => "exp".into(),
+            UnaryOp::Log => "log".into(),
+            UnaryOp::Sin => "sin".into(),
+            UnaryOp::Cos => "cos".into(),
+            UnaryOp::Abs => "abs".into(),
+            UnaryOp::Square => "square".into(),
+            UnaryOp::Sqrt => "sqrt".into(),
+            UnaryOp::Relu => "relu".into(),
+            UnaryOp::Relu2 => "relu2".into(),
+            UnaryOp::Floor => "floor".into(),
+            UnaryOp::Ceil => "ceil".into(),
+            UnaryOp::Neg => "neg".into(),
+            UnaryOp::Reciprocal => "reciprocal".into(),
+            UnaryOp::Silu => "silu".into(),
+            UnaryOp::Sigmoid => "sigmoid".into(),
+            UnaryOp::Swiglu => "swiglu".into(),
+            UnaryOp::LogicalNot => "logical_not".into(),
+            UnaryOp::IsNan => "isnan".into(),
+            UnaryOp::IsInf => "isinf".into(),
+        }
+    }
+
+    pub fn kernel_operation(&self) -> Cow<'static, str> {
+        match self {
+            UnaryOp::Tanh => "safe_tanh".into(),
+            UnaryOp::Neg => "-".into(),
+            UnaryOp::Reciprocal => "1.0 / ".into(),
+            _ => self.kernel_name(),
+        }
+    }
+}
+
+#[derive(new, Debug, Clone, IrFields)]
+pub struct Unary {
+    pub input: OpTensor,
+    pub op: UnaryOp,
+}
+
+impl KernelRenderable for UnaryKernels {
+    fn register_bindings<P: WgslPrimitive>(
+        &self,
+        builder: &mut WgslKernelBuilder,
+        inplace: bool,
+    ) -> Result<(), OperationError> {
+        if inplace {
+            builder.register_storage("X", BindingMode::ReadWrite, Array::<P>::default());
+        } else {
+            builder.register_storage("X", BindingMode::ReadOnly, Array::<P>::default());
+            let UnaryKernels::Standard(inner) = self;
+            if matches!(
+                inner.op,
+                UnaryOp::LogicalNot | UnaryOp::IsNan | UnaryOp::IsInf
+            ) {
+                match self.kernel_element(&inner.input) {
+                    KernelElement::Scalar => {
+                        builder.register_storage(
+                            "Y",
+                            BindingMode::ReadWrite,
+                            Array::<Scalar<i32>>::default(),
+                        );
+                    }
+                    KernelElement::Vec2 => {
+                        builder.register_storage(
+                            "Y",
+                            BindingMode::ReadWrite,
+                            Array::<Vec2<i32>>::default(),
+                        );
+                    }
+                    KernelElement::Vec4 => {
+                        builder.register_storage(
+                            "Y",
+                            BindingMode::ReadWrite,
+                            Array::<Vec4<i32>>::default(),
+                        );
+                    }
+                }
+            } else {
+                builder.register_storage("Y", BindingMode::ReadWrite, Array::<P>::default());
+            }
+        }
+        builder.register_uniform();
+        Ok(())
+    }
+
+    fn render<P: WgslPrimitive>(
+        &self,
+        inplace: bool,
+        dst: &OpTensor,
+        workgroup_size: &WorkgroupSize,
+    ) -> Result<KernelSource, OperationError> {
+        let device = dst.device().try_gpu()?;
+        let mut kernel_builder = WgslKernelBuilder::new(
+            workgroup_size.clone(),
+            rvec![
+                BuiltIn::WorkgroupId,
+                BuiltIn::LocalInvocationIndex,
+                BuiltIn::NumWorkgroups
+            ],
+            device.compute_features().clone(),
+        );
+
+        self.register_bindings::<P>(&mut kernel_builder, inplace)?;
+        kernel_builder.render_metadata(&self.metadata(dst, &self.kernel_element(dst))?);
+
+        let UnaryKernels::Standard(inner) = self;
+
+        //Write global functions
+        match inner.op {
+            UnaryOp::Gelu => {
+                kernel_builder.write_global(Unary::render_tanh::<P>());
+                kernel_builder.write_global(Unary::render_gelu::<P>());
+            }
+            UnaryOp::Tanh => {
+                kernel_builder.write_global(Unary::render_tanh::<P>());
+            }
+            UnaryOp::Sigmoid => {
+                kernel_builder.write_global(Unary::render_sigmoid::<P>());
+            }
+            UnaryOp::Square => {
+                kernel_builder.write_global(Unary::render_square::<P>());
+            }
+            UnaryOp::Silu => {
+                kernel_builder.write_global(Unary::render_sigmoid::<P>());
+                kernel_builder.write_global(Unary::render_silu::<P>());
+            }
+            UnaryOp::Relu => {
+                kernel_builder.write_global(Unary::render_relu::<P>());
+            }
+            UnaryOp::Relu2 => {
+                kernel_builder.write_global(Unary::render_relu2::<P>());
+            }
+            UnaryOp::Swiglu => {
+                kernel_builder.write_global(Unary::render_sigmoid::<P>());
+                kernel_builder.write_global(Unary::render_swiglu::<P>());
+            }
+            UnaryOp::LogicalNot => {
+                kernel_builder.write_global(Unary::render_logical_not::<P>());
+            }
+            UnaryOp::IsNan => {
+                kernel_builder.write_global(Unary::render_isnan::<P>(inner.input.dtype()));
+            }
+            UnaryOp::IsInf => {
+                kernel_builder.write_global(Unary::render_isinf::<P>(inner.input.dtype()));
+            }
+            _ => {}
+        };
+
+        let n = P::W;
+
+        kernel_builder.write_main(wgsl! {
+            let x_offset = workgroup_id.x * 64u;
+            let index = (workgroup_id.y * num_workgroups.x * 64u) + x_offset + local_invocation_index;
+            if (index >= metadata.numel / 'n) {
+                return;
+            }
+        });
+
+        let func = inner.op.kernel_operation();
+        if inplace {
+            kernel_builder.write_main(wgsl! {
+                let val = X[index];
+                X[index] = 'func(val);
+            });
+        } else {
+            kernel_builder.write_main(wgsl! {
+                Y[index] = 'func(X[index]);
+            });
+        }
+
+        Ok(kernel_builder.build()?)
+    }
+}
+
+impl Unary {
+    const SQRT_2_OVER_PI: f32 = 0.797_884_6;
+    const SCALED_SQRT_2_OVER_PI: f32 = 0.035_677_407;
+
+    pub fn op(&self) -> &UnaryOp {
+        &self.op
+    }
+
+    pub fn input(&self) -> &OpTensor {
+        &self.input
+    }
+
+    fn render_gelu<P: WgslPrimitive>() -> String {
+        let accessor = P::render_type();
+        let SQRT_2_OVER_PI = Self::SQRT_2_OVER_PI;
+        let SCALED_SQRT_2_OVER_PI = Self::SCALED_SQRT_2_OVER_PI;
+
+        wgsl! {
+            fn gelu(val: 'accessor) -> 'accessor {
+                let cdf = 'accessor(0.5) + 'accessor(0.5) * safe_tanh(val * ('accessor('SCALED_SQRT_2_OVER_PI)
+                        * (val * val) + 'accessor('SQRT_2_OVER_PI)));
+                return val * cdf;
+            }
+        }
+    }
+
+    fn render_tanh<P: WgslPrimitive>() -> String {
+        let accessor = P::render_type();
+
+        wgsl! {
+            fn safe_tanh(x: 'accessor) -> 'accessor {
+                return select(tanh(x), sign(x), abs(x) >= 'accessor(10.));
+            }
+        }
+    }
+
+    fn render_relu<P: WgslPrimitive>() -> String {
+        let accessor = P::render_type();
+
+        wgsl! {
+            fn relu(val: 'accessor) -> 'accessor {
+                return max(val, 'accessor(0.0));
+            }
+        }
+    }
+
+    fn render_relu2<P: WgslPrimitive>() -> String {
+        let accessor = P::render_type();
+
+        wgsl! {
+            fn relu2(val: 'accessor) -> 'accessor {
+                return max(val, 'accessor(0.0)) * max(val, 'accessor(0.0));
+            }
+        }
+    }
+    fn render_silu<P: WgslPrimitive>() -> String {
+        let accessor = P::render_type();
+
+        wgsl! {
+            fn silu(val: 'accessor) -> 'accessor {
+                return val * sigmoid(val);
+            }
+        }
+    }
+
+    fn render_sigmoid<P: WgslPrimitive>() -> String {
+        let accessor = P::render_type();
+        let one = P::T::one().render();
+
+        wgsl! {
+            fn sigmoid(val: 'accessor) -> 'accessor {
+                return select('one / ('one + exp(-val)), exp(val) / ('one + exp(val)), val >= 'accessor(0.));
+            }
+        }
+    }
+
+    fn render_swiglu<P: WgslPrimitive>() -> String {
+        let accessor = P::render_type();
+
+        wgsl! {
+            fn swiglu(val: 'accessor) -> 'accessor {
+                return val * val * sigmoid(val);
+            }
+        }
+    }
+
+    fn render_square<P: WgslPrimitive>() -> String {
+        let accessor = P::render_type();
+
+        wgsl! {
+            fn square(val: 'accessor) -> 'accessor {
+                return val * val;
+            }
+        }
+    }
+
+    // fn input_accessor<P: WgslPrimitive>(input_dtype: DType) -> String {
+    //     match P::W {
+    //         1 => input_dtype.as_wgsl().to_string(),
+    //         2 => format!("vec2<{}>", input_dtype.as_wgsl()),
+    //         4 => format!("vec4<{}>", input_dtype.as_wgsl()),
+    //         _ => panic!("Unsupported W for i32_equivalent_accessor: {:?}", P::W),
+    //     }
+    // }
+
+    fn equivalent_accessor<P: WgslPrimitive>(dtype: String) -> String {
+        match P::W {
+            1 => dtype,
+            2 => format!("vec2<{}>", dtype),
+            4 => format!("vec4<{}>", dtype),
+            _ => panic!("Unsupported W for equivalent_accessor: {:?}", P::W),
+        }
+    }
+
+    fn render_logical_not<P: WgslPrimitive>() -> String {
+        let accessor = P::render_type();
+        let output_accessor = Self::equivalent_accessor::<P>("i32".to_string());
+
+        wgsl! {
+            fn logical_not(val: 'accessor) -> 'output_accessor {
+                return 'output_accessor(val == 'accessor(0.));
+            }
+        }
+    }
+
+    fn render_isnan<P: WgslPrimitive>(dtype: DType) -> String {
+        let accessor = P::render_type();
+        let output_accessor = Self::equivalent_accessor::<P>("i32".to_string());
+
+        // wgsl! {
+        //     let other_max
+        //     fn isnan(val: 'accessor) -> 'output_accessor {
+        //         return 'output_accessor(max());
+        //     }
+        // }
+        match dtype {
+            DType::F16 => {
+                wgsl! {
+                    fn isnan(val: 'accessor) -> 'output_accessor {
+                        let packed_val = pack2x16float(vec2(val, 0.0h));
+
+                        let bits = packed_val & 0x0000ffffu;
+
+                        return 'output_accessor((bits & 0x7fffu) > 0x7C00u);
+                      }
+                }
+            }
+            DType::F32 => {
+                let u32_accessor = Self::equivalent_accessor::<P>("u32".to_string());
+                wgsl! {
+                    fn isnan(val: 'accessor) -> 'output_accessor {
+                        return 'output_accessor((bitcast<'u32_accessor>(val) & 'u32_accessor(0x7fffffffu)) > 'u32_accessor(0x7f800000u));
+                    }
+                }
+            }
+            _ => {
+                panic!("Unsupported dtype for isinf: {:?}", dtype);
+            }
+        }
+    }
+
+    fn render_isinf<P: WgslPrimitive>(dtype: DType) -> String {
+        let accessor = P::render_type();
+        let output_accessor = Self::equivalent_accessor::<P>("i32".to_string());
+
+        match dtype {
+            // TODO: F16 arm has never been tested
+            DType::F16 => {
+                wgsl! {
+                    fn isinf(val: 'accessor) -> 'output_accessor {
+                        let packed_val = pack2x16float(vec2(val, 0.0h));
+
+                        let bits = packed_val & 0x0000ffffu;
+
+                        return 'output_accessor((bits & 0x7fffu) == 0x7C00u);
+                      }
+                }
+            }
+            DType::F32 => {
+                let u32_accessor = Self::equivalent_accessor::<P>("u32".to_string());
+                wgsl! {
+                    fn isinf(val: 'accessor) -> 'output_accessor {
+                        return 'output_accessor((bitcast<'u32_accessor>(val) & 'u32_accessor(0x7fffffffu)) == 'u32_accessor(0x7f800000u));
+                    }
+                }
+            }
+            _ => {
+                panic!("Unsupported dtype for isinf: {:?}", dtype);
+            }
+        }
+    }
+}
+
+#[derive(Debug, ShaderType, WgslMetadata)]
+pub struct UnaryMeta {
+    numel: u32,
+}
+
+impl OpGuards for Unary {
+    fn check_shapes(&self) {}
+
+    fn check_dtypes(&self) {}
+}
+
+impl Operation for Unary {
+    fn name(&self) -> &'static str {
+        match self.op {
+            UnaryOp::Gelu => "Gelu",
+            UnaryOp::Tanh => "Tanh",
+            UnaryOp::Exp => "Exp",
+            UnaryOp::Log => "Log",
+            UnaryOp::Sin => "Sin",
+            UnaryOp::Cos => "Cos",
+            UnaryOp::Abs => "Abs",
+            UnaryOp::Square => "Square",
+            UnaryOp::Sqrt => "Sqrt",
+            UnaryOp::Relu => "Relu",
+            UnaryOp::Relu2 => "Relu2",
+            UnaryOp::Floor => "Floor",
+            UnaryOp::Ceil => "Ceil",
+            UnaryOp::Neg => "Neg",
+            UnaryOp::Reciprocal => "Reciprocal",
+            UnaryOp::Silu => "Silu",
+            UnaryOp::Sigmoid => "Sigmoid",
+            UnaryOp::Swiglu => "Swiglu",
+            UnaryOp::LogicalNot => "LogicalNot",
+            UnaryOp::IsNan => "IsNan",
+            UnaryOp::IsInf => "IsInf",
+        }
+    }
+
+    fn compute_view(&self) -> Result<StorageView, OperationError> {
+        if matches!(
+            self.op,
+            UnaryOp::LogicalNot | UnaryOp::IsNan | UnaryOp::IsInf
+        ) {
+            let shape = self.input.shape().clone();
+            let stride = Stride::from(&shape);
+            Ok(StorageView::new(shape, DType::I32, stride))
+        } else {
+            Ok(self.input.storage_view().clone())
+        }
+    }
+
+    #[inline]
+    fn srcs(&self) -> RVec<&OpTensor> {
+        rvec![&self.input]
+    }
+
+    fn supports_inplace(&self) -> bool {
+        !matches!(
+            self.op,
+            UnaryOp::LogicalNot | UnaryOp::IsNan | UnaryOp::IsInf
+        )
+    }
+}
+
+pub enum UnaryKernels {
+    Standard(Unary),
+}
+
+impl GPUOperation for Unary {
+    type KernelEnum = UnaryKernels;
+
+    fn select_kernel(&self) -> Self::KernelEnum {
+        UnaryKernels::Standard(self.clone())
+    }
+}
+
+impl Kernel for UnaryKernels {
+    type Metadata = UnaryMeta;
+
+    fn kernel_name(&self) -> String {
+        match self {
+            UnaryKernels::Standard(inner) => inner.op.kernel_name().into_owned(),
+        }
+    }
+
+    fn storage_bind_group_layout(
+        &self,
+        inplace: bool,
+    ) -> Result<BindGroupLayoutDescriptor, OperationError> {
+        if inplace {
+            Ok(BindGroupLayoutDescriptor::unary_inplace())
+        } else {
+            Ok(BindGroupLayoutDescriptor::unary())
+        }
+    }
+
+    fn kernel_element(&self, _dst: &OpTensor) -> KernelElement {
+        let UnaryKernels::Standard(inner) = self;
+
+        let a_rank = &inner.input.shape().dim();
+        let N = &inner.input.shape()[a_rank - 1];
+
+        if N.is_multiple_of(4) {
+            KernelElement::Vec4
+        } else if N.is_multiple_of(2) {
+            KernelElement::Vec2
+        } else {
+            KernelElement::Scalar
+        }
+    }
+
+    fn calculate_dispatch(&self, dst: &OpTensor) -> Result<Workload, OperationError> {
+        Ok(Workload::std(dst.shape().numel(), self.kernel_element(dst)))
+    }
+
+    fn build_kernel(
+        &self,
+        inplace: bool,
+        dst: &OpTensor,
+        workgroup_size: &WorkgroupSize,
+    ) -> Result<KernelSource, OperationError> {
+        let kernel_element = self.kernel_element(dst);
+        let UnaryKernels::Standard(inner) = self;
+        match inner.op {
+            UnaryOp::LogicalNot | UnaryOp::IsNan | UnaryOp::IsInf => {
+                if dst.dtype() == DType::F32 {
+                    panic!(
+                        "Unsupported dtype for unary operation {:?} with boolean output: {:?}",
+                        inner.name(),
+                        dst.dtype()
+                    );
+                }
+            }
+            _ => {}
+        }
+        match (inner.input.dtype(), &kernel_element) {
+            (DType::F32, KernelElement::Scalar) => {
+                self.render::<Scalar<f32>>(inplace, dst, workgroup_size)
+            }
+            (DType::F32, KernelElement::Vec2) => {
+                self.render::<Vec2<f32>>(inplace, dst, workgroup_size)
+            }
+            (DType::F32, KernelElement::Vec4) => {
+                self.render::<Vec4<f32>>(inplace, dst, workgroup_size)
+            }
+            (DType::F16, KernelElement::Scalar) => {
+                self.render::<Scalar<f16>>(inplace, dst, workgroup_size)
+            }
+            (DType::F16, KernelElement::Vec2) => {
+                self.render::<Vec2<f16>>(inplace, dst, workgroup_size)
+            }
+            (DType::F16, KernelElement::Vec4) => {
+                self.render::<Vec4<f16>>(inplace, dst, workgroup_size)
+            }
+            (DType::I32, KernelElement::Scalar) => {
+                self.render::<Scalar<i32>>(inplace, dst, workgroup_size)
+            }
+            (DType::I32, KernelElement::Vec2) => {
+                self.render::<Vec2<i32>>(inplace, dst, workgroup_size)
+            }
+            (DType::I32, KernelElement::Vec4) => {
+                self.render::<Vec4<i32>>(inplace, dst, workgroup_size)
+            }
+            _ => Err(OperationError::CompileError(format!(
+                "Unsupported dtype {:?} or kernel element {:?}",
+                dst.dtype(),
+                kernel_element
+            ))),
+        }
+    }
+
+    fn metadata(
+        &self,
+        dst: &OpTensor,
+        _: &KernelElement,
+    ) -> Result<Self::Metadata, OperationError> {
+        Ok(UnaryMeta {
+            numel: dst.shape().numel() as u32,
+        })
+    }
+}
+
+#[cfg(all(test, feature = "pyo3"))]
+mod tests {
+    use test_strategy::{Arbitrary, proptest};
+
+    use crate::{
+        Device, DeviceRequest, Tensor, TensorOptions, UnaryOp, randn, test_util::run_py_prg,
+    };
+
+    #[derive(Arbitrary, Debug)]
+    struct UnaryProblem {
+        op: UnaryOp,
+        #[strategy(1..=2usize)]
+        B: usize,
+        #[strategy(1..=128usize)]
+        M: usize,
+    }
+
+    fn ground_truth(a: &Tensor, op: &UnaryOp, args: &str) -> anyhow::Result<Tensor> {
+        let kn = op.kernel_name();
+        let func_prg = format!(
+            r#"
+import torch
+import torch.nn.functional as F
+def {kn}(a):
+    return F.{kn}(torch.from_numpy(a), {args}).numpy()
+"#,
+        );
+
+        let imp_prg = format!(
+            r#"
+import torch
+def {kn}(a):
+    return torch.{kn}(torch.from_numpy(a), {args}).numpy()
+"#,
+        );
+
+        let imp_with_cast_prg = format!(
+            r#"
+import torch
+def {kn}(a):
+    return torch.{kn}(torch.from_numpy(a), {args}).float().numpy()
+"#,
+        );
+
+        let swiglu_prg = format!(
+            r#"
+import torch
+def {kn}(a):
+    x = torch.from_numpy(a)
+    return (x * x * torch.sigmoid(x)).numpy()
+"#,
+        );
+
+        let relu2_prg = format!(
+            r#"
+import torch
+import torch.nn.functional as F
+def {kn}(a):
+    return (F.relu(torch.from_numpy(a), {args})**2).numpy()
+"#,
+        );
+
+        let prg = match op {
+            UnaryOp::Gelu | UnaryOp::Silu | UnaryOp::Sigmoid | UnaryOp::Relu => func_prg,
+            UnaryOp::Swiglu => swiglu_prg,
+            UnaryOp::Relu2 => relu2_prg,
+            UnaryOp::LogicalNot | UnaryOp::IsNan | UnaryOp::IsInf => imp_with_cast_prg,
+            _ => imp_prg,
+        };
+
+        run_py_prg(prg.to_string(), &[a], &[], a.dtype())
+    }
+
+    fn run_unary_trial(prob: UnaryProblem, device: Device) -> anyhow::Result<()> {
+        // Not implemented on CPU for now
+        if device.is_cpu()
+            && matches!(
+                prob.op,
+                UnaryOp::LogicalNot | UnaryOp::IsNan | UnaryOp::IsInf
+            )
+        {
+            return Ok(());
+        }
+
+        let UnaryProblem { op, B, M } = prob;
+        let a = randn((B, M), None, None, Default::default())?;
+
+        let args = match op {
+            UnaryOp::Gelu => "approximate=\"tanh\"",
+            _ => "",
+        };
+        let ground = ground_truth(&a, &op, args)?;
+
+        let a = a.to(&device)?;
+        let c = match op {
+            UnaryOp::Gelu => a.gelu()?,
+            UnaryOp::Tanh => a.tanh()?,
+            UnaryOp::Exp => a.exp()?,
+            UnaryOp::Log => a.log()?,
+            UnaryOp::Sin => a.sin()?,
+            UnaryOp::Cos => a.cos()?,
+            UnaryOp::Abs => a.abs()?,
+            UnaryOp::Square => a.square()?,
+            UnaryOp::Sqrt => a.sqrt()?,
+            UnaryOp::Relu => a.relu()?,
+            UnaryOp::Relu2 => a.relu2()?,
+            UnaryOp::Floor => a.floor()?,
+            UnaryOp::Ceil => a.ceil()?,
+            UnaryOp::Neg => a.neg()?,
+            UnaryOp::Reciprocal => a.recip()?,
+            UnaryOp::Silu => a.silu()?,
+            UnaryOp::Sigmoid => a.sigmoid()?,
+            UnaryOp::Swiglu => a.swiglu()?,
+            UnaryOp::LogicalNot => a.logical_not()?.cast(crate::DType::F32)?,
+            UnaryOp::IsNan => a.isnan()?.cast(crate::DType::F32)?,
+            UnaryOp::IsInf => a.isinf()?.cast(crate::DType::F32)?,
+        };
+
+        let (atol, rtol) = match op {
+            UnaryOp::Gelu | UnaryOp::Tanh => (5e-2, 5e-2),
+            _ => (1e-4, 1e-4),
+        };
+
+        let d = c.to(&Device::CPU)?;
+        ground.all_close(&d, atol, rtol)?;
+        Ok(())
+    }
+
+    #[proptest(cases = 256)]
+    fn test_unary_gpu(prob: UnaryProblem) {
+        let _ = env_logger::builder().try_init();
+        let device = Device::request_device(DeviceRequest::GPU).unwrap();
+        run_unary_trial(prob, device).unwrap();
+    }
+
+    #[proptest(cases = 256)]
+    fn test_unary_cpu(prob: UnaryProblem) {
+        let _ = env_logger::builder().try_init();
+        let device = Device::request_device(DeviceRequest::CPU).unwrap();
+        run_unary_trial(prob, device).unwrap();
+    }
+
+    #[test]
+    fn test_isnan_detection_f32() -> anyhow::Result<()> {
+        let device = Device::request_device(DeviceRequest::GPU).unwrap();
+        let t = Tensor::from_data(
+            vec![0.0f32, 1.0, f32::NAN, f32::INFINITY, f32::NEG_INFINITY],
+            5,
+            TensorOptions::new(),
+        )?
+        .to(&device)?
+        .isnan()?;
+
+        let out = t.to(&Device::CPU)?.to_vec::<i32>()?;
+        assert_eq!(out, vec![0, 0, 1, 0, 0]);
+        Ok(())
+    }
+
+    #[test]
+    fn test_isinf_detection_f32() -> anyhow::Result<()> {
+        let device = Device::request_device(DeviceRequest::GPU).unwrap();
+        let t = Tensor::from_data(
+            vec![0.0f32, 1.0, f32::NAN, f32::INFINITY, f32::NEG_INFINITY],
+            5,
+            TensorOptions::new(),
+        )?
+        .to(&device)?
+        .isinf()?;
+
+        let out = t.to(&Device::CPU)?.to_vec::<i32>()?;
+        assert_eq!(out, vec![0, 0, 0, 1, 1]);
+        Ok(())
+    }
+}

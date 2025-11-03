@@ -1,18 +1,14 @@
 [workspace]
 members = [
-    "crates/ratchet-hub",
-    "crates/ratchet-core",
-    "crates/ratchet-web",
-    "crates/ratchet-loader",
-    "crates/ratchet-models",
-    "crates/ratchet-nn",
-    "crates/ratchet-hub",
-    "crates/ratchet-cli",
-    "crates/ratchet-macros",
-    "crates/ratchet-datasets",
+    "crates/piston-core",
+    "crates/piston-web",
+    "crates/piston-models",
+    "crates/piston-nn",
+    "crates/piston-macros",
+    "crates/piston-datasets",
 ]
 resolver = "2"
-edition = "2021"
+edition = "2024"
 
 [profile.test]
 debug = 2
@@ -21,14 +17,14 @@ debug-assertions = true
 [profile.release]
 panic = 'abort'
 lto = "fat"
-codegen-units = 1
+opt-level = 3
 
 [profile.profiling]
 inherits = "release"
 debug = 2
 
 [workspace.dependencies]
-wgpu = { git = "https://github.com/vinhowe/wgpu", branch = "feature/multi-dim-compute-subgroups", features = [
+wgpu = { git = "https://github.com/vinhowe/wgpu", rev = "8aa00b0ef4b2903b542741213f3ad186c4c32186", features = [
     "fragile-send-sync-non-atomic-wasm",
 ] }
 bytemuck = { version = "1.14.0", features = [
@@ -49,7 +45,7 @@ anyhow = "1.0.79"
 tokenizers = "0.19.1"
 
 js-sys = "0.3.64"
-wasm-bindgen = "0.2.91"
+wasm-bindgen = "0.2.104"
 wasm-bindgen-test = "0.3.34"
 cfg-if = "1.0.0"
 chrono = "0.4.35"
@@ -57,11 +53,11 @@ clap = "4.5.3"
 console_error_panic_hook = "0.1.7"
 console_log = "1.0.0"
 dot3 = "0.1.0"
-encase = { git = "https://github.com/cwfitzgerald/encase", branch = "add-member" }
+encase = { git = "https://github.com/vinhowe/encase", branch = "add-member" }
 env_logger = "0.11.3"
 fern = "0.6.2"
 getrandom = "0.2"
-glam = "0.28.0"
+glam = "0.30.4"
 globwalk = "0.8.1"
 gloo-net = { version = "0.5.0", default-features = false }
 hound = "3.5.1"
@@ -108,3 +104,8 @@ memmap2 = "0.9.5"
 maybe-async = "0.2"
 async-trait = "0.1.77"
 bitvec = { version = "1", default-features = false, features = ["alloc"] }
+paste = { version = "1.0.15" }
+tsify = { version = "0.5.5", features = ["js"] }
+
+[patch.crates-io]
+wasm-bindgen = { git = "https://github.com/vinhowe/wasm-bindgen", rev = "4b4f9cd9731cf35725727bcac92940d51a559a50" }
