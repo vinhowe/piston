@@ -1,5 +1,6 @@
 import { sveltekit } from '@sveltejs/kit/vite';
 import tailwindcss from '@tailwindcss/vite';
+import { execSync } from 'node:child_process';
 import fs from 'node:fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -26,7 +27,12 @@ const pruneStaticDirs = () => {
 	};
 };
 
+const commitHash = execSync('git rev-parse --short HEAD').toString().trim();
+
 export default defineConfig((_) => ({
+	define: {
+		__COMMIT_HASH__: JSON.stringify(commitHash)
+	},
 	plugins: [tailwindcss(), sveltekit(), wasm(), pruneStaticDirs()],
 	worker: {
 		format: 'es',

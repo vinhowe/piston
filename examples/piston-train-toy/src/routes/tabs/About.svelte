@@ -619,6 +619,15 @@
 					>Vin Howe</a
 				>
 			</span>
+			<CuteLogo class="w-[22px] h-[22px]" strokeWidth={1.5} />
+			<span>
+				Revision <a
+					href={`https://github.com/vinhowe/piston/commit/${__COMMIT_HASH__}`}
+					class="underline"
+					target="_blank"
+					rel="noopener noreferrer">{__COMMIT_HASH__}</a
+				>
+			</span>
 		</footer>
 	</div>
 </div>
