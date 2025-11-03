@@ -119,7 +119,7 @@ pub fn load(
 
     for name in st.names() {
         let view = st
-            .tensor(&name)
+            .tensor(name)
             .map_err(|e| JsError::new(&format!("Failed to read tensor '{name}': {e}")))?;
 
         // Map safetensors dtype to piston dtype
@@ -152,7 +152,7 @@ pub fn load(
 
         // Wrap as a JS-visible Tensor
         let js_tensor = JsTensor::new(tensor);
-        js_sys::Reflect::set(&obj, &JsValue::from_str(&name), &JsValue::from(js_tensor))
+        js_sys::Reflect::set(&obj, &JsValue::from_str(name), &JsValue::from(js_tensor))
             .map_err(|e| JsError::new(&format!("Failed to set property '{name}': {e:?}")))?;
     }
 
