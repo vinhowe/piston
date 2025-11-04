@@ -1,3 +1,4 @@
+import type { Config } from '$lib/workspace/config';
 import type { Tensor } from '@piston-ml/piston-web';
 
 import * as piston from '@piston-ml/piston-web';
@@ -143,8 +144,6 @@ self.onerror = (message, source, lineno, colno, error) => {
 
 // Track current execution context for logging (will be reassigned during execution)
 let currentExecutionSource = '[Worker]';
-
-import type { Config } from '$lib/workspace/config';
 
 function postEvent(e: WorkerEvent) {
 	self.postMessage(e);
