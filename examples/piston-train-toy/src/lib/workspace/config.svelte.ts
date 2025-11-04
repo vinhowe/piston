@@ -565,6 +565,10 @@ export function initSharedConfigUrlSync() {
 			);
 			// Always include preset when set, so shared URLs preserve selection
 			if (configSnapshot.preset) flatParams['preset'] = String(configSnapshot.preset);
+			// If any parameters are present, also include the current config version
+			if (Object.keys(flatParams).length > 0) {
+				flatParams['version'] = String(configSnapshot.version);
+			}
 			const searchParamsString = new SvelteURLSearchParams(flatParams).toString();
 
 			const currentUrl = new SvelteURL(window.location.href);
