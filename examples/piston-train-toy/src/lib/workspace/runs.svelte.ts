@@ -347,6 +347,12 @@ export function endRun() {
 	currentRun.current = null;
 }
 
+export function restoreRun(run: RunData): RunData {
+	runsMap.set(run.runId, run);
+	currentRun.current = { runId: run.runId, config: run.config };
+	return run;
+}
+
 /**
  * Logs metric data for a specific step in a run.
  */

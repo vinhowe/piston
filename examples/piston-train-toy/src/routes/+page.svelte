@@ -1,10 +1,9 @@
 <script lang="ts">
 	import ActionButton from '$lib/components/ActionButton.svelte';
 	import Controls from '$lib/components/controls/Controls.svelte';
-	import { checkpointStore } from '$lib/workspace/checkpointStore';
 	import { config, initSharedConfigUrlSync, replaceConfig } from '$lib/workspace/config.svelte';
-	import { currentRun, resetWorkspace, runCounter } from '$lib/workspace/runs.svelte';
-	import { getLastSession, restoreRunFromSaved } from '$lib/workspace/runStorage.svelte';
+	import { lastSessionStore } from '$lib/workspace/lastSessionStore';
+	import { currentRun, resetWorkspace, restoreRun, runCounter } from '$lib/workspace/runs.svelte';
 	import {
 		activeTab,
 		configOpen,
@@ -74,25 +73,19 @@
 	}
 
 	async function computeHasLastSession() {
-		const saved = getLastSession();
-		hasLastSession = saved != null && (await checkpointStore.has(saved.runId));
+		hasLastSession = await lastSessionStore.exists();
 	}
 
 	async function handleResumeClick() {
 		if (trainingState.current !== 'stopped') return;
-		const saved = getLastSession();
-		if (!saved) return;
-		const bytes = await checkpointStore.get(saved.runId);
-		if (!bytes) {
-			canResume = false;
-			return;
-		}
+		const lastSession = await lastSessionStore.get();
+		if (!lastSession) return;
 
 		// Replace config, restore run, select metrics tab, and start training
-		replaceConfig(saved.config);
-		restoreRunFromSaved(saved);
+		replaceConfig(lastSession.run.config);
+		restoreRun(lastSession.run);
 		selectTab('metrics');
-		startTraining({ runId: saved.runId, resumeFrom: new Uint8Array(bytes) });
+		startTraining({ run: lastSession.run, resumeFrom: lastSession.checkpoint });
 	}
 
 	async function handleFileImport(file: File) {

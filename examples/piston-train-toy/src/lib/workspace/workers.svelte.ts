@@ -4,10 +4,9 @@ import type { IndexState, TensorQuery } from '@piston-ml/piston-web';
 
 import { SvelteMap } from 'svelte/reactivity';
 
-import { checkpointStore } from './checkpointStore';
 import { config } from './config.svelte';
+import { lastSessionStore } from './lastSessionStore';
 import { currentRun, log, runsMap } from './runs.svelte';
-import { serializeRun, setLastSession } from './runStorage.svelte';
 import { triggerLowDiversityDatasetError, triggerVramLimitFlash } from './ui.svelte';
 
 // Train state
@@ -174,9 +173,11 @@ export async function initializeWorker() {
 						console.log(`[Main] Worker requested restart for run ${data.runId}`);
 						const buffer = data.buffer as Uint8Array<ArrayBufferLike>;
 						const runId = data.runId as string;
-						// Persist checkpoint and last session snapshot
-						void checkpointStore.set(runId, buffer);
-						persistLastSession(runId);
+						// Persist last session snapshot with checkpoint
+						const run = runsMap.get(runId);
+						if (run) {
+							void lastSessionStore.set(run, buffer);
+						}
 						// Terminate and recreate worker
 						trainWorker?.terminate();
 						workerReady.current = false;
@@ -195,10 +196,12 @@ export async function initializeWorker() {
 						const uint8array = data.buffer as Uint8Array<ArrayBufferLike> | undefined;
 						const runId = data.runId as string | undefined;
 
-						// Persist checkpoint and last session snapshot (always)
+						// Persist last session snapshot with checkpoint (always)
 						if (uint8array && runId) {
-							void checkpointStore.set(runId, uint8array);
-							persistLastSession(runId);
+							const run = runsMap.get(runId);
+							if (run) {
+								void lastSessionStore.set(run, uint8array);
+							}
 
 							// Fulfill all waiters if present
 							for (const waiter of pendingCheckpointWaiters) {
@@ -227,9 +230,8 @@ export async function initializeWorker() {
 					case 'paused':
 						console.log('[Main] Training paused');
 						trainingState.current = 'paused';
-						// Snapshot immediately and request a save to persist checkpoint
+						// Request a save to persist checkpoint; session will be stored alongside when checkpoint arrives
 						if (currentRun.current?.runId) {
-							persistLastSession(currentRun.current.runId);
 							workerRequestSave();
 						}
 						break;
@@ -468,12 +470,6 @@ export function cleanupWorkers() {
 	lastUAMemoryBytes = null;
 
 	void releaseScreenWakeLock();
-}
-
-function persistLastSession(runId: string) {
-	const run = runsMap.get(runId);
-	if (!run) return;
-	setLastSession(serializeRun(run));
 }
 
 //

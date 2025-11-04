@@ -1,6 +1,6 @@
 import { config } from './config.svelte';
 import { LocalStorage } from './localStorage.svelte';
-import { newRun } from './runs.svelte';
+import { newRun, restoreRun, type RunData } from './runs.svelte';
 import {
 	trainingState,
 	waitForNextCheckpoint,
@@ -271,14 +271,14 @@ export async function saveModel() {
 
 // Function to start training
 export function startTraining(
-	options: { runId?: string; resumeFrom: Uint8Array<ArrayBufferLike> } | undefined = undefined
+	options: { run?: RunData; resumeFrom: Uint8Array<ArrayBufferLike> } | undefined = undefined
 ) {
-	const { runId, resumeFrom } = options ?? {};
+	const { run, resumeFrom } = options ?? {};
 
 	if (trainingState.current !== 'stopped' || !workerReady.current) return;
 
 	trainingState.current = 'training';
-	const effectiveRunId = runId ?? newRun(JSON.parse(JSON.stringify(config))).runId;
+	const effectiveRun = run ? restoreRun(run) : newRun(JSON.parse(JSON.stringify(config)));
 
 	if (isMobile.current && configOpen.current) {
 		configOpen.current = false;
@@ -298,7 +298,7 @@ export function startTraining(
 		resetLowDiversityDatasetError();
 	}
 
-	workerStartTraining(effectiveRunId, resumeFrom ? resumeFrom : undefined);
+	workerStartTraining(effectiveRun.runId, resumeFrom ? resumeFrom : undefined);
 }
 
 // Function to stop training
