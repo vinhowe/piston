@@ -4,11 +4,6 @@
 	"assets": {
 		"directory": "./build/"
 	},
-	"exclude": [
-		"./static/tokenized",
-		"./static/tokenizer",
-		"./data"
-	],
 	"env": {
 		"staging": {
 			"workers_dev": true
