@@ -59,7 +59,8 @@
 	let dragDepth = $state(0);
 	let showReplaceDialog = $state(false);
 	let pendingImportBytes = $state<ArrayBuffer | null>(null);
-	let canResume = $state(false);
+	let hasLastSession = $state(false);
+	let canResume = $derived(hasLastSession && runCounter.current === 0);
 
 	function onBackdropClick(e: MouseEvent) {
 		if (e.currentTarget === e.target) cancelReplace();
@@ -72,13 +73,9 @@
 		}
 	}
 
-	async function refreshCanResume() {
+	async function computeHasLastSession() {
 		const saved = getLastSession();
-		if (!saved) {
-			canResume = false;
-			return;
-		}
-		canResume = await checkpointStore.has(saved.runId);
+		hasLastSession = saved != null && (await checkpointStore.has(saved.runId));
 	}
 
 	async function handleResumeClick() {
@@ -153,7 +150,7 @@
 
 		const uiCleanup = setupUI();
 
-		void refreshCanResume();
+		void computeHasLastSession();
 
 		// Global drag & drop handlers
 		const onDragEnter = (e: DragEvent) => {
