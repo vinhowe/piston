@@ -404,7 +404,6 @@ export const CONFIG_DESCRIPTIONS: ConfigValues = {
 	preset: null,
 	training: {
 		logSteps: 'log steps',
-		checkpointEverySteps: 'checkpoint steps',
 		batchSize: 'batch',
 		clipGradNorm: {
 			present: 'clip grad norm',
@@ -458,6 +457,10 @@ export const CONFIG_DESCRIPTIONS: ConfigValues = {
 		vramLimitMb: {
 			present: 'vram lim',
 			value: 'vram lim'
+		},
+		checkpointEverySteps: {
+			present: 'checkpointing',
+			value: 'checkpoint steps'
 		},
 		restartEverySteps: 'restart steps'
 	},
