@@ -85,8 +85,11 @@ export function processCaptureResults(
 					// const effectiveTensor = match.type === 'parameter' ? t._clone() : t._clone().debugTensor;
 					forEachTensorDeep(t, (inner) => {
 						const effectiveTensor = inner._clone();
+						const qIndex = match.queryIndex ?? 0;
+						// This little construction allows us to have multiple matches for the same tensor.
+						const compositeMatchId = inner.id * 2 ** 20 + qIndex;
 						processedMatches.push({
-							matchId: inner.id,
+							matchId: compositeMatchId,
 							type: match.type,
 							...(match.type !== 'parameter' ? { batchIndex } : {}),
 							source: result.source,
