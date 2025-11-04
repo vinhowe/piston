@@ -216,6 +216,7 @@
 <div>
 	<div class="p-1">
 		<SelectInput
+			id="preset-select"
 			label="Preset"
 			bind:value={selectedPresetId}
 			options={getPresetOptions()}
