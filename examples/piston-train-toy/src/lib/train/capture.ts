@@ -4,6 +4,7 @@ import {
 	CapturePlan,
 	type CaptureResult,
 	CaptureSession,
+	forEachTensorDeep,
 	Module,
 	pin,
 	Tensor,
@@ -82,19 +83,21 @@ export function processCaptureResults(
 					// Alas, debugTensor doesn't seem to work in all scenarios, including when doing
 					// validation. Seems like we don't copy the buffer to the GPU at the right time.
 					// const effectiveTensor = match.type === 'parameter' ? t._clone() : t._clone().debugTensor;
-					const effectiveTensor = t._clone();
-					processedMatches.push({
-						matchId: t.id,
-						type: match.type,
-						...(match.type !== 'parameter' ? { batchIndex } : {}),
-						source: result.source,
-						queryIndex: match.queryIndex ?? undefined,
-						op: (match as { op?: string }).op,
-						parameter: (match as { parameter?: string }).parameter,
-						moduleSite: (match as { site?: 'input' | 'output' }).site,
-						path: path,
-						shape: t.shape,
-						tensor: pin(effectiveTensor)
+					forEachTensorDeep(t, (inner) => {
+						const effectiveTensor = inner._clone();
+						processedMatches.push({
+							matchId: inner.id,
+							type: match.type,
+							...(match.type !== 'parameter' ? { batchIndex } : {}),
+							source: result.source,
+							queryIndex: match.queryIndex ?? undefined,
+							op: (match as { op?: string }).op,
+							parameter: (match as { parameter?: string }).parameter,
+							moduleSite: (match as { site?: 'input' | 'output' }).site,
+							path: path,
+							shape: inner.shape,
+							tensor: pin(effectiveTensor)
+						});
 					});
 				}
 			}
