@@ -43,7 +43,7 @@ export type RunMeta = {
 };
 
 // A palette of distinct colors for runs
-const RUN_COLORS = ['#f5493b', '#dfa300', '#3bbc4a', '#00b7c0', '#4475f6', '#cc5cc5'];
+const RUN_COLORS = ['#ab6aea', '#f5493b', '#dfa300', '#3bbc4a', '#00b7c0', '#4475f6'];
 
 export const PREFIX_BOOSTS: Record<string, number> = { data: 10 };
 
