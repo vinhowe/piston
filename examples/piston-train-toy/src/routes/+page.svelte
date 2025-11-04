@@ -339,6 +339,19 @@
 					<div class="p-1 border-b border-panel-border-base shrink-0">
 						<div class="space-y-1">
 							{#if trainingState.current === 'stopped'}
+								{#if canResume}
+									<ActionButton
+										color="purple"
+										class="w-full h-7.5"
+										disabled={trainingState.current !== 'stopped' || !workerReady.current}
+										onclick={handleResumeClick}
+									>
+										<span class="flex items-center justify-center gap-1.5 w-full">
+											<HistoryIcon class="w-3.5 h-3.5 shrink-0" strokeWidth={iconStrokeWidth} />
+											Resume from last session
+										</span>
+									</ActionButton>
+								{/if}
 								<ActionButton
 									color="green"
 									disabled={trainingState.current !== 'stopped' || !workerReady.current}
@@ -353,19 +366,6 @@
 										Start Training
 									</span>
 								</ActionButton>
-								{#if canResume}
-									<ActionButton
-										color="purple"
-										class="w-full h-7.5"
-										disabled={trainingState.current !== 'stopped' || !workerReady.current}
-										onclick={handleResumeClick}
-									>
-										<span class="flex items-center justify-center gap-1.5 w-full">
-											<HistoryIcon class="w-3.5 h-3.5 shrink-0" strokeWidth={iconStrokeWidth} />
-											Resume from last session
-										</span>
-									</ActionButton>
-								{/if}
 							{:else}
 								<div class="grid gap-1 {shouldSuggestRestart ? 'grid-cols-6' : 'grid-cols-4'}">
 									<ActionButton color="gray" class="h-7.5 col-span-1" onclick={togglePause}>
