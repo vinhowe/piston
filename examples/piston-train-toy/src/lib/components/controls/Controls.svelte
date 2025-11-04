@@ -1484,7 +1484,7 @@
 
 		<ToggleGroup
 			id="training-checkpoint-every-steps-group"
-			title="Checkpoint Every Steps"
+			title="Checkpoint Every $c$ Steps"
 			showEnableToggle={true}
 			bind:enabled={config.training.checkpointEverySteps.present}
 			hasDefaultValue={equalsConfigDefault('training.checkpointEverySteps.present')}
