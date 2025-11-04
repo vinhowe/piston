@@ -72,7 +72,10 @@ export interface TrainingConfig {
 		present: boolean;
 		steps: number;
 	};
-	checkpointEverySteps: number;
+	checkpointEverySteps: {
+		present: boolean;
+		value: number;
+	};
 	batchSize: number;
 	dropout: DropoutConfig;
 	validation: ValidationConfig;

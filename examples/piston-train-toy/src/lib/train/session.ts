@@ -955,14 +955,16 @@ export class TrainingSession {
 				}
 
 				// Trigger periodic checkpoint save (non-restart) if configured
-				const checkpointEvery = this.config.training.checkpointEverySteps ?? 0;
-				if (checkpointEvery > 0 && (this.stepCount + 1) % checkpointEvery === 0) {
-					try {
-						const bytes = await this.saveLatestCheckpoint();
-						this.post({ type: 'checkpoint', buffer: bytes });
-					} catch (e) {
-						// Non-fatal; continue training
-						this.post({ type: 'log', level: 'warn', message: String(e) });
+				if (this.config.training.checkpointEverySteps.present) {
+					const checkpointEvery = this.config.training.checkpointEverySteps.value;
+					if (checkpointEvery > 0 && (this.stepCount + 1) % checkpointEvery === 0) {
+						try {
+							const bytes = await this.saveLatestCheckpoint();
+							this.post({ type: 'checkpoint', buffer: bytes });
+						} catch (e) {
+							// Non-fatal; continue training
+							this.post({ type: 'log', level: 'warn', message: String(e) });
+						}
 					}
 				}
 

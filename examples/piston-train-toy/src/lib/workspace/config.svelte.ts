@@ -21,7 +21,6 @@ const CONFIG_DEFAULTS: Config = {
 	preset: null,
 	training: {
 		logSteps: 5,
-		checkpointEverySteps: 200,
 		batchSize: 32,
 		validation: {
 			present: true,
@@ -75,6 +74,10 @@ const CONFIG_DEFAULTS: Config = {
 		vramLimitMb: {
 			present: true,
 			value: 4096
+		},
+		checkpointEverySteps: {
+			present: true,
+			value: 200
 		},
 		restartEverySteps: 1000
 	},

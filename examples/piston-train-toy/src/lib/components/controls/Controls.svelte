@@ -1481,6 +1481,25 @@
 				onReset={() => resetConfigToDefaults('training.vramLimitMb.value')}
 			/>
 		</ToggleGroup>
+
+		<ToggleGroup
+			id="training-checkpoint-every-steps-group"
+			title="Checkpoint Every Steps"
+			showEnableToggle={true}
+			bind:enabled={config.training.checkpointEverySteps.present}
+			hasDefaultValue={equalsConfigDefault('training.checkpointEverySteps.present')}
+			onReset={() => resetConfigToDefaults('training.checkpointEverySteps.present')}
+		>
+			<Slider
+				id="training-checkpoint-every-steps-value"
+				bind:value={config.training.checkpointEverySteps.value}
+				min={1}
+				max={10_000}
+				step={1}
+				hasDefaultValue={equalsConfigDefault('training.checkpointEverySteps.value')}
+				onReset={() => resetConfigToDefaults('training.checkpointEverySteps.value')}
+			/>
+		</ToggleGroup>
 	</CollapsibleSection>
 
 	<CollapsibleSection
