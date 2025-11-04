@@ -738,7 +738,7 @@
 							{/if}
 
 							<!-- Tokens -->
-							<div class="font-mono text-sm flex items-end -space-x-px">
+							<div class="font-mono text-sm flex items-end -space-x-px w-max">
 								{#if hasTargets}
 									{#each tokenComparisons as item, tIndex (tIndex)}
 										{@const isPromptItem = item.kind === 'prompt'}

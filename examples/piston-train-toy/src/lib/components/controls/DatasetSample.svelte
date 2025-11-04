@@ -93,7 +93,7 @@
 {/snippet}
 
 {#snippet tokenSequence(values: number[], ignored?: boolean[])}
-	<div class="w-full flex -space-x-px">
+	<div class="w-max flex -space-x-px">
 		{#each values as value, i (i)}
 			{@render token(value, ignored ? ignored[i] : false)}
 		{/each}
