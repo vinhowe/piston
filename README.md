@@ -1,4 +1,4 @@
-# sequence toy + Piston library
+# Sequence Toy + Piston library
 
 Train small sequence models in your browser with WebGPU.
 
