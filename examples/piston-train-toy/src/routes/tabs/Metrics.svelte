@@ -109,6 +109,7 @@
 					{#snippet chips()}
 						{#if (runConfig ?? config).training.validation.present}
 							<RadioGroupInput
+								id="visualize-target"
 								name="visualize"
 								class="self-end -translate-y-[0.5px]"
 								bind:value={() => config.visualization.target, updateVisualizerTarget}
