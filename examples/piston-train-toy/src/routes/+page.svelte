@@ -27,8 +27,7 @@
 		initializeWorkers,
 		peekCheckpointConfig,
 		trainingState,
-		workerReady,
-		workerStartTraining
+		workerReady
 	} from '$lib/workspace/workers.svelte';
 	import {
 		ChartLine,
@@ -96,7 +95,7 @@
 		replaceConfig(saved.config);
 		restoreRunFromSaved(saved);
 		selectTab('metrics');
-		workerStartTraining(saved.runId, new Uint8Array(bytes));
+		startTraining({ runId: saved.runId, resumeFrom: new Uint8Array(bytes) });
 	}
 
 	async function handleFileImport(file: File) {
@@ -107,7 +106,7 @@
 	async function startFromBytes(bytes: ArrayBuffer) {
 		const cfg = await peekCheckpointConfig(new Uint8Array(bytes));
 		replaceConfig(cfg);
-		startTraining(undefined, new Uint8Array(bytes));
+		startTraining({ resumeFrom: new Uint8Array(bytes) });
 	}
 
 	async function maybeStartFromBytes(bytes: ArrayBuffer) {
