@@ -9,6 +9,10 @@ export type WorkerCommand =
 			type: 'start';
 			data: { runId: string; config: Config; resumeFrom?: Uint8Array<ArrayBufferLike> };
 	  }
+	| {
+			type: 'checkpoint.peekConfig';
+			data: { requestId: string; buffer: Uint8Array<ArrayBufferLike> };
+	  }
 	| { type: 'pause' }
 	| { type: 'resume' }
 	| { type: 'step' }
@@ -80,6 +84,7 @@ export type WorkerEvent =
 	| LogWorkerEvent
 	| ErrorWorkerEvent
 	| RunWorkerEvent
+	| { type: 'checkpoint.config'; requestId: string; config: Config }
 	| { type: 'visualizer.ready' }
 	| { type: 'visualizer.error'; message: string }
 	| {

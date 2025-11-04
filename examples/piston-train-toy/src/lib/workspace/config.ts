@@ -72,6 +72,7 @@ export interface TrainingConfig {
 		present: boolean;
 		steps: number;
 	};
+	checkpointEverySteps: number;
 	batchSize: number;
 	dropout: DropoutConfig;
 	validation: ValidationConfig;
@@ -400,6 +401,7 @@ export const CONFIG_DESCRIPTIONS: ConfigValues = {
 	preset: null,
 	training: {
 		logSteps: 'log steps',
+		checkpointEverySteps: 'checkpoint steps',
 		batchSize: 'batch',
 		clipGradNorm: {
 			present: 'clip grad norm',

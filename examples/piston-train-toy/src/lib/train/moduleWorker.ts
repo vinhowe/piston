@@ -1,8 +1,11 @@
+import type { Tensor } from '@piston-ml/piston-web';
+
 import * as piston from '@piston-ml/piston-web';
 
 import type { WorkerCommand, WorkerEvent } from './protocol';
 
 import { TrainingSession } from './session';
+import { type CheckpointExtra, splitLoadedState } from './utils/checkpoint';
 import { inspectModel } from './utils/model';
 
 let session: TrainingSession | undefined;
@@ -280,6 +283,18 @@ self.addEventListener('message', async (event) => {
 				});
 			}
 			break;
+		case 'checkpoint.peekConfig': {
+			const { requestId, buffer } = data as {
+				requestId: string;
+				buffer: Uint8Array<ArrayBufferLike>;
+			};
+			const loaded = piston.load(buffer, piston.gpu);
+			const split = splitLoadedState(
+				loaded as { state: Record<string, Tensor>; extra?: CheckpointExtra }
+			);
+			self.postMessage({ type: 'checkpoint.config', requestId, config: split.config });
+			break;
+		}
 		case 'inspectModel':
 			try {
 				const { config, requestId } = data as { config: Config; requestId: string };

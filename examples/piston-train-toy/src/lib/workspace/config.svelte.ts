@@ -21,6 +21,7 @@ const CONFIG_DEFAULTS: Config = {
 	preset: null,
 	training: {
 		logSteps: 5,
+		checkpointEverySteps: 200,
 		batchSize: 32,
 		validation: {
 			present: true,
@@ -579,6 +580,17 @@ export function setPreset(presetId: string) {
 	const next = computeEffectiveDefaults(presetId);
 	// Replace config fields in-place because we've made config a const and I don't want to figure
 	// that out right now.
+	config['preset'] = next.preset;
+	config['training'] = deepClone(next.training);
+	config['data'] = deepClone(next.data);
+	config['model'] = deepClone(next.model);
+	config['optimizer'] = deepClone(next.optimizer);
+	config['visualization'] = deepClone(next.visualization);
+	config['version'] = next.version;
+	validateConfig();
+}
+
+export function replaceConfig(next: Config) {
 	config['preset'] = next.preset;
 	config['training'] = deepClone(next.training);
 	config['data'] = deepClone(next.data);

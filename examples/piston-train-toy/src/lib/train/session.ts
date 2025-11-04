@@ -114,6 +114,10 @@ export class TrainingSession {
 	private validationExamples: ValidationExamples | null = null;
 	private validationCollateFn: PistonCollateFnType<Tensor> | null = null;
 	private validationDataset: PistonDatasetType | null = null;
+	// This is a little bit gross, but it's a straightforward way to make sure we have valid targets
+	// when we resume from a checkpoint. If I ever do another pass over this code, this will be first
+	// to go.
+	private includeTargetsOnNextValidation: boolean = false;
 
 	constructor(
 		runId: string,
@@ -127,6 +131,9 @@ export class TrainingSession {
 			// We only post the subset of events that have runId in the payload
 			(post as (e: RunWorkerEvent) => void)({ ...e, runId: this.runId });
 		this.resumeFrom = resumeFrom;
+		if (resumeFrom) {
+			this.includeTargetsOnNextValidation = true;
+		}
 	}
 
 	async pause() {
@@ -800,7 +807,8 @@ export class TrainingSession {
 											isDecoderOnly: this.config.model.topology === 'decoder',
 											isEncoderDecoder: this.config.model.topology === 'encoder-decoder',
 											includeTargets:
-												this.stepCount === 0 && (this.validationDataset.hasCanonicalTargets ?? true)
+												(this.stepCount === 0 || this.includeTargetsOnNextValidation) &&
+												(this.validationDataset.hasCanonicalTargets ?? true)
 										}
 									);
 									validationLog = buildValidationLog(validationStepData);
@@ -812,11 +820,14 @@ export class TrainingSession {
 										this.config.training.validation,
 										{
 											isDecoderOnly: this.config.model.topology === 'decoder',
-											includeTargets: this.stepCount === 0,
+											includeTargets: this.stepCount === 0 || this.includeTargetsOnNextValidation,
 											maskRatio: this.config.data.maskRatio
 										}
 									);
 									validationLog = buildValidationLog(validationStepData);
+								}
+								if (this.includeTargetsOnNextValidation) {
+									this.includeTargetsOnNextValidation = false;
 								}
 							}
 
@@ -941,6 +952,18 @@ export class TrainingSession {
 					// Update last log time and step
 					this.lastLogTime = currentTime;
 					this.lastLogStep = this.stepCount;
+				}
+
+				// Trigger periodic checkpoint save (non-restart) if configured
+				const checkpointEvery = this.config.training.checkpointEverySteps ?? 0;
+				if (checkpointEvery > 0 && (this.stepCount + 1) % checkpointEvery === 0) {
+					try {
+						const bytes = await this.saveLatestCheckpoint();
+						this.post({ type: 'checkpoint', buffer: bytes });
+					} catch (e) {
+						// Non-fatal; continue training
+						this.post({ type: 'log', level: 'warn', message: String(e) });
+					}
 				}
 
 				// Trigger periodic restart if configured

@@ -1,8 +1,13 @@
 import type { MatchBox } from '$lib/train/visualizer';
+import type { Config } from '$lib/workspace/config';
 import type { IndexState, TensorQuery } from '@piston-ml/piston-web';
 
+import { SvelteMap } from 'svelte/reactivity';
+
+import { checkpointStore } from './checkpointStore';
 import { config } from './config.svelte';
-import { currentRun, log } from './runs.svelte';
+import { currentRun, log, runsMap } from './runs.svelte';
+import { serializeRun, setLastSession } from './runStorage.svelte';
 import { triggerLowDiversityDatasetError, triggerVramLimitFlash } from './ui.svelte';
 
 // Train state
@@ -26,6 +31,10 @@ let uaMemoryInterval: ReturnType<typeof setInterval> | null = null;
 let lastUAMemoryBytes: number | null = null;
 
 let screenWakeLock: WakeLockSentinel | null = null;
+
+type CheckpointPayload = { runId: string; buffer: Uint8Array<ArrayBufferLike> };
+const pendingCheckpointWaiters: Array<(p: CheckpointPayload) => void> = [];
+const pendingPeekResolvers = new SvelteMap<string, (cfg: Config) => void>();
 
 async function acquireScreenWakeLock() {
 	// Only attempt in browser/secure contexts that support it
@@ -124,7 +133,18 @@ export async function initializeWorker() {
 						workerReady.current = true;
 						workerVersion.current += 1;
 						break;
-
+					case 'checkpoint.config': {
+						const { requestId, config: cfg } = data as {
+							requestId: string;
+							config: Config;
+						};
+						const resolver = pendingPeekResolvers.get(requestId);
+						if (resolver) {
+							pendingPeekResolvers.delete(requestId);
+							resolver(cfg);
+						}
+						break;
+					}
 					case 'metrics': {
 						// Handle training metric logs
 						if (!data.runId || !data.data) {
@@ -150,10 +170,13 @@ export async function initializeWorker() {
 						void releaseScreenWakeLock();
 						break;
 
-					case 'restart':
+					case 'restart': {
 						console.log(`[Main] Worker requested restart for run ${data.runId}`);
 						const buffer = data.buffer as Uint8Array<ArrayBufferLike>;
 						const runId = data.runId as string;
+						// Persist checkpoint and last session snapshot
+						void checkpointStore.set(runId, buffer);
+						persistLastSession(runId);
 						// Terminate and recreate worker
 						trainWorker?.terminate();
 						workerReady.current = false;
@@ -167,30 +190,25 @@ export async function initializeWorker() {
 							});
 						});
 						break;
-
-					case 'checkpoint':
-						let url;
+					}
+					case 'checkpoint': {
 						const uint8array = data.buffer as Uint8Array<ArrayBufferLike> | undefined;
-						if (uint8array && typeof URL !== 'undefined' && typeof Blob !== 'undefined') {
-							const blob = new Blob([uint8array.buffer as ArrayBuffer], {
-								type: 'application/octet-stream'
-							});
-							url = URL.createObjectURL(blob);
+						const runId = data.runId as string | undefined;
+
+						// Persist checkpoint and last session snapshot (always)
+						if (uint8array && runId) {
+							void checkpointStore.set(runId, uint8array);
+							persistLastSession(runId);
+
+							// Fulfill all waiters if present
+							for (const waiter of pendingCheckpointWaiters) {
+								void waiter({ runId, buffer: uint8array });
+							}
+							pendingCheckpointWaiters.length = 0;
 						}
 
-						if (!url) {
-							console.error('[Main] checkpoint did not include a URL or buffer');
-							break;
-						}
-
-						const a = document.createElement('a');
-						a.href = url;
-						a.download = `${currentRun.current?.runId}.safetensors`;
-						document.body.appendChild(a);
-						a.click();
-						document.body.removeChild(a);
 						break;
-
+					}
 					case 'error':
 						if (data.name === 'VRAMLimitExceededError') {
 							console.error(`[Main] VRAM limit exceeded for run ${data.runId}:`, data.message);
@@ -209,6 +227,11 @@ export async function initializeWorker() {
 					case 'paused':
 						console.log('[Main] Training paused');
 						trainingState.current = 'paused';
+						// Snapshot immediately and request a save to persist checkpoint
+						if (currentRun.current?.runId) {
+							persistLastSession(currentRun.current.runId);
+							workerRequestSave();
+						}
 						break;
 					case 'resumed':
 						console.log('[Main] Training resumed');
@@ -228,20 +251,14 @@ export async function initializeWorker() {
 	});
 }
 
-export function workerStartTraining() {
+export function workerStartTraining(runId: string, resumeFrom?: Uint8Array<ArrayBufferLike>) {
 	if (!trainWorker) {
 		throw new Error('Worker not initialized');
 	}
 
-	const run = currentRun.current;
-
-	if (!run) {
-		throw new Error('No current run');
-	}
-
 	trainWorker.postMessage({
 		type: 'start',
-		data: JSON.parse(JSON.stringify(run))
+		data: { runId: runId, config: $state.snapshot(config), resumeFrom }
 	});
 
 	trainingState.current = 'training';
@@ -253,6 +270,23 @@ export function workerRequestSave() {
 		throw new Error('Worker not initialized');
 	}
 	trainWorker.postMessage({ type: 'save' });
+}
+
+export function waitForNextCheckpoint(): Promise<CheckpointPayload> {
+	return new Promise((resolve) => {
+		pendingCheckpointWaiters.push(resolve);
+	});
+}
+
+export function peekCheckpointConfig(buffer: Uint8Array<ArrayBufferLike>): Promise<Config> {
+	if (!trainWorker) {
+		return Promise.reject(new Error('Worker not initialized'));
+	}
+	const requestId = crypto.randomUUID();
+	return new Promise<Config>((resolve) => {
+		pendingPeekResolvers.set(requestId, resolve);
+		trainWorker!.postMessage({ type: 'checkpoint.peekConfig', data: { requestId, buffer } });
+	});
 }
 
 export async function workerStopTraining() {
@@ -434,6 +468,12 @@ export function cleanupWorkers() {
 	lastUAMemoryBytes = null;
 
 	void releaseScreenWakeLock();
+}
+
+function persistLastSession(runId: string) {
+	const run = runsMap.get(runId);
+	if (!run) return;
+	setLastSession(serializeRun(run));
 }
 
 //

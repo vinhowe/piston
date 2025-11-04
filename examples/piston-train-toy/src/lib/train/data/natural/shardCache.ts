@@ -1,6 +1,8 @@
 // A tiny IndexedDB-backed LRU cache specialized for dataset shard ArrayBuffers.
 // Uses one object store for blobs and a metadata store for LRU bookkeeping.
 
+import { openDb, txRequest } from '$lib/dataUtils';
+
 const DB_NAME = 'natural-shard-cache';
 const DB_VERSION = 1;
 const STORE_BLOBS = 'blobs';
@@ -18,42 +20,6 @@ type LruState = { entries: Record<string, LruEntry>; totalSize: number };
 const DEFAULTS: Required<ShardCacheOptions> = {
 	maxBytes: 256 * 1024 * 1024 // 256MB
 };
-
-function openDb(): Promise<IDBDatabase> {
-	return new Promise((resolve, reject) => {
-		const req = indexedDB.open(DB_NAME, DB_VERSION);
-		req.onupgradeneeded = () => {
-			const db = req.result;
-			if (!db.objectStoreNames.contains(STORE_BLOBS)) {
-				db.createObjectStore(STORE_BLOBS);
-			}
-			if (!db.objectStoreNames.contains(STORE_META)) {
-				db.createObjectStore(STORE_META);
-			}
-		};
-		req.onsuccess = () => resolve(req.result);
-		req.onerror = () => reject(req.error);
-		req.onblocked = () => reject(new Error('IndexedDB upgrade blocked'));
-	});
-}
-
-function promisify<T>(req: IDBRequest<T>): Promise<T> {
-	return new Promise((resolve, reject) => {
-		req.onsuccess = () => resolve(req.result);
-		req.onerror = () => reject(req.error);
-	});
-}
-
-function txRequest<T>(
-	db: IDBDatabase,
-	storeName: string,
-	mode: IDBTransactionMode,
-	op: (store: IDBObjectStore) => IDBRequest<T>
-): Promise<T> {
-	const tx = db.transaction(storeName, mode);
-	const store = tx.objectStore(storeName);
-	return promisify(op(store));
-}
 
 async function readMeta(db: IDBDatabase): Promise<LruState> {
 	const res = await txRequest<LruState | undefined>(db, STORE_META, 'readonly', (s) =>
@@ -87,7 +53,15 @@ export class ShardCache {
 	}
 
 	private get db(): Promise<IDBDatabase> {
-		if (!this.dbPromise) this.dbPromise = openDb();
+		if (!this.dbPromise)
+			this.dbPromise = openDb(DB_NAME, DB_VERSION, (db) => {
+				if (!db.objectStoreNames.contains(STORE_BLOBS)) {
+					db.createObjectStore(STORE_BLOBS);
+				}
+				if (!db.objectStoreNames.contains(STORE_META)) {
+					db.createObjectStore(STORE_META);
+				}
+			});
 		return this.dbPromise;
 	}
 

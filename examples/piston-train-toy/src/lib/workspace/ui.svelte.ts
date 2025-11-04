@@ -3,6 +3,7 @@ import { LocalStorage } from './localStorage.svelte';
 import { newRun } from './runs.svelte';
 import {
 	trainingState,
+	waitForNextCheckpoint,
 	workerPauseTraining,
 	workerReady,
 	workerRequestSave,
@@ -242,16 +243,42 @@ export function toggleConfig() {
 	configOpen.current = !configOpen.current;
 }
 
-export function saveModel() {
-	workerRequestSave();
+export async function saveModel() {
+	// Set up waiter BEFORE causing a save so auto-save on pause satisfies it
+	const waiter = waitForNextCheckpoint();
+
+	if (trainingState.current === 'training') {
+		workerPauseTraining();
+		// paused handler will request a save
+	} else if (trainingState.current === 'paused') {
+		workerRequestSave();
+	} else {
+		return;
+	}
+
+	const { runId, buffer } = await waiter;
+	const blob = new Blob([buffer.buffer as ArrayBuffer], {
+		type: 'application/octet-stream'
+	});
+	const url = URL.createObjectURL(blob);
+	const a = document.createElement('a');
+	a.href = url;
+	a.download = `${runId}.safetensors`;
+	document.body.appendChild(a);
+	a.click();
+	document.body.removeChild(a);
 }
 
 // Function to start training
-export function startTraining() {
+export function startTraining(
+	options: { runId?: string; resumeFrom: Uint8Array<ArrayBufferLike> } | undefined = undefined
+) {
+	const { runId, resumeFrom } = options ?? {};
+
 	if (trainingState.current !== 'stopped' || !workerReady.current) return;
 
 	trainingState.current = 'training';
-	newRun(JSON.parse(JSON.stringify(config)));
+	const effectiveRunId = runId ?? newRun(JSON.parse(JSON.stringify(config))).runId;
 
 	if (isMobile.current && configOpen.current) {
 		configOpen.current = false;
@@ -271,7 +298,7 @@ export function startTraining() {
 		resetLowDiversityDatasetError();
 	}
 
-	workerStartTraining();
+	workerStartTraining(effectiveRunId, resumeFrom ? resumeFrom : undefined);
 }
 
 // Function to stop training

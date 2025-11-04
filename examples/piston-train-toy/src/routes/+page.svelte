@@ -1,8 +1,10 @@
 <script lang="ts">
 	import ActionButton from '$lib/components/ActionButton.svelte';
 	import Controls from '$lib/components/controls/Controls.svelte';
-	import { config, initSharedConfigUrlSync } from '$lib/workspace/config.svelte';
+	import { checkpointStore } from '$lib/workspace/checkpointStore';
+	import { config, initSharedConfigUrlSync, replaceConfig } from '$lib/workspace/config.svelte';
 	import { currentRun, resetWorkspace, runCounter } from '$lib/workspace/runs.svelte';
+	import { getLastSession, restoreRunFromSaved } from '$lib/workspace/runStorage.svelte';
 	import {
 		activeTab,
 		configOpen,
@@ -23,13 +25,16 @@
 	import {
 		cleanupWorkers,
 		initializeWorkers,
+		peekCheckpointConfig,
 		trainingState,
-		workerReady
+		workerReady,
+		workerStartTraining
 	} from '$lib/workspace/workers.svelte';
 	import {
 		ChartLine,
 		DownloadIcon,
 		ExternalLink,
+		HistoryIcon,
 		Info,
 		PauseIcon,
 		PlayIcon,
@@ -50,6 +55,86 @@
 
 	const iconStrokeWidth = $derived(getIconStrokeWidth());
 
+	// Drag & drop / paste import state
+	let isDragOver = $state(false);
+	let dragDepth = $state(0);
+	let showReplaceDialog = $state(false);
+	let pendingImportBytes = $state<ArrayBuffer | null>(null);
+	let canResume = $state(false);
+
+	function onBackdropClick(e: MouseEvent) {
+		if (e.currentTarget === e.target) cancelReplace();
+	}
+
+	function onKeyDown(e: KeyboardEvent) {
+		if (e.key === 'Escape' && showReplaceDialog) {
+			showReplaceDialog = false;
+			pendingImportBytes = null;
+		}
+	}
+
+	async function refreshCanResume() {
+		const saved = getLastSession();
+		if (!saved) {
+			canResume = false;
+			return;
+		}
+		canResume = await checkpointStore.has(saved.runId);
+	}
+
+	async function handleResumeClick() {
+		if (trainingState.current !== 'stopped') return;
+		const saved = getLastSession();
+		if (!saved) return;
+		const bytes = await checkpointStore.get(saved.runId);
+		if (!bytes) {
+			canResume = false;
+			return;
+		}
+
+		// Replace config, restore run, select metrics tab, and start training
+		replaceConfig(saved.config);
+		restoreRunFromSaved(saved);
+		selectTab('metrics');
+		workerStartTraining(saved.runId, new Uint8Array(bytes));
+	}
+
+	async function handleFileImport(file: File) {
+		const buf = await file.arrayBuffer();
+		await maybeStartFromBytes(buf);
+	}
+
+	async function startFromBytes(bytes: ArrayBuffer) {
+		const cfg = await peekCheckpointConfig(new Uint8Array(bytes));
+		replaceConfig(cfg);
+		startTraining(undefined, new Uint8Array(bytes));
+	}
+
+	async function maybeStartFromBytes(bytes: ArrayBuffer) {
+		if (trainingState.current !== 'stopped' && currentRun.current) {
+			pendingImportBytes = bytes;
+			showReplaceDialog = true;
+			return;
+		}
+		// Peek config from checkpoint and replace UI config before starting
+		await startFromBytes(bytes);
+	}
+
+	function confirmReplace() {
+		const bytes = pendingImportBytes;
+		pendingImportBytes = null;
+		showReplaceDialog = false;
+		if (bytes) {
+			// We were in a training session; stop, peek config, replace, then start from checkpoint
+			stopTraining().then(() => startFromBytes(bytes));
+		}
+	}
+
+	function cancelReplace() {
+		pendingImportBytes = null;
+		showReplaceDialog = false;
+	}
+
 	// Check if current config is different from the config used to start the run
 	const shouldSuggestRestart = $derived.by(() => {
 		if (!currentRun.current?.config || !config) return false;
@@ -69,8 +154,60 @@
 
 		const uiCleanup = setupUI();
 
+		void refreshCanResume();
+
+		// Global drag & drop handlers
+		const onDragEnter = (e: DragEvent) => {
+			e.preventDefault();
+			dragDepth += 1;
+		};
+		const onDragOver = (e: DragEvent) => {
+			e.preventDefault();
+			isDragOver = true;
+		};
+		const onDragLeave = (e: DragEvent) => {
+			e.preventDefault();
+			dragDepth = Math.max(0, dragDepth - 1);
+			if (dragDepth === 0) isDragOver = false;
+		};
+		const onDrop = (e: DragEvent) => {
+			e.preventDefault();
+			isDragOver = false;
+			dragDepth = 0;
+			const files = e.dataTransfer?.files;
+			if (!files || files.length === 0) return;
+			const file = files[0]!;
+			void handleFileImport(file);
+		};
+
+		// Paste handler for clipboard file
+		const onPaste = (e: ClipboardEvent) => {
+			const items = e.clipboardData?.items;
+			if (!items) return;
+			for (const it of items) {
+				const f = it.getAsFile?.();
+				if (f) {
+					void handleFileImport(f);
+					break;
+				}
+			}
+		};
+
+		window.addEventListener('dragenter', onDragEnter);
+		window.addEventListener('dragover', onDragOver);
+		window.addEventListener('dragleave', onDragLeave);
+		window.addEventListener('drop', onDrop);
+		window.addEventListener('paste', onPaste);
+		window.addEventListener('keydown', onKeyDown);
+
 		return () => {
 			uiCleanup();
+			window.removeEventListener('dragenter', onDragEnter);
+			window.removeEventListener('dragover', onDragOver);
+			window.removeEventListener('dragleave', onDragLeave);
+			window.removeEventListener('drop', onDrop);
+			window.removeEventListener('paste', onPaste);
+			window.removeEventListener('keydown', onKeyDown);
 		};
 	});
 
@@ -206,7 +343,7 @@
 								<ActionButton
 									color="green"
 									disabled={trainingState.current !== 'stopped' || !workerReady.current}
-									onclick={startTraining}
+									onclick={() => startTraining()}
 									highlighted={workerReady.current &&
 										trainingState.current === 'stopped' &&
 										!tourState.current.startedExperiment}
@@ -217,6 +354,19 @@
 										Start Training
 									</span>
 								</ActionButton>
+								{#if canResume}
+									<ActionButton
+										color="purple"
+										class="w-full h-7.5"
+										disabled={trainingState.current !== 'stopped' || !workerReady.current}
+										onclick={handleResumeClick}
+									>
+										<span class="flex items-center justify-center gap-1.5 w-full">
+											<HistoryIcon class="w-3.5 h-3.5 shrink-0" strokeWidth={iconStrokeWidth} />
+											Resume from last session
+										</span>
+									</ActionButton>
+								{/if}
 							{:else}
 								<div class="grid gap-1 {shouldSuggestRestart ? 'grid-cols-6' : 'grid-cols-4'}">
 									<ActionButton color="gray" class="h-7.5 col-span-1" onclick={togglePause}>
@@ -279,6 +429,58 @@
 		{/if}
 	</div>
 </main>
+
+{#if isDragOver}
+	<div
+		class="pointer-events-none absolute inset-0 z-40 flex items-center justify-center w-full h-full bg-purple-200/90"
+	>
+		<div
+			class="px-4 py-2 text-purple-700 font-semibold text-xs font-mono tracking-wider uppercase bg-purple-50 border border-dashed border-purple-700"
+		>
+			Drop checkpoint to start from it
+		</div>
+	</div>
+{/if}
+
+{#if showReplaceDialog}
+	<div
+		class="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+		role="button"
+		tabindex="0"
+		onclick={onBackdropClick}
+		onkeydown={(e) => {
+			if (e.key === 'Enter' || e.key === ' ') cancelReplace();
+		}}
+	>
+		<div
+			class="bg-white p-2 w-[22rem] border border-panel-border-base shadow-lg"
+			role="dialog"
+			aria-modal="true"
+			aria-labelledby="replace-dialog-title"
+			tabindex="-1"
+		>
+			<div
+				id="replace-dialog-title"
+				class="font-semibold mb-1.5 uppercase font-mono tracking-wider text-xs"
+			>
+				Replace current run?
+			</div>
+			<div class="text-sm text-neutral-600 mb-3">
+				Starting from this checkpoint will end the current run and begin a new one.
+			</div>
+			<div class="flex gap-2 justify-end">
+				<button
+					class="px-1.75 py-0.5 border border-panel-border-base font-mono uppercase tracking-wide text-xs cursor-pointer"
+					onclick={cancelReplace}>Cancel</button
+				>
+				<button
+					class="px-1.75 py-0.5 bg-purple-600 text-white font-mono uppercase tracking-wide text-xs cursor-pointer border border-purple-800"
+					onclick={confirmReplace}>Replace</button
+				>
+			</div>
+		</div>
+	</div>
+{/if}
 
 <style>
 	/* pin for tailwind: bg-neutral-500 */
