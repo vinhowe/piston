@@ -140,6 +140,11 @@ export const PRESET_DEFINITIONS: Record<string, PresetDefinition> = {
 							amount: 'subset',
 							subsetSize: 1
 						}
+					},
+					// This is based on how long it takes to train the model on my own machine
+					checkpointEverySteps: {
+						present: true,
+						value: 40
 					}
 				}
 			},
@@ -241,6 +246,12 @@ export const PRESET_DEFINITIONS: Record<string, PresetDefinition> = {
 						completions: {
 							present: false
 						}
+					},
+					// This is purely theoretical: I have no idea how long it would take to train this model
+					// because I've never managed to get it training on my own machine.
+					checkpointEverySteps: {
+						present: true,
+						value: 40
 					}
 				}
 			}
