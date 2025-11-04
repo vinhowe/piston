@@ -349,6 +349,7 @@ export function endRun() {
 
 export function restoreRun(run: RunData): RunData {
 	runsMap.set(run.runId, run);
+	runCounter.current += 1;
 	currentRun.current = { runId: run.runId, config: run.config };
 	return run;
 }
