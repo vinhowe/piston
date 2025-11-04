@@ -20,6 +20,7 @@
     "@codemirror/state": "^6.5.2",
     "@codemirror/view": "^6.38.6",
     "@huggingface/jinja": "^0.5.1",
+    "@lezer/highlight": "^1.2.3",
     "@piston-ml/piston-web": "workspace:^",
     "@types/katex": "^0.16.7",
     "codemirror": "^6.0.2",
