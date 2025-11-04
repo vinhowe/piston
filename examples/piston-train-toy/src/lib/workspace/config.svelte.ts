@@ -672,6 +672,20 @@ export function getLatestRunDataset() {
 	return latestRunDataset;
 }
 
+const rnnHiddenSize = $derived.by(() => {
+	const { rnn } = config.model;
+	if (rnn.hiddenStateProjection.present) {
+		return rnn.hiddenStateProjection.size;
+	}
+	if (rnn.separateHiddenSize.present) {
+		return rnn.separateHiddenSize.value;
+	}
+	if (rnn.embedding.type === 'learned') {
+		return rnn.embedding.learned.size;
+	}
+	return currentDataset.vocabSize;
+});
+
 const transformerHiddenSize = $derived(
 	config.model.transformer.headDim *
 		(config.model.transformer.attention.groupedQueryAttention.present
@@ -685,6 +699,9 @@ const mlpIntermediateSize = $derived(
 );
 
 export function getHiddenSize() {
+	if (config.model.family === 'rnn') {
+		return rnnHiddenSize;
+	}
 	return transformerHiddenSize;
 }
 
