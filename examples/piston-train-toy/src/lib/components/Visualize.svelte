@@ -3,6 +3,7 @@
 
 	import KatexBlock from '$lib/components/KatexBlock.svelte';
 	import { config, equalsConfigDefault, resetConfigToDefaults } from '$lib/workspace/config.svelte';
+	import { getIconStrokeWidth, tourState } from '$lib/workspace/ui.svelte';
 	import {
 		findExampleIdMatchingScript,
 		getVisualizationExampleById,
@@ -40,6 +41,7 @@
 	} from '@piston-ml/piston-web';
 	import { basicSetup, EditorView } from 'codemirror';
 	import {
+		LightbulbIcon,
 		Minimize2Icon,
 		PlayIcon,
 		RotateCcwIcon,
@@ -49,6 +51,7 @@
 	} from 'lucide-svelte';
 	import { onMount, tick } from 'svelte';
 
+	const iconStrokeWidth = $derived(getIconStrokeWidth());
 	let editorContainer: HTMLDivElement | null = $state(null);
 	let editorView: EditorView | null = $state(null);
 	let canvasEl: HTMLCanvasElement | null = $state(null);
@@ -345,6 +348,9 @@
 		if (!container || !selectedId) return;
 
 		void tick().then(() => {
+			if (selectedId === 'tutorial') {
+				tourState.current.seenCQLTutorial = true;
+			}
 			const target = container.querySelector<HTMLElement>(
 				`button[data-example-id="${CSS.escape(selectedId)}"]`
 			);
@@ -876,6 +882,49 @@
 				{/each}
 			</div>
 		</div>
+		{#if !isMinimized && !tourState.current.seenCQLTutorial}
+			{@const onClick = () => {
+				tourState.current.seenCQLTutorial = true;
+				config.visualization.example = 'tutorial';
+			}}
+			{@const onSkip = () => {
+				tourState.current.seenCQLTutorial = true;
+			}}
+			<div class="flex items-center border-x border-panel-border-base p-1 pt-1.25">
+				<div
+					role="button"
+					class="flex items-center gap-1 font-medium text-sm text-purple-900 px-1 py-0.5 border border-purple-500 bg-gradient-to-t from-purple-300 to-purple-100 cursor-pointer flex-1"
+					onclick={onClick}
+					onkeydown={(e) => {
+						if (e.key === 'Enter' || e.key === ' ') {
+							e.preventDefault();
+							onClick();
+						}
+					}}
+					tabindex="0"
+				>
+					<LightbulbIcon class="w-3.5 h-3.5 shrink-0" strokeWidth={iconStrokeWidth * 1.3} />
+					<span>
+						Start tutorial: write visualization scripts with <span class="@lg:hidden">CQL</span
+						><span class="hidden @lg:inline">Capture Query Language</span>
+					</span>
+				</div>
+				<div
+					class="text-sm pl-2.5 px-2 text-neutral-600 cursor-pointer"
+					role="button"
+					onclick={onSkip}
+					onkeydown={(e) => {
+						if (e.key === 'Enter' || e.key === ' ') {
+							e.preventDefault();
+							onSkip();
+						}
+					}}
+					tabindex="0"
+				>
+					Skip
+				</div>
+			</div>
+		{/if}
 		<div
 			bind:this={editorContainer}
 			class={isMinimized

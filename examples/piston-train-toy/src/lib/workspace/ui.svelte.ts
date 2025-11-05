@@ -204,9 +204,11 @@ export const configOpen = new LocalStorage<boolean | null>('configOpen', null);
 export const tourState = new LocalStorage<{
 	startedExperiment: boolean;
 	restartedExperiment: boolean;
+	seenCQLTutorial: boolean;
 }>('tourState', {
 	startedExperiment: false,
-	restartedExperiment: false
+	restartedExperiment: false,
+	seenCQLTutorial: false
 });
 
 export function openConfigAndScrollToControl(
