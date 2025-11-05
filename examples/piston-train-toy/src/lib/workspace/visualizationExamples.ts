@@ -223,17 +223,17 @@ const ATTENTION_PREDICATE = (config: Config) => {
 };
 
 export const VISUALIZATION_EXAMPLES: Record<string, VisualizationExample> = {
-	'attention-probabilities': {
-		label: 'Attention Probabilities',
-		script: ATTENTION_PROBABILITIES,
-		predicate: ATTENTION_PREDICATE
-	},
 	'attention-activations': {
 		label: 'Attention Activations',
 		script: ATTENTION_ACTIVATIONS,
 		predicate: ATTENTION_PREDICATE
 	},
 	tutorial: { label: 'Tutorial Introduction', script: TUTORIAL },
+	'attention-probabilities': {
+		label: 'Attention Probabilities',
+		script: ATTENTION_PROBABILITIES,
+		predicate: ATTENTION_PREDICATE
+	},
 	'attention-gradients': {
 		label: 'Attention Gradients',
 		script: ATTENTION_GRADIENTS,
