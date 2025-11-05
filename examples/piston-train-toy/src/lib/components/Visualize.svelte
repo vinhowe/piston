@@ -849,7 +849,7 @@
 			bind:this={editorContainer}
 			class={isMinimized
 				? 'w-full border border-neutral-300 overflow-hidden cursor-pointer'
-				: 'h-40 w-full border border-neutral-300 resize-y overflow-auto'}
+				: 'h-[40vh] min-h-[10rem] w-full border border-neutral-300 resize-y overflow-auto'}
 			onclick={() => {
 				if (isMinimized) expandToFull();
 			}}
