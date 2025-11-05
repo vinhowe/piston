@@ -886,6 +886,7 @@
 			{@const onClick = () => {
 				tourState.current.seenCQLTutorial = true;
 				config.visualization.example = 'tutorial';
+				updateVisualizerScript('tutorial', null);
 			}}
 			{@const onSkip = () => {
 				tourState.current.seenCQLTutorial = true;

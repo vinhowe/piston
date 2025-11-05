@@ -514,12 +514,14 @@ export function getWorkerVersion() {
 export function updateVisualizerScript(example: string, script: string | null) {
 	if (!trainWorker) return;
 	trainWorker.postMessage({ type: 'visualizer.updateScript', data: { example, script } });
+	void lastSessionStore.updateVisualization({ example, script });
 }
 
 export function updateVisualizerTarget(target: 'train' | 'validation') {
 	if (!trainWorker) return;
 	config.visualization.target = target;
 	trainWorker.postMessage({ type: 'visualizer.setTarget', data: { target } });
+	void lastSessionStore.updateVisualization({ target });
 }
 
 export function updateVisualizerSelectedValidation({
@@ -536,4 +538,5 @@ export function updateVisualizerSelectedValidation({
 		type: 'visualizer.setSelectedValidation',
 		data: { exampleIndex, tokenIndex }
 	});
+	void lastSessionStore.updateVisualization({ selectedValidation: { exampleIndex, tokenIndex } });
 }

@@ -1,6 +1,7 @@
 import { openDb, txRequest } from '$lib/dataUtils';
 import { SvelteMap } from 'svelte/reactivity';
 
+import type { Config, VisualizationConfig } from './config';
 import type { RunData, StepData } from './runs.svelte';
 
 export type SavedRun = Omit<RunData, 'metrics'> & { metrics: Record<string, StepData[]> };
@@ -68,6 +69,34 @@ class LastSessionStore {
 			txRequest(db, STORE_CHECKPOINT, 'readwrite', (s) => s.put(buf, run.runId)),
 			txRequest(db, STORE_META, 'readwrite', (s) => s.put(run.runId, META_LAST_RUN_ID_KEY))
 		]);
+	}
+
+	/**
+	 * Update only the config of the last run in storage without touching other data.
+	 * This avoids fully deserializing metrics and only rewrites the config field.
+	 */
+	async updateConfig(mutator: (config: Config) => Config | void): Promise<void> {
+		const db = await this.db;
+		const runId = await this.getLastRunId(db);
+		if (!runId) return;
+
+		const saved = await txRequest<SavedRun | undefined>(db, STORE_SESSION, 'readonly', (s) =>
+			s.get(runId)
+		);
+		if (!saved) return;
+
+		const maybeNew = mutator(saved.config as Config);
+		const newConfig = (maybeNew ? maybeNew : saved.config) as Config;
+		const updated: SavedRun = { ...saved, config: newConfig };
+		await txRequest(db, STORE_SESSION, 'readwrite', (s) => s.put(updated, runId));
+	}
+
+	/** Convenience helper focused on visualization config updates. */
+	async updateVisualization(updates: Partial<VisualizationConfig>): Promise<void> {
+		return this.updateConfig((cfg) => ({
+			...cfg,
+			visualization: { ...cfg.visualization, ...updates }
+		}));
 	}
 
 	async exists(): Promise<boolean> {
