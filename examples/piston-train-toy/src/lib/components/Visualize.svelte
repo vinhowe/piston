@@ -656,7 +656,7 @@
 		// Compute desired highlight target
 		let next: { from: number; to: number; cls: string } | null = null;
 		if (!scriptChangedSinceApply && activeIndex != null) {
-			const q = isMinimized ? minimizedOffsets?.[activeIndex] : queries?.[activeIndex].parsedQuery;
+			const q = isMinimized ? minimizedOffsets?.[activeIndex] : queries?.[activeIndex]?.parsedQuery;
 			if (q) {
 				const from = Math.max(0, q.from | 0);
 				const to = Math.max(from, q.to | 0);
