@@ -309,7 +309,7 @@
 										'all parameters in the network',
 										'all-parameters'
 									)}, or try
-									{@render sViz('writing your own visualization queries', 'kitchen-sink')}.
+									{@render sViz('writing your own visualization queries', 'tutorial')}.
 									<b>Learn to</b>
 									{@render sPreset(
 										'match parentheses in a Dyck language',
