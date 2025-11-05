@@ -705,9 +705,9 @@ export class TrainingSession {
 
 				loss.backward();
 
-				if (captureSession && this.onCaptureMatches) {
+				if (this.captureManager && captureSession && this.onCaptureMatches) {
 					try {
-						const matches = this.captureManager!.finalize(captureSession, 0);
+						const matches = this.captureManager.finalize(captureSession, 0);
 						await this.onCaptureMatches(this.stepCount, matches);
 					} finally {
 						captureSession[Symbol.dispose]();
@@ -918,27 +918,29 @@ export class TrainingSession {
 						// Create session on top of weak mode for this step to capture forward ops
 						captureSession = this.captureManager.createSession();
 
-						await runValidationExampleForCapture(
-							this.model,
-							this.validationExamples,
-							this.validationCollateFn,
-							this.currentVisualizationSelectedValidation.exampleIndex
-						);
-
-						// runValidationExampleForCapture actually ends up… training on the validation set,
-						// so we need to zero out the gradients here
-						this.optimizer.zeroGrad(true);
-
-						try {
-							const matches = this.captureManager!.finalize(
-								captureSession!,
+						if (captureSession) {
+							await runValidationExampleForCapture(
+								this.model,
+								this.validationExamples,
+								this.validationCollateFn,
 								this.currentVisualizationSelectedValidation.exampleIndex
 							);
-							await this.onCaptureMatches(this.stepCount, matches);
-						} finally {
-							captureSession![Symbol.dispose]();
+
+							// runValidationExampleForCapture actually ends up… training on the validation set,
+							// so we need to zero out the gradients here
+							this.optimizer.zeroGrad(true);
+
+							try {
+								const matches = this.captureManager.finalize(
+									captureSession,
+									this.currentVisualizationSelectedValidation.exampleIndex
+								);
+								await this.onCaptureMatches(this.stepCount, matches);
+							} finally {
+								captureSession[Symbol.dispose]();
+							}
+							captureSession = null;
 						}
-						captureSession = null;
 					}
 
 					// Log current learning rate if scheduler is present
