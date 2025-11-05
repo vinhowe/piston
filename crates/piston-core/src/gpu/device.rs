@@ -59,7 +59,7 @@ impl WgpuDevice {
         #[cfg(target_arch = "wasm32")]
         let adapter = Self::select_adapter().await?;
         #[cfg(not(target_arch = "wasm32"))]
-        let adapter = Self::select_adapter()?;
+        let adapter = Self::select_adapter().await?;
         log::debug!("Adapter: {:?}", adapter.get_info());
         log::debug!("Active GPU: {}", adapter.get_info().name);
 
@@ -149,15 +149,15 @@ impl WgpuDevice {
     }
 
     #[cfg(not(target_arch = "wasm32"))]
-    fn select_adapter() -> Result<Adapter, DeviceError> {
+    async fn select_adapter() -> Result<Adapter, DeviceError> {
         use wgpu::DeviceType;
-        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
-            dx12_shader_compiler: wgpu::util::dx12_shader_compiler_from_env().unwrap_or_default(),
+        let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
             ..Default::default()
         });
-        let backends = wgpu::util::backend_bits_from_env().unwrap_or(wgpu::Backends::PRIMARY);
+        let backends = wgpu::Backends::from_env().unwrap_or(wgpu::Backends::PRIMARY);
         let adapter = instance
             .enumerate_adapters(backends)
+            .await
             .into_iter()
             .max_by_key(|adapter| match adapter.get_info().device_type {
                 DeviceType::DiscreteGpu => 5,
