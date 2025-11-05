@@ -829,6 +829,7 @@
 					{@const selected = opt.value === config.visualization.example}
 					<button
 						class="text-xs px-1 border cursor-pointer leading-none py-0.5 tracking-wide whitespace-nowrap"
+						id={`visualization-example-${opt.value}`}
 						class:font-medium={selected}
 						class:bg-green-200={selected}
 						class:text-neutral-900={selected}
