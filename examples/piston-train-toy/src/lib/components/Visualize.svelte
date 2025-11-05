@@ -47,12 +47,13 @@
 		ZoomInIcon,
 		ZoomOutIcon
 	} from 'lucide-svelte';
-	import { onMount } from 'svelte';
+	import { onMount, tick } from 'svelte';
 
 	let editorContainer: HTMLDivElement | null = $state(null);
 	let editorView: EditorView | null = $state(null);
 	let canvasEl: HTMLCanvasElement | null = $state(null);
 	let canvasContainerEl: HTMLDivElement | null = $state(null);
+	let exampleOptionsContainer: HTMLDivElement | null = $state(null);
 	let offscreenInitializationState = $state<'idle' | 'initializing' | 'ready' | 'error'>('idle');
 	let resizeObserver: ResizeObserver | null = $state(null);
 	let overflowResizeObserver = $state<ResizeObserver | null>(null);
@@ -336,6 +337,34 @@
 	}
 
 	const exampleOptions = $derived(getVisualizationExampleOptions(config));
+
+	// Make sure we're always focused on the selected example, even as it changes
+	$effect(() => {
+		const container = exampleOptionsContainer;
+		const selectedId = config.visualization.example;
+		if (!container || !selectedId) return;
+
+		void tick().then(() => {
+			const target = container.querySelector<HTMLElement>(
+				`button[data-example-id="${CSS.escape(selectedId)}"]`
+			);
+			if (!target) return;
+
+			const targetLeft = target.offsetLeft;
+			const targetRight = targetLeft + target.offsetWidth;
+			const visibleLeft = container.scrollLeft;
+			const visibleRight = visibleLeft + container.clientWidth;
+
+			if (targetLeft < visibleLeft) {
+				container.scrollTo({ left: targetLeft, behavior: 'smooth' });
+			} else if (targetRight > visibleRight) {
+				container.scrollTo({
+					left: Math.max(0, targetRight - container.clientWidth),
+					behavior: 'smooth'
+				});
+			}
+		});
+	});
 
 	function moveEditorToQueryStart(idx: number | null | undefined) {
 		if (idx == null || idx < 0) return;
@@ -824,12 +853,14 @@
 			</div>
 			<div
 				class="flex items-center gap-1 px-0.75 md:px-1 py-0.75 md:py-0.5 -mt-0.75 md:mt-0 overflow-x-auto flex-nowrap [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden w-full md:w-max"
+				bind:this={exampleOptionsContainer}
 			>
 				{#each exampleOptions as opt (opt.value)}
 					{@const selected = opt.value === config.visualization.example}
 					<button
 						class="text-xs px-1 border cursor-pointer leading-none py-0.5 tracking-wide whitespace-nowrap"
 						id={`visualization-example-${opt.value}`}
+						data-example-id={opt.value}
 						class:font-medium={selected}
 						class:bg-green-200={selected}
 						class:text-neutral-900={selected}
