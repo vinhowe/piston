@@ -45,19 +45,19 @@ export class EncoderLayer extends nn.Module {
 		if (this.attn) {
 			const residual = input;
 			if (this.lnAttn && this.layernormPosition === 'pre') {
-				x = this.lnAttn.forward(input) as Tensor;
+				x = this.lnAttn.forward(input);
 			}
 			const attnOutput = this.attn.forward(x, { attentionMask });
 			x = residual.add(attnOutput.output);
 			if (this.lnAttn && this.layernormPosition === 'post') {
-				x = this.lnAttn.forward(x) as Tensor;
+				x = this.lnAttn.forward(x);
 			}
 		}
 
 		if (this.mlp) {
 			const residual2 = x;
 			if (this.lnMlp && this.layernormPosition === 'pre') {
-				x = this.lnMlp.forward(x) as Tensor;
+				x = this.lnMlp.forward(x);
 			}
 			x = this.mlp.forward(x);
 			if (this.dropout) {
@@ -65,7 +65,7 @@ export class EncoderLayer extends nn.Module {
 			}
 			x = residual2.add(x);
 			if (this.lnMlp && this.layernormPosition === 'post') {
-				x = this.lnMlp.forward(x) as Tensor;
+				x = this.lnMlp.forward(x);
 			}
 		}
 

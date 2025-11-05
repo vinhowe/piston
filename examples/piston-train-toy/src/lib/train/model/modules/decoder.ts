@@ -74,7 +74,7 @@ export class DecoderLayer extends nn.Module {
 		if (this.selfAttn) {
 			const residual = input;
 			if (this.lnSelfAttn && this.layernormPosition === 'pre') {
-				x = this.lnSelfAttn.forward(input) as Tensor;
+				x = this.lnSelfAttn.forward(input);
 			}
 			const selfResult = this.selfAttn.forward(x, {
 				attentionMask: tgtPaddingMask ?? null,
@@ -83,7 +83,7 @@ export class DecoderLayer extends nn.Module {
 			selfCache = selfResult.pastKeyValues ?? null;
 			x = residual.add(selfResult.output);
 			if (this.lnSelfAttn && this.layernormPosition === 'post') {
-				x = this.lnSelfAttn.forward(x) as Tensor;
+				x = this.lnSelfAttn.forward(x);
 			}
 		}
 
@@ -93,7 +93,7 @@ export class DecoderLayer extends nn.Module {
 			}
 			const residual2 = x;
 			if (this.lnCrossAttn && this.layernormPosition === 'pre') {
-				x = this.lnCrossAttn.forward(x) as Tensor;
+				x = this.lnCrossAttn.forward(x);
 			}
 			const crossResult = this.crossAttn.forward(x, encoderHiddenStates, {
 				attentionMask: srcPaddingMask ?? null,
@@ -107,14 +107,14 @@ export class DecoderLayer extends nn.Module {
 			}
 			x = residual2.add(crossResult.output);
 			if (this.lnCrossAttn && this.layernormPosition === 'post') {
-				x = this.lnCrossAttn.forward(x) as Tensor;
+				x = this.lnCrossAttn.forward(x);
 			}
 		}
 
 		if (this.mlp) {
 			const residual3 = x;
 			if (this.lnMlp && this.layernormPosition === 'pre') {
-				x = this.lnMlp.forward(x) as Tensor;
+				x = this.lnMlp.forward(x);
 			}
 			x = this.mlp.forward(x);
 			if (this.dropout) {
@@ -122,7 +122,7 @@ export class DecoderLayer extends nn.Module {
 			}
 			x = residual3.add(x);
 			if (this.lnMlp && this.layernormPosition === 'post') {
-				x = this.lnMlp.forward(x) as Tensor;
+				x = this.lnMlp.forward(x);
 			}
 		}
 

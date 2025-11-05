@@ -49,7 +49,7 @@ export class MLMHead extends nn.Module {
 		let x = this.transform.forward(hiddenStates);
 		x = x.gelu(); // Standard activation for MLM head
 		if (this.layernorm) {
-			x = this.layernorm.forward(x) as Tensor;
+			x = this.layernorm.forward(x);
 		}
 		return this.decoder.forward(x);
 	}

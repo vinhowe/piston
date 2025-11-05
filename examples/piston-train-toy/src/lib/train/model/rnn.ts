@@ -212,10 +212,10 @@ abstract class BaseRNN<CellType extends RNNCellType> extends nn.Module {
 			if (l < this.nLayers - 1) {
 				let nextInput: Tensor = layerOutput;
 				if (this.interLayerNorms) {
-					nextInput = this.interLayerNorms[l]!.forward(nextInput) as Tensor;
+					nextInput = this.interLayerNorms[l]!.forward(nextInput);
 				}
 				if (this.interLayerDropout) {
-					nextInput = this.interLayerDropout.forward(nextInput) as Tensor;
+					nextInput = this.interLayerDropout.forward(nextInput);
 				}
 				layerInput = nextInput;
 			} else {
@@ -423,7 +423,7 @@ export class LSTMCell extends nn.Module {
 		const combined = piston.cat([x, hPrev], { dim: 1 });
 		let gateOutputs = this.W.forward(combined);
 		if (this.normGates) {
-			gateOutputs = this.normGates.forward(gateOutputs) as Tensor;
+			gateOutputs = this.normGates.forward(gateOutputs);
 		}
 		let [i, f, g, o] = piston.chunk(gateOutputs, 4, { dim: 1 });
 		i = piston.sigmoid(i);
@@ -432,7 +432,7 @@ export class LSTMCell extends nn.Module {
 		o = piston.sigmoid(o);
 		let cNext = f.mul(cPrev).add(i.mul(g));
 		if (this.normCell) {
-			cNext = this.normCell.forward(cNext) as Tensor;
+			cNext = this.normCell.forward(cNext);
 		}
 		const hNext = o.mul(piston.tanh(cNext));
 		return [hNext, cNext];
@@ -456,7 +456,7 @@ export class RNNCell extends nn.Module {
 	forward(x: Tensor, hPrev: Tensor): Tensor {
 		let preact = this.WIh.forward(x).add(this.WHh.forward(hPrev));
 		if (this.normPreact) {
-			preact = this.normPreact.forward(preact) as Tensor;
+			preact = this.normPreact.forward(preact);
 		}
 		return preact.tanh();
 	}
@@ -645,7 +645,7 @@ export class RNNDecoder extends nn.Module {
 		let embeddings = this.wordEmbeddings.forward(input);
 
 		if (this.embeddingDropout) {
-			embeddings = this.embeddingDropout.forward(embeddings) as Tensor;
+			embeddings = this.embeddingDropout.forward(embeddings);
 		}
 
 		// Process full sequence via pre-built core RNN
@@ -764,7 +764,7 @@ export class RNNEncoder extends nn.Module {
 		}
 
 		if (this.embeddingDropout) {
-			wordEmbeddings = this.embeddingDropout.forward(wordEmbeddings) as Tensor;
+			wordEmbeddings = this.embeddingDropout.forward(wordEmbeddings);
 		}
 
 		let x = wordEmbeddings;
@@ -773,7 +773,7 @@ export class RNNEncoder extends nn.Module {
 
 		// If present, reconcile dims for tied MLM head
 		if (this.mlmPreProj) {
-			x = this.mlmPreProj.forward(x) as Tensor;
+			x = this.mlmPreProj.forward(x);
 		}
 
 		// MLM head

@@ -268,7 +268,7 @@ export class EncoderDecoderTransformer extends nn.Module {
 
 		// Apply final layer normalization
 		if (this.encoder.dict.layerNorm) {
-			hiddenStates = this.encoder.dict.layerNorm.forward(hiddenStates) as Tensor;
+			hiddenStates = this.encoder.dict.layerNorm.forward(hiddenStates);
 		}
 
 		return hiddenStates;
@@ -396,7 +396,7 @@ export class DecoderTransformer extends nn.Module {
 
 		// Apply final layer normalization
 		if (this.decoder.dict.lnF) {
-			hiddenStates = this.decoder.dict.lnF.forward(hiddenStates) as Tensor;
+			hiddenStates = this.decoder.dict.lnF.forward(hiddenStates);
 		}
 
 		// Project to vocabulary
@@ -576,7 +576,7 @@ export class EncoderTransformer extends nn.Module {
 
 		// Apply final layer normalization
 		if (this.encoder.dict.layerNorm) {
-			hiddenStates = this.encoder.dict.layerNorm.forward(hiddenStates) as Tensor;
+			hiddenStates = this.encoder.dict.layerNorm.forward(hiddenStates);
 		}
 
 		// Pooled output for classification tasks
