@@ -38,7 +38,6 @@ export const browserInfo: {
 });
 
 export const setupUI = () => {
-
 	// Browser/platform detection (best-effort; UA-CH not universally available yet)
 	const ua = navigator.userAgent.toLowerCase();
 	const vendor = navigator.vendor?.toLowerCase?.() ?? '';
