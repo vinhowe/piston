@@ -37,19 +37,6 @@ export const browserInfo: {
 });
 
 export const setupUI = () => {
-	// Check for WebGPU support
-	void (async () => {
-		const hasGPUInNavigator = 'gpu' in navigator;
-		if (!hasGPUInNavigator) {
-			hasWebGPU.current = false;
-		}
-
-		try {
-			hasWebGPU.current = !!(await navigator.gpu.requestAdapter());
-		} catch (_error) {
-			hasWebGPU.current = false;
-		}
-	})();
 
 	// Browser/platform detection (best-effort; UA-CH not universally available yet)
 	const ua = navigator.userAgent.toLowerCase();
