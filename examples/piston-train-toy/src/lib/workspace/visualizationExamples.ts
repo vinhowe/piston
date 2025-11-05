@@ -244,7 +244,7 @@ export const VISUALIZATION_EXAMPLES: Record<string, VisualizationExample> = {
 		script: ATTENTION_PARAMETERS,
 		predicate: ATTENTION_PREDICATE
 	},
-	'mlp activations': {
+	'mlp-activations': {
 		label: 'MLP Activations',
 		script: MLP_ACTIVATIONS,
 		predicate: ATTENTION_PREDICATE
