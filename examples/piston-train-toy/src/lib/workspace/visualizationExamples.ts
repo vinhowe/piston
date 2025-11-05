@@ -40,6 +40,176 @@ layer[0] ./.*Attention/ @ WhereCond + Softmax :grad :label("self-attention $\\si
 //
 * #bias :label("all biases") :scale(3)`;
 
+const TUTORIAL = `// Tutorial Introduction to Capture Query Language
+//
+// - These examples assume you're training a basic
+//   transformer model; you'll need to adjust them for other
+//   architectures.
+// - Examples are commented out to avoid cluttering the
+//   canvas.
+// - Toggle comments with Ctrl/Cmd + /, and click the green
+//   play button to apply the example.
+// - If the interpreter can't parse the example, you'll see
+//   an error lint.
+
+//
+// MODULE SELECTION
+//
+
+// This implicitly selects the tensor output of the first
+// layer, index 0 of a ModuleList called \`layer\`. In this
+// case, the output is likely a list, so all tensors in that
+// list will be rendered.
+//
+layer[0]
+
+// The above is equivalent to:
+//
+// layer[0] :output
+
+// :output is a type of specifier that changes the query in
+// some way. Another example is :grad(ient):
+//
+// layer[0] :grad
+
+// In addition to selecting modules by name, we can select
+// them by type. For example, to select the output of all
+// modules with the class name SelfAttention, we can use the
+// following query:
+//
+// .SelfAttention
+
+// What if we want to select all modules with Attention in
+// the name? We can use a type regex:
+//
+// layer[0] ./.*Attention/
+
+// We can also select modules by name regex:
+//
+// /c(Proj|Attn)/
+
+// Additionally, we can use wildcards in queries. For
+// example, to select the output of all submodules of the
+// first layer, we can use the following query:
+//
+// layer[0] *
+
+// We can select more specific modules by using a selector
+// chain. For example, to select all attention modules in
+// the first layer, we can use the following query:
+//
+// layer[0] ./.*Attention/
+
+// That will select all children, immediately or not, that
+// match the regex. We can also select immediate children
+// only by using the child combinator...
+//
+// layer[0] > ./.*Attention/
+
+// ...or all next modules in registration order which we try
+// to keep pretty close to execution order)...
+//
+// layer[0] .SelfAttention ~ .RMSNorm
+
+// ...or all subsequent modules in registration order.
+//
+// .RMSNorm + .Embedding
+
+//
+// OP SELECTION
+//
+
+// A model's forward pass is composed of a series of math
+// functions on tensor inputs, which we call operations, or
+// ops. We can look at the output of a particular operation
+// by name. To see all ReLU² activations in the first layer,
+// we can use an op selector, which is denoted by the @
+// symbol:
+//
+// layer[0] * @ Relu2
+
+// We can do next- and subsequent-sibling selectors on
+// operators too:
+//
+// layer[0] ./.*Attention/ @ WhereCond + Softmax
+
+// Wildcards as well:
+//
+// layer[0] @ *
+
+//
+// PARAMETER SELECTION
+//
+
+// So far, we've only looked at model activations. We might
+// also like to see how parameters change over time. We can
+// do this by using a parameter selector, which is denoted
+// by the # symbol:
+//
+// layer[0] * # weight
+
+// Parameter selectors also support regexes and wildcards:
+//
+// layer[0] * # /(weight|bias)/
+// layer[0] * # *
+
+//
+// PIPING
+//
+
+// We can also apply simple JavaScript to the output of a
+// query. For example, it's common that the input or output
+// of a module is an object, like a list, containing
+// tensors. We can pipe the output to a JavaScript function
+// to transform it. For example, to get the first tensor
+// from the output of the first layer, we can use the
+// following query:
+//
+// layer[0] :input |{return it[0]}
+
+// We can also apply arbitrary tensor operations to the
+// output of a query. For example, to get only the positive
+// values of the input of the first layer, we can use the
+// following query:
+//
+// layer[0] :input |{return it[0].where(it[0].ge(0), 0)}
+
+//
+// INDEXING
+//
+
+// We can slice the tensor output of a query. For example,
+// to get the first two heads of the attention probabilities
+// of the first layer, we can use the following query, which
+// should feel familiar if you've used NumPy:
+//
+// layer[0] ./.*Attention/ @ WhereCond + Softmax [:,:2]
+
+// We also support start:stop and ellipsis, though the
+// practical value of this particular example is limited.
+//
+// layer[0] ./.*Attention/ @ WhereCond + Softmax [...,0:2]
+
+//
+// VISUALIZATION UTILITIES
+//
+
+// Often the rendered size of the tensor is either smaller
+// or larger than desired. We can use the :scale(x) modifier
+// to scale the tensor by a factor of x.
+//
+// layer[0] ./.*Attention/ @ WhereCond + Softmax :scale(5)
+
+// Equivalently, we support :scale(x%) to scale the tensor
+// by a factor of x%.
+//
+// layer[0] ./.*Attention/ @ WhereCond + Softmax :scale(500%)
+
+// We can also use the :label("label") modifier to add a
+// label to the tensor.
+//
+// layer[0] ./.*Attention/ @ WhereCond + Softmax :scale(5) :label("attention probabilities $\\sigma$")`;
+
 const ATTENTION_PROBABILITIES = `./.*Attention/ @ Softmax :label("attention probabilities") :scale(5)`;
 const ATTENTION_ACTIVATIONS = `layer[0] ./.*Attention/ @ * :label("attention activations") :scale(2)`;
 const ATTENTION_GRADIENTS = `layer[0] ./.*Attention/ @ * :grad :label("attention gradients") :scale(2)`;
@@ -63,6 +233,7 @@ export const VISUALIZATION_EXAMPLES: Record<string, VisualizationExample> = {
 		script: ATTENTION_ACTIVATIONS,
 		predicate: ATTENTION_PREDICATE
 	},
+	tutorial: { label: 'Tutorial Introduction', script: TUTORIAL },
 	'attention-gradients': {
 		label: 'Attention Gradients',
 		script: ATTENTION_GRADIENTS,
