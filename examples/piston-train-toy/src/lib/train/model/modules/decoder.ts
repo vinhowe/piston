@@ -35,23 +35,37 @@ export class DecoderLayer extends nn.Module {
 		super();
 
 		if (config.attention.present) {
+			const lnPresent = config.layerNormalization.transformer.present;
+			const lnPos = config.layerNormalization.transformer.position;
+			if (lnPresent && lnPos === 'pre') {
+				this.lnSelfAttn = createNorm(config.embeddingSize, config.layerNormalization);
+			}
 			this.selfAttn = new SelfAttention(config.embeddingSize, config, true);
-
-			if (config.layerNormalization.transformer.present) {
+			if (lnPresent && lnPos === 'post') {
 				this.lnSelfAttn = createNorm(config.embeddingSize, config.layerNormalization);
 			}
 		}
 
 		if (crossAttention && config.attention.present) {
+			const lnPresent = config.layerNormalization.transformer.present;
+			const lnPos = config.layerNormalization.transformer.position;
+			if (lnPresent && lnPos === 'pre') {
+				this.lnCrossAttn = createNorm(config.embeddingSize, config.layerNormalization);
+			}
 			this.crossAttn = new CrossAttention(config.embeddingSize, config);
-			if (config.layerNormalization.transformer.present) {
+			if (lnPresent && lnPos === 'post') {
 				this.lnCrossAttn = createNorm(config.embeddingSize, config.layerNormalization);
 			}
 		}
 
 		if (config.mlp.present) {
+			const lnPresent = config.layerNormalization.transformer.present;
+			const lnPos = config.layerNormalization.transformer.position;
+			if (lnPresent && lnPos === 'pre') {
+				this.lnMlp = createNorm(config.embeddingSize, config.layerNormalization);
+			}
 			this.mlp = new MLP(config.embeddingSize, config.mlp);
-			if (config.layerNormalization.transformer.present) {
+			if (lnPresent && lnPos === 'post') {
 				this.lnMlp = createNorm(config.embeddingSize, config.layerNormalization);
 			}
 		}

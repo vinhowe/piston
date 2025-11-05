@@ -20,15 +20,25 @@ export class EncoderLayer extends nn.Module {
 		super();
 
 		if (config.attention.present) {
+			const lnPresent = config.layerNormalization.transformer.present;
+			const lnPos = config.layerNormalization.transformer.position;
+			if (lnPresent && lnPos === 'pre') {
+				this.lnAttn = createNorm(config.embeddingSize, config.layerNormalization);
+			}
 			this.attn = new SelfAttention(config.embeddingSize, config, false);
-			if (config.layerNormalization.transformer.present) {
+			if (lnPresent && lnPos === 'post') {
 				this.lnAttn = createNorm(config.embeddingSize, config.layerNormalization);
 			}
 		}
 
 		if (config.mlp.present) {
+			const lnPresent = config.layerNormalization.transformer.present;
+			const lnPos = config.layerNormalization.transformer.position;
+			if (lnPresent && lnPos === 'pre') {
+				this.lnMlp = createNorm(config.embeddingSize, config.layerNormalization);
+			}
 			this.mlp = new MLP(config.embeddingSize, config.mlp);
-			if (config.layerNormalization.transformer.present) {
+			if (lnPresent && lnPos === 'post') {
 				this.lnMlp = createNorm(config.embeddingSize, config.layerNormalization);
 			}
 		}
