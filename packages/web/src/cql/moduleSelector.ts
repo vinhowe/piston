@@ -105,7 +105,7 @@ export class ModuleSelector<ParameterType = Tensor> {
         }
       }
 
-      currentContext = nextContext;
+      currentContext = dedupeByPath(nextContext);
       if (currentContext.length === 0 && i < selectorTokens.length - 1) {
         // No matches found midway
         diagnostics.push({
@@ -133,7 +133,7 @@ export class ModuleSelector<ParameterType = Tensor> {
         this.modelAdapter.findDescendants(node, () => true, descendants, this.options.maxDepth);
         withDescendants.push(...descendants);
       }
-      currentContext = withDescendants;
+      currentContext = dedupeByPath(withDescendants);
     }
 
     // Add warning if no modules matched the complete selector
@@ -155,6 +155,21 @@ export class ModuleSelector<ParameterType = Tensor> {
       context: { matchCount: currentContext.length },
     };
   }
+}
+
+function dedupeByPath<ParameterType>(
+  nodes: ModelNode<ParameterType>[],
+): ModelNode<ParameterType>[] {
+  const seen = new Set<string>();
+  const out: ModelNode<ParameterType>[] = [];
+  for (const n of nodes) {
+    const key = n.path().join("/");
+    if (!seen.has(key)) {
+      seen.add(key);
+      out.push(n);
+    }
+  }
+  return out;
 }
 
 /**
