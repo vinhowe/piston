@@ -249,7 +249,11 @@ export const VISUALIZATION_EXAMPLES: Record<string, VisualizationExample> = {
 		script: MLP_ACTIVATIONS,
 		predicate: ATTENTION_PREDICATE
 	},
-	'kitchen-sink': { label: 'Kitchen Sink', script: KITCHEN_SINK, predicate: ATTENTION_PREDICATE },
+	'kitchen-sink': {
+		label: 'Kitchen Sink',
+		script: KITCHEN_SINK,
+		predicate: ATTENTION_PREDICATE
+	},
 	'all-activations': {
 		label: 'All Activations',
 		script: '* @ * :scale(3)'
