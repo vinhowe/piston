@@ -1012,7 +1012,7 @@ export class TrainingSession {
 					break;
 				}
 				if (value === 'restarted') {
-					continue;
+					return;
 				}
 			}
 		}
