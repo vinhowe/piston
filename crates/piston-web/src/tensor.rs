@@ -836,7 +836,6 @@ pub fn grad(input: Tensor) -> Result<Option<JsTensor>, JsError> {
     Ok::<_, JsError>(input.grad().map(JsTensor::new))
 }
 
-#[cfg(not(feature = "debug"))]
 #[js_tensor_web_op(name = DebugTensor, variants = [method], getter)]
 pub fn debug_tensor(input: Tensor) -> Result<JsTensor, JsError> {
     input.get_or_create_debug_tensor()
