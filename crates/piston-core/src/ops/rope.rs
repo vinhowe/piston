@@ -338,16 +338,40 @@ mod tests {
 
     fn ground_truth(a: &Tensor, dim: usize, offset: usize) -> anyhow::Result<Tensor> {
         let prg = r#"
-import mlx.core as mx
-import mlx.nn as nn
+import torch
 import numpy as np
 
-def mlx_rope(input, dim, offset):
-    rope = nn.RoPE(dim)
-    mx_input = mx.array(input)
-    y = rope(mx_input, offset)
-    mx.eval(y)
-    return np.array(y)
+def rope_torch(input, dim, offset):
+    x = torch.from_numpy(input)
+    orig_dtype = x.dtype
+    x = x.float()
+    bsz, nh, sl, hd = x.shape
+
+    pair = dim // 2
+    base = 10000.0
+    i = torch.arange(pair, dtype=torch.float32)
+    inv_freq = base ** (-2.0 * i / float(dim))
+    pos = torch.arange(sl, dtype=torch.float32) + float(offset)
+    angles = pos[:, None] * inv_freq[None, :]
+
+    cos = torch.cos(angles)[None, None, :, :]
+    sin = torch.sin(angles)[None, None, :, :]
+
+    # Kernel rotates pairs laid out as [x1_0..x1_{pair-1}, x2_0..x2_{pair-1}] (split layout)
+    x1 = x[..., :pair]
+    x2 = x[..., pair:dim]
+
+    rx1 = x1 * cos - x2 * sin
+    rx2 = x1 * sin + x2 * cos
+
+    rotated = torch.cat([rx1, rx2], dim=-1)
+
+    if hd > dim:
+        out = torch.cat([rotated, x[..., dim:]], dim=-1)
+    else:
+        out = rotated
+
+    return out.to(orig_dtype).numpy()
 "#;
         run_py_prg(prg.to_string(), &[a], &[&dim, &offset], a.dtype())
     }
