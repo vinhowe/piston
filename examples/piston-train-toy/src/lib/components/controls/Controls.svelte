@@ -214,7 +214,7 @@
 {/snippet}
 
 <div>
-	<div class="p-1">
+	<div class="p-1 border-b border-panel-border-base">
 		<SelectInput
 			id="preset-select"
 			label="Preset"
