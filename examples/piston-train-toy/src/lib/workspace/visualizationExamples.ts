@@ -126,10 +126,17 @@ export function getEffectiveVisualizationScript(
 export function getVisualizationExampleOptions(
 	config: Config
 ): Array<{ value: string; text: string }> {
-	return [
+	const baseOptions = [
 		...Object.entries(VISUALIZATION_EXAMPLES)
 			.filter(([_, e]) => (e.predicate ? e.predicate(config) : true))
-			.map(([id, e]) => ({ value: id, text: e.label })),
-		{ value: 'custom', text: 'Custom' }
+			.map(([id, e]) => ({ value: id, text: e.label }))
 	];
+
+	const customOption = { value: 'custom', text: 'Custom' };
+
+	if (config.visualization.example === 'custom') {
+		// We want to show it first in this case
+		return [customOption, ...baseOptions];
+	}
+	return [...baseOptions, customOption];
 }
