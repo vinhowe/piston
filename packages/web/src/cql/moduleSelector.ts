@@ -323,7 +323,15 @@ function findBySibling<ParameterType>(
   }
 
   const siblings = startNode.parent.getChildren();
-  const currentIndex = siblings.indexOf(startNode);
+  // Wrapper instances differ across calls; match by path when identity fails
+  const startPath = startNode.path().join("/");
+  const currentIndex = siblings.findIndex(
+    (n) => n === startNode || n.path().join("/") === startPath,
+  );
+
+  if (currentIndex < 0) {
+    return; // Cannot determine sibling position reliably
+  }
 
   if (combinator === "next-sibling") {
     // Find only the immediate next sibling that matches the predicate
