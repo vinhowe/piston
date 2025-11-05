@@ -29,7 +29,7 @@ import {
 } from './model/transformer';
 
 export interface CaptureMatch {
-	matchId: number;
+	matchId: string;
 	buffer?: GPUBuffer | null;
 	type: 'module' | 'parameter' | 'op';
 	op?: string;
@@ -83,13 +83,13 @@ export function processCaptureResults(
 					// Alas, debugTensor doesn't seem to work in all scenarios, including when doing
 					// validation. Seems like we don't copy the buffer to the GPU at the right time.
 					// const effectiveTensor = match.type === 'parameter' ? t._clone() : t._clone().debugTensor;
-					forEachTensorDeep(t, (inner) => {
+					forEachTensorDeep(t, (inner, index) => {
 						const effectiveTensor = inner._clone();
 						const qIndex = match.queryIndex ?? 0;
 						// This little construction allows us to have multiple matches for the same tensor.
-						const compositeMatchId = inner.id * 2 ** 20 + qIndex;
+						// const compositeMatchId = inner.id * 2 ** 20 + qIndex;
 						processedMatches.push({
-							matchId: compositeMatchId,
+							matchId: `${inner.id}-${index}-${qIndex}`,
 							type: match.type,
 							...(match.type !== 'parameter' ? { batchIndex } : {}),
 							source: result.source,

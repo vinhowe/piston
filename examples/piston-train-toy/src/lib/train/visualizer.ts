@@ -3,7 +3,7 @@ import { type IRectangle, MaxRectsPacker, PACKING_LOGIC } from 'maxrects-packer'
 import { type CaptureMatch } from './capture';
 
 export type MatchBox = {
-	matchId: number;
+	matchId: string;
 	x: number;
 	y: number;
 	width: number;
@@ -28,7 +28,7 @@ type PreparedMatch = {
 	scale: number;
 };
 
-type PackedRect = IRectangle & { id?: number; matchId: number };
+type PackedRect = IRectangle & { id?: number; matchId: string };
 
 const PADDING_PX = 4;
 const GLOBAL_PADDING_PX = 3;
@@ -271,7 +271,7 @@ export class Visualizer {
 		// Build batch rectangles for addArray, inflating each rectangle by PADDING_PX/2 on all sides,
 		// and including the label vertical space above the tile.
 		const rects: PackedRect[] = [];
-		const dimsById = new Map<number, Omit<MatchBox, 'x' | 'y' | 'matchId'>>();
+		const dimsById = new Map<string, Omit<MatchBox, 'x' | 'y' | 'matchId'>>();
 
 		// Helper to count power-of-two factors for 2-adic rewrapping
 		const v2 = (n: number): number => {
@@ -346,7 +346,7 @@ export class Visualizer {
 			logic: PACKING_LOGIC.MAX_EDGE
 		});
 		packer.addArray(rects);
-		const posById = new Map<number, { x: number; y: number }>();
+		const posById = new Map<string, { x: number; y: number }>();
 		for (const bin of packer.bins) {
 			for (const rect of bin.rects) {
 				const mid = rect.matchId;
@@ -421,7 +421,7 @@ export class Visualizer {
 			this.recreateComposeTargets();
 		}
 
-		const readbacks: { buffer: GPUBuffer; matchId: number }[] = [];
+		const readbacks: { buffer: GPUBuffer; matchId: string }[] = [];
 
 		const encoder = this.device.createCommandEncoder();
 		let submissionSucceeded = false;
@@ -673,7 +673,7 @@ export class Visualizer {
 			}
 		});
 
-		const statsById: Record<number, { mean: number; variance: number; l2: number }> = {};
+		const statsById: Record<string, { mean: number; variance: number; l2: number }> = {};
 		for (const rb of readbacks) {
 			try {
 				await rb.buffer.mapAsync(GPUMapMode.READ);
