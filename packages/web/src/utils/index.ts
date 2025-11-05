@@ -47,11 +47,13 @@ export class RemovableHandle {
 
 export function forEachTensorDeep(
   value: unknown,
-  visit: (t: Tensor) => void,
+  visit: (t: Tensor, index: number) => void,
+  counter: { index: number } = { index: 0 },
   seen: WeakSet<object> = new WeakSet(),
 ): void {
   if (value instanceof Tensor) {
-    visit(value);
+    visit(value, counter.index);
+    counter.index++;
     return;
   }
   if (value === null) return;
@@ -64,18 +66,18 @@ export function forEachTensorDeep(
   seen.add(obj);
 
   if (Array.isArray(obj)) {
-    for (const v of obj) forEachTensorDeep(v, visit, seen);
+    for (const v of obj) forEachTensorDeep(v, visit, counter, seen);
     return;
   }
   if (obj instanceof Map) {
     for (const [k, v] of obj) {
-      forEachTensorDeep(k, visit, seen);
-      forEachTensorDeep(v, visit, seen);
+      forEachTensorDeep(k, visit, counter, seen);
+      forEachTensorDeep(v, visit, counter, seen);
     }
     return;
   }
   if (obj instanceof Set) {
-    for (const v of obj) forEachTensorDeep(v, visit, seen);
+    for (const v of obj) forEachTensorDeep(v, visit, counter, seen);
     return;
   }
   if (
@@ -91,7 +93,7 @@ export function forEachTensorDeep(
   for (const key of Reflect.ownKeys(obj)) {
     const desc = Object.getOwnPropertyDescriptor(obj, key);
     if (!desc || !("value" in desc)) continue;
-    forEachTensorDeep(obj[key as keyof typeof obj], visit, seen);
+    forEachTensorDeep(obj[key as keyof typeof obj], visit, counter, seen);
   }
 }
 
