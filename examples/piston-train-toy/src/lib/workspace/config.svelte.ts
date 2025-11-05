@@ -301,7 +301,7 @@ const CONFIG_DEFAULTS: Config = {
 	},
 	visualization: {
 		script: null,
-		example: 'attention-probabilities',
+		example: 'attention-activations',
 		target: 'validation',
 		selectedValidation: {
 			exampleIndex: 0,
