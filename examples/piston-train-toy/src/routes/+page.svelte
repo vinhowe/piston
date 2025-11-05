@@ -139,7 +139,9 @@
 
 		initSharedConfigUrlSync();
 		resetWorkspace();
-		initializeWorkers();
+		if (hasWebGPU.current) {
+			initializeWorkers();
+		}
 
 		const uiCleanup = setupUI();
 
