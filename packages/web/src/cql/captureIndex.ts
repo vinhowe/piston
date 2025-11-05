@@ -208,7 +208,7 @@ export class CaptureIndexModelNode implements ModelNode<IndexParameter> {
     const children: CaptureIndexModelNode[] = [];
     for (const childModule of this.node.children.values()) {
       if (childModule) {
-        children.push(new CaptureIndexModelNode(childModule));
+        children.push(new CaptureIndexModelNode(childModule, this));
       }
     }
     return children;

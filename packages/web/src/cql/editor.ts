@@ -469,6 +469,20 @@ export function completeCQL(context: CompletionContext, modelIndex: IndexState) 
         } else {
           moduleSelector = [{ type: "wildcard" } as ModuleSelectorToken];
         }
+      } else {
+        // Module-level child/sibling autocomplete: build moduleSelector from surrounding ModuleSelector
+        const moduleRoot = moduleSelectorNode?.parent;
+        if (moduleRoot && moduleRoot.name === "ModuleSelector" && moduleRoot.firstChild) {
+          moduleSelector = [];
+          flattenModules(
+            moduleRoot.firstChild.cursor(),
+            context.state.doc.toString(),
+            moduleSelector,
+          );
+          if (moduleSelector.length === 0) return null;
+        } else {
+          moduleSelector = [{ type: "wildcard" } as ModuleSelectorToken];
+        }
       }
     }
   } else if (nodeBefore.name === "OpSpec" || nodeBefore.name === "@") {
