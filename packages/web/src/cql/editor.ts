@@ -471,7 +471,8 @@ export function completeCQL(context: CompletionContext, modelIndex: IndexState) 
           moduleSelector = [{ type: "wildcard" } as ModuleSelectorToken];
         }
       } else {
-        // Module-level child/sibling autocomplete: build moduleSelector from surrounding ModuleSelector
+        // Module-level child/sibling autocomplete: build moduleSelector from surrounding
+        // ModuleSelector
         const moduleRoot = moduleSelectorNode?.parent;
         if (moduleRoot && moduleRoot.name === "ModuleSelector" && moduleRoot.firstChild) {
           moduleSelector = [];
