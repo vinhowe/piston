@@ -6,7 +6,6 @@ export type VisualizationExample = {
 	predicate?: (config: Config) => boolean;
 };
 
-// Kitchen Sink example content taken from previous default, kept verbatim
 const KITCHEN_SINK = `// Kitchen-sink Capture Query Language example
 
 //
