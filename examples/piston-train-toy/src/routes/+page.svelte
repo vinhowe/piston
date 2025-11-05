@@ -144,7 +144,7 @@
 			const hasGPUInNavigator = 'gpu' in navigator;
 			if (!hasGPUInNavigator) {
 				hasWebGPU.current = false;
-				console.log('No WebGPU support found in navigator');
+				console.error('No WebGPU support found in navigator');
 				return;
 			}
 
@@ -152,13 +152,13 @@
 				hasWebGPU.current = !!(await navigator.gpu.requestAdapter());
 				if (hasWebGPU.current) {
 					initializeWorkers();
-					console.log('WebGPU support found in navigator');
+					console.info('WebGPU support found in navigator');
 				} else {
-					console.log('WebGPU adapter request returned falsy value; disabling WebGPU support');
+					console.error('WebGPU adapter request returned falsy value; disabling WebGPU support');
 				}
 			} catch (_error) {
 				hasWebGPU.current = false;
-				console.log('Error requesting WebGPU adapter; disabling WebGPU support: ', _error);
+				console.error('Error requesting WebGPU adapter; disabling WebGPU support: ', _error);
 			}
 		})();
 
