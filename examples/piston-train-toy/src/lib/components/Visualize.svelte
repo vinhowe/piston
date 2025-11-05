@@ -3,7 +3,11 @@
 
 	import KatexBlock from '$lib/components/KatexBlock.svelte';
 	import { config, equalsConfigDefault, resetConfigToDefaults } from '$lib/workspace/config.svelte';
-	import { getIconStrokeWidth, tourState } from '$lib/workspace/ui.svelte';
+	import {
+		getIconStrokeWidth,
+		isVisualizerEditorMinimized,
+		tourState
+	} from '$lib/workspace/ui.svelte';
 	import {
 		findExampleIdMatchingScript,
 		getVisualizationExampleById,
@@ -60,7 +64,6 @@
 	let offscreenInitializationState = $state<'idle' | 'initializing' | 'ready' | 'error'>('idle');
 	let resizeObserver: ResizeObserver | null = $state(null);
 	let overflowResizeObserver = $state<ResizeObserver | null>(null);
-	let isMinimized = $state(true);
 	let lastAppliedScript: string | null = $state(null);
 	const effectiveScript = $derived(
 		(config.visualization.example === 'custom'
@@ -254,7 +257,7 @@
 			EditorView.updateListener.of((update) => {
 				if (
 					update.selectionSet &&
-					!isMinimized &&
+					!isVisualizerEditorMinimized.current &&
 					!scriptChangedSinceApply &&
 					!suppressSelectionSync
 				) {
@@ -297,18 +300,20 @@
 
 	function reconfigureEditorMode() {
 		if (!editorView || !smallerTextTheme) return;
-		const extensions = isMinimized ? buildMinimizedExtensions() : buildFullExtensions();
+		const extensions = isVisualizerEditorMinimized.current
+			? buildMinimizedExtensions()
+			: buildFullExtensions();
 		editorView.dispatch({ effects: modeCompartment.reconfigure(extensions) });
 	}
 
 	function expandToFull() {
-		isMinimized = false;
+		isVisualizerEditorMinimized.current = false;
 		reconfigureEditorMode();
 		replaceEditorDocument($state.snapshot(effectiveScript));
 	}
 
 	function minimizeToSummary() {
-		isMinimized = true;
+		isVisualizerEditorMinimized.current = true;
 		reconfigureEditorMode();
 		const r = computeMinimizedDocAndOffsets($state.snapshot(effectiveScript));
 		minimizedOffsets = r.offsets;
@@ -375,7 +380,9 @@
 	function moveEditorToQueryStart(idx: number | null | undefined) {
 		if (idx == null || idx < 0) return;
 		if (!editorView) return;
-		const range = isMinimized ? minimizedOffsets?.[idx] : queries?.[idx].parsedQuery;
+		const range = isVisualizerEditorMinimized.current
+			? minimizedOffsets?.[idx]
+			: queries?.[idx].parsedQuery;
 		if (!range) return;
 		// Avoid feedback loop: mark this as a programmatic selection
 		suppressSelectionSync = true;
@@ -473,7 +480,7 @@
 		config.visualization.example = 'custom';
 		config.visualization.script = result;
 		requestAnimationFrame(() => applyEffectiveScript());
-		if (!isMinimized) replaceEditorDocument(result);
+		if (!isVisualizerEditorMinimized.current) replaceEditorDocument(result);
 	}
 
 	const queries = $derived(visualizerLayout.queries ?? []);
@@ -625,7 +632,7 @@
 
 		validateScript(effectiveScript);
 
-		const initialDoc = isMinimized
+		const initialDoc = isVisualizerEditorMinimized.current
 			? (() => {
 					const r = computeMinimizedDocAndOffsets($state.snapshot(effectiveScript));
 					minimizedOffsets = r.offsets;
@@ -636,7 +643,9 @@
 			doc: initialDoc,
 			extensions: [
 				cqlLanguageSupport(cqlCompletions),
-				modeCompartment.of(isMinimized ? buildMinimizedExtensions() : buildFullExtensions()),
+				modeCompartment.of(
+					isVisualizerEditorMinimized.current ? buildMinimizedExtensions() : buildFullExtensions()
+				),
 				highlightCompartment.of(EditorView.decorations.of(Decoration.none))
 			]
 		});
@@ -664,7 +673,7 @@
 	$effect(() => {
 		if (!editorView) return;
 		reconfigureEditorMode();
-		if (isMinimized) {
+		if (isVisualizerEditorMinimized.current) {
 			const r = computeMinimizedDocAndOffsets($state.snapshot(effectiveScript));
 			minimizedOffsets = r.offsets;
 			replaceEditorDocument(r.doc);
@@ -691,7 +700,9 @@
 		// Compute desired highlight target
 		let next: { from: number; to: number; cls: string } | null = null;
 		if (!scriptChangedSinceApply && activeIndex != null) {
-			const q = isMinimized ? minimizedOffsets?.[activeIndex] : queries?.[activeIndex]?.parsedQuery;
+			const q = isVisualizerEditorMinimized.current
+				? minimizedOffsets?.[activeIndex]
+				: queries?.[activeIndex]?.parsedQuery;
 			if (q) {
 				const from = Math.max(0, q.from | 0);
 				const to = Math.max(from, q.to | 0);
@@ -828,7 +839,7 @@
 				>
 					<RotateCcwIcon class="w-3.5 h-3.5 shrink-0" />
 				</button>
-				{#if !isMinimized}
+				{#if !isVisualizerEditorMinimized.current}
 					<button
 						class="text-neutral-700 p-1.5 cursor-pointer flex items-center select-none border-transparent"
 						title="Minimize"
@@ -837,7 +848,7 @@
 						<Minimize2Icon class="w-3.5 h-3.5 shrink-0" />
 					</button>
 				{/if}
-				{#if isMinimized}
+				{#if isVisualizerEditorMinimized.current}
 					<div
 						class="text-purple-700 cursor-pointer flex items-center select-none text-xs font-medium tracking-wide px-1.5 h-[calc(100%+2px)] -my-px z-10 gap-1.5 shrink-0"
 						title="Edit script"
@@ -882,7 +893,7 @@
 				{/each}
 			</div>
 		</div>
-		{#if !isMinimized && !tourState.current.seenCQLTutorial}
+		{#if !isVisualizerEditorMinimized.current && !tourState.current.seenCQLTutorial}
 			{@const onClick = () => {
 				tourState.current.seenCQLTutorial = true;
 				config.visualization.example = 'tutorial';
@@ -928,17 +939,17 @@
 		{/if}
 		<div
 			bind:this={editorContainer}
-			class={isMinimized
+			class={isVisualizerEditorMinimized.current
 				? 'w-full border border-neutral-300 overflow-hidden cursor-pointer'
 				: 'h-[40vh] min-h-[10rem] w-full border border-neutral-300 resize-y overflow-auto'}
 			onclick={() => {
-				if (isMinimized) expandToFull();
+				if (isVisualizerEditorMinimized.current) expandToFull();
 			}}
 			role="button"
 			tabindex="0"
 			aria-label="Expand editor"
 			onkeydown={(e) => {
-				if (!isMinimized) return;
+				if (!isVisualizerEditorMinimized.current) return;
 				if (e.key === 'Enter' || e.key === ' ') {
 					e.preventDefault();
 					expandToFull();

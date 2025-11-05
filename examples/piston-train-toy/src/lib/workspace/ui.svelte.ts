@@ -17,6 +17,7 @@ export const isMobile = $state({ current: false });
 export const activeTab: { current: 'about' | 'metrics' } = $state({
 	current: 'about'
 });
+export const isVisualizerEditorMinimized = $state({ current: true });
 export const hasWebGPU = $state({ current: false });
 export const browserInfo: {
 	current: {

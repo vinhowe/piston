@@ -4,7 +4,12 @@
 	import FootnotesProvider from '$lib/components/footnotes/FootnotesProvider.svelte';
 	import UserGuideTooltip from '$lib/components/UserGuideTooltip.svelte';
 	import { config, setPreset, validateConfig } from '$lib/workspace/config.svelte';
-	import { browserInfo, hasWebGPU, startTraining } from '$lib/workspace/ui.svelte';
+	import {
+		browserInfo,
+		hasWebGPU,
+		isVisualizerEditorMinimized,
+		startTraining
+	} from '$lib/workspace/ui.svelte';
 	import { getIconStrokeWidth } from '$lib/workspace/ui.svelte';
 	import { openConfigAndScrollToControl, switchToMetrics } from '$lib/workspace/ui.svelte';
 	import { getVisualizationExampleById } from '$lib/workspace/visualizationExamples';
@@ -184,7 +189,7 @@
 										if (controlId) openConfigAndScrollToControl(controlId, ['task']);
 									})}
 								{/snippet}
-								{#snippet sViz(text: string, exampleId: string)}
+								{#snippet sViz(text: string, exampleId: string, expandEditor: boolean = false)}
 									{@render sClick(text, () => {
 										config.visualization.example = exampleId;
 										config.visualization.script = null;
@@ -194,6 +199,9 @@
 											updateVisualizerScript(exampleId, script);
 										}
 										startTraining();
+										if (expandEditor) {
+											isVisualizerEditorMinimized.current = false;
+										}
 									})}
 								{/snippet}
 								{#snippet sModelTransform(text: string, controlId: string)}
@@ -309,7 +317,7 @@
 										'all parameters in the network',
 										'all-parameters'
 									)}, or try
-									{@render sViz('writing your own visualization queries', 'tutorial')}.
+									{@render sViz('writing your own visualization queries', 'tutorial', true)}.
 									<b>Learn to</b>
 									{@render sPreset(
 										'match parentheses in a Dyck language',
