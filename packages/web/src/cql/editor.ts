@@ -449,7 +449,8 @@ export function completeCQL(context: CompletionContext, modelIndex: IndexState) 
         autocompleteType = `op-${autocompleteType}` as "op-next-sibling" | "op-subsequent-sibling";
         moduleSelectorNode =
           moduleSelectorNode.parent?.parent?.parent?.getChild("ModuleSelector") ?? null;
-        // If there is no module selector node, then we assume we're in a base-op-selector situation.
+        // If there is no module selector node, then we assume we're in a base-op-selector
+        // situation.
         if (!targetSelectorNode.firstChild) return null;
         opSelector = [];
         flattenOpSelectors(
