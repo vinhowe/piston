@@ -428,7 +428,8 @@ export function completeCQL(context: CompletionContext, modelIndex: IndexState) 
       nExtraSpaces = 1;
       targetSelectorNode = nodeBefore.parent;
     }
-    // If immediate parent of nodeBefore is OpSelector, then we use a different path to get the module selector.
+    // If immediate parent of nodeBefore is OpSelector, then we use a different path to get the
+    // module selector.
     if (targetSelectorNode && targetSelectorNode.name.match(/^(Sibling|Child)Selector$/)) {
       const isOpSelector = targetSelectorNode.parent?.name === "OpSelector";
       if (nodeBefore.name.startsWith("Sibling")) {
@@ -495,7 +496,8 @@ export function completeCQL(context: CompletionContext, modelIndex: IndexState) 
     if (nodeBefore.name === "@") {
       nExtraSpaces = 1;
     }
-    // A little risky to do this unconditionally, but we do want to support queries like a bar `@ Add` etc.
+    // A little risky to do this unconditionally, but we do want to support queries like a bar
+    // `@ Add` etc.
     autocompleteType = "op";
     moduleSelector = [];
     if (targetSelector && targetSelector.name === "ModuleSelector" && targetSelector.firstChild) {
