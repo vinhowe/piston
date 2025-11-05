@@ -32,7 +32,10 @@ wasm CRATE PROFILE="release":
 
     if [ {{PROFILE}} = "release" ]; then
         # 3) Optimize the bindgen output in place
-        binaryen/bin/wasm-opt -O4 --strip-debug \
+        binaryen/bin/wasm-opt -O4 \
+        --strip-debug \
+        --enable-simd \
+        --flexible-inline-max-function-size '4294967295' \
         -o $OUT/{{CRATE}}_bg.wasm \
             $OUT/{{CRATE}}_bg.wasm
 
