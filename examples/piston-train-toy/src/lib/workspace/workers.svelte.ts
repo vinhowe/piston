@@ -192,7 +192,12 @@ export async function initializeWorker() {
 							// Send start with resumeFrom to resume same run id
 							trainWorker!.postMessage({
 								type: 'start',
-								data: { runId, config: $state.snapshot(config), resumeFrom: buffer }
+								data: {
+									runId,
+									config: $state.snapshot(config),
+									resumeFrom: buffer,
+									gpuPowerPreference: gpuPowerPreference.current
+								}
 							});
 						});
 						break;
