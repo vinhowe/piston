@@ -490,7 +490,7 @@ export async function initGlobals() {
 
 // Apply GPU power preference and ensure GPU device is initialized accordingly.
 export async function applyGpuPowerPreference(
-  pref: "automatic" | "high-performance" | "low-power",
+  pref: "high-performance" | "low-power",
 ): Promise<ReturnType<typeof Device.prototype.asWebGPUDevice>> {
   setPowerPreference_wasm(pref);
   const dev = await gpu_wasm();

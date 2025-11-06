@@ -250,12 +250,11 @@
 			label="Power Preference"
 			bind:value={gpuPowerPreference.current}
 			options={[
-				{ value: 'automatic', text: 'Automatic' },
 				{ value: 'high-performance', text: 'Prefer High Performance' },
 				{ value: 'low-power', text: 'Prefer Low Power' }
 			]}
-			hasDefaultValue={gpuPowerPreference.current === 'automatic'}
-			onReset={() => (gpuPowerPreference.current = 'automatic')}
+			hasDefaultValue={gpuPowerPreference.current === 'high-performance'}
+			onReset={() => (gpuPowerPreference.current = 'high-performance')}
 		/>
 
 		<ToggleGroup

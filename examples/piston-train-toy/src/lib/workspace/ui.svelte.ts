@@ -38,9 +38,9 @@ export const browserInfo: {
 });
 
 // Local-only GPU preferences/state
-export const gpuPowerPreference = new LocalStorage<'automatic' | 'high-performance' | 'low-power'>(
+export const gpuPowerPreference = new LocalStorage<'high-performance' | 'low-power'>(
 	'gpuPowerPreference',
-	'automatic'
+	'high-performance'
 );
 let gpuName = $state<string | null>(null);
 export function setGpuName(name: string | null) {

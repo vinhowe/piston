@@ -254,7 +254,7 @@ self.addEventListener('message', async (event) => {
 					runId: string;
 					config: Config;
 					resumeFrom?: Uint8Array<ArrayBufferLike>;
-					gpuPowerPreference?: 'automatic' | 'high-performance' | 'low-power';
+					gpuPowerPreference?: 'high-performance' | 'low-power';
 				};
 				currentExecutionSource = `[Training:${runIdFromData}]`;
 
@@ -306,7 +306,7 @@ self.addEventListener('message', async (event) => {
 				const { config, requestId, gpuPowerPreference } = data as {
 					config: Config;
 					requestId: string;
-					gpuPowerPreference?: 'automatic' | 'high-performance' | 'low-power';
+					gpuPowerPreference?: 'high-performance' | 'low-power';
 				};
 				currentExecutionSource = '[ModelInspection]';
 

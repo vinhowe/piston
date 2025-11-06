@@ -163,7 +163,6 @@ pub fn seed(seed: u64) -> Result<(), JsValue> {
 #[wasm_bindgen(js_name = setPowerPreference)]
 pub fn set_power_preference(pref: String) -> Result<(), JsValue> {
     let p = match pref.as_str() {
-        "automatic" => PreferredPower::Automatic,
         "high-performance" => PreferredPower::HighPerformance,
         "low-power" => PreferredPower::LowPower,
         other => {

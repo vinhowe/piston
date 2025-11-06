@@ -418,7 +418,6 @@ impl WgpuDevice {
 #[cfg(target_arch = "wasm32")]
 #[derive(Clone, Copy, Debug)]
 pub enum PreferredPower {
-    Automatic,
     HighPerformance,
     LowPower,
 }
@@ -441,10 +440,6 @@ fn preferred_power_preference() -> wgpu::PowerPreference {
     match *preferred_power_lock().read() {
         PreferredPower::HighPerformance => wgpu::PowerPreference::HighPerformance,
         PreferredPower::LowPower => wgpu::PowerPreference::LowPower,
-        PreferredPower::Automatic => {
-            // wgpu has no 'Automatic'; default to HighPerformance as current behavior.
-            wgpu::PowerPreference::HighPerformance
-        }
     }
 }
 
