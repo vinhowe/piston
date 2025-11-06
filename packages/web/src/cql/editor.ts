@@ -406,17 +406,16 @@ export function completeCQL(context: CompletionContext, modelIndex: IndexState) 
     | "module-facet"
     | null = null;
 
-  if (nodeBefore.name === "Script") {
+  if (nodeBefore.name === "Script" || nodeBefore.name === "SelectorLine") {
     const nodeBefore2 =
       context.pos > 1 ? syntaxTree(context.state).resolveInner(context.pos - 1, -1) : nodeBefore;
-    const lineIsEmpty = context.state.doc.lineAt(context.pos).text.trim() === "";
     const targetSelector = nodeBefore2 ? findWithParent(nodeBefore2, "ModuleSelector") : null;
     autocompleteType = "descendant";
     moduleSelector = [];
     if (targetSelector) {
       flattenModules(targetSelector.cursor(), context.state.doc.toString(), moduleSelector);
       if (moduleSelector.length === 0) return null;
-    } else if (!lineIsEmpty || !nodeBefore2) {
+    } else if (!nodeBefore2) {
       return null;
     }
   } else if (nodeBefore.name.match(/^(Child|Sibling)(Selector|Op)$/)) {
