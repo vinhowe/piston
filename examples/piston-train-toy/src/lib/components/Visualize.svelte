@@ -1020,7 +1020,7 @@
 						>
 							<div
 								{@attach avoidRightOverflow(box, isSelected)}
-								class="absolute {isSelected ? 'z-20' : 'group-hover:z-10'}"
+								class="absolute {isSelected ? 'z-40' : 'group-hover:z-30'}"
 								style={`left:${box.x}px;top:${box.y - labelHeight}px;max-width:${box.width}px;height:${labelHeight - 1}px`}
 								aria-hidden={true}
 							>
@@ -1066,10 +1066,10 @@
 				? 'opacity-100'
 				: 'opacity-0'}"
 		></div>
-		<div class="absolute bottom-0 right-0 z-20 m-2 pointer-events-auto">
+		<div class="absolute top-0 right-0 z-20 m-[2px] pointer-events-auto">
 			<div class="bg-black/50 text-white shadow-md flex items-center">
 				<button
-					class="p-1.5 hover:bg-white/10 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+					class="p-1 hover:bg-white/10 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
 					title="Zoom out"
 					aria-label="Zoom out"
 					disabled={!validatedQueries}
@@ -1078,11 +1078,11 @@
 						adjustScale(1 / 1.1);
 					}}
 				>
-					<ZoomOutIcon class="w-4 h-4" />
+					<ZoomOutIcon class="w-3.5 h-3.5" strokeWidth={iconStrokeWidth} />
 				</button>
 				<div class="w-px h-4 bg-white/20"></div>
 				<button
-					class="p-1.5 hover:bg-white/10 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+					class="p-1 hover:bg-white/10 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
 					title="Zoom in"
 					aria-label="Zoom in"
 					disabled={!validatedQueries}
@@ -1091,7 +1091,7 @@
 						adjustScale(1.1);
 					}}
 				>
-					<ZoomInIcon class="w-4 h-4" />
+					<ZoomInIcon class="w-3.5 h-3.5" strokeWidth={iconStrokeWidth} />
 				</button>
 			</div>
 		</div>
