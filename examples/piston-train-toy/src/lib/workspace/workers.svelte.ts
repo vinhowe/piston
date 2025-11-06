@@ -7,7 +7,12 @@ import { SvelteMap } from 'svelte/reactivity';
 import { config } from './config.svelte';
 import { lastSessionStore } from './lastSessionStore';
 import { currentRun, log, runsMap } from './runs.svelte';
-import { triggerLowDiversityDatasetError, triggerVramLimitFlash } from './ui.svelte';
+import {
+	gpuPowerPreference,
+	setGpuName,
+	triggerLowDiversityDatasetError,
+	triggerVramLimitFlash
+} from './ui.svelte';
 
 // Train state
 let trainWorker: Worker | null = $state(null);
@@ -260,7 +265,12 @@ export function workerStartTraining(runId: string, resumeFrom?: Uint8Array<Array
 
 	trainWorker.postMessage({
 		type: 'start',
-		data: { runId: runId, config: $state.snapshot(config), resumeFrom }
+		data: {
+			runId: runId,
+			config: $state.snapshot(config),
+			resumeFrom,
+			gpuPowerPreference: gpuPowerPreference.current
+		}
 	});
 
 	trainingState.current = 'training';
@@ -369,7 +379,8 @@ function requestModelInspection() {
 			type: 'inspectModel',
 			data: {
 				config: $state.snapshot(config),
-				requestId: modelInspectionRequestId
+				requestId: modelInspectionRequestId,
+				gpuPowerPreference: gpuPowerPreference.current
 			}
 		});
 	} catch (error) {
@@ -435,6 +446,11 @@ export async function initializeModelInspectionWorker() {
 					case 'error':
 						console.error('[Main] Model inspection worker error:', data.message);
 						break;
+					case 'gpu.info': {
+						const name = (data as { name?: string | null }).name ?? null;
+						setGpuName(name ?? null);
+						break;
+					}
 				}
 			};
 

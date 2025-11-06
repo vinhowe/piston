@@ -7,6 +7,9 @@ use wasm_bindgen::prelude::*;
 
 use crate::js_util::downcast_from_ptr;
 
+#[cfg(target_arch = "wasm32")]
+use piston::{PreferredPower, WgpuDevice, set_preferred_power};
+
 #[wasm_bindgen(js_name = Device)]
 #[derive(Clone)]
 pub struct JsDevice {
@@ -98,6 +101,14 @@ impl JsDevice {
             Device::CPU => None,
         }
     }
+
+    #[wasm_bindgen(getter, js_name = adapterName)]
+    pub fn adapter_name(&self) -> Option<String> {
+        match &self.inner {
+            Device::GPU(gpu) => Some(gpu.adapter_name().to_string()),
+            Device::CPU => None,
+        }
+    }
 }
 
 thread_local! {
@@ -147,6 +158,28 @@ pub async fn cpu_wasm() -> Result<JsDevice, JsValue> {
 pub fn seed(seed: u64) -> Result<(), JsValue> {
     gpu_sync()?.inner.set_seed(seed);
     Ok(())
+}
+
+#[wasm_bindgen(js_name = setPowerPreference)]
+pub fn set_power_preference(pref: String) -> Result<(), JsValue> {
+    let p = match pref.as_str() {
+        "automatic" => PreferredPower::Automatic,
+        "high-performance" => PreferredPower::HighPerformance,
+        "low-power" => PreferredPower::LowPower,
+        other => {
+            return Err(JsError::new(&format!("Unsupported power preference: {other}")).into());
+        }
+    };
+    set_preferred_power(p);
+    Ok(())
+}
+
+#[wasm_bindgen(js_name = probeGpuName)]
+pub async fn probe_gpu_name() -> Result<Option<String>, JsValue> {
+    let name: Option<String> = WgpuDevice::peek_adapter_name()
+        .await
+        .map_err(|e| JsValue::from(JsError::new(&format!("{e:?}"))))?;
+    Ok(name)
 }
 
 // Serialize and deserialize implementations for JsDevice tsify

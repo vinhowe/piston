@@ -3,6 +3,8 @@ use crate::{DType, GpuCompileKey, OpTensor, TensorId, gpu::*};
 use maybe_async::maybe_async;
 use parking_lot::RwLock;
 use std::collections::BTreeMap;
+#[cfg(target_arch = "wasm32")]
+use std::sync::OnceLock;
 use std::{borrow::Cow, sync::Arc};
 use wgpu::{Adapter, Limits};
 
@@ -29,6 +31,7 @@ pub struct WgpuDevice {
     lazy_graph_executor: Arc<RwLock<LazyGraphExecutor>>,
     device_limits: DeviceLimits,
     device_features: DeviceFeatures,
+    adapter_name: String,
     device: Arc<wgpu::Device>,
     queue: Arc<wgpu::Queue>,
     last_step_log: Arc<RwLock<Option<StepLog>>>,
@@ -62,6 +65,7 @@ impl WgpuDevice {
         let adapter = Self::select_adapter().await?;
         log::debug!("Adapter: {:?}", adapter.get_info());
         log::debug!("Active GPU: {}", adapter.get_info().name);
+        let adapter_name = adapter.get_info().name.clone();
 
         #[allow(unused_mut)]
         let mut required_features = wgpu::Features::default();
@@ -123,6 +127,7 @@ impl WgpuDevice {
             device: Arc::new(device),
             device_limits: limits,
             device_features: features,
+            adapter_name,
             last_step_log: Arc::new(RwLock::new(None)),
         })
     }
@@ -135,12 +140,16 @@ impl WgpuDevice {
         self.ordinal
     }
 
+    pub fn adapter_name(&self) -> &str {
+        &self.adapter_name
+    }
+
     #[cfg(target_arch = "wasm32")]
     async fn select_adapter() -> Result<Adapter, DeviceError> {
         let instance = wgpu::Instance::default();
         instance
             .request_adapter(&wgpu::RequestAdapterOptions {
-                power_preference: wgpu::PowerPreference::HighPerformance,
+                power_preference: preferred_power_preference(),
                 compatible_surface: None,
                 force_fallback_adapter: false,
             })
@@ -180,6 +189,20 @@ impl WgpuDevice {
 }
 
 impl WgpuDevice {
+    #[cfg(target_arch = "wasm32")]
+    pub async fn peek_adapter_name() -> Result<Option<String>, DeviceError> {
+        let instance = wgpu::Instance::default();
+        let adapter = instance
+            .request_adapter(&wgpu::RequestAdapterOptions {
+                power_preference: preferred_power_preference(),
+                compatible_surface: None,
+                force_fallback_adapter: false,
+            })
+            .await
+            .map_err(|_| DeviceError::AdapterRequestFailed)?;
+        Ok(Some(adapter.get_info().name))
+    }
+
     pub fn get_or_create_buffer_init(
         &self,
         desc: &BufferDescriptor,
@@ -389,6 +412,39 @@ impl WgpuDevice {
 
     pub(crate) fn set_last_step_log(&self, log: StepLog) {
         *self.last_step_log.write() = Some(log);
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+#[derive(Clone, Copy, Debug)]
+pub enum PreferredPower {
+    Automatic,
+    HighPerformance,
+    LowPower,
+}
+
+#[cfg(target_arch = "wasm32")]
+static PREFERRED_POWER: OnceLock<RwLock<PreferredPower>> = OnceLock::new();
+
+#[cfg(target_arch = "wasm32")]
+fn preferred_power_lock() -> &'static RwLock<PreferredPower> {
+    PREFERRED_POWER.get_or_init(|| RwLock::new(PreferredPower::HighPerformance))
+}
+
+#[cfg(target_arch = "wasm32")]
+pub fn set_preferred_power(pref: PreferredPower) {
+    *preferred_power_lock().write() = pref;
+}
+
+#[cfg(target_arch = "wasm32")]
+fn preferred_power_preference() -> wgpu::PowerPreference {
+    match *preferred_power_lock().read() {
+        PreferredPower::HighPerformance => wgpu::PowerPreference::HighPerformance,
+        PreferredPower::LowPower => wgpu::PowerPreference::LowPower,
+        PreferredPower::Automatic => {
+            // wgpu has no 'Automatic'; default to HighPerformance as current behavior.
+            wgpu::PowerPreference::HighPerformance
+        }
     }
 }
 

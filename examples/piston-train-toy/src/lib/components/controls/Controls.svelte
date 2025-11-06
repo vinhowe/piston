@@ -13,7 +13,13 @@
 	} from '$lib/workspace/config.svelte';
 	import { getPresetOptions } from '$lib/workspace/presets';
 	import { runsMap } from '$lib/workspace/runs.svelte';
-	import { controlSectionsOpen, toggleControlSection } from '$lib/workspace/ui.svelte';
+	import {
+		controlSectionsOpen,
+		getGpuName,
+		gpuPowerPreference,
+		setGpuName,
+		toggleControlSection
+	} from '$lib/workspace/ui.svelte';
 	import { getParameterCount, triggerModelInspection } from '$lib/workspace/workers.svelte';
 	import { untrack } from 'svelte';
 
@@ -60,6 +66,8 @@
 
 	const currentDataset = $derived(getCurrentDataset());
 
+	const gpuName = $derived(getGpuName());
+
 	$effect(() => {
 		validateConfig();
 	});
@@ -69,6 +77,8 @@
 		// Add dependency on both model and data config (data config influences vocab size)
 		JSON.stringify(config.model);
 		JSON.stringify(config.data);
+		JSON.stringify(gpuPowerPreference.current);
+		setGpuName(null);
 
 		// Trigger parameter count when config changes, but triggerParameterCount itself needs to be untracked
 		untrack(() => triggerModelInspection());
@@ -224,6 +234,59 @@
 			onReset={undefined}
 		/>
 	</div>
+
+	<CollapsibleSection
+		title="GPU"
+		isOpen={controlSectionsOpen.current.gpu ?? true}
+		ontoggle={() => toggleControlSection('gpu')}
+		contentClass={collapsibleSectionClass}
+	>
+		<ControlsStatistic label="Active GPU">
+			{gpuName || 'Unknown'}
+		</ControlsStatistic>
+
+		<SelectInput
+			id="gpu-power-preference"
+			label="Power Preference"
+			bind:value={gpuPowerPreference.current}
+			options={[
+				{ value: 'automatic', text: 'Automatic' },
+				{ value: 'high-performance', text: 'Prefer High Performance' },
+				{ value: 'low-power', text: 'Prefer Low Power' }
+			]}
+			hasDefaultValue={gpuPowerPreference.current === 'automatic'}
+			onReset={() => (gpuPowerPreference.current = 'automatic')}
+		/>
+
+		<ToggleGroup
+			id="gpu-memory-limit"
+			title="VRAM Limit"
+			showEnableToggle={true}
+			bind:enabled={config.training.vramLimitMb.present}
+			hasDefaultValue={equalsConfigDefault('training.vramLimitMb.present')}
+			onReset={() => resetConfigToDefaults('training.vramLimitMb.present')}
+		>
+			<Slider
+				id="gpu-vram-limit-value"
+				bind:value={config.training.vramLimitMb.value}
+				unit="MB"
+				min={1}
+				max={2 ** 17}
+				step={1}
+				base={2}
+				tickFormatter={(value) => {
+					if (value >= 1024) {
+						const gb = value / 1024;
+						const gbStr = gb % 1 === 0 ? `${gb}GB` : `${gb.toFixed(1)}GB`;
+						return gbStr;
+					}
+					return `${value}MB`;
+				}}
+				hasDefaultValue={equalsConfigDefault('training.vramLimitMb.value')}
+				onReset={() => resetConfigToDefaults('training.vramLimitMb.value')}
+			/>
+		</ToggleGroup>
+	</CollapsibleSection>
 
 	{#if runsMap.size >= 1}
 		<CollapsibleSection
@@ -1450,35 +1513,6 @@
 				bind:value={config.training.randomSeed.value}
 				hasDefaultValue={equalsConfigDefault('training.randomSeed.value')}
 				onReset={() => resetConfigToDefaults('training.randomSeed.value')}
-			/>
-		</ToggleGroup>
-
-		<ToggleGroup
-			id="training-vram-limit-group"
-			title="GPU Memory Limit"
-			showEnableToggle={true}
-			bind:enabled={config.training.vramLimitMb.present}
-			hasDefaultValue={equalsConfigDefault('training.vramLimitMb.present')}
-			onReset={() => resetConfigToDefaults('training.vramLimitMb.present')}
-		>
-			<Slider
-				id="training-vram-limit-value"
-				bind:value={config.training.vramLimitMb.value}
-				unit="MB"
-				min={1}
-				max={2 ** 17}
-				step={1}
-				base={2}
-				tickFormatter={(value) => {
-					if (value >= 1024) {
-						const gb = value / 1024;
-						const gbStr = gb % 1 === 0 ? `${gb}GB` : `${gb.toFixed(1)}GB`;
-						return gbStr;
-					}
-					return `${value}MB`;
-				}}
-				hasDefaultValue={equalsConfigDefault('training.vramLimitMb.value')}
-				onReset={() => resetConfigToDefaults('training.vramLimitMb.value')}
 			/>
 		</ToggleGroup>
 

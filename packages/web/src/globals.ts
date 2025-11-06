@@ -60,6 +60,7 @@ import {
   relu2 as relu2_wasm,
   relu as relu_wasm,
   seed_wasm,
+  setPowerPreference_wasm,
   sigmoid as sigmoid_wasm,
   silu as silu_wasm,
   sin as sin_wasm,
@@ -289,7 +290,9 @@ export async function initGlobals() {
   uint32 = uint32_wasm();
 
   cpu = await cpu_wasm();
-  gpu = await gpu_wasm();
+  // Defer GPU creation until preference is applied; default to CPU. This is bad and something you'd
+  // want to improve on if Piston became a framework of its own.
+  gpu = cpu._clone();
   seed = (seed: number | bigint) => {
     seed_wasm(typeof seed === "bigint" ? seed : BigInt(seed));
   };
@@ -483,4 +486,14 @@ export async function initGlobals() {
       },
     ),
   );
+}
+
+// Apply GPU power preference and ensure GPU device is initialized accordingly.
+export async function applyGpuPowerPreference(
+  pref: "automatic" | "high-performance" | "low-power",
+): Promise<ReturnType<typeof Device.prototype.asWebGPUDevice>> {
+  setPowerPreference_wasm(pref);
+  const dev = await gpu_wasm();
+  gpu = dev;
+  return dev?.asWebGPUDevice();
 }

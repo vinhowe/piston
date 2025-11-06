@@ -248,13 +248,20 @@ self.addEventListener('message', async (event) => {
 				const {
 					runId: runIdFromData,
 					config,
-					resumeFrom
+					resumeFrom,
+					gpuPowerPreference
 				} = data as {
 					runId: string;
 					config: Config;
 					resumeFrom?: Uint8Array<ArrayBufferLike>;
+					gpuPowerPreference?: 'automatic' | 'high-performance' | 'low-power';
 				};
 				currentExecutionSource = `[Training:${runIdFromData}]`;
+
+				// Apply GPU power preference before any GPU initialization
+				if (gpuPowerPreference) {
+					await piston.applyGpuPowerPreference(gpuPowerPreference);
+				}
 
 				console.info(`Starting training for run ${runIdFromData}`);
 				session = new TrainingSession(runIdFromData, config, postEvent, resumeFrom);
@@ -296,8 +303,20 @@ self.addEventListener('message', async (event) => {
 		}
 		case 'inspectModel':
 			try {
-				const { config, requestId } = data as { config: Config; requestId: string };
+				const { config, requestId, gpuPowerPreference } = data as {
+					config: Config;
+					requestId: string;
+					gpuPowerPreference?: 'automatic' | 'high-performance' | 'low-power';
+				};
 				currentExecutionSource = '[ModelInspection]';
+
+				// Apply GPU power preference before any GPU usage
+				if (gpuPowerPreference) {
+					const name =
+						(await piston.applyGpuPowerPreference(gpuPowerPreference))?.adapterInfo?.description ??
+						null;
+					self.postMessage({ type: 'gpu.info', name: name ?? null });
+				}
 
 				console.debug('Inspecting model...');
 				const result = inspectModel(config);
