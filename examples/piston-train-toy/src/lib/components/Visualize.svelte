@@ -587,6 +587,11 @@
 		if (canvasEl && workerReady.current && offscreenInitializationState === 'idle') {
 			offscreenInitializationState = 'initializing';
 			try {
+				// Pre-size intrinsic canvas width so OffscreenCanvas starts at the correct width
+				const parent = canvasEl.parentElement;
+				const rect0 = (parent ?? canvasEl).getBoundingClientRect();
+				const w0 = Math.max(1, rect0.width | 0);
+				canvasEl.width = w0;
 				initializeVisualizerCanvas(canvasEl, labelHeight);
 				// initial size
 				const rect = canvasEl.getBoundingClientRect();
@@ -609,6 +614,8 @@
 		// Canvas DOM node is recreated under the keyed block; re-attach observer
 		setTimeout(() => {
 			setupResizeObserver();
+			// Push correct width immediately on re-init
+			measureAndResize();
 			requestAnimationFrame(() => updateOverflowShadow());
 		}, 0);
 	});
