@@ -69,7 +69,10 @@ impl WgpuDevice {
 
         #[allow(unused_mut)]
         let mut required_features = wgpu::Features::default();
-        required_features |= wgpu::Features::SHADER_F16;
+
+        if adapter.features().contains(wgpu::Features::SHADER_F16) {
+            required_features |= wgpu::Features::SHADER_F16;
+        }
         required_features |= wgpu::Features::SUBGROUP;
         required_features |= wgpu::Features::TIMESTAMP_QUERY;
 
