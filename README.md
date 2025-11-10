@@ -14,7 +14,7 @@ Sequence Toy is a web playground for training sequence models (Transformers, LST
 
 ## Attribution
 
-- Piston is a fork of [Ratchet](https://github.com/huggingface/ratchet), hacked and butchered to add automatic differentiation. I picked Ratchet because it is simple enough to reason about, but it thoughtfully supports WebGPU's lazy execution model.
+- Piston is a fork of [Ratchet](https://github.com/huggingface/ratchet), hacked and butchered to add automatic differentiation. I picked Ratchet because it is simple enough to reason about, but it thoughtfully supports WebGPU via [wgpu](https://github.com/gfx-rs/wgpu).
 - My implementation of backprop borrows heavily from [Candle](https://github.com/huggingface/candle).
 - The lazy execution model is an implementation of [LazyTensor](https://arxiv.org/abs/2102.13267), and borrows from [torch/csrc/lazy](https://github.com/pytorch/pytorch/tree/main/torch/csrc/lazy).
 - I used [Keller Jordan](https://x.com/kellerjordan0)'s [Modded-NanoGPT](https://github.com/KellerJordan/modded-nanogpt) as a reference for his Muon optimizer.
