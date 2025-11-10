@@ -42,12 +42,12 @@ export const gpuPowerPreference = new LocalStorage<'high-performance' | 'low-pow
 	'gpuPowerPreference',
 	'high-performance'
 );
-let gpuName = $state<string | null>(null);
+const gpuName = $state<{ current: string | null }>({ current: null });
 export function setGpuName(name: string | null) {
-	gpuName = name;
+	gpuName.current = name;
 }
 export function getGpuName() {
-	return gpuName;
+	return gpuName.current;
 }
 
 export const setupUI = () => {

@@ -17,6 +17,7 @@
 		controlSectionsOpen,
 		getGpuName,
 		gpuPowerPreference,
+		hasWebGPU,
 		setGpuName,
 		toggleControlSection
 	} from '$lib/workspace/ui.svelte';
@@ -78,10 +79,32 @@
 		JSON.stringify(config.model);
 		JSON.stringify(config.data);
 		JSON.stringify(gpuPowerPreference.current);
-		setGpuName(null);
 
 		// Trigger parameter count when config changes, but triggerParameterCount itself needs to be untracked
 		untrack(() => triggerModelInspection());
+	});
+
+	$effect(() => {
+		// Recompute GPU name whenever WebGPU availability or power preference changes
+		JSON.stringify(gpuPowerPreference.current);
+		const has = hasWebGPU.current;
+		if (!has || typeof navigator === 'undefined' || !('gpu' in navigator)) {
+			setGpuName(null);
+			return;
+		}
+		void (async () => {
+			try {
+				const adapter = await navigator.gpu.requestAdapter({
+					powerPreference: gpuPowerPreference.current
+				});
+				// Use info.description if available
+				const name = adapter?.info?.description;
+				setGpuName(typeof name === 'string' && name.length > 0 ? name : null);
+			} catch (error) {
+				console.error('Error requesting WebGPU adapter:', error);
+				setGpuName(null);
+			}
+		})();
 	});
 
 	// Preset selection wiring: local selection drives setPreset, stays in sync with config

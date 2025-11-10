@@ -312,10 +312,8 @@ self.addEventListener('message', async (event) => {
 
 				// Apply GPU power preference before any GPU usage
 				if (gpuPowerPreference) {
-					const name =
-						(await piston.applyGpuPowerPreference(gpuPowerPreference))?.adapterInfo?.description ??
-						null;
-					self.postMessage({ type: 'gpu.info', name: name ?? null });
+					await piston.applyGpuPowerPreference(gpuPowerPreference);
+					(globalThis as unknown as { piston: typeof piston }).piston = piston;
 				}
 
 				console.debug('Inspecting model...');

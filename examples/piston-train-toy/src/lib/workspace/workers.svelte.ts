@@ -9,7 +9,6 @@ import { lastSessionStore } from './lastSessionStore';
 import { currentRun, log, runsMap } from './runs.svelte';
 import {
 	gpuPowerPreference,
-	setGpuName,
 	triggerLowDiversityDatasetError,
 	triggerVramLimitFlash
 } from './ui.svelte';
@@ -451,11 +450,6 @@ export async function initializeModelInspectionWorker() {
 					case 'error':
 						console.error('[Main] Model inspection worker error:', data.message);
 						break;
-					case 'gpu.info': {
-						const name = (data as { name?: string | null }).name ?? null;
-						setGpuName(name ?? null);
-						break;
-					}
 				}
 			};
 
