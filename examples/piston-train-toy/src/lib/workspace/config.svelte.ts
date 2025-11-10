@@ -24,7 +24,7 @@ const CONFIG_DEFAULTS: Config = {
 		batchSize: 32,
 		validation: {
 			present: true,
-			valSteps: 100,
+			valSteps: 10,
 			batchSize: 8,
 			temperature: 0.0,
 			useKvCache: false,
