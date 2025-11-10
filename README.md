@@ -1,7 +1,7 @@
 <div align="center">
 <h1>Sequence Toy + Piston library</h1>
 <a href="https://sequence.toys">
-<img src=".github/media/sequence-toy-hero.webp">
+<img width="700px" src=".github/media/sequence-toy-hero.webp">
 </a>
 <p><a href="https://sequence.toys">Web Playground</a></p>
 <p align="center">
