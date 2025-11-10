@@ -1338,7 +1338,7 @@
 				label="Validate Every $k$ Steps"
 				bind:value={config.training.validation.valSteps}
 				min={1}
-				max={100}
+				max={1000}
 				step={1}
 				hasDefaultValue={equalsConfigDefault('training.validation.valSteps')}
 				onReset={() => resetConfigToDefaults('training.validation.valSteps')}
