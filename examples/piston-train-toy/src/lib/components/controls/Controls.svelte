@@ -235,6 +235,17 @@
 		/>
 	</div>
 
+	{#if runsMap.size >= 1}
+		<CollapsibleSection
+			title="Runs"
+			isOpen={controlSectionsOpen.current.runs}
+			ontoggle={() => toggleControlSection('runs')}
+			contentClass="w-full"
+		>
+			<RunsTable />
+		</CollapsibleSection>
+	{/if}
+
 	<CollapsibleSection
 		title="GPU"
 		isOpen={controlSectionsOpen.current.gpu ?? true}
@@ -286,17 +297,6 @@
 			/>
 		</ToggleGroup>
 	</CollapsibleSection>
-
-	{#if runsMap.size >= 1}
-		<CollapsibleSection
-			title="Runs"
-			isOpen={controlSectionsOpen.current.runs}
-			ontoggle={() => toggleControlSection('runs')}
-			contentClass="w-full"
-		>
-			<RunsTable />
-		</CollapsibleSection>
-	{/if}
 
 	<CollapsibleSection
 		title="Task"
