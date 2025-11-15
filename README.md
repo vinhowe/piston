@@ -1,5 +1,5 @@
 <div align="center">
-<h1>Sequence Toy + Piston library</h1>
+<h1>Sequence Toy + Piston</h1>
 <a href="https://sequence.toys">
 <img width="700px" src=".github/media/sequence-toy-hero.webp">
 </a>
