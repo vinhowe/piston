@@ -132,7 +132,7 @@ export const PRESET_DEFINITIONS: Record<string, PresetDefinition> = {
 				training: {
 					logSteps: 20,
 					validation: {
-						batchSize: 16,
+						batchSize: 4,
 						valSteps: 500,
 						completions: {
 							present: true,
@@ -229,7 +229,7 @@ export const PRESET_DEFINITIONS: Record<string, PresetDefinition> = {
 				training: {
 					enableVisualization: false,
 					logSteps: 20,
-					batchSize: 32,
+					batchSize: 4,
 					dropout: {
 						present: true,
 						embedding: 0.1,
