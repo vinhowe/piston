@@ -195,11 +195,23 @@ export function createDataloader<W = Tensor>(
 	| [ToyDataloaderType<W>, ToyCollateFnType<W>] {
 	if (dataset instanceof NaturalLanguageDataset) {
 		const collateFn = createCollateFn(config, dataset, generator, wrapFunction);
-		return [new DataLoader<number[], NaturalBatchType<W>>(dataset, { collateFn }), collateFn];
+		return [
+			new DataLoader<number[], NaturalBatchType<W>>(dataset, {
+				collateFn,
+				batchSize: config.training.batchSize
+			}),
+			collateFn
+		];
 	} else {
 		const toyDataset = dataset as ToyDatasetLike;
 		const collateFn = createCollateFn(config, toyDataset, generator, wrapFunction);
-		return [new DataLoader<ToySequence, ToyBatchType<W>>(toyDataset, { collateFn }), collateFn];
+		return [
+			new DataLoader<ToySequence, ToyBatchType<W>>(toyDataset, {
+				collateFn,
+				batchSize: config.training.batchSize
+			}),
+			collateFn
+		];
 	}
 }
 
