@@ -451,6 +451,13 @@
 					<a href="https://x.com/fleetwood___" target="_blank" rel="noopener noreferrer"
 						>Christopher Fleetwood</a
 					>.
+					<a
+						href="https://vin.how/blog/train-a-language-model-in-browser"
+						target="_blank"
+						rel="noopener noreferrer"
+						class="font-medium text-base text-purple-600 underline-offset-1 mb-4"
+						>Read about it in the blog post!</a
+					>
 				</p>
 
 				<div class="space-y-4">
