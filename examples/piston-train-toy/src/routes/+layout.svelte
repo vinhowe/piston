@@ -63,6 +63,7 @@
 			"description": "Train language models in your browser with WebGPU",
 			"inLanguage": "en",
 			"applicationCategory": "EducationalApplication",
+			"operatingSystem": "Any",
 			"creator": {
 				"@type": "Person",
 				"name": "Vin Howe",
