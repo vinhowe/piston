@@ -10,6 +10,7 @@
 	<meta name="author" content="Vin Howe" />
 	<meta name="keywords" content="machine learning, transformer, WebGPU, training, neural network" />
 	<meta name="theme-color" content="oklch(0.438 0.218 303.724)" />
+	<meta name="color-scheme" content="light" />
 	<meta charset="utf-8" />
 	<meta name="robots" content="index, follow" />
 	<meta name="googlebot" content="index, follow" />
