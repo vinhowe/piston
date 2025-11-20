@@ -35,6 +35,22 @@
 		type="font/woff2"
 		crossorigin="anonymous"
 	/>
+
+	<!-- Open Graph -->
+	<meta property="og:title" content="Sequence Toy" />
+	<meta property="og:description" content="Train language models in your browser with WebGPU" />
+	<meta property="og:type" content="website" />
+	<meta property="og:url" content="https://sequence.toys" />
+	<meta property="og:image" content="https://sequence.toys/social.png" />
+	<meta property="og:image:alt" content="Preview of Sequence Toy interface" />
+
+	<!-- Twitter -->
+	<meta name="twitter:card" content="summary_large_image" />
+	<meta name="twitter:title" content="Sequence Toy" />
+	<meta name="twitter:description" content="Train language models in your browser with WebGPU" />
+	<meta name="twitter:image" content="https://sequence.toys/social.png" />
+	<meta name="twitter:creator" content="@vinhowe" />
+	<meta name="twitter:site" content="@vinhowe" />
 </svelte:head>
 
 {@render children()}
