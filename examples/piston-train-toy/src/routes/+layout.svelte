@@ -20,6 +20,21 @@
 	<meta name="subject" content="Machine Learning Training Interface" />
 	<meta name="rating" content="general" />
 	<link rel="canonical" href="https://sequence.toys" />
+	<link rel="preconnect" href="https://use.typekit.net" crossorigin="anonymous" />
+	<link
+		rel="preload"
+		href="https://use.typekit.net/ixr7lrv.css"
+		as="style"
+		crossorigin="anonymous"
+	/>
+	<link rel="stylesheet" href="https://use.typekit.net/ixr7lrv.css" crossorigin="anonymous" />
+	<link
+		rel="preload"
+		href="/Berkeley Mono Variable.woff2"
+		as="font"
+		type="font/woff2"
+		crossorigin="anonymous"
+	/>
 </svelte:head>
 
 {@render children()}
