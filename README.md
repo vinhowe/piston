@@ -3,7 +3,7 @@
 <a href="https://sequence.toys">
 <img width="700px" src=".github/media/sequence-toy-hero.webp">
 </a>
-<p><a href="https://sequence.toys">Web Playground</a> &bull; <a href="https://vin.how/blog/train-a-language-model-in-browser">Blog post</a></p>
+<p><a href="https://sequence.toys">Web Playground</a> &bull; <a href="https://vin.how/blog/train-a-language-model-in-your-browser">Blog post</a></p>
 <p align="center">
 Train language models in your browser with WebGPU-powered autodiff.
 </p>

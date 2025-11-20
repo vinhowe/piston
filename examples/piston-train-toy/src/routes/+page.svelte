@@ -268,7 +268,7 @@
 		<div class="flex items-center gap-3 font-medium">
 			{#if activeTab.current !== 'about' || (isMobile.current && configOpen.current)}
 				<a
-					href="https://vin.how/blog/train-a-language-model-in-browser"
+					href="https://vin.how/blog/train-a-language-model-in-your-browser"
 					target="_blank"
 					rel="noopener noreferrer"
 					class="flex items-center gap-1 underline"

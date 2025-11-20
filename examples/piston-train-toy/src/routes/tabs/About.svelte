@@ -452,7 +452,7 @@
 						>Christopher Fleetwood</a
 					>.
 					<a
-						href="https://vin.how/blog/train-a-language-model-in-browser"
+						href="https://vin.how/blog/train-a-language-model-in-your-browser"
 						target="_blank"
 						rel="noopener noreferrer"
 						class="font-medium text-base text-purple-600 underline-offset-1 mb-4"
