@@ -52,6 +52,24 @@
 	<meta name="twitter:image" content="https://sequence.toys/social.png" />
 	<meta name="twitter:creator" content="@vinhowe" />
 	<meta name="twitter:site" content="@vinhowe" />
+
+	<!-- Structured data -->
+	<script type="application/ld+json">
+		{
+			"@context": "https://schema.org",
+			"@type": "WebApplication",
+			"name": "Sequence Toy",
+			"url": "https://sequence.toys",
+			"description": "Train language models in your browser with WebGPU",
+			"inLanguage": "en",
+			"applicationCategory": "EducationalApplication",
+			"creator": {
+				"@type": "Person",
+				"name": "Vin Howe",
+				"sameAs": ["https://vin.how", "https://x.com/vinhowe"]
+			}
+		}
+	</script>
 </svelte:head>
 
 {@render children()}
