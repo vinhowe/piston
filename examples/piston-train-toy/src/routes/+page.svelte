@@ -266,6 +266,14 @@
 	>
 		<span class="uppercase font-mono font-semibold tracking-wider text-xs"> Sequence Toy </span>
 		<div class="flex items-center gap-3 font-medium">
+			<a
+				href="https://x.com/vinhowe/status/1991859939799912561"
+				target="_blank"
+				rel="noopener noreferrer"
+				class="flex items-center gap-1 underline"
+			>
+				Tweet thread <ExternalLink class="inline-block h-3.5 w-3.5" strokeWidth={iconStrokeWidth} />
+			</a>
 			{#if activeTab.current !== 'about' || (isMobile.current && configOpen.current)}
 				<a
 					href="https://vin.how/blog/train-a-language-model-in-your-browser"
