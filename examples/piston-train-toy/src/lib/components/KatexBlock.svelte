@@ -1,7 +1,7 @@
 <script lang="ts">
 	import katex from 'katex';
 
-	import 'katex/dist/katex-swap.min.css';
+	import 'katex/dist/katex.min.css';
 
 	let { text }: { text?: string } = $props();
 
