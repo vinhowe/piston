@@ -5,7 +5,7 @@ authors:
   given-names: "Thomas Vincent"
   orcid: "https://orcid.org/0009-0007-9729-0014"
 title: "Piston and Sequence Toy"
-version: 0.0.1
-doi: 10.5281/zenodo.17576960
+version: 0.0.2
+doi: 10.5281/zenodo.17576959
 date-released: 2025-11-10
 url: "https://github.com/vinhowe/piston"
