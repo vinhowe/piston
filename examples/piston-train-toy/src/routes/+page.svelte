@@ -274,16 +274,6 @@
 			>
 				Tweet thread <ExternalLink class="inline-block h-3.5 w-3.5" strokeWidth={iconStrokeWidth} />
 			</a>
-			{#if activeTab.current !== 'about' || (isMobile.current && configOpen.current)}
-				<a
-					href="https://vin.how/blog/train-a-language-model-in-your-browser"
-					target="_blank"
-					rel="noopener noreferrer"
-					class="flex items-center gap-1 underline"
-				>
-					Blog post <ExternalLink class="inline-block h-3.5 w-3.5" strokeWidth={iconStrokeWidth} />
-				</a>
-			{/if}
 			<a
 				href="https://github.com/vinhowe/piston"
 				target="_blank"
