@@ -23,6 +23,7 @@ num-traits = { workspace = true }
 log = { workspace = true }
 thiserror = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
 safetensors = { workspace = true }
 anyhow.workspace = true
 
@@ -69,7 +70,10 @@ async-trait = "0.1.77"
 smallvec = { workspace = true, features = ["serde"] }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies.web-sys]
-features = ["GpuBuffer", "GpuDevice"]
+features = ["GpuBuffer", "GpuDevice", "Window", "Performance", "WorkerGlobalScope"]
+workspace = true
+
+[target.'cfg(target_arch = "wasm32")'.dependencies.js-sys]
 workspace = true
 
 [dev-dependencies]

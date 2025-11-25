@@ -94,3 +94,26 @@ export class MarkStepModeIfEnabled {
 		}
 	}
 }
+
+export class UniqueOperationsMode extends PistonFunctionMode {
+	private uniqueOperations: Set<string> = new Set();
+
+	constructor() {
+		super();
+	}
+
+	_pistonFunction<T>(
+		func: <FT>(...args: unknown[]) => FT | Promise<FT>,
+		_types: unknown[],
+		args: unknown[],
+		kwargs: Record<string, unknown>
+	) {
+		this.uniqueOperations.add(func.name);
+		return func(...args, kwargs) as T;
+	}
+
+	[Symbol.dispose]() {
+		console.log('Unique operations:', this.uniqueOperations.size);
+		console.log(JSON.stringify(Array.from(this.uniqueOperations), null, 2));
+	}
+}

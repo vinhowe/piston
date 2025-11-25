@@ -4,6 +4,31 @@ import type { IndexState } from '@piston-ml/piston-web';
 
 type WithRunId = { runId: string };
 
+/** Category of a profile event */
+export type ProfileCategory =
+	| 'scope'
+	| 'kernel'
+	| 'allocation'
+	| 'deallocation'
+	| 'tensor_allocation'
+	| 'tensor_deallocation';
+
+/** A single profile event from the Rust profiler */
+export interface ProfileEventData {
+	/** Name of the operation or scope */
+	name: string;
+	/** Category of the event */
+	category: ProfileCategory;
+	/** Start timestamp in microseconds since profiling started */
+	start_us: number;
+	/** Duration in microseconds (0 for instant events) */
+	duration_us: number;
+	/** Additional metadata (shape, dtype, buffer size, workgroups, etc.) */
+	metadata?: Record<string, string>;
+	/** Scope stack at the time of the event */
+	stack?: string[];
+}
+
 export type WorkerCommand =
 	| {
 			type: 'start';
@@ -68,6 +93,11 @@ export type RunWorkerEventWithoutRunId =
 			width: number;
 			height: number;
 			queries: unknown[];
+	  }
+	| {
+			type: 'profiling';
+			step: number;
+			events: ProfileEventData[];
 	  }
 	| { type: 'checkpoint'; buffer: Uint8Array<ArrayBufferLike> }
 	| { type: 'restart'; buffer: Uint8Array<ArrayBufferLike> }

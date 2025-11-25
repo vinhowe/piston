@@ -7,6 +7,7 @@ import {
 	ExponentialLR,
 	LinearLR,
 	type LRScheduler,
+	profiler,
 	SequentialLR,
 	StepLR,
 	type Tensor
@@ -583,6 +584,16 @@ export class TrainingSession {
 
 		this.model.train();
 
+		// Start profiling if enabled
+		if (this.config.training.profiling.present) {
+			profiler.start();
+			this.post({
+				type: 'log',
+				level: 'info',
+				message: `Profiling enabled, will export every ${this.config.training.profiling.exportEverySteps} steps`
+			});
+		}
+
 		this.isSetup = true;
 	}
 
@@ -634,76 +645,92 @@ export class TrainingSession {
 
 			let loss: Tensor;
 			try {
-				if (this.config.model.topology === 'encoder') {
-					// For BERT: batch contains [inputIds, labels, attentionMask]
-					const { tensors } = batch as ToyBidirectionalBatch<Tensor>;
-					const [inputIds, bertLabels, attentionMask] = tensors;
+				// Wrap forward pass in profiler scope if enabled
+				const forwardFn = async (): Promise<Tensor> => {
+					if (this.config.model.topology === 'encoder') {
+						// For BERT: batch contains [inputIds, labels, attentionMask]
+						const { tensors } = batch as ToyBidirectionalBatch<Tensor>;
+						const [inputIds, bertLabels, attentionMask] = tensors;
 
-					let computedLoss: Tensor | null = null;
-					if (this.model instanceof EncoderTransformer) {
-						[, , , computedLoss] = (this.model as EncoderTransformer).forward(
-							await inputIds.to('gpu'),
-							{
-								attentionMask: await attentionMask.to('gpu'),
+						let computedLoss: Tensor | null = null;
+						if (this.model instanceof EncoderTransformer) {
+							[, , , computedLoss] = (this.model as EncoderTransformer).forward(
+								await inputIds.to('gpu'),
+								{
+									attentionMask: await attentionMask.to('gpu'),
+									targets: await bertLabels.to('gpu')
+								}
+							);
+						} else {
+							[, , computedLoss] = (this.model as RNNEncoder).forward(await inputIds.to('gpu'), {
 								targets: await bertLabels.to('gpu')
+							});
+						}
+
+						if (!computedLoss) {
+							throw new Error('No loss tensor returned from encoder-only model');
+						}
+
+						return computedLoss;
+					} else if (this.config.model.topology === 'encoder-decoder') {
+						// For Transformer or RNN seq2seq: batch contains [encoderInputs, decoderInputs, decoderTargets]
+						const { tensors } = batch as ToyEncoderDecoderBatch<Tensor>;
+						const [encoderInputs, decoderInputs, decoderTargets] = tensors;
+						let computedLoss: Tensor | null;
+						if (this.model instanceof EncoderDecoderTransformer) {
+							[, computedLoss] = (this.model as EncoderDecoderTransformer).forward(
+								await encoderInputs.to('gpu'),
+								await decoderInputs.to('gpu'),
+								{ targets: await decoderTargets.to('gpu') }
+							);
+						} else {
+							[, computedLoss] = (this.model as RNNEncoderDecoder).forward(
+								await encoderInputs.to('gpu'),
+								await decoderInputs.to('gpu'),
+								{ targets: await decoderTargets.to('gpu') }
+							);
+						}
+
+						if (!computedLoss) {
+							throw new Error('No loss tensor returned from encoder-decoder model');
+						}
+
+						return computedLoss;
+					} else {
+						// For GPT: batch contains [inputs, targets]
+						const { tensors } = batch as ToyAutoregressiveBatch<Tensor>;
+						const [inputs, gptTargets] = tensors;
+
+						// const uniqueOperationsMode = new UniqueOperationsMode();
+						const [, computedLoss] = (this.model as DecoderTransformer).forward(
+							await inputs.to('gpu'),
+							{
+								targets: await gptTargets.to('gpu')
 							}
 						);
-					} else {
-						[, , computedLoss] = (this.model as RNNEncoder).forward(await inputIds.to('gpu'), {
-							targets: await bertLabels.to('gpu')
-						});
-					}
+						// uniqueOperationsMode[Symbol.dispose]();
 
-					if (!computedLoss) {
-						throw new Error('No loss tensor returned from encoder-only model');
-					}
-
-					loss = computedLoss;
-				} else if (this.config.model.topology === 'encoder-decoder') {
-					// For Transformer or RNN seq2seq: batch contains [encoderInputs, decoderInputs, decoderTargets]
-					const { tensors } = batch as ToyEncoderDecoderBatch<Tensor>;
-					const [encoderInputs, decoderInputs, decoderTargets] = tensors;
-					let computedLoss: Tensor | null;
-					if (this.model instanceof EncoderDecoderTransformer) {
-						[, computedLoss] = (this.model as EncoderDecoderTransformer).forward(
-							await encoderInputs.to('gpu'),
-							await decoderInputs.to('gpu'),
-							{ targets: await decoderTargets.to('gpu') }
-						);
-					} else {
-						[, computedLoss] = (this.model as RNNEncoderDecoder).forward(
-							await encoderInputs.to('gpu'),
-							await decoderInputs.to('gpu'),
-							{ targets: await decoderTargets.to('gpu') }
-						);
-					}
-
-					if (!computedLoss) {
-						throw new Error('No loss tensor returned from encoder-decoder model');
-					}
-
-					loss = computedLoss;
-				} else {
-					// For GPT: batch contains [inputs, targets]
-					const { tensors } = batch as ToyAutoregressiveBatch<Tensor>;
-					const [inputs, gptTargets] = tensors;
-					const [, computedLoss] = (this.model as DecoderTransformer).forward(
-						await inputs.to('gpu'),
-						{
-							targets: await gptTargets.to('gpu')
+						if (!computedLoss) {
+							throw new Error('No loss tensor returned from decoder-only model');
 						}
-					);
 
-					if (!computedLoss) {
-						throw new Error('No loss tensor returned from decoder-only model');
+						return computedLoss;
 					}
+				};
 
-					loss = computedLoss;
+				if (this.config.training.profiling.present) {
+					loss = await profiler.recordFunctionAsync('forward', forwardFn);
+				} else {
+					loss = await forwardFn();
 				}
 
 				weakModeUntilAfterBackward.pin(loss);
 
-				loss.backward();
+				if (this.config.training.profiling.present) {
+					profiler.recordFunction('backward', () => loss.backward());
+				} else {
+					loss.backward();
+				}
 
 				if (this.captureManager && captureSession && this.onCaptureMatches) {
 					try {
@@ -746,7 +773,11 @@ export class TrainingSession {
 				}
 
 				try {
-					await this.optimizer.step();
+					if (this.config.training.profiling.present) {
+						await profiler.recordFunctionAsync('optimizer_step', () => this.optimizer.step());
+					} else {
+						await this.optimizer.step();
+					}
 				} finally {
 					weakMarkStepMode[Symbol.dispose]();
 				}
@@ -990,6 +1021,33 @@ export class TrainingSession {
 
 			this.stepCount++;
 
+			// Export profiling data at configured intervals
+			if (
+				this.config.training.profiling.present &&
+				this.stepCount % this.config.training.profiling.exportEverySteps === 0
+			) {
+				try {
+					const events = profiler.exportEvents();
+					console.log(`[Profiler] Exporting ${events.length} events at step ${this.stepCount}`);
+
+					this.post({
+						type: 'profiling',
+						step: this.stepCount,
+						events
+					});
+
+					// Clear events after export to avoid memory buildup
+					profiler.clear();
+				} catch (e) {
+					console.error('[Profiler] Failed to export profiling data:', e);
+					this.post({
+						type: 'log',
+						level: 'warn',
+						message: `Failed to export profiling data: ${String(e)}`
+					});
+				}
+			}
+
 			performance.mark('stepEnd');
 		} catch (error) {
 			console.error(`Error during training: ${error}`);
@@ -1002,6 +1060,15 @@ export class TrainingSession {
 		await this.setup();
 		while (true) {
 			if (this.paused) {
+				// Export final profiling data before pausing
+				if (this.config.training.profiling.present && profiler.isEnabled) {
+					const events = profiler.exportEvents();
+					this.post({
+						type: 'profiling',
+						step: this.stepCount,
+						events
+					});
+				}
 				if (this.resolvePause) {
 					this.resolvePause();
 				}
@@ -1010,10 +1077,30 @@ export class TrainingSession {
 			const { done, value } = await this.step();
 			if (done) {
 				if (value === 'completed') {
+					// Export final profiling data and stop profiler
+					if (this.config.training.profiling.present && profiler.isEnabled) {
+						const events = profiler.exportEvents();
+						this.post({
+							type: 'profiling',
+							step: this.stepCount,
+							events
+						});
+						profiler.stop();
+					}
 					this.post({ type: 'complete' });
 					break;
 				}
 				if (value === 'restarted') {
+					// Export profiling data before restart
+					if (this.config.training.profiling.present && profiler.isEnabled) {
+						const events = profiler.exportEvents();
+						this.post({
+							type: 'profiling',
+							step: this.stepCount,
+							events
+						});
+						profiler.stop();
+					}
 					return;
 				}
 			}

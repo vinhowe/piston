@@ -4,7 +4,7 @@ use std::sync::Arc;
 use super::{DynamicResource, DynamicResourcePool, DynamicResourcesDesc, PoolError};
 use crate::{
     RawGPUBuffer,
-    gpu::{MIN_STORAGE_BUFFER_SIZE, WgpuDevice},
+    gpu::{MIN_STORAGE_BUFFER_SIZE, WgpuDevice, is_profiling_enabled, record_allocation},
 };
 
 #[derive(Clone, Hash, PartialEq, Eq, Debug, derive_new::new)]
@@ -39,6 +39,14 @@ impl std::ops::Deref for PooledGPUBuffer {
 impl PartialEq for PooledGPUBuffer {
     fn eq(&self, other: &Self) -> bool {
         self.0.inner == other.0.inner
+    }
+}
+
+impl PooledGPUBuffer {
+    /// Get a unique ID for this buffer (for profiling/visualization)
+    pub fn buffer_id(&self) -> u64 {
+        use slotmap::Key;
+        self.0.handle.data().as_ffi()
     }
 }
 
@@ -99,7 +107,12 @@ impl BufferPool {
             mapped_at_creation: desc.mapped_at_creation,
         };
 
-        PooledGPUBuffer(self.inner.get_or_create(&descriptor, |descriptor| {
+        let profiling_enabled = is_profiling_enabled();
+        let usage_str = format!("{:?}", descriptor.usage);
+        let is_new_buffer = std::cell::Cell::new(false);
+
+        let pooled = PooledGPUBuffer(self.inner.get_or_create(&descriptor, |descriptor| {
+            is_new_buffer.set(true);
             let (size, usage, mapped_at_creation) = descriptor.fields();
             let total_size = self.inner.total_resource_size_in_bytes();
             if let Some(vram_limit) = vram_limit
@@ -109,6 +122,7 @@ impl BufferPool {
                         which would exceed the VRAM limit of {vram_limit} bytes (current usage: {total_size} bytes)"
                     );
                 }
+
             let buf = device.create_buffer(&wgpu::BufferDescriptor {
                 label: None,
                 size,
@@ -120,7 +134,15 @@ impl BufferPool {
                 device.poll(wgpu::PollType::wait_indefinitely()).unwrap();
             }
             buf
-        }))
+        }));
+
+        // Record allocation for profiling (only when actually creating a new buffer)
+        // We do this after creation so we have the buffer_id
+        if profiling_enabled && is_new_buffer.get() {
+            record_allocation(size, &usage_str, pooled.buffer_id());
+        }
+
+        pooled
     }
 
     pub fn begin_pass(&mut self, pass_index: u64) {

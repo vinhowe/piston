@@ -1,10 +1,18 @@
 import type { CaptureStep } from '$lib/train/capture';
+import type { ProfileEventData } from '$lib/train/protocol';
 import type { ValidationStep } from '$lib/train/validation';
 
 import { generateMemorableName } from '$lib/workspace/utils';
 import { SvelteMap, SvelteSet } from 'svelte/reactivity';
 
 import { type Config, CONFIG_DESCRIPTIONS } from './config';
+
+/** Profiling snapshot for a specific step */
+export interface ProfilingSnapshot {
+	runId: string;
+	step: number;
+	events: ProfileEventData[];
+}
 
 export type BaseStepData = { step: number };
 
@@ -233,6 +241,30 @@ export const runCounter = $state({ current: 0 });
 export const currentRun = $state<{ current: RunMeta | null }>({
 	current: null
 });
+
+// Profiling data - stores the most recent profiling snapshot
+export const latestProfilingSnapshot = $state<{ current: ProfilingSnapshot | null }>({
+	current: null
+});
+
+/** Update the latest profiling snapshot */
+export function setProfilingSnapshot(
+	runId: string,
+	step: number,
+	events: ProfileEventData[]
+): void {
+	latestProfilingSnapshot.current = { runId, step, events };
+}
+
+/** Get the latest profiling snapshot */
+export function getProfilingSnapshot(): ProfilingSnapshot | null {
+	return latestProfilingSnapshot.current;
+}
+
+/** Check if there is profiling data available */
+export function hasProfilingData(): boolean {
+	return latestProfilingSnapshot.current !== null;
+}
 
 export function getRuns(): ReadonlyArray<RunData> {
 	return [...runsMap.values()].sort((a, b) => a.runId.localeCompare(b.runId));

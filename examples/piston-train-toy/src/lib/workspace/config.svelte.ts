@@ -79,7 +79,11 @@ const CONFIG_DEFAULTS: Config = {
 			present: true,
 			value: 200
 		},
-		restartEverySteps: 1000
+		restartEverySteps: 1000,
+		profiling: {
+			present: false,
+			exportEverySteps: 10
+		}
 	},
 	data: {
 		dataset: 'sort',

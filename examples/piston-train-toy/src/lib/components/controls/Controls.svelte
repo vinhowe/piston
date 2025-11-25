@@ -1801,6 +1801,25 @@
 		ontoggle={() => toggleControlSection('advanced')}
 		contentClass={collapsibleSectionClass}
 	>
+		<ToggleGroup
+			id="training-profiling-group"
+			title="GPU Profiling"
+			showEnableToggle={true}
+			bind:enabled={config.training.profiling.present}
+			hasDefaultValue={equalsConfigDefault('training.profiling.present')}
+			onReset={() => resetConfigToDefaults('training.profiling.present')}
+		>
+			<Slider
+				id="training-profiling-export-every-steps"
+				label="Export Trace Every $n$ Steps"
+				bind:value={config.training.profiling.exportEverySteps}
+				min={1}
+				max={100}
+				step={1}
+				hasDefaultValue={equalsConfigDefault('training.profiling.exportEverySteps')}
+				onReset={() => resetConfigToDefaults('training.profiling.exportEverySteps')}
+			/>
+		</ToggleGroup>
 		<CheckboxInput
 			id="training-use-weak-tensor-references"
 			label="Use Weak Tensor References"

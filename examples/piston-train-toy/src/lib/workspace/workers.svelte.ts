@@ -1,3 +1,4 @@
+import type { ProfileEventData } from '$lib/train/protocol';
 import type { MatchBox } from '$lib/train/visualizer';
 import type { Config } from '$lib/workspace/config';
 import type { IndexState, TensorQuery } from '@piston-ml/piston-web';
@@ -6,7 +7,7 @@ import { SvelteMap } from 'svelte/reactivity';
 
 import { config } from './config.svelte';
 import { lastSessionStore } from './lastSessionStore';
-import { currentRun, log, runsMap } from './runs.svelte';
+import { currentRun, log, runsMap, setProfilingSnapshot } from './runs.svelte';
 import {
 	gpuPowerPreference,
 	triggerLowDiversityDatasetError,
@@ -244,11 +245,25 @@ export async function initializeWorker() {
 							workerRequestSave();
 						}
 						break;
-					case 'resumed':
-						console.log('[Main] Training resumed');
-						trainingState.current = 'training';
-						break;
+				case 'resumed':
+					console.log('[Main] Training resumed');
+					trainingState.current = 'training';
+					break;
+				case 'profiling': {
+					const { step, events, runId: profilingRunId } = data as {
+						step: number;
+						events: ProfileEventData[];
+						runId: string;
+					};
+					console.log(
+						`[Main] Received profiling data for run ${profilingRunId} at step ${step}: ${events.length} events`
+					);
+
+					// Store the profiling snapshot for visualization
+					setProfilingSnapshot(profilingRunId, step, events);
+					break;
 				}
+			}
 			};
 
 			trainWorker.onerror = (event) => {

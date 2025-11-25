@@ -105,6 +105,10 @@ export interface TrainingConfig {
 	inplaceSupport: boolean;
 	enableVisualization: boolean;
 	restartEverySteps: number;
+	profiling: {
+		present: boolean;
+		exportEverySteps: number;
+	};
 }
 
 export interface TransformerAttentionConfig {
@@ -462,7 +466,11 @@ export const CONFIG_DESCRIPTIONS: ConfigValues = {
 			present: 'checkpointing',
 			value: 'checkpoint steps'
 		},
-		restartEverySteps: 'restart steps'
+		restartEverySteps: 'restart steps',
+		profiling: {
+			present: 'profiling',
+			exportEverySteps: 'profile export steps'
+		}
 	},
 	data: {
 		dataset: 'dataset',

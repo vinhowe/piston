@@ -1,4 +1,5 @@
 <script lang="ts">
+	import ProfilingCharts from '$lib/components/metrics/ProfilingCharts.svelte';
 	import RadioGroupInput from '$lib/components/controls/radio/RadioGroupInput.svelte';
 	import MetricsSection from '$lib/components/metrics/MetricsSection.svelte';
 	import RunChart from '$lib/components/metrics/RunChart.svelte';
@@ -9,7 +10,8 @@
 	import {
 		getCurrentRun,
 		getMetricGroups,
-		getMetricNamesFromLastNRuns
+		getMetricNamesFromLastNRuns,
+		latestProfilingSnapshot
 	} from '$lib/workspace/runs.svelte';
 	import {
 		getIconStrokeWidth,
@@ -23,6 +25,10 @@
 	import { BotMessageSquare, ExternalLink } from 'lucide-svelte';
 
 	import Visualize from '../../lib/components/Visualize.svelte';
+
+	const profilingEnabled = $derived(config.training.profiling.present);
+	const profilingSnapshot = $derived(latestProfilingSnapshot.current);
+	const hasProfileData = $derived(profilingSnapshot !== null);
 
 	const iconStrokeWidth = $derived(getIconStrokeWidth());
 
@@ -121,6 +127,20 @@
 						{/if}
 					{/snippet}
 					<Visualize />
+				</MetricsSection>
+			{/if}
+
+			{#if profilingEnabled || hasProfileData}
+				<MetricsSection
+					title="GPU Profiling"
+					groupName="profiling"
+					contentClass=""
+					isOpen={metricsSectionsOpen.current['profiling'] ?? true}
+					onToggle={() => toggleMetricsSection('profiling')}
+				>
+					<div class="bg-white border border-neutral-200 p-2">
+						<ProfilingCharts snapshot={profilingSnapshot} />
+					</div>
 				</MetricsSection>
 			{/if}
 

@@ -1,7 +1,8 @@
 use crate::{
     Compiled, CpuUniform, DebugSelection, Executable, ExecutionError, ExecutionResult, GPUBuffer,
     HashMap, HashSet, Hasher as HasherType, Inner, LazyOp, StepLog, StepLogConfig, Storage,
-    TensorError, WgpuDevice, reset_scope_context,
+    TensorError, WgpuDevice, current_profiler_time_us, is_profiling_enabled,
+    record_tensor_allocation, reset_scope_context, with_profiler,
 };
 #[cfg(feature = "debug")]
 use crate::{DebugTensor, Device, DeviceStorage};
@@ -536,6 +537,20 @@ impl LazyGraphExecutor {
             if let Some(allocations) = &mut allocations {
                 let id = t.id();
                 let inner = allocations.remove(&id).ok_or(TensorError::NoStorage(id))?;
+
+                // Record tensor allocation for profiling
+                if is_profiling_enabled() {
+                    let tensor_id = id.0 as u64;
+                    let name = t.op().name();
+                    let shape = format!("{:?}", t.shape());
+                    let dtype = format!("{:?}", t.dtype());
+                    let size_bytes = t.num_bytes() as u64;
+                    let buffer_id = inner.buffer_id();
+                    record_tensor_allocation(
+                        tensor_id, &name, &shape, &dtype, size_bytes, buffer_id,
+                    );
+                }
+
                 t.update_storage(Storage::GPU(GPUBuffer {
                     inner,
                     alignment: t.dtype().size_of(),
@@ -704,10 +719,33 @@ impl LazyGraphExecutor {
             );
         }
 
+        // Record base time for profiler before execution
+        let profiler_base_time = if is_profiling_enabled() {
+            Some(current_profiler_time_us())
+        } else {
+            None
+        };
+
         let result = self
             .run_executable(&mut executable, gpu_device, false)
             .await
             .unwrap();
+
+        // Feed GPU kernel timestamps to ProfilerContext if profiling is enabled
+        if let (Some(base_time), Some(entries)) = (profiler_base_time, &result.profiling_entries) {
+            let kernels: Vec<(String, f64, HashMap<String, String>)> = entries
+                .values()
+                .map(|entry| {
+                    let mut metadata = HashMap::default();
+                    metadata.insert("tensor_id".to_string(), entry.id.0.to_string());
+                    (entry.kernel_name.clone(), entry.elapsed as f64, metadata)
+                })
+                .collect();
+
+            with_profiler(|ctx| {
+                ctx.record_kernel_batch(kernels, base_time);
+            });
+        }
 
         #[cfg(all(feature = "debug", feature = "plotting"))]
         {
