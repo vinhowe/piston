@@ -66,6 +66,16 @@ export interface ValidationConfig {
 	useKvCache: boolean;
 }
 
+export interface AmpConfig {
+	present: boolean;
+	gradScaling: {
+		initScale: number;
+		growthFactor: number;
+		backoffFactor: number;
+		growthInterval: number;
+	}
+}
+
 export interface TrainingConfig {
 	logSteps: number;
 	limitTraining: {
@@ -99,6 +109,7 @@ export interface TrainingConfig {
 		present: boolean;
 		value: number;
 	};
+	amp: AmpConfig;
 	useWeakTensorReferences: boolean;
 	sharedObjectAllocation: boolean;
 	cachingEnabled: boolean;
@@ -450,6 +461,15 @@ export const CONFIG_DESCRIPTIONS: ConfigValues = {
 			errorIfNonfinite: 'error nonfinite'
 		},
 		useWeakTensorReferences: 'weak tensor refs',
+		amp: {
+			present: 'amp',
+			gradScaling: {
+				initScale: 'amp init scale',
+				growthFactor: 'amp growth factor',
+				backoffFactor: 'amp backoff factor',
+				growthInterval: 'amp growth interval'
+			}
+		},
 		sharedObjectAllocation: 'shared objs',
 		cachingEnabled: 'caching',
 		inplaceSupport: 'inplace',

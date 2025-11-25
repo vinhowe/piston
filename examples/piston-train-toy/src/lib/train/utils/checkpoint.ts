@@ -5,6 +5,8 @@ import {
 	type ConstantConfig,
 	type CosineAnnealingConfig,
 	type ExponentialConfig,
+	GradScaler,
+	type GradScalerStateDict,
 	type LinearConfig,
 	LRScheduler,
 	Optimizer,
@@ -68,6 +70,8 @@ export interface CheckpointExtra {
 	dataState?: CheckpointDataState;
 	// Optional wall-clock training start time in ms to persist across restarts
 	startTimeMs?: number;
+	// GradScaler state for AMP
+	gradScaler?: GradScalerStateDict;
 }
 
 /**
@@ -85,7 +89,8 @@ export function buildCheckpoint(
 	configForExtra: Config,
 	scheduler?: LRScheduler<unknown>,
 	dataState?: CheckpointDataState,
-	startTimeMs?: number
+	startTimeMs?: number,
+	gradScaler?: GradScaler
 ): { tensors: Record<string, piston.Parameter | piston.Buffer>; extra: CheckpointExtra } {
 	const tensors: Record<string, piston.Parameter | piston.Buffer> = model.stateDict();
 
@@ -111,7 +116,8 @@ export function buildCheckpoint(
 		numSteps,
 		lrScheduler: scheduler ? { state: scheduler.stateDict() } : undefined,
 		dataState,
-		startTimeMs
+		startTimeMs,
+		gradScaler: gradScaler ? gradScaler.stateDict() : undefined
 	};
 
 	return { tensors, extra };
@@ -151,6 +157,7 @@ export interface SplitLoadedStateResult {
 	config: Config;
 	dataState?: CheckpointDataState;
 	startTimeMs?: number;
+	gradScalerState?: GradScalerStateDict;
 }
 
 /**
@@ -179,6 +186,7 @@ export function splitLoadedState(loaded: {
 	let config: Config | null = null;
 	let dataState: CheckpointDataState | undefined = undefined;
 	let startTimeMs: number | undefined = undefined;
+	let gradScalerState: GradScalerStateDict | undefined = undefined;
 
 	const { extra } = loaded;
 
@@ -204,6 +212,9 @@ export function splitLoadedState(loaded: {
 		if (typeof extra.startTimeMs === 'number') {
 			startTimeMs = extra.startTimeMs;
 		}
+		if (extra.gradScaler) {
+			gradScalerState = extra.gradScaler;
+		}
 	}
 
 	if (!config) {
@@ -220,5 +231,14 @@ export function splitLoadedState(loaded: {
 
 	// Some runs don't use a scheduler, so we don't validate that it's present
 
-	return { modelState, optimizerState, schedulerState, numSteps, config, dataState, startTimeMs };
+	return {
+		modelState,
+		optimizerState,
+		schedulerState,
+		numSteps,
+		config,
+		dataState,
+		startTimeMs,
+		gradScalerState
+	};
 }

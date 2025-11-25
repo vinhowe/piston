@@ -136,6 +136,7 @@ impl KernelRenderable for PowfKernels {
 
         let N = (P::W as u32).render();
         let dtype = P::render_type();
+        let scalar_type = P::T::DT;
 
         kernel_builder.write_main(wgsl! {
             let x_offset = workgroup_id.x * 64u;
@@ -157,7 +158,7 @@ impl KernelRenderable for PowfKernels {
         // Multiplying by the sign is a fix to make this shader work correctly in Chrome.
         let exponent_expr = match &inner.e {
             TensorTypeOrScalarEnum::Tensor(_) => "E[index]".to_string(),
-            TensorTypeOrScalarEnum::Scalar(_) => wgsl! { 'dtype(metadata.e) },
+            TensorTypeOrScalarEnum::Scalar(_) => wgsl! { 'dtype('scalar_type(metadata.e)) },
         };
 
         let apply = if inplace {

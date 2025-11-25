@@ -5,7 +5,7 @@ use crate::{
     BufferSegment, CPUBuffer, Compiled, CompiledOp, ComputeCompileKey, DType, Device,
     DeviceStorage, Dim, Dims, GPUOperation, GpuCompileKey, InvariantError, LazyGraphExecutorError,
     LazyOp, Operation, OperationError, RVec, RawCPUBuffer, ScopePusher, Shape, Storage, Stride,
-    TensorDType, TensorId, cpu, get_current_scope, ops::*, rvec,
+    TensorDType, TensorId, cpu, get_current_scope, maybe_autocast, ops::*, rvec,
 };
 use anyhow::Result;
 use bitvec::prelude::*;
@@ -749,8 +749,13 @@ pub fn conv1d(
     stride: usize,
     padding: usize,
 ) -> Result<OpTensor> {
+    // Check for fused mixed precision: autocast enabled + F32 inputs
+    let use_mixed_precision =
+        crate::is_autocast_enabled() && input.dtype() == DType::F32 && weight.dtype() == DType::F32;
+
     let device = input.device().clone();
-    let conv = Conv::new(input, weight, bias, stride, padding);
+    let mut conv = Conv::new(input, weight, bias, stride, padding);
+    conv.use_mixed_precision = use_mixed_precision;
     let new_view = conv.compute_view()?;
     OpTensor::lazy(LazyOp::Conv(conv), new_view, device, false)
 }
@@ -803,8 +808,21 @@ pub fn matmul(
     trans_lhs: bool,
     trans_rhs: bool,
 ) -> Result<OpTensor> {
+    // Check for fused mixed precision: autocast enabled + F32 inputs
+    let use_mixed_precision =
+        crate::is_autocast_enabled() && input.dtype() == DType::F32 && rhs.dtype() == DType::F32;
+
+    // Promote dtypes for mixed-precision compatibility (backward pass: F32 grad × F16 activation)
+    // Skip promotion if using fused mixed precision (inputs stay F32)
+    let (input, rhs) = if use_mixed_precision {
+        (input, rhs)
+    } else {
+        crate::promoted_cast(input, rhs)?
+    };
+
     let device = input.device().clone();
-    let matmul = Matmul::new(input, rhs, None, trans_lhs, trans_rhs, false);
+    let mut matmul = Matmul::new(input, rhs, None, trans_lhs, trans_rhs, false);
+    matmul.use_mixed_precision = use_mixed_precision;
     let new_view = matmul.compute_view()?;
     OpTensor::lazy(LazyOp::Matmul(matmul), new_view, device, false)
 }
@@ -818,8 +836,25 @@ pub fn gemm(
     trans_rhs: bool,
     trans_out: bool,
 ) -> Result<OpTensor> {
+    // Check for fused mixed precision: autocast enabled + F32 inputs
+    let use_mixed_precision =
+        crate::is_autocast_enabled() && input.dtype() == DType::F32 && rhs.dtype() == DType::F32;
+
+    // Promote dtypes for mixed-precision compatibility (backward pass: F32 grad × F16 activation)
+    // Skip promotion if using fused mixed precision (inputs stay F32)
+    let (input, rhs) = if use_mixed_precision {
+        (input, rhs)
+    } else {
+        crate::promoted_cast(input, rhs)?
+    };
+    let bias = match bias {
+        Some(b) if b.dtype() != input.dtype() => Some(cast_kernel(b, input.dtype())?),
+        other => other,
+    };
+
     let device = input.device().clone();
-    let gemm = Matmul::new(input, rhs, bias, trans_lhs, trans_rhs, trans_out);
+    let mut gemm = Matmul::new(input, rhs, bias, trans_lhs, trans_rhs, trans_out);
+    gemm.use_mixed_precision = use_mixed_precision;
     let new_view = gemm.compute_view()?;
     OpTensor::lazy(LazyOp::Matmul(gemm), new_view, device, false)
 }

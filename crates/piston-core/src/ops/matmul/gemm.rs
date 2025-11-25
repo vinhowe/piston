@@ -19,6 +19,7 @@ pub struct GEMM {
     trans_rhs: bool,
     trans_dst: bool,
     spec: MatmulSpec,
+    use_mixed_precision: bool,
 }
 
 impl GEMM {
@@ -30,6 +31,7 @@ impl GEMM {
             trans_lhs,
             trans_rhs,
             trans_dst,
+            use_mixed_precision,
         } = matmul.clone();
         Self {
             lhs,
@@ -39,6 +41,7 @@ impl GEMM {
             trans_rhs,
             trans_dst,
             spec,
+            use_mixed_precision,
         }
     }
 }
@@ -65,28 +68,40 @@ impl KernelRenderable for GEMM {
     ) -> Result<(), OperationError> {
         let (A, _, bias) = (&self.lhs, &self.rhs, &self.bias);
 
-        let float_arr = Array::<P>::default();
-
         let ro = BindingMode::ReadOnly;
-        match A.dtype() {
-            DType::F32 | DType::F16 => {
-                builder.register_storage("A", ro, float_arr);
-                builder.register_storage("B", ro, float_arr);
-                if bias.is_some() {
-                    builder.register_storage("bias", BindingMode::ReadOnly, float_arr);
-                }
-                builder.register_storage("result", BindingMode::ReadWrite, float_arr);
+
+        // For mixed precision: inputs are F32, output is F16
+        if self.use_mixed_precision {
+            let f32_arr = Array::<Scalar<f32>>::default();
+            let f16_arr = Array::<Scalar<f16>>::default();
+            builder.register_storage("A", ro, f32_arr);
+            builder.register_storage("B", ro, f32_arr);
+            if bias.is_some() {
+                builder.register_storage("bias", BindingMode::ReadOnly, f32_arr);
             }
-            DType::Q8_0F(_) | DType::Q8_0H(_) => {
-                builder.register_storage("A", ro, Array::<Scalar<u32>>::default());
-                builder.register_storage("scale", ro, float_arr);
-                builder.register_storage("B", ro, Array::<Scalar<P::T>>::default());
-                if bias.is_some() {
-                    builder.register_storage("bias", BindingMode::ReadOnly, float_arr);
+            builder.register_storage("result", BindingMode::ReadWrite, f16_arr);
+        } else {
+            let float_arr = Array::<P>::default();
+            match A.dtype() {
+                DType::F32 | DType::F16 => {
+                    builder.register_storage("A", ro, float_arr);
+                    builder.register_storage("B", ro, float_arr);
+                    if bias.is_some() {
+                        builder.register_storage("bias", BindingMode::ReadOnly, float_arr);
+                    }
+                    builder.register_storage("result", BindingMode::ReadWrite, float_arr);
                 }
-                builder.register_storage("result", BindingMode::ReadWrite, float_arr);
+                DType::Q8_0F(_) | DType::Q8_0H(_) => {
+                    builder.register_storage("A", ro, Array::<Scalar<u32>>::default());
+                    builder.register_storage("scale", ro, float_arr);
+                    builder.register_storage("B", ro, Array::<Scalar<P::T>>::default());
+                    if bias.is_some() {
+                        builder.register_storage("bias", BindingMode::ReadOnly, float_arr);
+                    }
+                    builder.register_storage("result", BindingMode::ReadWrite, float_arr);
+                }
+                _ => return Err(InvariantError::UnsupportedDType(A.dtype()).into()),
             }
-            _ => return Err(InvariantError::UnsupportedDType(A.dtype()).into()),
         }
 
         builder.register_uniform();
@@ -140,16 +155,18 @@ impl Kernel for GEMM {
     ) -> KernelKey {
         let (a_fit, b_fit, out_fit) = self.spec.tile_fit();
         let bias_key = if self.bias.is_some() { "bias" } else { "" };
+        let mixed_key = if self.use_mixed_precision { "mp" } else { "" };
 
         let additional = format!(
-            "{}_{}_{}_{}_{}_{}_{}",
+            "{}_{}_{}_{}_{}_{}_{}_{}",
             if a_fit { "" } else { "a_checked" },
             if b_fit { "" } else { "b_checked" },
             if out_fit { "" } else { "out_checked" },
             if self.trans_lhs { "trans_a" } else { "" },
             if self.trans_rhs { "trans_b" } else { "" },
             if self.trans_dst { "trans_dst" } else { "" },
-            bias_key
+            bias_key,
+            mixed_key
         );
 
         KernelKey::new(
@@ -229,6 +246,11 @@ impl Kernel for GEMM {
         dst: &OpTensor,
         workgroup_size: &WorkgroupSize,
     ) -> Result<KernelSource, OperationError> {
+        // Mixed precision: F32 inputs, F16 compute, scalar only for simplicity
+        if self.use_mixed_precision {
+            return self.render_mixed_precision(inplace, dst, workgroup_size);
+        }
+
         let kernel_element = self.spec.select_kernel_element();
         match (self.lhs.dtype(), kernel_element) {
             (DType::F32, KernelElement::Scalar) => {
@@ -263,6 +285,9 @@ impl Kernel for GEMM {
 
     fn storage_bind_group_layout(&self, _inplace: bool) -> Result<BGLD, OperationError> {
         let (LHS, RHS, bias) = (&self.lhs, &self.rhs, &self.bias);
+
+        // Mixed precision has same layout as regular F32 (binary/ternary)
+        // The dtype difference is handled in the shader, not the layout
         let layout = match (LHS.dtype(), RHS.dtype(), bias.is_some()) {
             (DType::F32 | DType::F16, DType::F32 | DType::F16, false) => BGLD::binary(),
             (DType::F32 | DType::F16, DType::F32 | DType::F16, true) => BGLD::ternary(),
@@ -743,5 +768,269 @@ impl GEMM {
 
         let x = kernel_builder.build()?;
         Ok(x)
+    }
+
+    /// Render mixed precision GEMM kernel: F32 inputs → F16 compute → F16 output
+    /// This avoids materializing intermediate F16 cast tensors by doing the conversion in-kernel.
+    fn render_mixed_precision(
+        &self,
+        inplace: bool,
+        dst: &OpTensor,
+        workgroup_size: &WorkgroupSize,
+    ) -> Result<KernelSource, OperationError> {
+        const ROW_PER_THREAD: usize = 4;
+        const TILE_DIM: usize = 32;
+        const T_W: usize = TILE_DIM; // Scalar only for mixed precision
+
+        let device = dst.device().try_gpu()?;
+        let mut kernel_builder = WgslKernelBuilder::new(
+            workgroup_size.clone(),
+            rvec![
+                BuiltIn::GlobalInvocationId,
+                BuiltIn::LocalInvocationId,
+                BuiltIn::WorkgroupId
+            ],
+            device.compute_features().clone(),
+        );
+
+        // Register bindings: F32 inputs, F16 output
+        self.register_bindings::<Scalar<f16>>(&mut kernel_builder, inplace)?;
+        kernel_builder.render_metadata(&self.metadata(dst, &KernelElement::Scalar)?);
+
+        // Write indexing functions (use f16 for output accessor)
+        kernel_builder.write_global(wgsl! {
+            fn getAIndexFromCoords3D(coords : vec3<i32>) -> i32 {
+                return dot(coords, metadata.lhs_stride);
+            }
+
+            fn getBIndexFromCoords3D(coords : vec3<i32>) -> i32 {
+                return dot(coords, metadata.rhs_stride);
+            }
+
+            fn getOutputIndexFromCoords(coords : vec3<i32>) -> i32 {
+                return dot(coords, metadata.dst_stride);
+            }
+
+            fn setOutputAtIndex(flatIndex : i32, value : f16) {
+                result[flatIndex] = value;
+            }
+
+            fn setOutputAtCoords(d0 : i32, d1 : i32, d2 : i32, value : f16) {
+                let flatIndex = getOutputIndexFromCoords(vec3<i32>(d0, d1, d2));
+                setOutputAtIndex(flatIndex, value);
+            }
+        });
+
+        // Getters that read F32 and return F16 (cast in-kernel)
+        kernel_builder.write_global(wgsl! {
+            fn getA(d0 : i32, d1 : i32, d2 : i32) -> f16 {
+                return f16(A[getAIndexFromCoords3D(vec3<i32>(d0,d1,d2))]);
+            }
+
+            fn getB(d0 : i32, d1 : i32, d2 : i32) -> f16 {
+                return f16(B[getBIndexFromCoords3D(vec3<i32>(d0,d1,d2))]);
+            }
+        });
+
+        // Write readers and writers with bounds checking
+        let FIT_A_OUTER = self.spec.tile_fit().0;
+        let FIT_INNER = self.spec.tile_fit().1;
+        let FIT_B_OUTER = self.spec.tile_fit().2;
+
+        let a_inner = if self.trans_lhs {
+            wgsl! { value = getA(batch, col, row); }
+        } else {
+            wgsl! { value = getA(batch, row, col); }
+        };
+
+        let readA = if FIT_A_OUTER && FIT_INNER {
+            a_inner.clone()
+        } else if self.trans_lhs {
+            wgsl! {
+                if (row < metadata.lhs_shape.z && col < metadata.lhs_shape.y) {
+                    'a_inner
+                }
+            }
+        } else {
+            wgsl! {
+                if (row < metadata.lhs_shape.y && col < metadata.lhs_shape.z) {
+                    'a_inner
+                }
+            }
+        };
+
+        kernel_builder.write_global(wgsl! {
+            fn mm_readA(batch: i32, row: i32, col: i32) -> f16 {
+                var value = f16(0.0);
+                'readA
+                return value;
+            }
+        });
+
+        let b_inner = if self.trans_rhs {
+            wgsl! { value = getB(batch, col, row); }
+        } else {
+            wgsl! { value = getB(batch, row, col); }
+        };
+
+        let readB = if FIT_INNER && FIT_B_OUTER {
+            b_inner.clone()
+        } else if self.trans_rhs {
+            wgsl! {
+                if (row < metadata.rhs_shape.z && col < metadata.rhs_shape.y) {
+                    'b_inner
+                }
+            }
+        } else {
+            wgsl! {
+                if (row < metadata.rhs_shape.y && col < metadata.rhs_shape.z) {
+                    'b_inner
+                }
+            }
+        };
+
+        kernel_builder.write_global(wgsl! {
+            fn mm_readB(batch: i32, row: i32, col: i32) -> f16 {
+                var value = f16(0.0);
+                'readB
+                return value;
+            }
+        });
+
+        let write = if FIT_A_OUTER && FIT_B_OUTER {
+            wgsl! {
+                var value = valueIn;
+                let coords = vec3<i32>(batch, row, col);
+                setOutputAtCoords(coords[0], coords[1], coords[2], value);
+            }
+        } else {
+            wgsl! {
+                if (row < metadata.dim_lhs_outer && col < metadata.dim_rhs_outer) {
+                    var value = valueIn;
+                    let coords = vec3<i32>(batch, row, col);
+                    setOutputAtCoords(coords[0], coords[1], coords[2], value);
+                }
+            }
+        };
+
+        kernel_builder.write_global(wgsl! {
+            fn mm_write(batch: i32, row: i32, col: i32, valueIn: f16) {
+                'write
+            }
+        });
+
+        // Shared memory tiles in F16 for compute
+        kernel_builder.write_global(wgsl! {
+            var<workgroup> mm_Asub: array<array<f16, 'T_W>, 'TILE_DIM>;
+            var<workgroup> mm_Bsub: array<array<f16, 'T_W>, 'TILE_DIM>;
+        });
+
+        kernel_builder.write_main(wgsl! {
+            let batch = i32(global_invocation_id.z);
+            let batchA = batch % metadata.lhs_shape[0];
+            let batchB = batch % metadata.rhs_shape[0];
+
+            let tileRow = i32(local_invocation_id.y) * 'ROW_PER_THREAD;
+            let tileCol = i32(local_invocation_id.x) * 4;
+
+            let globalRowStart = i32(workgroup_id.y) * 'T_W;
+            let globalRow = i32(global_invocation_id.y) * 'ROW_PER_THREAD;
+            let globalCol = i32(global_invocation_id.x) * 'ROW_PER_THREAD;
+
+            let numTiles = (metadata.dim_inner - 1) / 'TILE_DIM + 1;
+            var kStart = 0;
+
+            // Accumulate in F32 for numerical stability
+            var acc: array<array<f32, 'ROW_PER_THREAD>, 'ROW_PER_THREAD>;
+
+            let tileRowA = i32(local_invocation_id.y) * 'ROW_PER_THREAD;
+            let tileColA = i32(local_invocation_id.x) * 'ROW_PER_THREAD;
+            let tileRowB = i32(local_invocation_id.y) * 'ROW_PER_THREAD;
+        });
+
+        let load_a = wgsl! {
+            for (var innerRow = 0; innerRow < 'ROW_PER_THREAD; innerRow++) {
+                for (var innerCol = 0; innerCol < 'ROW_PER_THREAD; innerCol++) {
+                    let inputRow = tileRowA + innerRow;
+                    let inputCol = tileColA + innerCol;
+
+                    mm_Asub[inputRow][inputCol] = mm_readA(batchA,
+                        globalRowStart + inputRow,
+                        kStart + inputCol);
+                }
+            }
+        };
+
+        let load_b = wgsl! {
+            for (var innerRow = 0; innerRow < 'ROW_PER_THREAD; innerRow++) {
+                for (var innerCol = 0; innerCol < 'ROW_PER_THREAD; innerCol++) {
+                    let inputRow = tileRowB + innerRow;
+                    let inputCol = tileCol + innerCol;
+
+                    mm_Bsub[inputRow][inputCol] = mm_readB(batchB, kStart + inputRow, globalCol + innerCol);
+                }
+            }
+        };
+
+        let compute_acc = wgsl! {
+            for (var k = 0; k < 'T_W; k++) {
+              let bidx = k;
+              let BCached0 = mm_Bsub[bidx][tileCol + 0];
+              let BCached1 = mm_Bsub[bidx][tileCol + 1];
+              let BCached2 = mm_Bsub[bidx][tileCol + 2];
+              let BCached3 = mm_Bsub[bidx][tileCol + 3];
+              for (var innerRow = 0; innerRow < 'ROW_PER_THREAD; innerRow++) {
+                let ACached = mm_Asub[tileRow + innerRow][k];
+                // Multiply in F16, accumulate in F32
+                acc[innerRow][0] += f32(ACached * BCached0);
+                acc[innerRow][1] += f32(ACached * BCached1);
+                acc[innerRow][2] += f32(ACached * BCached2);
+                acc[innerRow][3] += f32(ACached * BCached3);
+              }
+            }
+        };
+
+        kernel_builder.write_main(wgsl! {
+            for (var t = 0; t < numTiles; t++) {
+                'load_a
+                'load_b
+
+                kStart = kStart + 'TILE_DIM;
+                workgroupBarrier();
+
+                'compute_acc
+                workgroupBarrier();
+            }
+
+            var val: f16;
+        });
+
+        // Write output with optional bias (bias is F32, we cast to F16)
+        for row in 0..ROW_PER_THREAD {
+            for col in 0..ROW_PER_THREAD {
+                let bias_val = if self.bias.is_some() {
+                    if self.trans_dst {
+                        wgsl! { f16(bias[globalRow + 'row]) }
+                    } else {
+                        wgsl! { f16(bias[globalCol + 'col]) }
+                    }
+                } else {
+                    wgsl! { f16(0.0) }
+                };
+
+                let writer = if self.trans_dst {
+                    wgsl! { mm_write(batch, globalCol + 'col, globalRow + 'row, val); }
+                } else {
+                    wgsl! { mm_write(batch, globalRow + 'row, globalCol + 'col, val); }
+                };
+
+                kernel_builder.write_main(wgsl! {
+                    val = f16(acc['row]['col]) + 'bias_val;
+                    'writer
+                });
+            }
+        }
+
+        Ok(kernel_builder.build()?)
     }
 }

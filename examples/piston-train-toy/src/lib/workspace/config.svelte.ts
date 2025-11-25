@@ -66,6 +66,15 @@ const CONFIG_DEFAULTS: Config = {
 			present: false,
 			value: 1.0
 		},
+		amp: {
+			present: true,
+			gradScaling: {
+				initScale: 65536.0,
+				growthFactor: 2.0,
+				backoffFactor: 0.5,
+				growthInterval: 2000
+			}
+		},
 		useWeakTensorReferences: true,
 		sharedObjectAllocation: false,
 		cachingEnabled: false,

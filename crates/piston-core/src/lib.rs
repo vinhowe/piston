@@ -1,4 +1,5 @@
 #![allow(non_snake_case)]
+mod autocast;
 mod backprop;
 mod compiled_op;
 mod cpu;
@@ -20,6 +21,7 @@ mod tensor;
 mod tensor_id;
 pub mod test_utils;
 
+pub use autocast::*;
 pub use backprop::*;
 pub use compiled_op::*;
 pub use cpu::*;

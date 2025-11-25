@@ -153,11 +153,14 @@ impl KernelRenderable for FillPointwiseKernels {
             }
         });
 
+        // Get scalar type for explicit casting (needed for f16 since metadata.value is f32)
+        let scalar_type = P::T::DT;
+
         match self {
             FillPointwiseKernels::Standard(inner) => match inner.kind {
                 FillPointwiseKind::Constant { .. } => {
                     kernel_builder.write_main(wgsl! {
-                        Y[index] = 'dtype(metadata.value);
+                        Y[index] = 'dtype('scalar_type(metadata.value));
                     });
                 }
                 FillPointwiseKind::Randn { .. } => {
@@ -167,13 +170,13 @@ impl KernelRenderable for FillPointwiseKernels {
                         let u1 = rand(seed1 + metadata.seed);
                         let u2 = rand(seed2 + metadata.seed);
                         let normal = box_muller_1d(u1, u2);
-                        Y[index] = 'dtype(f32(normal) * metadata.stddev + metadata.mean);
+                        Y[index] = 'dtype('scalar_type(f32(normal) * metadata.stddev + metadata.mean));
                     });
                 }
                 FillPointwiseKind::Rand { .. } => {
                     kernel_builder.write_main(wgsl! {
                         let u = rand(index + metadata.seed);
-                        Y[index] = 'dtype(metadata.lo + (metadata.hi - metadata.lo) * u);
+                        Y[index] = 'dtype('scalar_type(metadata.lo + (metadata.hi - metadata.lo) * u));
                     });
                 }
             },

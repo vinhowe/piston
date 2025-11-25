@@ -51,13 +51,28 @@ impl BinaryOp {
         }
     }
 
-    pub fn kernel_expression_scalar(&self, dtype: &str, op1: &'static str) -> String {
+    pub fn kernel_expression_scalar(
+        &self,
+        dtype: &str,
+        scalar_type: &str,
+        op1: &'static str,
+    ) -> String {
         match self {
-            BinaryOp::Add => wgsl! { fma('op1, 'dtype(1.0), 'dtype(metadata.value)) },
-            BinaryOp::Sub => wgsl! { fma('op1, 'dtype(1.0), -'dtype(metadata.value)) },
-            BinaryOp::Mul => wgsl! { fma('op1, 'dtype(metadata.value), 'dtype(0.0)) },
-            BinaryOp::Div => wgsl! { fma('op1, 'dtype(1.0 / metadata.value), 'dtype(0.0)) },
-            BinaryOp::Pow => wgsl! { sign('op1) * pow(abs('op1), 'dtype(metadata.value)) },
+            BinaryOp::Add => {
+                wgsl! { fma('op1, 'dtype('scalar_type(1.0)), 'dtype('scalar_type(metadata.value))) }
+            }
+            BinaryOp::Sub => {
+                wgsl! { fma('op1, 'dtype('scalar_type(1.0)), -'dtype('scalar_type(metadata.value))) }
+            }
+            BinaryOp::Mul => {
+                wgsl! { fma('op1, 'dtype('scalar_type(metadata.value)), 'dtype('scalar_type(0.0))) }
+            }
+            BinaryOp::Div => {
+                wgsl! { fma('op1, 'dtype('scalar_type(1.0 / metadata.value)), 'dtype('scalar_type(0.0))) }
+            }
+            BinaryOp::Pow => {
+                wgsl! { sign('op1) * pow(abs('op1), 'dtype('scalar_type(metadata.value))) }
+            }
             BinaryOp::Maximum => panic!("Maximum with scalar is not supported"),
             BinaryOp::Minimum => panic!("Minimum with scalar is not supported"),
         }
@@ -116,6 +131,7 @@ impl KernelRenderable for BinaryKernels {
 
         let N = (P::W as u32).render();
         let dtype = P::render_type();
+        let scalar_type = P::T::DT;
 
         kernel_builder.write_main(wgsl! {
             let x_offset = workgroup_id.x * 64u;
@@ -132,7 +148,9 @@ impl KernelRenderable for BinaryKernels {
                     inner.op.kernel_expression_tensor("val", "B[index]")
                 }
                 TensorTypeOrScalarEnum::Scalar(_) => {
-                    inner.op.kernel_expression_scalar(&dtype, "val")
+                    inner
+                        .op
+                        .kernel_expression_scalar(&dtype, scalar_type, "val")
                 }
             };
             wgsl! {
@@ -145,7 +163,9 @@ impl KernelRenderable for BinaryKernels {
                     inner.op.kernel_expression_tensor("A[index]", "B[index]")
                 }
                 TensorTypeOrScalarEnum::Scalar(_) => {
-                    inner.op.kernel_expression_scalar(&dtype, "A[index]")
+                    inner
+                        .op
+                        .kernel_expression_scalar(&dtype, scalar_type, "A[index]")
                 }
             };
             wgsl! { Y[index] = 'expression; }

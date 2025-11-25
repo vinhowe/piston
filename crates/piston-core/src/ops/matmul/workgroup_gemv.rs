@@ -46,6 +46,7 @@ impl WorkgroupGEMV {
             trans_lhs,
             trans_rhs,
             trans_dst,
+            ..
         } = matmul.clone();
         Self {
             lhs,

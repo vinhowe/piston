@@ -74,3 +74,24 @@ where
         f(module)
     })
 }
+// ============================================================================
+// Automatic Mixed Precision (AMP) functions
+// ============================================================================
+
+/// Enter autocast mode - FP32 tensors will be cast to FP16 in participating ops
+#[wasm_bindgen(js_name = "enterAutocast")]
+pub fn enter_autocast() {
+    piston::set_autocast_enabled(true);
+}
+
+/// Exit autocast mode
+#[wasm_bindgen(js_name = "exitAutocast")]
+pub fn exit_autocast() {
+    piston::set_autocast_enabled(false);
+}
+
+/// Check if autocast mode is currently enabled
+#[wasm_bindgen(js_name = "isAutocastEnabled")]
+pub fn is_autocast_enabled_wasm() -> bool {
+    piston::is_autocast_enabled()
+}

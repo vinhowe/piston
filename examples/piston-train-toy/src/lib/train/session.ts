@@ -3,8 +3,11 @@ import type { StepData } from '$lib/workspace/runs.svelte';
 
 import { getEffectiveVisualizationScript } from '$lib/workspace/visualizationExamples';
 import {
+	autocast,
 	CosineAnnealingLR,
 	ExponentialLR,
+	gpu,
+	GradScaler,
 	LinearLR,
 	type LRScheduler,
 	SequentialLR,
@@ -97,6 +100,7 @@ export class TrainingSession {
 	private model!: GeneratableModel;
 	private optimizer!: piston.Optimizer;
 	private scheduler: LRScheduler<unknown> | undefined;
+	private gradScaler: GradScaler | undefined;
 	private trainDataset!: PistonDatasetType;
 	private blockSize!: number | { source: number; target: number };
 
@@ -291,7 +295,8 @@ export class TrainingSession {
 			this.config ? JSON.parse(JSON.stringify(this.config)) : null,
 			this.scheduler,
 			dataState,
-			this.startTimeMs ?? undefined
+			this.startTimeMs ?? undefined,
+			this.gradScaler
 		);
 		return piston.save(tensors, extra);
 	}
@@ -321,6 +326,7 @@ export class TrainingSession {
 			config: Config;
 			dataState?: CheckpointDataState;
 			startTimeMs?: number;
+			gradScalerState?: piston.GradScalerStateDict;
 		} | null = null;
 
 		if (this.resumeFrom) {
@@ -338,7 +344,8 @@ export class TrainingSession {
 				numSteps: split.numSteps,
 				config: split.config,
 				dataState: split.dataState,
-				startTimeMs: split.startTimeMs
+				startTimeMs: split.startTimeMs,
+				gradScalerState: split.gradScalerState
 			};
 			if (resumePayload.config) {
 				this.config = resumePayload.config as Config;
@@ -581,6 +588,18 @@ export class TrainingSession {
 			this.scheduler.loadStateDict(resumePayload.schedulerState as AnySchedulerState);
 		}
 
+		// Initialize GradScaler for automatic mixed precision
+		this.gradScaler = this.config.training.amp.present
+			? new GradScaler(this.config.training.amp.gradScaling)
+			: undefined;
+		if (resumePayload?.gradScalerState) {
+			if (!this.gradScaler) {
+				throw new Error('GradScaler not initialized but checkpoint contains state');
+			}
+			this.gradScaler.loadStateDict(resumePayload.gradScalerState);
+			console.debug(`Restored GradScaler state: scale=${this.gradScaler.getScale()}`);
+		}
+
 		this.model.train();
 
 		this.isSetup = true;
@@ -604,6 +623,12 @@ export class TrainingSession {
 			performance.mark('stepStart');
 			// Reset peak GPU memory tracking at the start of the step
 			piston.gpu.markUsageBytesStep();
+
+			// Track peak memory at each stage
+			let peakMemoryForward = 0n;
+			let peakMemoryBackward = 0n;
+			let peakMemoryOptimizerStep = 0n;
+			let peakMemoryValidation = 0n;
 
 			let isLastStep = false;
 			if (
@@ -634,76 +659,93 @@ export class TrainingSession {
 
 			let loss: Tensor;
 			try {
-				if (this.config.model.topology === 'encoder') {
-					// For BERT: batch contains [inputIds, labels, attentionMask]
-					const { tensors } = batch as ToyBidirectionalBatch<Tensor>;
-					const [inputIds, bertLabels, attentionMask] = tensors;
+				// Wrap forward pass in autocast for automatic mixed precision (FP32 → FP16)
+				{
+					using _ = this.config.training.amp.present ? autocast() : null;
 
-					let computedLoss: Tensor | null = null;
-					if (this.model instanceof EncoderTransformer) {
-						[, , , computedLoss] = (this.model as EncoderTransformer).forward(
-							await inputIds.to('gpu'),
-							{
-								attentionMask: await attentionMask.to('gpu'),
+					if (this.config.model.topology === 'encoder') {
+						// For BERT: batch contains [inputIds, labels, attentionMask]
+						const { tensors } = batch as ToyBidirectionalBatch<Tensor>;
+						const [inputIds, bertLabels, attentionMask] = tensors;
+
+						let computedLoss: Tensor | null = null;
+						if (this.model instanceof EncoderTransformer) {
+							[, , , computedLoss] = (this.model as EncoderTransformer).forward(
+								await inputIds.to('gpu'),
+								{
+									attentionMask: await attentionMask.to('gpu'),
+									targets: await bertLabels.to('gpu')
+								}
+							);
+						} else {
+							[, , computedLoss] = (this.model as RNNEncoder).forward(await inputIds.to('gpu'), {
 								targets: await bertLabels.to('gpu')
+							});
+						}
+
+						if (!computedLoss) {
+							throw new Error('No loss tensor returned from encoder-only model');
+						}
+
+						loss = computedLoss;
+					} else if (this.config.model.topology === 'encoder-decoder') {
+						// For Transformer or RNN seq2seq: batch contains [encoderInputs, decoderInputs, decoderTargets]
+						const { tensors } = batch as ToyEncoderDecoderBatch<Tensor>;
+						const [encoderInputs, decoderInputs, decoderTargets] = tensors;
+						let computedLoss: Tensor | null;
+						if (this.model instanceof EncoderDecoderTransformer) {
+							[, computedLoss] = (this.model as EncoderDecoderTransformer).forward(
+								await encoderInputs.to('gpu'),
+								await decoderInputs.to('gpu'),
+								{ targets: await decoderTargets.to('gpu') }
+							);
+						} else {
+							[, computedLoss] = (this.model as RNNEncoderDecoder).forward(
+								await encoderInputs.to('gpu'),
+								await decoderInputs.to('gpu'),
+								{ targets: await decoderTargets.to('gpu') }
+							);
+						}
+
+						if (!computedLoss) {
+							throw new Error('No loss tensor returned from encoder-decoder model');
+						}
+
+						loss = computedLoss;
+					} else {
+						// For GPT: batch contains [inputs, targets]
+						const { tensors } = batch as ToyAutoregressiveBatch<Tensor>;
+						const [inputs, gptTargets] = tensors;
+
+						// const uniqueOperationsMode = new UniqueOperationsMode();
+						const [, computedLoss] = (this.model as DecoderTransformer).forward(
+							await inputs.to('gpu'),
+							{
+								targets: await gptTargets.to('gpu')
 							}
 						);
-					} else {
-						[, , computedLoss] = (this.model as RNNEncoder).forward(await inputIds.to('gpu'), {
-							targets: await bertLabels.to('gpu')
-						});
-					}
+						// uniqueOperationsMode[Symbol.dispose]();
 
-					if (!computedLoss) {
-						throw new Error('No loss tensor returned from encoder-only model');
-					}
-
-					loss = computedLoss;
-				} else if (this.config.model.topology === 'encoder-decoder') {
-					// For Transformer or RNN seq2seq: batch contains [encoderInputs, decoderInputs, decoderTargets]
-					const { tensors } = batch as ToyEncoderDecoderBatch<Tensor>;
-					const [encoderInputs, decoderInputs, decoderTargets] = tensors;
-					let computedLoss: Tensor | null;
-					if (this.model instanceof EncoderDecoderTransformer) {
-						[, computedLoss] = (this.model as EncoderDecoderTransformer).forward(
-							await encoderInputs.to('gpu'),
-							await decoderInputs.to('gpu'),
-							{ targets: await decoderTargets.to('gpu') }
-						);
-					} else {
-						[, computedLoss] = (this.model as RNNEncoderDecoder).forward(
-							await encoderInputs.to('gpu'),
-							await decoderInputs.to('gpu'),
-							{ targets: await decoderTargets.to('gpu') }
-						);
-					}
-
-					if (!computedLoss) {
-						throw new Error('No loss tensor returned from encoder-decoder model');
-					}
-
-					loss = computedLoss;
-				} else {
-					// For GPT: batch contains [inputs, targets]
-					const { tensors } = batch as ToyAutoregressiveBatch<Tensor>;
-					const [inputs, gptTargets] = tensors;
-					const [, computedLoss] = (this.model as DecoderTransformer).forward(
-						await inputs.to('gpu'),
-						{
-							targets: await gptTargets.to('gpu')
+						if (!computedLoss) {
+							throw new Error('No loss tensor returned from decoder-only model');
 						}
-					);
 
-					if (!computedLoss) {
-						throw new Error('No loss tensor returned from decoder-only model');
+						loss = computedLoss;
 					}
-
-					loss = computedLoss;
 				}
 
 				weakModeUntilAfterBackward.pin(loss);
 
-				loss.backward();
+				// Track peak memory after forward pass
+				peakMemoryForward = piston.gpu.peakUsageBytes();
+				piston.gpu.markUsageBytesStep();
+
+				const scaledLoss = this.gradScaler ? this.gradScaler.scale(loss) : loss;
+				scaledLoss.backward();
+
+				// Track peak memory after backward pass
+				peakMemoryBackward = piston.gpu.peakUsageBytes();
+				piston.gpu.markUsageBytesStep();
 
 				if (this.captureManager && captureSession && this.onCaptureMatches) {
 					try {
@@ -746,7 +788,11 @@ export class TrainingSession {
 				}
 
 				try {
-					await this.optimizer.step();
+					await (this.gradScaler ? this.gradScaler.step(this.optimizer) : this.optimizer.step());
+
+					// Track peak memory after optimizer step
+					peakMemoryOptimizerStep = piston.gpu.peakUsageBytes();
+					piston.gpu.markUsageBytesStep();
 				} finally {
 					weakMarkStepMode[Symbol.dispose]();
 				}
@@ -768,6 +814,8 @@ export class TrainingSession {
 				finalWeakModeForStep.markWeak([loss, gradNorm, batch.tensors]);
 
 				this.optimizer.zeroGrad(true);
+
+				this.gradScaler?.update();
 
 				// Step learning rate scheduler if present
 				if (this.scheduler) {
@@ -846,6 +894,10 @@ export class TrainingSession {
 								'validation/perplexity': perplexity
 							};
 							this.logMetrics(logData, { step: this.stepCount });
+
+							// Track peak memory after validation
+							peakMemoryValidation = piston.gpu.peakUsageBytes();
+							piston.gpu.markUsageBytesStep();
 						}
 					} catch (error) {
 						console.error('Error during batch validation:', error);
@@ -886,12 +938,28 @@ export class TrainingSession {
 						throw new Error('Loss item is null?');
 					}
 
-					const peakUsageMb = Number(piston.gpu.peakUsageBytes()) / (1024 * 1024);
+					// Compute overall peak as max of all stages
+					const overallPeakBytes = [
+						peakMemoryForward,
+						peakMemoryBackward,
+						peakMemoryOptimizerStep,
+						peakMemoryValidation
+					].reduce((max, val) => (val > max ? val : max), 0n);
+
+					const peakUsageMb = Number(overallPeakBytes) / (1024 * 1024);
+					const peakForwardMb = Number(peakMemoryForward) / (1024 * 1024);
+					const peakBackwardMb = Number(peakMemoryBackward) / (1024 * 1024);
+					const peakStepMb = Number(peakMemoryOptimizerStep) / (1024 * 1024);
+					const peakValidationMb = Number(peakMemoryValidation) / (1024 * 1024);
 
 					const logData: Record<string, number> = {
 						'train/loss': lossItem,
 						'allocation/active_tensor_count': activeTensors,
 						'allocation/gpu_memory_mb': peakUsageMb,
+						'allocation/gpu_memory_forward_mb': peakForwardMb,
+						'allocation/gpu_memory_backward_mb': peakBackwardMb,
+						'allocation/gpu_memory_optimizer_step_mb': peakStepMb,
+						'allocation/gpu_memory_validation_mb': peakValidationMb,
 						'speed/steps_per_second': stepsPerSecond,
 						'speed/step': this.stepCount,
 						'speed/tokens_per_second': tokensPerSecond,
@@ -947,6 +1015,12 @@ export class TrainingSession {
 					const currentLr = this.optimizer.paramGroups[0].lr;
 					if (currentLr) {
 						logData['optimizer/learning_rate'] = currentLr;
+					}
+
+					// Log GradScaler metrics for AMP monitoring
+					if (this.gradScaler) {
+						logData['amp/grad_scale'] = this.gradScaler.getScale();
+						logData['amp/nonfinite_count'] = this.gradScaler.getLastNonfiniteCount();
 					}
 
 					this.logMetrics(logData, { step: this.stepCount });

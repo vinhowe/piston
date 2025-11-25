@@ -66,6 +66,7 @@ impl KernelRenderable for LerpKernels {
 
         let N = (P::W as u32).render();
         let dtype = P::render_type();
+        let scalar_type = P::T::DT;
 
         kernel_builder.write_main(wgsl! {
             let x_offset = workgroup_id.x * 64u;
@@ -84,7 +85,7 @@ impl KernelRenderable for LerpKernels {
             }
             TensorTypeOrScalarEnum::Scalar(_) => {
                 wgsl! {
-                    fma('dtype(metadata.weight), (End[index] - Input[index]), Input[index])
+                    fma('dtype('scalar_type(metadata.weight)), (End[index] - Input[index]), Input[index])
                 }
             }
         };

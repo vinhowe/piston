@@ -51,16 +51,20 @@ impl std::fmt::Debug for DefaultParam {
 #[derive(Debug, Clone)]
 pub struct TensorOpAttr {
     pub variants: Vec<TensorOpVariant>,
+    /// Whether this operation should participate in autocast (FP32 -> FP16)
+    pub autocast: bool,
 }
 
 impl Parse for TensorOpAttr {
     fn parse(input: ParseStream) -> Result<Self> {
         let mut variants = Vec::new();
+        let mut autocast = false;
 
         if input.is_empty() {
             // Default variants if none specified
             return Ok(TensorOpAttr {
                 variants: vec![TensorOpVariant::Function, TensorOpVariant::Method],
+                autocast: false,
             });
         }
 
@@ -75,6 +79,9 @@ impl Parse for TensorOpAttr {
                         content.parse_terminated(TensorOpVariant::parse, Token![,])?;
                     variants.extend(variant_list);
                 }
+                "autocast" => {
+                    autocast = true;
+                }
                 _ => return Err(Error::new_spanned(ident, "Unknown tensor_op attribute")),
             }
 
@@ -87,7 +94,7 @@ impl Parse for TensorOpAttr {
             variants = vec![TensorOpVariant::Function, TensorOpVariant::Method];
         }
 
-        Ok(TensorOpAttr { variants })
+        Ok(TensorOpAttr { variants, autocast })
     }
 }
 
@@ -525,6 +532,7 @@ fn generate_kernel_function(
     original_fn: &ItemFn,
     params: &[ParamInfo],
     op_tensor_map: &HashMap<String, Ident>,
+    autocast: bool,
 ) -> Result<ItemFn> {
     let mut kernel_fn = original_fn.clone();
 
@@ -639,28 +647,58 @@ fn generate_kernel_function(
                     && let Some(last_segment) = type_path.path.segments.last()
                 {
                     let container_name = &last_segment.ident;
-                    conversions.push(quote! {
+                    if autocast {
+                        conversions.push(quote! {
+                            let #param_name = #param_name.into_iter().map(|inner| maybe_autocast(inner.into())).collect::<Result<#container_name<OpTensor>>>()?;
+                        });
+                    } else {
+                        conversions.push(quote! {
                             let #param_name = #param_name.into_iter().map(|inner| inner.into()).collect::<#container_name<OpTensor>>();
                         });
+                    }
                 }
             } else if is_option_with_op_tensor(&param.pat_type.ty) {
-                conversions.push(quote! {
-                    let #param_name = #param_name.map(|inner| inner.into());
-                });
+                if autocast {
+                    conversions.push(quote! {
+                        let #param_name = #param_name.map(|inner| maybe_autocast(inner.into())).transpose()?;
+                    });
+                } else {
+                    conversions.push(quote! {
+                        let #param_name = #param_name.map(|inner| inner.into());
+                    });
+                }
             } else if is_tensor_type_or_scalar(&param.pat_type.ty) {
-                conversions.push(quote! {
-                    let #param_name = #param_name.map_tensor(|inner| inner.into())?;
-                });
+                if autocast {
+                    conversions.push(quote! {
+                        let #param_name = #param_name.map_tensor(|inner| maybe_autocast(inner.into()))?.transpose()?;
+                    });
+                } else {
+                    conversions.push(quote! {
+                        let #param_name = #param_name.map_tensor(|inner| inner.into())?;
+                    });
+                }
             } else if param.is_op_tensor {
                 // Direct OpTensor parameter: let param = param.into();
-                conversions.push(quote! {
-                    let #param_name = #param_name.into();
-                });
+                if autocast {
+                    conversions.push(quote! {
+                        let #param_name = maybe_autocast(#param_name.into())?;
+                    });
+                } else {
+                    conversions.push(quote! {
+                        let #param_name = #param_name.into();
+                    });
+                }
             } else {
                 // This might be a generic type constrained by TensorTypeOrScalar<OpTensor>
-                conversions.push(quote! {
-                    let #param_name = #param_name.map_tensor(|inner| inner.into())?;
-                });
+                if autocast {
+                    conversions.push(quote! {
+                        let #param_name = #param_name.map_tensor(|inner| maybe_autocast(inner.into()))?.transpose()?;
+                    });
+                } else {
+                    conversions.push(quote! {
+                        let #param_name = #param_name.map_tensor(|inner| inner.into())?;
+                    });
+                }
             }
         }
     }
@@ -944,6 +982,7 @@ fn generate_method_inplace_variant(
     // Generate method parameters (skip first parameter which becomes self)
     let mut method_params = Vec::new();
     let mut call_args = Vec::new();
+    // First argument to kernel is the inner from self, which we'll bind as a guard
     call_args.push(quote!(inner));
 
     // We'll collect guard bindings for converted arguments here
@@ -1007,7 +1046,7 @@ pub fn process_tensor_op(attr: TensorOpAttr, item: ItemFn) -> Result<TokenStream
 
     // Generate kernel function
     let kernel_name = Ident::new(&format!("{}_kernel", item.sig.ident), item.sig.ident.span());
-    let kernel_fn = generate_kernel_function(&item, &params, &op_tensor_map)?;
+    let kernel_fn = generate_kernel_function(&item, &params, &op_tensor_map, attr.autocast)?;
 
     let mut output = quote!(#kernel_fn);
 
@@ -1151,7 +1190,8 @@ mod tests {
             }
         }
 
-        let kernel_fn = generate_kernel_function(&original_fn, &params, &op_tensor_map).unwrap();
+        let kernel_fn =
+            generate_kernel_function(&original_fn, &params, &op_tensor_map, false).unwrap();
 
         assert_eq!(kernel_fn.sig.ident, "add_kernel");
         assert!(kernel_fn.sig.generics.params.len() >= 2); // Should have OT1, OT2 generics
@@ -1244,6 +1284,7 @@ mod tests {
     fn test_process_tensor_op_complete() {
         let attr = TensorOpAttr {
             variants: vec![TensorOpVariant::Function, TensorOpVariant::Method],
+            autocast: false,
         };
 
         let item: ItemFn = parse_quote! {
@@ -1271,6 +1312,7 @@ mod tests {
     fn test_process_tensor_op_with_generics() {
         let attr = TensorOpAttr {
             variants: vec![TensorOpVariant::Function],
+            autocast: false,
         };
 
         let item: ItemFn = parse_quote! {
@@ -1298,6 +1340,7 @@ mod tests {
     fn test_process_tensor_op_with_defaults() {
         let attr = TensorOpAttr {
             variants: vec![TensorOpVariant::Function],
+            autocast: false,
         };
 
         let item: ItemFn = parse_quote! {
@@ -1321,6 +1364,7 @@ mod tests {
     fn test_process_tensor_op_with_generic_constraints() {
         let attr = TensorOpAttr {
             variants: vec![TensorOpVariant::Function],
+            autocast: false,
         };
 
         let item: ItemFn = parse_quote! {
@@ -1355,6 +1399,7 @@ mod tests {
     fn test_kernel_function_body_conversions() {
         let attr = TensorOpAttr {
             variants: vec![TensorOpVariant::Function],
+            autocast: false,
         };
 
         let item: ItemFn = parse_quote! {
@@ -1386,6 +1431,7 @@ mod tests {
     fn test_method_first_parameter_becomes_self() {
         let attr = TensorOpAttr {
             variants: vec![TensorOpVariant::Method, TensorOpVariant::MethodInplace],
+            autocast: false,
         };
 
         let item: ItemFn = parse_quote! {
@@ -1421,6 +1467,7 @@ mod tests {
                 TensorOpVariant::Method,
                 TensorOpVariant::MethodInplace,
             ],
+            autocast: false,
         };
 
         let item: ItemFn = parse_quote! {
@@ -1475,6 +1522,7 @@ mod tests {
     fn test_option_op_tensor_parameters() {
         let attr = TensorOpAttr {
             variants: vec![TensorOpVariant::Function],
+            autocast: false,
         };
 
         let item: ItemFn = parse_quote! {
@@ -1513,6 +1561,7 @@ mod tests {
     fn test_option_tensor_in_methods() {
         let attr = TensorOpAttr {
             variants: vec![TensorOpVariant::Method, TensorOpVariant::MethodInplace],
+            autocast: false,
         };
 
         let item: ItemFn = parse_quote! {
@@ -1548,6 +1597,7 @@ mod tests {
     fn test_option_tensor_in_function() {
         let attr = TensorOpAttr {
             variants: vec![TensorOpVariant::Function],
+            autocast: false,
         };
 
         let item: ItemFn = parse_quote! {
@@ -1580,6 +1630,7 @@ mod tests {
     fn test_container_type_correct_automatic_conversion() {
         let attr = TensorOpAttr {
             variants: vec![TensorOpVariant::Function],
+            autocast: false,
         };
 
         let item: ItemFn = parse_quote! {
@@ -1614,5 +1665,61 @@ mod tests {
 
         // Should contain kernel function call
         assert!(result_str.contains("cat_kernel (tensors , dim)"));
+    }
+
+    #[test]
+    fn test_autocast_attribute() {
+        let attr = TensorOpAttr {
+            variants: vec![TensorOpVariant::Function],
+            autocast: true,
+        };
+
+        let item: ItemFn = parse_quote! {
+            pub fn matmul(input: OpTensor, rhs: OpTensor) -> Result<OpTensor> {
+                // implementation
+                Ok(input)
+            }
+        };
+
+        let result = process_tensor_op(attr, item).unwrap();
+        let result_str = result.to_token_stream().to_string();
+
+        // Should contain maybe_autocast calls for OpTensor parameters
+        assert!(result_str.contains("maybe_autocast"));
+        assert!(result_str.contains("let input = maybe_autocast (input . into ())"));
+        assert!(result_str.contains("let rhs = maybe_autocast (rhs . into ())"));
+    }
+
+    #[test]
+    fn test_autocast_with_option_params() {
+        let attr = TensorOpAttr {
+            variants: vec![TensorOpVariant::Function],
+            autocast: true,
+        };
+
+        let item: ItemFn = parse_quote! {
+            pub fn layer_norm(
+                input: OpTensor,
+                weight: Option<OpTensor>,
+                bias: Option<OpTensor>,
+                eps: f32,
+            ) -> Result<OpTensor> {
+                Ok(input)
+            }
+        };
+
+        let result = process_tensor_op(attr, item).unwrap();
+        let result_str = result.to_token_stream().to_string();
+
+        // Should contain maybe_autocast for direct OpTensor
+        assert!(result_str.contains("let input = maybe_autocast (input . into ())"));
+
+        // Should contain maybe_autocast for Option<OpTensor> with transpose
+        assert!(result_str.contains(
+            "let weight = weight . map (| inner | maybe_autocast (inner . into ())) . transpose ()"
+        ));
+        assert!(result_str.contains(
+            "let bias = bias . map (| inner | maybe_autocast (inner . into ())) . transpose ()"
+        ));
     }
 }

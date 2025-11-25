@@ -149,9 +149,11 @@ impl KernelRenderable for NormKernels {
         let accessor = P::render_type();
         let BLOCK_SIZE = workgroup_size.x.render();
 
+        // Always use F32 for accumulation (numerical stability for F16 inputs)
+        // smem stores per-thread partial sums, always in f32
         kernel_builder.write_global(wgsl! {
-            var<workgroup> smem: array<'accessor, 'BLOCK_SIZE>;
-            var<workgroup> sum: 'dtype;
+            var<workgroup> smem: array<f32, 'BLOCK_SIZE>;
+            var<workgroup> sum: f32;
         });
 
         kernel_builder.write_global(wgsl! {
@@ -167,24 +169,82 @@ impl KernelRenderable for NormKernels {
             let anchor = (workgroup_id.y * metadata.M * 'reduction_len) + workgroup_id.x * 'reduction_len;
         });
 
-        kernel_builder.write_main(wgsl! { var threadSum = 'accessor(0.); });
-        let X_i = if matches!(inner, NormOp::LayerNorm(_)) {
+        // threadSum is always f32 for numerical stability
+        kernel_builder.write_main(wgsl! { var threadSum: f32 = 0.0; });
+
+        // Handle vectorized vs scalar access for computing mu
+        if matches!(inner, NormOp::LayerNorm(_)) {
             Self::compute_mu::<P>(
                 &mut kernel_builder,
                 accessor.clone(),
                 reduction_len,
                 workgroup_size,
             );
-            wgsl! { X[anchor + i] - mu }
-        } else {
-            wgsl! { X[anchor + i] }
+        }
+
+        // Compute variance (sum of squared differences from mean)
+        // For vectorized access, we need to handle each component
+        let variance_loop = match P::W {
+            1 => {
+                let x_val = if matches!(inner, NormOp::LayerNorm(_)) {
+                    wgsl! { let val = f32(X[anchor + i]) - mu; }
+                } else {
+                    wgsl! { let val = f32(X[anchor + i]); }
+                };
+                wgsl! {
+                    'x_val
+                    threadSum = fma(val, val, threadSum);
+                }
+            }
+            2 => {
+                let x_val = if matches!(inner, NormOp::LayerNorm(_)) {
+                    wgsl! {
+                        let v = X[anchor + i];
+                        let val0 = f32(v.x) - mu;
+                        let val1 = f32(v.y) - mu;
+                    }
+                } else {
+                    wgsl! {
+                        let v = X[anchor + i];
+                        let val0 = f32(v.x);
+                        let val1 = f32(v.y);
+                    }
+                };
+                wgsl! {
+                    'x_val
+                    threadSum += val0 * val0 + val1 * val1;
+                }
+            }
+            4 => {
+                let x_val = if matches!(inner, NormOp::LayerNorm(_)) {
+                    wgsl! {
+                        let v = X[anchor + i];
+                        let val0 = f32(v.x) - mu;
+                        let val1 = f32(v.y) - mu;
+                        let val2 = f32(v.z) - mu;
+                        let val3 = f32(v.w) - mu;
+                    }
+                } else {
+                    wgsl! {
+                        let v = X[anchor + i];
+                        let val0 = f32(v.x);
+                        let val1 = f32(v.y);
+                        let val2 = f32(v.z);
+                        let val3 = f32(v.w);
+                    }
+                };
+                wgsl! {
+                    'x_val
+                    threadSum += val0 * val0 + val1 * val1 + val2 * val2 + val3 * val3;
+                }
+            }
+            _ => unreachable!(),
         };
 
         kernel_builder.write_main(wgsl! {
-            threadSum = 'accessor(0.);
+            threadSum = 0.0;
             for (var i: u32 = local_invocation_id.x; i < 'reduction_len; i += 'BLOCK_SIZE) {
-                let val = 'X_i;
-                threadSum = fma(val, val, threadSum);
+                'variance_loop
             }
             workgroupBarrier();
             smem[local_invocation_id.x] = threadSum;
@@ -197,30 +257,132 @@ impl KernelRenderable for NormKernels {
             kernel_builder.write_main(wgsl! { block_sum(local_invocation_id.x, 'v); });
         }
 
-        let sigma = match P::W {
-            1 => wgsl! { let sigma = smem[0] / 'dtype(metadata.N); },
-            2 | 4 => wgsl! {let sigma = dot(smem[0], 'accessor(1.)) / 'dtype(metadata.N); },
-            _ => unreachable!(),
-        };
-        kernel_builder.write_main(sigma);
+        // sigma is always f32
+        kernel_builder.write_main(wgsl! { let sigma = smem[0] / f32(metadata.N); });
 
         let norm = match inner {
             NormOp::LayerNorm(norm) | NormOp::RMSNorm(norm) => norm,
             NormOp::GroupNorm(GroupNorm { norm, .. }) => norm,
         };
 
-        let loop_core = match (norm.scale.is_some(), norm.bias.is_some()) {
-            (true, true) => wgsl! { Y[anchor + i] = fma(val, S[i], B[i]); },
-            (true, false) => wgsl! { Y[anchor + i] = val * S[i]; },
-            (false, true) => wgsl! { Y[anchor + i] = val + B[i]; },
-            (false, false) => wgsl! { Y[anchor + i] = val; },
+        // Output in original dtype - handle vectorized output
+        let output_loop = match P::W {
+            1 => {
+                let x_val = if matches!(inner, NormOp::LayerNorm(_)) {
+                    wgsl! { let val = (f32(X[anchor + i]) - mu) * denom; }
+                } else {
+                    wgsl! { let val = f32(X[anchor + i]) * denom; }
+                };
+                let store = match (norm.scale.is_some(), norm.bias.is_some()) {
+                    (true, true) => {
+                        wgsl! { Y[anchor + i] = 'accessor(fma(val, f32(S[i]), f32(B[i]))); }
+                    }
+                    (true, false) => wgsl! { Y[anchor + i] = 'accessor(val * f32(S[i])); },
+                    (false, true) => wgsl! { Y[anchor + i] = 'accessor(val + f32(B[i])); },
+                    (false, false) => wgsl! { Y[anchor + i] = 'accessor(val); },
+                };
+                wgsl! {
+                    'x_val
+                    'store
+                }
+            }
+            2 => {
+                let x_val = if matches!(inner, NormOp::LayerNorm(_)) {
+                    wgsl! {
+                        let xv = X[anchor + i];
+                        let val0 = (f32(xv.x) - mu) * denom;
+                        let val1 = (f32(xv.y) - mu) * denom;
+                    }
+                } else {
+                    wgsl! {
+                        let xv = X[anchor + i];
+                        let val0 = f32(xv.x) * denom;
+                        let val1 = f32(xv.y) * denom;
+                    }
+                };
+                let store = match (norm.scale.is_some(), norm.bias.is_some()) {
+                    (true, true) => wgsl! {
+                        let sv = S[i];
+                        let bv = B[i];
+                        Y[anchor + i] = 'accessor(vec2<f32>(
+                            fma(val0, f32(sv.x), f32(bv.x)),
+                            fma(val1, f32(sv.y), f32(bv.y))
+                        ));
+                    },
+                    (true, false) => wgsl! {
+                        let sv = S[i];
+                        Y[anchor + i] = 'accessor(vec2<f32>(val0 * f32(sv.x), val1 * f32(sv.y)));
+                    },
+                    (false, true) => wgsl! {
+                        let bv = B[i];
+                        Y[anchor + i] = 'accessor(vec2<f32>(val0 + f32(bv.x), val1 + f32(bv.y)));
+                    },
+                    (false, false) => wgsl! {
+                        Y[anchor + i] = 'accessor(vec2<f32>(val0, val1));
+                    },
+                };
+                wgsl! {
+                    'x_val
+                    'store
+                }
+            }
+            4 => {
+                let x_val = if matches!(inner, NormOp::LayerNorm(_)) {
+                    wgsl! {
+                        let xv = X[anchor + i];
+                        let val0 = (f32(xv.x) - mu) * denom;
+                        let val1 = (f32(xv.y) - mu) * denom;
+                        let val2 = (f32(xv.z) - mu) * denom;
+                        let val3 = (f32(xv.w) - mu) * denom;
+                    }
+                } else {
+                    wgsl! {
+                        let xv = X[anchor + i];
+                        let val0 = f32(xv.x) * denom;
+                        let val1 = f32(xv.y) * denom;
+                        let val2 = f32(xv.z) * denom;
+                        let val3 = f32(xv.w) * denom;
+                    }
+                };
+                let store = match (norm.scale.is_some(), norm.bias.is_some()) {
+                    (true, true) => wgsl! {
+                        let sv = S[i];
+                        let bv = B[i];
+                        Y[anchor + i] = 'accessor(vec4<f32>(
+                            fma(val0, f32(sv.x), f32(bv.x)),
+                            fma(val1, f32(sv.y), f32(bv.y)),
+                            fma(val2, f32(sv.z), f32(bv.z)),
+                            fma(val3, f32(sv.w), f32(bv.w))
+                        ));
+                    },
+                    (true, false) => wgsl! {
+                        let sv = S[i];
+                        Y[anchor + i] = 'accessor(vec4<f32>(
+                            val0 * f32(sv.x), val1 * f32(sv.y), val2 * f32(sv.z), val3 * f32(sv.w)
+                        ));
+                    },
+                    (false, true) => wgsl! {
+                        let bv = B[i];
+                        Y[anchor + i] = 'accessor(vec4<f32>(
+                            val0 + f32(bv.x), val1 + f32(bv.y), val2 + f32(bv.z), val3 + f32(bv.w)
+                        ));
+                    },
+                    (false, false) => wgsl! {
+                        Y[anchor + i] = 'accessor(vec4<f32>(val0, val1, val2, val3));
+                    },
+                };
+                wgsl! {
+                    'x_val
+                    'store
+                }
+            }
+            _ => unreachable!(),
         };
 
         kernel_builder.write_main(wgsl! {
-            let denom = inverseSqrt(sigma + 'accessor(metadata.eps));
+            let denom = inverseSqrt(sigma + f32(metadata.eps));
             for(var i: u32 = local_invocation_id.x; i < 'reduction_len; i += 'BLOCK_SIZE) {
-                let val = ('X_i) * denom;
-                'loop_core
+                'output_loop
             }
         });
         Ok(kernel_builder.build()?)
@@ -230,15 +392,29 @@ impl KernelRenderable for NormKernels {
 impl NormKernels {
     fn compute_mu<P: WgslPrimitive>(
         kernel_builder: &mut WgslKernelBuilder,
-        accessor: String,
+        _accessor: String,
         reduction_len: &str,
         workgroup_size: &WorkgroupSize,
     ) {
         let BLOCK_SIZE = workgroup_size.x.render();
-        let dtype = P::T::DT;
+
+        // Cast input to f32 for accumulation, handling vectorized access
+        let sum_loop = match P::W {
+            1 => wgsl! { threadSum += f32(X[anchor + i]); },
+            2 => wgsl! {
+                let v = X[anchor + i];
+                threadSum += f32(v.x) + f32(v.y);
+            },
+            4 => wgsl! {
+                let v = X[anchor + i];
+                threadSum += f32(v.x) + f32(v.y) + f32(v.z) + f32(v.w);
+            },
+            _ => unreachable!(),
+        };
+
         kernel_builder.write_main(wgsl! {
             for (var i: u32 = local_invocation_id.x; i < 'reduction_len; i += 'BLOCK_SIZE) {
-                threadSum += X[anchor + i];
+                'sum_loop
             }
             workgroupBarrier();
             smem[local_invocation_id.x] = threadSum;
@@ -251,12 +427,8 @@ impl NormKernels {
             kernel_builder.write_main(wgsl! { block_sum(local_invocation_id.x, 'v); });
         }
 
-        let mu = match P::W {
-            1 => wgsl! { let mu = smem[0] / 'dtype(metadata.N); },
-            2 | 4 => wgsl! {let mu = dot(smem[0], 'accessor(1.)) / 'dtype(metadata.N); },
-            _ => unreachable!(),
-        };
-        kernel_builder.write_main(mu);
+        // mu is always f32
+        kernel_builder.write_main(wgsl! { let mu = smem[0] / f32(metadata.N); });
     }
 }
 

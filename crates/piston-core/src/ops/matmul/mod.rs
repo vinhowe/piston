@@ -388,6 +388,9 @@ pub struct Matmul {
     pub(crate) trans_lhs: bool,
     pub(crate) trans_rhs: bool,
     pub(crate) trans_dst: bool,
+    /// When true, inputs are F32 but computation is done in F16 (fused mixed precision)
+    #[new(default)]
+    pub(crate) use_mixed_precision: bool,
 }
 
 impl Matmul {
@@ -493,7 +496,13 @@ impl Operation for Matmul {
         )
         .unwrap();
         let dst_stride = Stride::from(&dst_shape);
-        Ok(StorageView::new(dst_shape, self.rhs.dtype(), dst_stride))
+        // Output F16 when using fused mixed precision
+        let output_dtype = if self.use_mixed_precision {
+            DType::F16
+        } else {
+            self.rhs.dtype()
+        };
+        Ok(StorageView::new(dst_shape, output_dtype, dst_stride))
     }
 
     #[inline]
@@ -519,6 +528,24 @@ impl OpGuards for Matmul {
     }
 
     fn check_dtypes(&self) {
+        // Mixed precision mode: F32 inputs, F16 compute
+        if self.use_mixed_precision {
+            assert!(
+                self.lhs.dtype() == DType::F32 && self.rhs.dtype() == DType::F32,
+                "Mixed precision requires F32 inputs, got lhs: {:?}, rhs: {:?}",
+                self.lhs.dtype(),
+                self.rhs.dtype()
+            );
+            if let Some(bias) = &self.bias {
+                assert!(
+                    bias.dtype() == DType::F32,
+                    "Mixed precision requires F32 bias, got: {:?}",
+                    bias.dtype()
+                );
+            }
+            return;
+        }
+
         let allowed_pairs = [
             (DType::F32, DType::F32),
             (DType::F16, DType::F16),
@@ -725,6 +752,13 @@ impl GPUOperation for Matmul {
             panic!("Transposed quantized inputs are not supported");
         }
 
+        let spec = self.compute_spec();
+
+        // Mixed precision always uses GEMM kernel (has the mixed precision path)
+        if self.use_mixed_precision {
+            return MatmulKernels::GEMM(GEMM::from_matmul(self, spec));
+        }
+
         let is_gemv = self.rhs.shape().is_vector() && !self.trans_lhs;
         let is_q4 = self.lhs.dtype().is_q4();
         let supports_subgroup = self
@@ -734,8 +768,6 @@ impl GPUOperation for Matmul {
             .unwrap()
             .compute_features()
             .SUBGROUP;
-
-        let spec = self.compute_spec();
 
         match (is_gemv, is_q4, supports_subgroup) {
             (true, false, true) => {

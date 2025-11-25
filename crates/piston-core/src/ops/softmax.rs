@@ -72,16 +72,14 @@ impl KernelRenderable for SoftmaxKernels {
         self.register_bindings::<P>(&mut kernel_builder, inplace)?;
         kernel_builder.render_metadata(&self.metadata(dst, &self.kernel_element(dst))?);
 
-        let dtype = P::T::DT;
         let accessor = P::render_type();
-
         let BLOCK_SIZE = workgroup_size.x.render();
-        let minFloat = P::T::MIN;
 
+        // Always use F32 for accumulation (numerical stability for exp/sum with F16 inputs)
         kernel_builder.write_global(wgsl! {
-            var<workgroup> smem: array<'accessor, 'BLOCK_SIZE>;
-            var<workgroup> maximum: 'dtype;
-            var<workgroup> sum: 'dtype;
+            var<workgroup> smem: array<f32, 'BLOCK_SIZE>;
+            var<workgroup> maximum: f32;
+            var<workgroup> sum: f32;
         });
 
         kernel_builder.write_global(wgsl! {
@@ -118,10 +116,24 @@ impl KernelRenderable for SoftmaxKernels {
         };
         kernel_builder.write_main(offsets);
 
+        // Find max in f32 for numerical stability
+        let load_max = match P::W {
+            1 => wgsl! { smem[index] = max(smem[index], f32(X[row_start + i])); },
+            2 => wgsl! {
+                let v = X[row_start + i];
+                smem[index] = max(smem[index], max(f32(v.x), f32(v.y)));
+            },
+            4 => wgsl! {
+                let v = X[row_start + i];
+                smem[index] = max(smem[index], max(f32(v.x), max(f32(v.y), max(f32(v.z), f32(v.w)))));
+            },
+            _ => unreachable!(),
+        };
+
         kernel_builder.write_main(wgsl! {
-            smem[index] = 'accessor('minFloat);
+            smem[index] = f32(-3.402823e+38);
             for (var i: u32 = index; i < 'reduce_var; i += 'BLOCK_SIZE) {
-                smem[index] = max(smem[index], X[row_start + i]);
+                'load_max
             }
             workgroupBarrier();
         });
@@ -132,23 +144,31 @@ impl KernelRenderable for SoftmaxKernels {
             kernel_builder.write_main(wgsl! { block_max(index, 'v); });
         }
 
-        let finalize_max = match P::W {
-            1 => wgsl! { maximum = smem[0]; },
-            2 => wgsl! { maximum = max(smem[0].x, smem[0].y); },
-            4 => wgsl! { maximum = max(smem[0].x, max(smem[0].y, max(smem[0].z, smem[0].w))); },
-            _ => unreachable!(),
-        };
         kernel_builder.write_main(wgsl! {
             if index == 0 {
-                'finalize_max
+                maximum = smem[0];
             }
             workgroupBarrier();
         });
 
+        // Compute exp sum in f32
+        let load_exp_sum = match P::W {
+            1 => wgsl! { smem[index] += exp(f32(X[row_start + i]) - maximum); },
+            2 => wgsl! {
+                let v = X[row_start + i];
+                smem[index] += exp(f32(v.x) - maximum) + exp(f32(v.y) - maximum);
+            },
+            4 => wgsl! {
+                let v = X[row_start + i];
+                smem[index] += exp(f32(v.x) - maximum) + exp(f32(v.y) - maximum) + exp(f32(v.z) - maximum) + exp(f32(v.w) - maximum);
+            },
+            _ => unreachable!(),
+        };
+
         kernel_builder.write_main(wgsl! {
-            smem[index] = 'accessor(0.);
+            smem[index] = 0.0;
             for (var i: u32 = index; i < 'reduce_var; i += 'BLOCK_SIZE) {
-                smem[index] += exp(X[row_start + i] - maximum);
+                'load_exp_sum
             }
             workgroupBarrier();
         });
@@ -158,23 +178,42 @@ impl KernelRenderable for SoftmaxKernels {
             kernel_builder.write_main(wgsl! { block_sum(index, 'v); });
         }
 
-        let finalize_sum = match P::W {
-            1 => wgsl! { sum = smem[0]; },
-            2 | 4 => wgsl! { sum = dot(smem[0], 'accessor(1.)); },
-            _ => unreachable!(),
-        };
         kernel_builder.write_main(wgsl! {
             if index == 0 {
-                'finalize_sum
+                sum = smem[0];
             }
             workgroupBarrier();
         });
 
-        let finalize = wgsl! {
-            for(var i: u32 = index; i < 'reduce_var; i += 'BLOCK_SIZE) {
-                var val = X[row_start + i];
-                X[row_start + i] = exp(val - maximum) / sum;
-            }
+        // Compute final softmax, writing back in original dtype
+        let finalize = match P::W {
+            1 => wgsl! {
+                for(var i: u32 = index; i < 'reduce_var; i += 'BLOCK_SIZE) {
+                    let val = f32(X[row_start + i]);
+                    X[row_start + i] = 'accessor(exp(val - maximum) / sum);
+                }
+            },
+            2 => wgsl! {
+                for(var i: u32 = index; i < 'reduce_var; i += 'BLOCK_SIZE) {
+                    let v = X[row_start + i];
+                    X[row_start + i] = 'accessor(vec2<f32>(
+                        exp(f32(v.x) - maximum) / sum,
+                        exp(f32(v.y) - maximum) / sum
+                    ));
+                }
+            },
+            4 => wgsl! {
+                for(var i: u32 = index; i < 'reduce_var; i += 'BLOCK_SIZE) {
+                    let v = X[row_start + i];
+                    X[row_start + i] = 'accessor(vec4<f32>(
+                        exp(f32(v.x) - maximum) / sum,
+                        exp(f32(v.y) - maximum) / sum,
+                        exp(f32(v.z) - maximum) / sum,
+                        exp(f32(v.w) - maximum) / sum
+                    ));
+                }
+            },
+            _ => unreachable!(),
         };
         kernel_builder.write_main(finalize);
         Ok(kernel_builder.build()?)

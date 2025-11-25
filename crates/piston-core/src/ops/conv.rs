@@ -21,6 +21,9 @@ pub struct Conv {
     pub stride: usize,
     pub padding: usize,
     //dilation: usize, TODO: implement dilation
+    /// When true, inputs are F32 but computation is done in F16 (fused mixed precision)
+    #[new(default)]
+    pub use_mixed_precision: bool,
 }
 
 impl KernelRenderable for ConvKernels {
@@ -29,11 +32,23 @@ impl KernelRenderable for ConvKernels {
         builder: &mut WgslKernelBuilder,
         _: bool,
     ) -> Result<(), OperationError> {
-        let arr = Array::<P>::default();
-        builder.register_storage("X", BindingMode::ReadOnly, arr);
-        builder.register_storage("W", BindingMode::ReadOnly, arr);
-        builder.register_storage("B", BindingMode::ReadOnly, arr);
-        builder.register_storage("Y", BindingMode::ReadWrite, arr);
+        let ConvKernels::Threebythree(inner) = self;
+
+        // For mixed precision: inputs are F32, output is F16
+        if inner.use_mixed_precision {
+            let f32_arr = Array::<Scalar<f32>>::default();
+            let f16_arr = Array::<Scalar<f16>>::default();
+            builder.register_storage("X", BindingMode::ReadOnly, f32_arr);
+            builder.register_storage("W", BindingMode::ReadOnly, f32_arr);
+            builder.register_storage("B", BindingMode::ReadOnly, f32_arr);
+            builder.register_storage("Y", BindingMode::ReadWrite, f16_arr);
+        } else {
+            let arr = Array::<P>::default();
+            builder.register_storage("X", BindingMode::ReadOnly, arr);
+            builder.register_storage("W", BindingMode::ReadOnly, arr);
+            builder.register_storage("B", BindingMode::ReadOnly, arr);
+            builder.register_storage("Y", BindingMode::ReadWrite, arr);
+        }
         builder.register_uniform();
         Ok(())
     }
@@ -146,6 +161,20 @@ impl OpGuards for Conv {
     }
 
     fn check_dtypes(&self) {
+        if self.use_mixed_precision {
+            // Mixed precision requires F32 inputs
+            assert!(
+                self.input.dtype() == DType::F32 && self.weight.dtype() == DType::F32,
+                "Mixed precision requires F32 inputs"
+            );
+            if let Some(bias) = &self.bias {
+                assert!(
+                    bias.dtype() == DType::F32,
+                    "Mixed precision requires F32 bias"
+                );
+            }
+            return;
+        }
         assert!(self.input.dtype().is_float());
         assert!(self.weight.dtype().is_float());
         assert!(
@@ -176,7 +205,13 @@ impl Operation for Conv {
         let L_out = calc_dim(L_in, KS, self.padding, 1, self.stride);
         let out_shape = shape![N, C_out, L_out];
         let out_stride = Stride::from(&out_shape);
-        Ok(StorageView::new(out_shape, input_t.dtype(), out_stride))
+        // Output F16 when using fused mixed precision
+        let output_dtype = if self.use_mixed_precision {
+            DType::F16
+        } else {
+            input_t.dtype()
+        };
+        Ok(StorageView::new(out_shape, output_dtype, out_stride))
     }
 
     #[inline]
@@ -201,7 +236,13 @@ impl Kernel for ConvKernels {
 
     fn kernel_name(&self) -> String {
         match self {
-            ConvKernels::Threebythree(_) => "conv1d_3x3".to_string(),
+            ConvKernels::Threebythree(inner) => {
+                if inner.use_mixed_precision {
+                    "conv1d_3x3_mp".to_string()
+                } else {
+                    "conv1d_3x3".to_string()
+                }
+            }
         }
     }
 
@@ -254,8 +295,14 @@ impl Kernel for ConvKernels {
         dst: &OpTensor,
         workgroup_size: &WorkgroupSize,
     ) -> Result<KernelSource, OperationError> {
-        let kernel_element = self.kernel_element(dst);
         let ConvKernels::Threebythree(inner) = self;
+
+        // Mixed precision: F32 inputs, F16 compute, F16 output
+        if inner.use_mixed_precision {
+            return self.render_mixed_precision(inplace, dst, workgroup_size);
+        }
+
+        let kernel_element = self.kernel_element(dst);
         match (inner.input.dtype(), &kernel_element) {
             (DType::F32, KernelElement::Scalar) => {
                 self.render::<Scalar<f32>>(inplace, dst, workgroup_size)
@@ -281,6 +328,95 @@ impl Kernel for ConvKernels {
                 kernel_element
             ))),
         }
+    }
+}
+
+impl ConvKernels {
+    /// Render mixed precision Conv kernel: F32 inputs → F16 compute → F16 output
+    fn render_mixed_precision(
+        &self,
+        inplace: bool,
+        dst: &OpTensor,
+        workgroup_size: &WorkgroupSize,
+    ) -> Result<KernelSource, OperationError> {
+        let device = dst.device().try_gpu()?;
+        let mut kernel_builder = WgslKernelBuilder::new(
+            workgroup_size.clone(),
+            rvec![
+                BuiltIn::GlobalInvocationId,
+                BuiltIn::LocalInvocationId,
+                BuiltIn::WorkgroupId,
+            ],
+            device.compute_features().clone(),
+        );
+        self.register_bindings::<Scalar<f16>>(&mut kernel_builder, inplace)?;
+        kernel_builder.render_metadata(&self.metadata(dst, &self.kernel_element(dst))?);
+
+        // Shared memory uses F16 for compute
+        kernel_builder.write_global(wgsl! {
+            var<workgroup> F: array<f16, 4096u>;
+        });
+
+        // Inner function reads F32, computes in F16, outputs F16
+        kernel_builder.write_global(wgsl! {
+            fn inner(input_index: u32, filter_index: u32, output_index: u32, bias_index: u32, start: u32, end: u32) {
+                var inp = vec3<f16>(0.0h);
+                var kernel = vec3<f16>(0.0h);
+                var acc = vec3<f16>(0.0h);
+                for(var i = 0u; i < metadata.Cin; i++) {
+                    let input_start = input_index + (i * metadata.Lin) - metadata.padding;
+                    for(var j = start; j <= end; j++) {
+                        // Cast F32 input to F16
+                        inp[j] = f16(X[input_start + j]);
+                    }
+
+                    let filter_start = i * metadata.KS;
+                    kernel.x = F[filter_start];
+                    kernel.y = F[filter_start + 1u];
+                    kernel.z = F[filter_start + 2u];
+
+                    acc = fma(inp, kernel, acc);
+                }
+                // Output F16, cast F32 bias to F16
+                Y[output_index] = acc.x + acc.y + acc.z + f16(B[bias_index]);
+            }
+
+            fn load_filters_into_smem(local_invocation_id: vec3<u32>, filter_index: u32) {
+                let windex = filter_index + (local_invocation_id.x * metadata.Fperthread);
+                let findex = (local_invocation_id.x * metadata.Fperthread);
+                for(var i=0u; i < metadata.Fperthread; i++) {
+                    if findex + i < metadata.F_numel {
+                        // Cast F32 weight to F16 when loading to shared memory
+                        F[findex + i] = f16(W[windex + i]);
+                    }
+                }
+            }
+        });
+
+        let wgsx = workgroup_size.x.render();
+        kernel_builder.write_main(wgsl!{
+            let input_index = (workgroup_id.x * 'wgsx + local_invocation_id.x) * metadata.stride;
+            let filter_index = (workgroup_id.y * metadata.F_numel);
+            load_filters_into_smem(local_invocation_id, filter_index);
+            workgroupBarrier();
+
+            if input_index >= metadata.Lin {
+                return;
+            }
+
+            let output_index = (workgroup_id.x * 'wgsx + local_invocation_id.x) + (workgroup_id.y * metadata.Lout);
+            let bias_index = workgroup_id.y;
+
+            if input_index == metadata.Lin - metadata.padding {
+                inner(input_index, filter_index, output_index, bias_index, 0u, 1u);
+            } else if input_index == 0u {
+                inner(input_index, filter_index, output_index, bias_index, 1u, 2u);
+            } else {
+                inner(input_index, filter_index, output_index, bias_index, 0u, 2u);
+            }
+        });
+
+        Ok(kernel_builder.build()?)
     }
 }
 

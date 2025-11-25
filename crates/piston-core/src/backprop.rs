@@ -62,6 +62,13 @@ impl GradAccumContext {
         if !self.tracked.contains(&tensor.id()) {
             return Ok(());
         }
+        // Cast gradient to tensor's dtype for mixed-precision training (AMP)
+        // Gradients may be computed in FP16 but should be accumulated in param's dtype (FP32)
+        let grad = if grad.dtype() != tensor.dtype() {
+            grad.cast(tensor.dtype())?
+        } else {
+            grad
+        };
         match tensor.grad() {
             Some(existing_grad) => {
                 tensor.set_grad(Some(existing_grad.clone().add(grad)?));
@@ -81,6 +88,12 @@ impl GradAccumContext {
         if !self.tracked.contains(&tensor.id()) {
             return Ok(());
         }
+        // Cast gradient to tensor's dtype for mixed-precision training (AMP)
+        let grad = if grad.dtype() != tensor.dtype() {
+            grad.cast(tensor.dtype())?
+        } else {
+            grad
+        };
         match tensor.grad() {
             Some(existing_grad) => {
                 tensor.set_grad(Some(existing_grad.clone().sub(grad)?));
@@ -584,6 +597,7 @@ impl Tensor {
                     trans_rhs,
                     trans_dst,
                     bias,
+                    ..
                 }) => {
                     let lhs = lhs.wrap();
                     let rhs = rhs.wrap();

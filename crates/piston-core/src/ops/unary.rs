@@ -360,14 +360,46 @@ impl Unary {
         // }
         match dtype {
             DType::F16 => {
-                wgsl! {
-                    fn isnan(val: 'accessor) -> 'output_accessor {
-                        let packed_val = pack2x16float(vec2(val, 0.0h));
-
-                        let bits = packed_val & 0x0000ffffu;
-
-                        return 'output_accessor((bits & 0x7fffu) > 0x7C00u);
-                      }
+                // F16 needs special handling per vector width since we use pack2x16float
+                match P::W {
+                    1 => wgsl! {
+                        fn isnan(val: 'accessor) -> 'output_accessor {
+                            let packed_val = pack2x16float(vec2<f32>(f32(val), 0.0));
+                            let bits = packed_val & 0x0000ffffu;
+                            return 'output_accessor((bits & 0x7fffu) > 0x7C00u);
+                        }
+                    },
+                    2 => wgsl! {
+                        fn isnan(val: 'accessor) -> 'output_accessor {
+                            let packed0 = pack2x16float(vec2<f32>(f32(val.x), 0.0));
+                            let packed1 = pack2x16float(vec2<f32>(f32(val.y), 0.0));
+                            let bits0 = packed0 & 0x0000ffffu;
+                            let bits1 = packed1 & 0x0000ffffu;
+                            return 'output_accessor(
+                                i32((bits0 & 0x7fffu) > 0x7C00u),
+                                i32((bits1 & 0x7fffu) > 0x7C00u)
+                            );
+                        }
+                    },
+                    4 => wgsl! {
+                        fn isnan(val: 'accessor) -> 'output_accessor {
+                            let packed0 = pack2x16float(vec2<f32>(f32(val.x), 0.0));
+                            let packed1 = pack2x16float(vec2<f32>(f32(val.y), 0.0));
+                            let packed2 = pack2x16float(vec2<f32>(f32(val.z), 0.0));
+                            let packed3 = pack2x16float(vec2<f32>(f32(val.w), 0.0));
+                            let bits0 = packed0 & 0x0000ffffu;
+                            let bits1 = packed1 & 0x0000ffffu;
+                            let bits2 = packed2 & 0x0000ffffu;
+                            let bits3 = packed3 & 0x0000ffffu;
+                            return 'output_accessor(
+                                i32((bits0 & 0x7fffu) > 0x7C00u),
+                                i32((bits1 & 0x7fffu) > 0x7C00u),
+                                i32((bits2 & 0x7fffu) > 0x7C00u),
+                                i32((bits3 & 0x7fffu) > 0x7C00u)
+                            );
+                        }
+                    },
+                    _ => panic!("Unsupported vector width for F16 isnan: {}", P::W),
                 }
             }
             DType::F32 => {
@@ -379,7 +411,7 @@ impl Unary {
                 }
             }
             _ => {
-                panic!("Unsupported dtype for isinf: {:?}", dtype);
+                panic!("Unsupported dtype for isnan: {:?}", dtype);
             }
         }
     }
@@ -389,16 +421,47 @@ impl Unary {
         let output_accessor = Self::equivalent_accessor::<P>("i32".to_string());
 
         match dtype {
-            // TODO: F16 arm has never been tested
             DType::F16 => {
-                wgsl! {
-                    fn isinf(val: 'accessor) -> 'output_accessor {
-                        let packed_val = pack2x16float(vec2(val, 0.0h));
-
-                        let bits = packed_val & 0x0000ffffu;
-
-                        return 'output_accessor((bits & 0x7fffu) == 0x7C00u);
-                      }
+                // F16 needs special handling per vector width since we use pack2x16float
+                match P::W {
+                    1 => wgsl! {
+                        fn isinf(val: 'accessor) -> 'output_accessor {
+                            let packed_val = pack2x16float(vec2<f32>(f32(val), 0.0));
+                            let bits = packed_val & 0x0000ffffu;
+                            return 'output_accessor((bits & 0x7fffu) == 0x7C00u);
+                        }
+                    },
+                    2 => wgsl! {
+                        fn isinf(val: 'accessor) -> 'output_accessor {
+                            let packed0 = pack2x16float(vec2<f32>(f32(val.x), 0.0));
+                            let packed1 = pack2x16float(vec2<f32>(f32(val.y), 0.0));
+                            let bits0 = packed0 & 0x0000ffffu;
+                            let bits1 = packed1 & 0x0000ffffu;
+                            return 'output_accessor(
+                                i32((bits0 & 0x7fffu) == 0x7C00u),
+                                i32((bits1 & 0x7fffu) == 0x7C00u)
+                            );
+                        }
+                    },
+                    4 => wgsl! {
+                        fn isinf(val: 'accessor) -> 'output_accessor {
+                            let packed0 = pack2x16float(vec2<f32>(f32(val.x), 0.0));
+                            let packed1 = pack2x16float(vec2<f32>(f32(val.y), 0.0));
+                            let packed2 = pack2x16float(vec2<f32>(f32(val.z), 0.0));
+                            let packed3 = pack2x16float(vec2<f32>(f32(val.w), 0.0));
+                            let bits0 = packed0 & 0x0000ffffu;
+                            let bits1 = packed1 & 0x0000ffffu;
+                            let bits2 = packed2 & 0x0000ffffu;
+                            let bits3 = packed3 & 0x0000ffffu;
+                            return 'output_accessor(
+                                i32((bits0 & 0x7fffu) == 0x7C00u),
+                                i32((bits1 & 0x7fffu) == 0x7C00u),
+                                i32((bits2 & 0x7fffu) == 0x7C00u),
+                                i32((bits3 & 0x7fffu) == 0x7C00u)
+                            );
+                        }
+                    },
+                    _ => panic!("Unsupported vector width for F16 isinf: {}", P::W),
                 }
             }
             DType::F32 => {

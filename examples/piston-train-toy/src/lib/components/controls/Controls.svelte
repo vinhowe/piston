@@ -1523,6 +1523,58 @@
 		</BorderedGroup>
 
 		<ToggleGroup
+			id="training-amp-group"
+			title="Automatic Mixed Precision"
+			showEnableToggle={true}
+			bind:enabled={config.training.amp.present}
+			hasDefaultValue={equalsConfigDefault('training.amp.present')}
+			onReset={() => resetConfigToDefaults('training.amp.present')}
+		>
+			<Slider
+				id="training-amp-grad-scaling-init-scale"
+				label="Initial Scale"
+				bind:value={config.training.amp.gradScaling.initScale}
+				min={1}
+				max={2**20}
+				step={1}
+				useLog
+				base={2}
+				hasDefaultValue={equalsConfigDefault('training.amp.gradScaling.initScale')}
+				onReset={() => resetConfigToDefaults('training.amp.gradScaling.initScale')}
+			/>
+			<Slider
+				id="training-amp-grad-scaling-growth-factor"
+				label="Growth Factor"
+				bind:value={config.training.amp.gradScaling.growthFactor}
+				min={0}
+				max={1000000}
+				step={0.01}
+				hasDefaultValue={equalsConfigDefault('training.amp.gradScaling.growthFactor')}
+				onReset={() => resetConfigToDefaults('training.amp.gradScaling.growthFactor')}
+			/>
+			<Slider
+				id="training-amp-grad-scaling-backoff-factor"
+				label="Backoff Factor"
+				bind:value={config.training.amp.gradScaling.backoffFactor}
+				min={0}
+				max={1000000}
+				step={0.01}
+				hasDefaultValue={equalsConfigDefault('training.amp.gradScaling.backoffFactor')}
+				onReset={() => resetConfigToDefaults('training.amp.gradScaling.backoffFactor')}
+			/>
+			<Slider
+				id="training-amp-grad-scaling-growth-interval"
+				label="Growth Interval"
+				bind:value={config.training.amp.gradScaling.growthInterval}
+				min={1}
+				max={1000000}
+				step={1}
+				hasDefaultValue={equalsConfigDefault('training.amp.gradScaling.growthInterval')}
+				onReset={() => resetConfigToDefaults('training.amp.gradScaling.growthInterval')}
+			/>
+		</ToggleGroup>
+
+		<ToggleGroup
 			id="training-random-seed-group"
 			title="Random Seed"
 			showEnableToggle={true}

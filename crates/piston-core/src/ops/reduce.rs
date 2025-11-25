@@ -210,7 +210,11 @@ impl Operation for Reduce {
         }
 
         let output_dtype = match self.op {
-            ReduceOp::Sum | ReduceOp::Min | ReduceOp::Max | ReduceOp::Norm2 => DType::F32,
+            ReduceOp::Sum | ReduceOp::Min | ReduceOp::Max => match self.input.dtype() {
+                DType::I32 => DType::I32,
+                _ => DType::F32,
+            },
+            ReduceOp::Norm2 => DType::F32,
             ReduceOp::ArgMin | ReduceOp::ArgMax => DType::I32,
         };
 
@@ -371,8 +375,37 @@ impl KernelRenderable for ReduceKernels {
                     Array::<Scalar<i32>>::default(),
                 );
             }
-            _ => {
-                builder.register_storage("Y", BindingMode::ReadWrite, Array::<P>::default());
+            ReduceOp::Sum | ReduceOp::Norm2 => {
+                // Output is always F32 for Sum/Norm2 (except I32 input stays I32)
+                if inner.input.dtype() == DType::I32 {
+                    builder.register_storage(
+                        "Y",
+                        BindingMode::ReadWrite,
+                        Array::<Scalar<i32>>::default(),
+                    );
+                } else {
+                    builder.register_storage(
+                        "Y",
+                        BindingMode::ReadWrite,
+                        Array::<Scalar<f32>>::default(),
+                    );
+                }
+            }
+            ReduceOp::Max | ReduceOp::Min => {
+                // Output is F32 for floating point inputs, I32 for I32 input
+                if inner.input.dtype() == DType::I32 {
+                    builder.register_storage(
+                        "Y",
+                        BindingMode::ReadWrite,
+                        Array::<Scalar<i32>>::default(),
+                    );
+                } else {
+                    builder.register_storage(
+                        "Y",
+                        BindingMode::ReadWrite,
+                        Array::<Scalar<f32>>::default(),
+                    );
+                }
             }
         }
         builder.register_uniform();
@@ -401,13 +434,34 @@ impl KernelRenderable for ReduceKernels {
 
         let ReduceKernels::Standard(inner) = self;
 
-        let dtype = P::T::DT;
+        let input_dtype = P::T::DT;
         let op = inner.op.kernel_name();
+
+        // For Sum/Norm2 with F16 input, accumulate in F32 to prevent overflow (F16 max is only ~65504)
+        // For I32 and other types, use the input dtype
+        let (accum_dtype, max_val, needs_output_cast) = match inner.op {
+            ReduceOp::Sum | ReduceOp::Norm2 => {
+                if inner.input.dtype() == DType::F16 {
+                    // Use F32 for accumulation to prevent overflow
+                    ("f32".to_string(), f32::MIN.to_string(), true)
+                } else {
+                    // Use input dtype for I32/F32
+                    (input_dtype.to_string(), P::T::MIN.render(), false)
+                }
+            }
+            ReduceOp::Max | ReduceOp::ArgMax => {
+                // Use input dtype for comparison operations
+                (input_dtype.to_string(), P::T::MIN.render(), false)
+            }
+            ReduceOp::Min | ReduceOp::ArgMin => {
+                // Use input dtype for comparison operations
+                (input_dtype.to_string(), P::T::MIN.render(), false)
+            }
+        };
 
         kernel_builder.write_global(wgsl! {
             const BLOCK_SIZE: u32 = 256u;
-            const maxFloat: f32 = 3.402823e+38f;
-            var<workgroup> smem: array<'dtype, BLOCK_SIZE>; //max 16kb
+            var<workgroup> smem: array<'accum_dtype, BLOCK_SIZE>; //max 16kb
         });
 
         match inner.op {
@@ -436,13 +490,13 @@ impl KernelRenderable for ReduceKernels {
 
         let smem_initialize = match inner.op {
             ReduceOp::Sum | ReduceOp::Norm2 => wgsl! {
-                smem[thread_id] = 'dtype(0.0);
+                smem[thread_id] = 'accum_dtype(0.0);
             },
             ReduceOp::Max | ReduceOp::ArgMax => wgsl! {
-                smem[thread_id] = 'dtype(-maxFloat);
+                smem[thread_id] = 'accum_dtype('max_val);
             },
             ReduceOp::Min | ReduceOp::ArgMin => wgsl! {
-                smem[thread_id] = 'dtype(maxFloat);
+                smem[thread_id] = 'accum_dtype(-'max_val);
             },
         };
 
@@ -464,13 +518,25 @@ impl KernelRenderable for ReduceKernels {
             var idx = start_idx + thread_id;
         });
 
+        // For Sum/Norm2 with F16 input, cast to F32 for accumulation
         let smem_update = match inner.op {
-            ReduceOp::Sum => wgsl! {
-                smem[thread_id] += X[strided_i];
-            },
-            ReduceOp::Norm2 => wgsl! {
-                smem[thread_id] += X[strided_i] * X[strided_i];
-            },
+            ReduceOp::Sum => {
+                if needs_output_cast {
+                    wgsl! { smem[thread_id] += f32(X[strided_i]); }
+                } else {
+                    wgsl! { smem[thread_id] += X[strided_i]; }
+                }
+            }
+            ReduceOp::Norm2 => {
+                if needs_output_cast {
+                    wgsl! {
+                        let val = f32(X[strided_i]);
+                        smem[thread_id] += val * val;
+                    }
+                } else {
+                    wgsl! { smem[thread_id] += X[strided_i] * X[strided_i]; }
+                }
+            }
             ReduceOp::Max | ReduceOp::Min => wgsl! {
                 smem[thread_id] = 'op(smem[thread_id], X[strided_i]);
             },
@@ -509,6 +575,10 @@ impl KernelRenderable for ReduceKernels {
             block_reduce(thread_id, 1u);
         });
 
+        // Determine if we need to cast the output (F16 input -> F32 output)
+        let output_needs_cast =
+            inner.input.dtype() == DType::F16 && inner.input.dtype() != DType::I32;
+
         let dst_update = match inner.op {
             ReduceOp::ArgMax | ReduceOp::ArgMin => wgsl! {
                 Y[destination_id] = smem_index[0];
@@ -516,9 +586,18 @@ impl KernelRenderable for ReduceKernels {
             ReduceOp::Norm2 => wgsl! {
                 Y[destination_id] = sqrt(smem[0]);
             },
-            _ => wgsl! {
-                Y[destination_id] = smem[0];
-            },
+            ReduceOp::Sum => {
+                // smem is already F32 for F16 input, no cast needed
+                wgsl! { Y[destination_id] = smem[0]; }
+            }
+            ReduceOp::Max | ReduceOp::Min => {
+                // smem is in input dtype, may need to cast to F32
+                if output_needs_cast {
+                    wgsl! { Y[destination_id] = f32(smem[0]); }
+                } else {
+                    wgsl! { Y[destination_id] = smem[0]; }
+                }
+            }
         };
 
         kernel_builder.write_main(wgsl! {
