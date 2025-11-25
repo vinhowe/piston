@@ -57,6 +57,13 @@ impl GradAccumContext {
         Self { tracked }
     }
 
+    /// Check if a tensor is being tracked for gradient accumulation.
+    /// Use this before computing expensive gradients to avoid unnecessary work.
+    #[inline]
+    fn is_tracked(&self, tensor: &Tensor) -> bool {
+        self.tracked.contains(&tensor.id())
+    }
+
     /// Add gradient to tensor if it's being tracked
     fn add(&self, tensor: &Tensor, grad: Tensor) -> Result<()> {
         if !self.tracked.contains(&tensor.id()) {
@@ -425,11 +432,15 @@ impl Tensor {
                 }) => {
                     let lhs = lhs.wrap();
                     let rhs = rhs.map_tensor(|t| t.wrap())?;
-                    let lhs_grad = grad.clone().mul(rhs.clone())?;
-                    ctx.add(&lhs, lhs_grad)?;
+                    if ctx.is_tracked(&lhs) {
+                        let lhs_grad = grad.clone().mul(rhs.clone())?;
+                        ctx.add(&lhs, lhs_grad)?;
+                    }
                     if let TensorTypeOrScalarEnum::Tensor(rhs) = rhs {
-                        let rhs_grad = grad.mul(lhs.clone())?;
-                        ctx.add(&rhs, rhs_grad)?;
+                        if ctx.is_tracked(&rhs) {
+                            let rhs_grad = grad.mul(lhs.clone())?;
+                            ctx.add(&rhs, rhs_grad)?;
+                        }
                     }
                 }
                 LazyOp::Binary(Binary {
@@ -439,11 +450,15 @@ impl Tensor {
                 }) => {
                     let lhs = lhs.wrap();
                     let rhs = rhs.map_tensor(|t| t.wrap())?;
-                    let lhs_grad = grad.clone().div(rhs.clone())?;
-                    ctx.add(&lhs, lhs_grad)?;
+                    if ctx.is_tracked(&lhs) {
+                        let lhs_grad = grad.clone().div(rhs.clone())?;
+                        ctx.add(&lhs, lhs_grad)?;
+                    }
                     if let TensorTypeOrScalarEnum::Tensor(rhs) = rhs {
-                        let rhs_grad = grad.mul(lhs.clone())?.div(rhs.clone().square()?)?;
-                        ctx.sub(&rhs, rhs_grad)?;
+                        if ctx.is_tracked(&rhs) {
+                            let rhs_grad = grad.mul(lhs.clone())?.div(rhs.clone().square()?)?;
+                            ctx.sub(&rhs, rhs_grad)?;
+                        }
                     }
                 }
                 LazyOp::Binary(Binary {
@@ -453,11 +468,15 @@ impl Tensor {
                 }) => {
                     let lhs = lhs.wrap();
                     let rhs = rhs.map_tensor(|t| t.wrap())?;
-                    let lhs_grad = grad.clone().mul(rhs.clone())?;
-                    ctx.add(&lhs, lhs_grad)?;
+                    if ctx.is_tracked(&lhs) {
+                        let lhs_grad = grad.clone().mul(rhs.clone())?;
+                        ctx.add(&lhs, lhs_grad)?;
+                    }
                     if let TensorTypeOrScalarEnum::Tensor(rhs) = rhs {
-                        let rhs_grad = grad.clone().mul(lhs.clone())?.div(rhs.clone())?;
-                        ctx.add(&rhs, rhs_grad)?;
+                        if ctx.is_tracked(&rhs) {
+                            let rhs_grad = grad.clone().mul(lhs.clone())?.div(rhs.clone())?;
+                            ctx.add(&rhs, rhs_grad)?;
+                        }
                     }
                 }
                 LazyOp::Binary(Binary {
@@ -472,21 +491,37 @@ impl Tensor {
                 }) => {
                     let lhs = lhs.wrap();
                     let rhs = rhs.map_tensor(|t| t.wrap())?;
-                    let mask_lhs = node.clone().eq(lhs.clone())?.cast(grad.dtype())?;
-                    let mask_rhs = node.clone().eq(rhs.clone())?.cast(grad.dtype())?;
+                    let lhs_tracked = ctx.is_tracked(&lhs);
+                    let rhs_tracked = match &rhs {
+                        TensorTypeOrScalarEnum::Tensor(rhs) => ctx.is_tracked(rhs),
+                        TensorTypeOrScalarEnum::Scalar(_) => false,
+                    };
 
-                    // If both masks are 1 one the same point, we want to scale the
-                    // gradient by 0.5 rather than 1.
-                    let lhs_grad = mask_lhs
-                        .clone()
-                        .mul(grad.clone())?
-                        .div((mask_rhs.clone() + 1.)?)?;
-                    ctx.add(&lhs, lhs_grad)?;
+                    if lhs_tracked || rhs_tracked {
+                        let mask_lhs = node.clone().eq(lhs.clone())?.cast(grad.dtype())?;
+                        let mask_rhs = node.clone().eq(rhs.clone())?.cast(grad.dtype())?;
 
-                    if let TensorTypeOrScalarEnum::Tensor(rhs) = rhs {
-                        let rhs_grad = mask_rhs.mul(grad)?.div((mask_lhs + 1.)?)?;
-                        ctx.add(&rhs, rhs_grad)?;
-                    } else {
+                        // If both masks are 1 one the same point, we want to scale the
+                        // gradient by 0.5 rather than 1.
+                        if lhs_tracked {
+                            let lhs_grad = mask_lhs
+                                .clone()
+                                .mul(grad.clone())?
+                                .div((mask_rhs.clone() + 1.)?)?;
+                            ctx.add(&lhs, lhs_grad)?;
+                        }
+
+                        if let TensorTypeOrScalarEnum::Tensor(rhs) = rhs {
+                            if rhs_tracked {
+                                let rhs_grad = mask_rhs.mul(grad)?.div((mask_lhs + 1.)?)?;
+                                ctx.add(&rhs, rhs_grad)?;
+                            }
+                        } else {
+                            return Err(BackpropError::BackwardNotSupported {
+                                op: "Maximum/Minimum with scalar rhs",
+                            })?;
+                        }
+                    } else if matches!(rhs, TensorTypeOrScalarEnum::Scalar(_)) {
                         return Err(BackpropError::BackwardNotSupported {
                             op: "Maximum/Minimum with scalar rhs",
                         })?;
@@ -504,21 +539,27 @@ impl Tensor {
                     let tensor2 = tensor2.wrap();
                     // addcdiv: input + value * (tensor1 / tensor2)
                     // Gradient for input is simply grad
-                    ctx.add(&input, grad.clone())?;
+                    if ctx.is_tracked(&input) {
+                        ctx.add(&input, grad.clone())?;
+                    }
 
                     // Gradient for tensor1 is grad * value / tensor2
-                    let tensor1_grad = grad
-                        .clone()
-                        .mul(tensor2.clone().recip()?)?
-                        .affine(value, 0.)?;
-                    ctx.add(&tensor1, tensor1_grad)?;
+                    if ctx.is_tracked(&tensor1) {
+                        let tensor1_grad = grad
+                            .clone()
+                            .mul(tensor2.clone().recip()?)?
+                            .affine(value, 0.)?;
+                        ctx.add(&tensor1, tensor1_grad)?;
+                    }
 
                     // Gradient for tensor2 is -grad * value * tensor1 / tensor2^2
-                    let tensor2_grad = grad
-                        .mul(tensor1.clone())?
-                        .div(tensor2.clone().square()?)?
-                        .affine(-value, 0.)?;
-                    ctx.add(&tensor2, tensor2_grad)?;
+                    if ctx.is_tracked(&tensor2) {
+                        let tensor2_grad = grad
+                            .mul(tensor1.clone())?
+                            .div(tensor2.clone().square()?)?
+                            .affine(-value, 0.)?;
+                        ctx.add(&tensor2, tensor2_grad)?;
+                    }
                 }
                 LazyOp::Ternary(Ternary {
                     input,
@@ -532,15 +573,21 @@ impl Tensor {
                     let tensor2 = tensor2.wrap();
                     // addcmul: input + value * (tensor1 * tensor2)
                     // Gradient for input is simply grad
-                    ctx.add(&input, grad.clone())?;
+                    if ctx.is_tracked(&input) {
+                        ctx.add(&input, grad.clone())?;
+                    }
 
                     // Gradient for tensor1 is grad * value * tensor2
-                    let tensor1_grad = grad.clone().mul(tensor2.clone())?.affine(value, 0.)?;
-                    ctx.add(&tensor1, tensor1_grad)?;
+                    if ctx.is_tracked(&tensor1) {
+                        let tensor1_grad = grad.clone().mul(tensor2.clone())?.affine(value, 0.)?;
+                        ctx.add(&tensor1, tensor1_grad)?;
+                    }
 
                     // Gradient for tensor2 is grad * value * tensor1
-                    let tensor2_grad = grad.mul(tensor1.clone())?.affine(value, 0.)?;
-                    ctx.add(&tensor2, tensor2_grad)?;
+                    if ctx.is_tracked(&tensor2) {
+                        let tensor2_grad = grad.mul(tensor1.clone())?.affine(value, 0.)?;
+                        ctx.add(&tensor2, tensor2_grad)?;
+                    }
                 }
                 LazyOp::Lerp(crate::ops::Lerp { input, end, weight }) => {
                     let input = input.wrap();
@@ -552,25 +599,38 @@ impl Tensor {
                     // dL/dend    = grad * weight
                     // dL/dweight = grad * (end - input)   (only when weight is a tensor)
 
-                    // Compute the gradients that are common to both scalar and tensor `weight`.
-                    let (input_grad, end_grad) = match weight {
+                    let input_tracked = ctx.is_tracked(&input);
+                    let end_tracked = ctx.is_tracked(&end);
+
+                    match weight {
                         TensorTypeOrScalarEnum::Tensor(weight_tensor) => {
-                            let input_grad = grad.clone().mul((1.0 - weight_tensor.clone())?)?;
-                            let end_grad = grad.clone().mul(weight_tensor.clone())?;
+                            if input_tracked {
+                                let input_grad =
+                                    grad.clone().mul((1.0 - weight_tensor.clone())?)?;
+                                ctx.add(&input, input_grad)?;
+                            }
+                            if end_tracked {
+                                let end_grad = grad.clone().mul(weight_tensor.clone())?;
+                                ctx.add(&end, end_grad)?;
+                            }
                             // Gradient w.r.t. the weight tensor itself.
-                            let weight_grad = grad.clone().mul(end.clone().sub(input.clone())?)?;
-                            ctx.add(&weight_tensor, weight_grad)?;
-                            (input_grad, end_grad)
+                            if ctx.is_tracked(&weight_tensor) {
+                                let weight_grad =
+                                    grad.clone().mul(end.clone().sub(input.clone())?)?;
+                                ctx.add(&weight_tensor, weight_grad)?;
+                            }
                         }
                         TensorTypeOrScalarEnum::Scalar(weight_scalar) => {
-                            let input_grad = grad.clone().mul(1.0 - weight_scalar)?;
-                            let end_grad = grad.mul(weight_scalar)?;
-                            (input_grad, end_grad)
+                            if input_tracked {
+                                let input_grad = grad.clone().mul(1.0 - weight_scalar)?;
+                                ctx.add(&input, input_grad)?;
+                            }
+                            if end_tracked {
+                                let end_grad = grad.mul(weight_scalar)?;
+                                ctx.add(&end, end_grad)?;
+                            }
                         }
                     };
-
-                    ctx.add(&input, input_grad)?;
-                    ctx.add(&end, end_grad)?;
                 }
                 LazyOp::WhereCond(WhereCond {
                     condition,
@@ -580,14 +640,27 @@ impl Tensor {
                     let condition = condition.wrap();
                     let on_true = on_true.map_tensor(|t| t.wrap())?;
                     let on_false = on_false.map_tensor(|t| t.wrap())?;
-                    let zeros = grad.clone().zeros_like(Default::default())?;
-                    if let TensorTypeOrScalarEnum::Tensor(on_true) = on_true {
-                        let t_grad = grad.clone().where_cond(condition.clone(), zeros.clone())?;
-                        ctx.add(&on_true, t_grad)?;
-                    }
-                    if let TensorTypeOrScalarEnum::Tensor(on_false) = on_false {
-                        let f_grad = zeros.clone().where_cond(condition.clone(), grad)?;
-                        ctx.add(&on_false, f_grad)?;
+
+                    let on_true_tracked =
+                        matches!(&on_true, TensorTypeOrScalarEnum::Tensor(t) if ctx.is_tracked(t));
+                    let on_false_tracked =
+                        matches!(&on_false, TensorTypeOrScalarEnum::Tensor(t) if ctx.is_tracked(t));
+
+                    if on_true_tracked || on_false_tracked {
+                        let zeros = grad.clone().zeros_like(Default::default())?;
+                        if let TensorTypeOrScalarEnum::Tensor(on_true) = on_true {
+                            if ctx.is_tracked(&on_true) {
+                                let t_grad =
+                                    grad.clone().where_cond(condition.clone(), zeros.clone())?;
+                                ctx.add(&on_true, t_grad)?;
+                            }
+                        }
+                        if let TensorTypeOrScalarEnum::Tensor(on_false) = on_false {
+                            if ctx.is_tracked(&on_false) {
+                                let f_grad = zeros.clone().where_cond(condition.clone(), grad)?;
+                                ctx.add(&on_false, f_grad)?;
+                            }
+                        }
                     }
                 }
                 LazyOp::Matmul(Matmul {
@@ -603,20 +676,34 @@ impl Tensor {
                     let rhs = rhs.wrap();
                     let bias = bias.map(|t| t.wrap());
 
-                    let lhs_grad =
-                        grad.clone()
-                            .gemm(rhs.clone(), None, trans_dst, !trans_rhs, trans_lhs)?;
-                    ctx.add(&lhs, lhs_grad)?;
+                    if ctx.is_tracked(&lhs) {
+                        let lhs_grad = grad.clone().gemm(
+                            rhs.clone(),
+                            None,
+                            trans_dst,
+                            !trans_rhs,
+                            trans_lhs,
+                        )?;
+                        ctx.add(&lhs, lhs_grad)?;
+                    }
 
-                    let rhs_grad =
-                        lhs.clone()
-                            .gemm(grad.clone(), None, !trans_lhs, trans_dst, trans_rhs)?;
-                    ctx.add(&rhs, rhs_grad)?;
+                    if ctx.is_tracked(&rhs) {
+                        let rhs_grad = lhs.clone().gemm(
+                            grad.clone(),
+                            None,
+                            !trans_lhs,
+                            trans_dst,
+                            trans_rhs,
+                        )?;
+                        ctx.add(&rhs, rhs_grad)?;
+                    }
 
                     // Calculate the gradient with respect to the bias term
                     if let Some(bias) = bias {
-                        let bias_grad = grad.sum(1, true)?; // Assuming bias is summed over the appropriate axis
-                        ctx.add(&bias, bias_grad)?;
+                        if ctx.is_tracked(&bias) {
+                            let bias_grad = grad.sum(1, true)?; // Assuming bias is summed over the appropriate axis
+                            ctx.add(&bias, bias_grad)?;
+                        }
                     }
                 }
                 LazyOp::Reindex(Reindex::Broadcast(Broadcast { src, .. })) => {
@@ -992,19 +1079,21 @@ impl Tensor {
                 }
                 LazyOp::Softmax(Softmax { input: arg, dim }) => {
                     let arg = arg.wrap();
-                    // Get the softmax output (s)
-                    let softmax_output = node.clone();
+                    if ctx.is_tracked(&arg) {
+                        // Get the softmax output (s)
+                        let softmax_output = node.clone();
 
-                    // Compute the sum of the gradients
-                    let sum_grad = grad.clone().sum(dim, true)?;
+                        // Compute the sum of the gradients
+                        let sum_grad = grad.clone().sum(dim, true)?;
 
-                    // Compute the gradient with respect to the softmax input
-                    let input_grad = softmax_output
-                        .clone()
-                        .mul(grad.clone())?
-                        .sub(softmax_output.clone().mul(sum_grad)?)?;
+                        // Compute the gradient with respect to the softmax input
+                        let input_grad = softmax_output
+                            .clone()
+                            .mul(grad.clone())?
+                            .sub(softmax_output.clone().mul(sum_grad)?)?;
 
-                    ctx.add(&arg, input_grad)?;
+                        ctx.add(&arg, input_grad)?;
+                    }
                 }
                 LazyOp::Norm(NormOp::LayerNorm(Norm {
                     input: arg,
@@ -1015,6 +1104,15 @@ impl Tensor {
                     let arg = arg.wrap();
                     let scale = scale.map(|t| t.wrap());
                     let bias = bias.map(|t| t.wrap());
+
+                    let arg_tracked = ctx.is_tracked(&arg);
+                    let scale_tracked = scale.as_ref().map_or(false, |s| ctx.is_tracked(s));
+                    let bias_tracked = bias.as_ref().map_or(false, |b| ctx.is_tracked(b));
+
+                    // Skip all computation if nothing is tracked
+                    if !arg_tracked && !scale_tracked && !bias_tracked {
+                        continue;
+                    }
 
                     // TODO(vinhowe): The following is an AI-generated celebration of laziness,
                     // and it requires many, many backward ops for a single forward op. This should
@@ -1046,57 +1144,64 @@ impl Tensor {
                     let x_normed = arg.clone().sub(mean)?.div(std.clone())?;
 
                     // Compute gradients w.r.t scale (gamma) and bias (beta)
-                    let grad_gamma = x_normed
-                        .clone()
-                        .mul(grad.clone())?
-                        .sum(sum_axes.as_slice(), true)?;
-                    if let Some(scale) = scale.as_ref() {
-                        ctx.add(&scale.clone(), grad_gamma.squeeze(())?)?;
+                    if scale_tracked {
+                        let grad_gamma = x_normed
+                            .clone()
+                            .mul(grad.clone())?
+                            .sum(sum_axes.as_slice(), true)?;
+                        if let Some(scale) = scale.as_ref() {
+                            ctx.add(&scale.clone(), grad_gamma.squeeze(())?)?;
+                        }
                     }
 
-                    if let Some(bias) = bias {
-                        let grad_beta = grad.clone().sum(sum_axes.as_slice(), true)?;
-                        ctx.add(&bias, grad_beta.squeeze(())?)?;
+                    if bias_tracked {
+                        if let Some(bias) = bias {
+                            let grad_beta = grad.clone().sum(sum_axes.as_slice(), true)?;
+                            ctx.add(&bias, grad_beta.squeeze(())?)?;
+                        }
                     }
 
-                    // Compute gradient w.r.t normalized input
-                    let grad_x_normed = match scale {
-                        Some(scale) => grad.clone().mul(scale)?,
-                        None => grad.clone(),
-                    };
+                    // Compute gradient w.r.t input x
+                    if arg_tracked {
+                        // Compute gradient w.r.t normalized input
+                        let grad_x_normed = match scale {
+                            Some(scale) => grad.clone().mul(scale)?,
+                            None => grad.clone(),
+                        };
 
-                    // Compute gradients w.r.t mean and variance (using correct reduction axis)
-                    // dL/dmu = sum(dL/dx_normed * (-1/std)) over norm_axis
-                    let grad_mean = grad_x_normed
-                        .clone()
-                        .sum(norm_axis, true)?
-                        .neg()?
-                        .div(std.clone())?;
+                        // Compute gradients w.r.t mean and variance (using correct reduction axis)
+                        // dL/dmu = sum(dL/dx_normed * (-1/std)) over norm_axis
+                        let grad_mean = grad_x_normed
+                            .clone()
+                            .sum(norm_axis, true)?
+                            .neg()?
+                            .div(std.clone())?;
 
-                    // dL/dVar = sum(dL/dx_normed * (-x_normed)) / (2 * std^2) over norm_axis
-                    let grad_var = grad_x_normed
-                        .clone()
-                        .mul(x_normed.clone())?
-                        .sum(norm_axis, true)?
-                        .neg()?
-                        .div(var.clone().affine(1., eps)?)? // std^2 = var + eps
-                        .affine(0.5, 0.)?;
+                        // dL/dVar = sum(dL/dx_normed * (-x_normed)) / (2 * std^2) over norm_axis
+                        let grad_var = grad_x_normed
+                            .clone()
+                            .mul(x_normed.clone())?
+                            .sum(norm_axis, true)?
+                            .neg()?
+                            .div(var.clone().affine(1., eps)?)? // std^2 = var + eps
+                            .affine(0.5, 0.)?;
 
-                    // Compute gradient w.r.t input x using the chain rule:
-                    // dL/dx = (dL/dx_normed / std) + (dL/dvar * dvar/dx) + (dL/dmu * dmu/dx)
-                    // dvar/dx = (2/N) * (x - mu)
-                    // dmu/dx = 1/N
-                    let grad_x = grad_x_normed
-                        .div(std.clone())? // (dL/dx_normed / std)
-                        .add(
-                            grad_var
-                                .mul(x_normed.clone().mul(std)?)?
-                                .affine(2. / d, 0.)?,
-                        )?
-                        // dL/dvar * (2/N) * (x - mu) = dL/dvar * (2/N) * x_normed * std
-                        .add(grad_mean.affine(1. / d, 0.)?)?; // dL/dmu * (1/N)
+                        // Compute gradient w.r.t input x using the chain rule:
+                        // dL/dx = (dL/dx_normed / std) + (dL/dvar * dvar/dx) + (dL/dmu * dmu/dx)
+                        // dvar/dx = (2/N) * (x - mu)
+                        // dmu/dx = 1/N
+                        let grad_x = grad_x_normed
+                            .div(std.clone())? // (dL/dx_normed / std)
+                            .add(
+                                grad_var
+                                    .mul(x_normed.clone().mul(std)?)?
+                                    .affine(2. / d, 0.)?,
+                            )?
+                            // dL/dvar * (2/N) * (x - mu) = dL/dvar * (2/N) * x_normed * std
+                            .add(grad_mean.affine(1. / d, 0.)?)?; // dL/dmu * (1/N)
 
-                    ctx.add(&arg, grad_x)?;
+                        ctx.add(&arg, grad_x)?;
+                    }
                 }
                 LazyOp::Norm(NormOp::RMSNorm(Norm {
                     input: arg,
@@ -1106,6 +1211,15 @@ impl Tensor {
                 })) => {
                     let arg = arg.wrap();
                     let scale = scale.map(|t| t.wrap());
+
+                    let arg_tracked = ctx.is_tracked(&arg);
+                    let scale_tracked = scale.as_ref().map_or(false, |s| ctx.is_tracked(s));
+
+                    // Skip all computation if nothing is tracked
+                    if !arg_tracked && !scale_tracked {
+                        continue;
+                    }
+
                     // Root Mean Square Layer Normalization (RMSNorm) backward pass.
                     // See https://arxiv.org/abs/1910.07467 for formulation.
                     // Forward: y = scale * (x * inv_std) where
@@ -1136,36 +1250,41 @@ impl Tensor {
                     let x_normed = arg.clone().mul(inv_std.clone())?;
 
                     // Gradient w.r.t. scale (gamma)
-                    let grad_gamma = x_normed
-                        .clone()
-                        .mul(grad.clone())?
-                        .sum(sum_axes.as_slice(), true)?;
-                    if let Some(scale) = scale.as_ref() {
-                        ctx.add(&scale.clone(), grad_gamma.squeeze(())?)?;
+                    if scale_tracked {
+                        let grad_gamma = x_normed
+                            .clone()
+                            .mul(grad.clone())?
+                            .sum(sum_axes.as_slice(), true)?;
+                        if let Some(scale) = scale.as_ref() {
+                            ctx.add(&scale.clone(), grad_gamma.squeeze(())?)?;
+                        }
                     }
 
-                    // Intermediate: dY * scale (or identity if no scale)
-                    let grad_scaled = match scale.as_ref() {
-                        Some(scale) => grad.clone().mul(scale.clone())?,
-                        None => grad.clone(),
-                    };
+                    // Compute gradient w.r.t input x
+                    if arg_tracked {
+                        // Intermediate: dY * scale (or identity if no scale)
+                        let grad_scaled = match scale.as_ref() {
+                            Some(scale) => grad.clone().mul(scale.clone())?,
+                            None => grad.clone(),
+                        };
 
-                    // Projection term: sum(dY * scale * x) over norm_axis (keepdim)
-                    let proj = grad_scaled.clone().mul(arg.clone())?.sum(norm_axis, true)?;
+                        // Projection term: sum(dY * scale * x) over norm_axis (keepdim)
+                        let proj = grad_scaled.clone().mul(arg.clone())?.sum(norm_axis, true)?;
 
-                    // inv_std^3
-                    let inv_std_cubed = inv_std.clone().pow(3.0)?;
+                        // inv_std^3
+                        let inv_std_cubed = inv_std.clone().pow(3.0)?;
 
-                    // Compute dX
-                    let term1 = grad_scaled.mul(inv_std.clone())?; // inv_std * dY * scale
-                    let term2 = arg
-                        .clone()
-                        .mul(inv_std_cubed)?
-                        .mul(proj)?
-                        .affine(1.0 / d, 0.0)?; // (x * inv_std^3) * proj / d
-                    let grad_x = term1.sub(term2)?;
+                        // Compute dX
+                        let term1 = grad_scaled.mul(inv_std.clone())?; // inv_std * dY * scale
+                        let term2 = arg
+                            .clone()
+                            .mul(inv_std_cubed)?
+                            .mul(proj)?
+                            .affine(1.0 / d, 0.0)?; // (x * inv_std^3) * proj / d
+                        let grad_x = term1.sub(term2)?;
 
-                    ctx.add(&arg, grad_x)?;
+                        ctx.add(&arg, grad_x)?;
+                    }
                 }
                 LazyOp::Affine(Affine { src: arg, mul, .. }) => {
                     let arg = arg.wrap();
@@ -1174,19 +1293,25 @@ impl Tensor {
                 }
                 LazyOp::Gather(Gather { src, ids, dim, .. }) => {
                     let src = src.wrap();
-                    let ids = ids.wrap();
-                    // We can't use or_insert here because we need to scatter into a zero tensor.
-                    let sum_grad = src.clone().zeros_like(Default::default())?;
-                    let src_grad = sum_grad.scatter_add(ids.clone(), grad.clone(), dim)?;
-                    ctx.add(&src, src_grad)?;
+                    if ctx.is_tracked(&src) {
+                        let ids = ids.wrap();
+                        // We can't use or_insert here because we need to scatter into a zero tensor.
+                        let sum_grad = src.clone().zeros_like(Default::default())?;
+                        let src_grad = sum_grad.scatter_add(ids.clone(), grad.clone(), dim)?;
+                        ctx.add(&src, src_grad)?;
+                    }
                 }
                 LazyOp::ScatterAdd(ScatterAdd { dst, src, ids, dim }) => {
                     let dst = dst.wrap();
                     let src = src.wrap();
                     let ids = ids.wrap();
-                    ctx.add(&dst, grad.clone())?;
-                    let src_grad = grad.gather(dim, ids.clone())?;
-                    ctx.add(&src, src_grad)?;
+                    if ctx.is_tracked(&dst) {
+                        ctx.add(&dst, grad.clone())?;
+                    }
+                    if ctx.is_tracked(&src) {
+                        let src_grad = grad.gather(dim, ids.clone())?;
+                        ctx.add(&src, src_grad)?;
+                    }
                 }
                 LazyOp::Trilu(TriluOp { src: arg, upper, k }) => {
                     let arg = arg.wrap();
@@ -1202,25 +1327,30 @@ impl Tensor {
                     dst_dtype: _,
                 }) => {
                     let input = input.wrap();
-                    ctx.add(&input, grad.cast(input.dtype())?)?;
+                    if ctx.is_tracked(&input) {
+                        ctx.add(&input, grad.cast(input.dtype())?)?;
+                    }
                 }
                 LazyOp::Concat(Concat { inputs, dim }) => {
                     // Split the upstream gradient along `dim` and route slices to inputs
                     let mut offset: usize = 0;
                     for input in inputs.iter() {
                         let input = input.clone().wrap();
-                        let mut ranges = rvec![];
-                        for axis in 0..node.dim() {
-                            if axis == dim {
-                                let len = input.shape()[dim];
-                                ranges.push(offset..offset + len);
-                            } else {
-                                ranges.push(0..input.shape()[axis]);
+                        let input_dim_len = input.shape()[dim];
+                        // Only compute slice if this input is tracked
+                        if ctx.is_tracked(&input) {
+                            let mut ranges = rvec![];
+                            for axis in 0..node.dim() {
+                                if axis == dim {
+                                    ranges.push(offset..offset + input_dim_len);
+                                } else {
+                                    ranges.push(0..input.shape()[axis]);
+                                }
                             }
+                            let input_grad = grad.clone().slice(&ranges)?;
+                            ctx.add(&input, input_grad)?;
                         }
-                        let input_grad = grad.clone().slice(&ranges)?;
-                        ctx.add(&input, input_grad)?;
-                        offset += input.shape()[dim];
+                        offset += input_dim_len;
                     }
                 }
                 LazyOp::Norm(_) => todo!("norm backprop"),
@@ -1235,8 +1365,10 @@ impl Tensor {
                     ..
                 }) => {
                     let arg = arg.wrap();
-                    let arg_grad = grad.rope_backward_(dim, base, offset)?;
-                    ctx.add(&arg, arg_grad)?;
+                    if ctx.is_tracked(&arg) {
+                        let arg_grad = grad.rope_backward_(dim, base, offset)?;
+                        ctx.add(&arg, arg_grad)?;
+                    }
                 }
                 LazyOp::Conv(_) => todo!("conv backprop"),
                 LazyOp::IndexWrite(_) => todo!("index write backprop"),
