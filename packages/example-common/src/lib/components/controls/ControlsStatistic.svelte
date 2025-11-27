@@ -1,7 +1,7 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
 
-	import KatexBlock from '../KatexBlock.svelte';
+	import { KatexBlock } from '../../';
 
 	type $$Props = {
 		label: string;
@@ -12,7 +12,6 @@
 	let { label, children, funFact }: $$Props = $props();
 </script>
 
-<!-- class="px-1 py-0.5 bg-gradient-to-b from-neutral-200 via-neutral-300/5 to-transparent border border-neutral-400/80 flex flex-col justify-between text-neutral-800" -->
 <div
 	class="px-1 py-0.5 bg-neutral-100/70 border border-neutral-400/60 flex flex-col justify-between text-neutral-800"
 >

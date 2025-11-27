@@ -1,5 +1,5 @@
 <script lang="ts">
-	import ActionButton from '$lib/components/ActionButton.svelte';
+	import { ActionButton } from 'example-common';
 	import Controls from '$lib/components/controls/Controls.svelte';
 	import { config, initSharedConfigUrlSync, replaceConfig } from '$lib/workspace/config.svelte';
 	import { lastSessionStore } from '$lib/workspace/lastSessionStore';
@@ -40,7 +40,7 @@
 		Settings2,
 		SquareIcon,
 		StepForwardIcon
-	} from 'lucide-svelte';
+	} from '@lucide/svelte/icons';
 	import { onDestroy, onMount } from 'svelte';
 
 	import About from './tabs/About.svelte';

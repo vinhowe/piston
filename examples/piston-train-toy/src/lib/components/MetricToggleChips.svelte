@@ -1,5 +1,5 @@
 <script lang="ts">
-	import CheckboxIcon from './controls/checkbox/CheckboxIcon.svelte';
+	import { CheckboxIcon } from 'example-common';
 
 	let {
 		items,

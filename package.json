@@ -5,6 +5,7 @@
   "private": true,
   "devDependencies": {
     "pkg-pr-new": "0.0.15",
+    "svelte": "^5.45.1",
     "wasm-pack": "0.13.1"
   },
   "pnpm": {
@@ -17,7 +18,8 @@
       "@codemirror/state": "^6.5.2",
       "@codemirror/view": "^6.37.2",
       "@lezer/highlight": "^1.2.1",
-      "codemirror": "^6.0.1"
+      "codemirror": "^6.0.1",
+      "svelte": "^5.45.1"
     }
   },
   "scripts": {

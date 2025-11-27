@@ -2,7 +2,7 @@
 	import CuteLogo from '$lib/components/CuteLogo.svelte';
 	import FN from '$lib/components/footnotes/Footnote.svelte';
 	import FootnotesProvider from '$lib/components/footnotes/FootnotesProvider.svelte';
-	import UserGuideTooltip from '$lib/components/UserGuideTooltip.svelte';
+	import { UserGuideTooltip } from 'example-common';
 	import { config, setPreset, validateConfig } from '$lib/workspace/config.svelte';
 	import {
 		browserInfo,
@@ -14,7 +14,7 @@
 	import { openConfigAndScrollToControl, switchToMetrics } from '$lib/workspace/ui.svelte';
 	import { getVisualizationExampleById } from '$lib/workspace/visualizationExamples';
 	import { trainingState, updateVisualizerScript } from '$lib/workspace/workers.svelte';
-	import { ExternalLink, Gpu } from 'lucide-svelte';
+	import { ExternalLink, Gpu } from '@lucide/svelte/icons';
 	import { onMount } from 'svelte';
 
 	const iconStrokeWidth = $derived(getIconStrokeWidth());

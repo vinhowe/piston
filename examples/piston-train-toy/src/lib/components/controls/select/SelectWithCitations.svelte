@@ -1,8 +1,10 @@
 <script lang="ts">
-	import type { SelectOption } from './SelectInput.svelte';
-
-	import Citations, { type CitationEntries as CitationsType } from '../Citations.svelte';
-	import SelectInput from './SelectInput.svelte';
+	import {
+		SelectInput,
+		type SelectOption,
+		Citations,
+		type CitationEntries as CitationsType
+	} from 'example-common';
 
 	type CitationOption = SelectOption<{
 		title?: string;

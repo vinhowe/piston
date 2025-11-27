@@ -1,6 +1,5 @@
 <script lang="ts">
-	import FormLabel from './FormLabel.svelte';
-	import ResetValueButton from './ResetValueButton.svelte';
+	import { FormLabel, ResetValueButton } from 'example-common';
 	import SelectWithCitations from './select/SelectWithCitations.svelte';
 
 	let {

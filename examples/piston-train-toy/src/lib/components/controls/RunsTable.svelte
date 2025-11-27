@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { clearPastRuns, runsMap } from '$lib/workspace/runs.svelte';
 	import { getIconStrokeWidth } from '$lib/workspace/ui.svelte';
-	import { TrashIcon } from 'lucide-svelte';
+	import { Trash } from '@lucide/svelte/icons';
 
 	const runs = $derived(Array.from(runsMap.values()).toReversed());
 
@@ -17,10 +17,7 @@
 			class="text-neutral-800 cursor-pointer text-sm p-1 bg-neutral-100 w-full flex items-center gap-1"
 			onclick={clearPastRuns}
 		>
-			<TrashIcon
-				class="inline-block h-3.5 w-3.5 -translate-y-[0.5px]"
-				strokeWidth={iconStrokeWidth}
-			/>
+			<Trash class="inline-block h-3.5 w-3.5 -translate-y-[0.5px]" strokeWidth={iconStrokeWidth} />
 			Clear past runs
 		</button>
 	{/if}

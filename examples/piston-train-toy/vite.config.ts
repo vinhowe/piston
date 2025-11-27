@@ -53,6 +53,8 @@ export default defineConfig(({ mode }) => {
 		},
 		resolve: {
 			dedupe: [
+				'svelte',
+				'svelte/legacy',
 				'@codemirror/state',
 				'@codemirror/view',
 				'@codemirror/language',

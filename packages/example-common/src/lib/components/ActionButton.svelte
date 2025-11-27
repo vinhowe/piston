@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { twMerge } from 'tailwind-merge';
 	import type { Snippet } from 'svelte';
 
 	interface Props {
@@ -55,7 +56,7 @@
 
 <button
 	type="button"
-	class="{baseClasses} {computedColorClass} {additionalClasses || ''}"
+	class={twMerge(baseClasses, computedColorClass, additionalClasses || '')}
 	{disabled}
 	{...restProps}
 >

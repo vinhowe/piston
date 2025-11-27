@@ -12,9 +12,7 @@
 	} from '@piston-ml/piston-web';
 	import { MediaQuery } from 'svelte/reactivity';
 
-	import CheckboxInput from './checkbox/CheckboxInput.svelte';
-	import SelectInput from './select/SelectInput.svelte';
-	import Slider from './Slider.svelte';
+	import { CheckboxInput, SelectInput, Slider } from 'example-common';
 
 	let logScale = $state(false);
 	let chartContainer: HTMLDivElement;
@@ -369,7 +367,12 @@
 
 		<!-- Log scale checkbox -->
 		<div class="mt-1">
-			<CheckboxInput label="Log Scale Y-Axis" bind:checked={logScale} labelClass="ml-1 text-xs" />
+			<CheckboxInput
+				id="log-scale-y-axis"
+				label="Log Scale Y-Axis"
+				bind:checked={logScale}
+				labelClass="ml-1 text-xs"
+			/>
 		</div>
 	</div>
 
@@ -377,6 +380,7 @@
 	<div class="space-y-1">
 		<!-- Steps to show in visualization -->
 		<Slider
+			id="steps-to-show"
 			label="Steps to Show"
 			bind:value={stepsToShow}
 			min={10}
@@ -389,6 +393,7 @@
 		<!-- Linear scheduler parameters -->
 		{#if config.optimizer.lrScheduler.type === 'linear'}
 			<Slider
+				id="lr-scheduler-linear-start-factor"
 				label="Start Factor"
 				bind:value={config.optimizer.lrScheduler.linearSchedule.startFactor}
 				min={0.01}
@@ -398,6 +403,7 @@
 				onReset={() => resetConfigToDefaults('optimizer.lrScheduler.linearSchedule.startFactor')}
 			/>
 			<Slider
+				id="lr-scheduler-linear-end-factor"
 				label="End Factor"
 				bind:value={config.optimizer.lrScheduler.linearSchedule.endFactor}
 				min={0.01}
@@ -407,6 +413,7 @@
 				onReset={() => resetConfigToDefaults('optimizer.lrScheduler.linearSchedule.endFactor')}
 			/>
 			<Slider
+				id="lr-scheduler-linear-total-iters"
 				label="Total Iterations"
 				bind:value={config.optimizer.lrScheduler.linearSchedule.totalIters}
 				min={1}
@@ -420,6 +427,7 @@
 		<!-- Constant scheduler parameters -->
 		{#if config.optimizer.lrScheduler.type === 'constant'}
 			<Slider
+				id="lr-scheduler-constant-factor"
 				label="Factor"
 				bind:value={config.optimizer.lrScheduler.constantSchedule.factor}
 				min={0.01}
@@ -429,6 +437,7 @@
 				onReset={() => resetConfigToDefaults('optimizer.lrScheduler.constantSchedule.factor')}
 			/>
 			<Slider
+				id="lr-scheduler-constant-total-iters"
 				label="Total Iterations"
 				bind:value={config.optimizer.lrScheduler.constantSchedule.totalIters}
 				min={1}
@@ -442,6 +451,7 @@
 		<!-- Cosine annealing scheduler parameters -->
 		{#if config.optimizer.lrScheduler.type === 'cosine'}
 			<Slider
+				id="lr-scheduler-cosine-annealing-t-max"
 				label="Maximum Iterations"
 				bind:value={config.optimizer.lrScheduler.cosineAnnealingSchedule.tMax}
 				min={1}
@@ -451,6 +461,7 @@
 				onReset={() => resetConfigToDefaults('optimizer.lrScheduler.cosineAnnealingSchedule.tMax')}
 			/>
 			<Slider
+				id="lr-scheduler-cosine-annealing-eta-min"
 				label="Minimum Learning Rate"
 				bind:value={config.optimizer.lrScheduler.cosineAnnealingSchedule.etaMin}
 				min={1e-5}
@@ -468,6 +479,7 @@
 		<!-- Step scheduler parameters -->
 		{#if config.optimizer.lrScheduler.type === 'step'}
 			<Slider
+				id="lr-scheduler-step-step-size"
 				label="Step Size"
 				bind:value={config.optimizer.lrScheduler.stepSchedule.stepSize}
 				min={1}
@@ -477,6 +489,7 @@
 				onReset={() => resetConfigToDefaults('optimizer.lrScheduler.stepSchedule.stepSize')}
 			/>
 			<Slider
+				id="lr-scheduler-step-gamma"
 				label="Gamma"
 				bind:value={config.optimizer.lrScheduler.stepSchedule.gamma}
 				min={0.01}
@@ -490,6 +503,7 @@
 		<!-- Exponential scheduler parameters -->
 		{#if config.optimizer.lrScheduler.type === 'exponential'}
 			<Slider
+				id="lr-scheduler-exponential-gamma"
 				label="Gamma"
 				bind:value={config.optimizer.lrScheduler.exponentialSchedule.gamma}
 				min={0.8}

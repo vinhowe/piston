@@ -3,6 +3,7 @@
 
 	import KatexBlock from '../KatexBlock.svelte';
 	import Citations, { type CitationEntries as CitationsType } from './Citations.svelte';
+	import { twMerge } from 'tailwind-merge';
 
 	type $$Props = {
 		title?: string;
@@ -33,7 +34,7 @@
 	}
 </script>
 
-<div {id} class={`border border-panel-border-base overflow-hidden ${rootClass}`.trim()}>
+<div {id} class={twMerge(`border border-panel-border-base overflow-hidden`, rootClass)}>
 	<div class={headerClass}>
 		{#if title}
 			<div class="flex flex-col">

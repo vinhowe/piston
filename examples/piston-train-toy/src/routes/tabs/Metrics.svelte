@@ -1,10 +1,9 @@
 <script lang="ts">
-	import RadioGroupInput from '$lib/components/controls/radio/RadioGroupInput.svelte';
 	import MetricsSection from '$lib/components/metrics/MetricsSection.svelte';
 	import RunChart from '$lib/components/metrics/RunChart.svelte';
 	import ValidationCompletionsViewer from '$lib/components/metrics/validationCompletions/ValidationCompletionsViewer.svelte';
-	import ToggleChips from '$lib/components/ToggleChips.svelte';
-	import UserGuideTooltip from '$lib/components/UserGuideTooltip.svelte';
+	import ToggleChips from '$lib/components/MetricToggleChips.svelte';
+	import { UserGuideTooltip } from 'example-common';
 	import { config } from '$lib/workspace/config.svelte';
 	import {
 		getCurrentRun,
@@ -20,9 +19,10 @@
 	} from '$lib/workspace/ui.svelte';
 	import { sortWithPriority } from '$lib/workspace/utils';
 	import { updateVisualizerTarget } from '$lib/workspace/workers.svelte';
-	import { BotMessageSquare, ExternalLink } from 'lucide-svelte';
+	import { BotMessageSquare, ExternalLink } from '@lucide/svelte/icons';
 
 	import Visualize from '../../lib/components/Visualize.svelte';
+	import { RadioGroupInput } from 'example-common';
 
 	const iconStrokeWidth = $derived(getIconStrokeWidth());
 

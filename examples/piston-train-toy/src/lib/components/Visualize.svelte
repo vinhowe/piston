@@ -1,7 +1,6 @@
 <script lang="ts">
 	import type { MatchBox } from '$lib/train/visualizer';
 
-	import KatexBlock from '$lib/components/KatexBlock.svelte';
 	import { config, equalsConfigDefault, resetConfigToDefaults } from '$lib/workspace/config.svelte';
 	import {
 		getIconStrokeWidth,
@@ -52,8 +51,9 @@
 		SquarePenIcon,
 		ZoomInIcon,
 		ZoomOutIcon
-	} from 'lucide-svelte';
+	} from '@lucide/svelte/icons';
 	import { onMount, tick } from 'svelte';
+	import { KatexBlock } from 'example-common';
 
 	const iconStrokeWidth = $derived(getIconStrokeWidth());
 	let editorContainer: HTMLDivElement | null = $state(null);

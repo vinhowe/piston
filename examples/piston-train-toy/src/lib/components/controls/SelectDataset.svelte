@@ -4,8 +4,12 @@
 	import { DATASET_CONFIG_METADATA } from '$lib/train/data';
 	import { config, MODEL_TYPES } from '$lib/workspace/config.svelte';
 
-	import Citations, { type CitationEntries as CitationsType } from './Citations.svelte';
-	import SelectInput, { type SelectOption } from './select/SelectInput.svelte';
+	import {
+		SelectInput,
+		type SelectOption,
+		Citations,
+		type CitationEntries as CitationsType
+	} from 'example-common';
 
 	type DatasetName = keyof typeof DATASET_CONFIG_METADATA;
 

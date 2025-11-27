@@ -1,7 +1,7 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
 
-	import ChevronIcon from '../ChevronIcon.svelte';
+	import { ChevronIcon } from 'example-common';
 
 	type $$Props = {
 		title: string;
