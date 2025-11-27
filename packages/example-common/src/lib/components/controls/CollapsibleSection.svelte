@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
 
+	import { twMerge } from 'tailwind-merge';
 	import ChevronIcon from '../ChevronIcon.svelte';
 
 	type $$Props = {
@@ -31,7 +32,7 @@
 	// bg-neutral-300
 </script>
 
-<div class={`border-b border-panel-border-base overflow-hidden ${wrapperClass}`.trim()}>
+<div class={twMerge(`border-b border-panel-border-base overflow-hidden`, wrapperClass)}>
 	<div
 		class="px-1 py-0.5 flex justify-between items-center cursor-pointer select-none bg-gradient-to-r from-neutral-100 to-neutral-300 border-panel-border-base"
 		class:border-b={isOpen}

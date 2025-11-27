@@ -1,11 +1,12 @@
 <script lang="ts">
+	import { twMerge } from 'tailwind-merge';
 	import type { Snippet } from 'svelte';
 
-	import Portal from 'svelte-portal';
+	import Portal from './Portal.svelte';
 
-	import ChevronIcon from '../../ChevronIcon.svelte';
-	import FormLabel from '../FormLabel.svelte';
-	import ResetValueButton from '../ResetValueButton.svelte';
+	import FormLabel from './FormLabel.svelte';
+	import ChevronIcon from '../ChevronIcon.svelte';
+	import ResetValueButton from './ResetValueButton.svelte';
 
 	export type SelectOption<T extends object = Record<string, unknown>> = {
 		value: string | number;
@@ -53,7 +54,12 @@
 	const flatOptions = $derived(hasGroups ? (groups as Group[]).flatMap((g) => g.options) : options);
 
 	type MenuGroup = { kind: 'group'; id: string; label: string };
-	type MenuOpt = { kind: 'option'; id: string; option: Option; optIndex: number };
+	type MenuOpt = {
+		kind: 'option';
+		id: string;
+		option: Option;
+		optIndex: number;
+	};
 	type MenuItem = MenuGroup | MenuOpt;
 
 	function buildMenuItems(): MenuItem[] {
@@ -72,7 +78,12 @@
 			out.push({ kind: 'group', id: `g${gi}`, label: g.label });
 			for (let i = 0; i < g.options.length; i++) {
 				const opt = g.options[i]!;
-				out.push({ kind: 'option', id: `g${gi}o${i}`, option: opt, optIndex: offset + i });
+				out.push({
+					kind: 'option',
+					id: `g${gi}o${i}`,
+					option: opt,
+					optIndex: offset + i
+				});
 			}
 			offset += g.options.length;
 		}
@@ -269,7 +280,7 @@
 	});
 </script>
 
-<div class="relative {wrapperClass}" bind:this={wrapperEl}>
+<div class={twMerge('relative', wrapperClass)} bind:this={wrapperEl}>
 	{#if label}
 		<FormLabel forInputId={id} value={label} />
 	{/if}
@@ -300,6 +311,7 @@
 			</div>
 
 			{#if isOpen}
+				<!-- @ts-expect-error Portal is not typed -->
 				<Portal target="body">
 					<ul
 						bind:this={menuEl}

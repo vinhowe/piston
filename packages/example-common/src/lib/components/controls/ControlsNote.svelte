@@ -1,11 +1,12 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
 
-	import CircleAlertIcon from 'lucide-svelte/icons/circle-alert';
-	import InfoIcon from 'lucide-svelte/icons/info';
-	import TriangleAlertIcon from 'lucide-svelte/icons/triangle-alert';
+	import CircleAlertIcon from '@lucide/svelte/icons/circle-alert';
+	import InfoIcon from '@lucide/svelte/icons/info';
+	import TriangleAlertIcon from '@lucide/svelte/icons/triangle-alert';
 
-	import KatexBlock from '../KatexBlock.svelte';
+	import { KatexBlock } from '../../';
+	import { twMerge } from 'tailwind-merge';
 
 	type $$Props = {
 		label: string;
@@ -29,10 +30,16 @@
 </script>
 
 <div
-	class={`flex flex-col py-0.5 p-1 text-neutral-800 items-start border ${borderAndBackgroundClasses}`}
+	class={twMerge(
+		'flex flex-col py-0.5 p-1 text-neutral-800 items-start border',
+		borderAndBackgroundClasses
+	)}
 >
 	<span
-		class={`font-bold uppercase text-2xs font-mono tracking-wider flex items-center gap-1.25 ${iconColorClass}`}
+		class={twMerge(
+			'font-bold uppercase text-2xs font-mono tracking-wider flex items-center gap-1.25',
+			iconColorClass
+		)}
 	>
 		{#if type === 'info'}
 			<InfoIcon class="w-3 h-3 shrink-0" strokeWidth={2.8} />

@@ -1,8 +1,8 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount } from "svelte";
 
-	import FormLabel from './FormLabel.svelte';
-	import ResetValueButton from './ResetValueButton.svelte';
+	import FormLabel from "./FormLabel.svelte";
+	import ResetValueButton from "./ResetValueButton.svelte";
 
 	let {
 		min,
@@ -13,14 +13,14 @@
 		tickCount = 10,
 		step = 0.01,
 		debounceMs = 120,
-		label = '',
+		label = "",
 		id,
 		value = $bindable(10),
 		unit,
 		tickFormatter,
 		hasDefaultValue = false,
 		onReset = undefined,
-		class: className
+		class: className,
 	}: {
 		min: number;
 		max: number;
@@ -44,7 +44,7 @@
 	let isDragging = $state(false);
 	let trackRef: HTMLDivElement | null = $state(null);
 	let thumbRef: HTMLDivElement | null = $state(null);
-	let inputValueString = $state('');
+	let inputValueString = $state("");
 	let isInputFocused = $state(false);
 	let lastValidNumericValue = $state(value);
 	let displayValue = $state(value);
@@ -63,15 +63,17 @@
 	// Helper to format exponential notation without trailing zeros in the mantissa
 	function formatExponential(num: number, precision?: number): string {
 		const exponentialString =
-			precision === undefined ? num.toExponential() : num.toExponential(precision);
-		const parts = exponentialString.split('e');
+			precision === undefined
+				? num.toExponential()
+				: num.toExponential(precision);
+		const parts = exponentialString.split("e");
 		if (parts.length === 2) {
 			let mantissa = parts[0];
-			if (mantissa.includes('.')) {
-				while (mantissa.endsWith('0')) {
+			if (mantissa.includes(".")) {
+				while (mantissa.endsWith("0")) {
 					mantissa = mantissa.slice(0, -1);
 				}
-				if (mantissa.endsWith('.')) {
+				if (mantissa.endsWith(".")) {
 					mantissa = mantissa.slice(0, -1);
 				}
 			}
@@ -85,7 +87,7 @@
 		currentValue: number,
 		isLog: boolean,
 		currentStep: number,
-		{ shortExponential = true }: { shortExponential?: boolean } = {}
+		{ shortExponential = true }: { shortExponential?: boolean } = {},
 	): string {
 		if (isLog) {
 			return shortExponential
@@ -186,7 +188,8 @@
 	} {
 		const range = max - min;
 		const currentTickCount = Math.max(2, tickCount);
-		const unroundedTickSize = currentTickCount > 1 ? range / (currentTickCount - 1) : range;
+		const unroundedTickSize =
+			currentTickCount > 1 ? range / (currentTickCount - 1) : range;
 		const exponent = Math.floor(Math.log(unroundedTickSize) / Math.log(base));
 		const fraction = unroundedTickSize / Math.pow(base, exponent);
 
@@ -196,7 +199,12 @@
 		if (base % 2 === 0 && halfB > (localSteps.at(-1) ?? 0) && halfB < base) {
 			localSteps.push(halfB);
 		}
-		if (base === 10 && !localSteps.includes(5) && 5 < base && 5 > (localSteps.at(-1) ?? 0)) {
+		if (
+			base === 10 &&
+			!localSteps.includes(5) &&
+			5 < base &&
+			5 > (localSteps.at(-1) ?? 0)
+		) {
 			localSteps.push(5);
 		}
 		if (base > (localSteps.at(-1) ?? 0)) localSteps.push(base);
@@ -212,8 +220,10 @@
 
 		const niceTickSize = niceFraction * Math.pow(base, exponent);
 		const niceMin = Math.floor(min / niceTickSize) * niceTickSize;
-		let majorTickGroupingFactor = base === 10 ? 5 : base % 2 === 0 && base > 2 ? base / 2 : base;
-		if (majorTickGroupingFactor <= 1 && base > 1) majorTickGroupingFactor = base;
+		let majorTickGroupingFactor =
+			base === 10 ? 5 : base % 2 === 0 && base > 2 ? base / 2 : base;
+		if (majorTickGroupingFactor <= 1 && base > 1)
+			majorTickGroupingFactor = base;
 		const majorSpacing = majorTickGroupingFactor * niceTickSize;
 
 		return { niceTickSize, niceMin, majorTickGroupingFactor, majorSpacing };
@@ -225,7 +235,9 @@
 			const actualLogBase = base > 1 ? base : Math.E;
 			const currentMinForLog = Math.max(EPSILON, min);
 			if (max <= 0 || currentMinForLog <= 0) return clampToRange(targetValue);
-			const k = Math.round(customLog(Math.max(currentMinForLog, targetValue), actualLogBase));
+			const k = Math.round(
+				customLog(Math.max(currentMinForLog, targetValue), actualLogBase),
+			);
 			const snapped = Math.pow(actualLogBase, k);
 			return clampToRange(snapped);
 		}
@@ -324,7 +336,7 @@
 
 	// Handler for keydown events on the input
 	function handleInputKeyDown(e: KeyboardEvent) {
-		if (e.key === 'Enter') {
+		if (e.key === "Enter") {
 			e.preventDefault();
 			// Trigger blur, which will run handleInputBlur
 			(e.target as HTMLInputElement).blur();
@@ -332,7 +344,7 @@
 	}
 
 	let inputWidth = $derived(
-		`${6 + getFormattedInputValue(max, useLog, step, { shortExponential: false }).length * 8}px`
+		`${6 + getFormattedInputValue(max, useLog, step, { shortExponential: false }).length * 8}px`,
 	);
 
 	// Drag Handling
@@ -344,15 +356,18 @@
 			if (!isDragging || !trackRef) return;
 			e.preventDefault(); // Prevent scrolling during drag
 			const rect = trackRef.getBoundingClientRect();
-			const position = Math.max(0, Math.min(100, ((e.clientX - rect.left) / rect.width) * 100));
+			const position = Math.max(
+				0,
+				Math.min(100, ((e.clientX - rect.left) / rect.width) * 100),
+			);
 			scheduleCommit(positionToValue(position, e.altKey));
 		}
 
 		function endDrag() {
 			if (isDragging) {
 				isDragging = false;
-				document.body.style.userSelect = '';
-				document.body.classList.remove('cursor-grabbing');
+				document.body.style.userSelect = "";
+				document.body.classList.remove("cursor-grabbing");
 				if (pointerCaptured && thumbRef && pointerId !== null) {
 					thumbRef.releasePointerCapture(pointerId);
 				}
@@ -371,8 +386,8 @@
 			e.preventDefault();
 			e.stopPropagation();
 			isDragging = true;
-			document.body.style.userSelect = 'none';
-			document.body.classList.add('cursor-grabbing');
+			document.body.style.userSelect = "none";
+			document.body.classList.add("cursor-grabbing");
 			pointerId = e.pointerId;
 			try {
 				thumbRef.setPointerCapture(pointerId);
@@ -389,14 +404,17 @@
 			if (!trackRef) return;
 			e.preventDefault();
 			const rect = trackRef.getBoundingClientRect();
-			const position = Math.max(0, Math.min(100, ((e.clientX - rect.left) / rect.width) * 100));
+			const position = Math.max(
+				0,
+				Math.min(100, ((e.clientX - rect.left) / rect.width) * 100),
+			);
 			scheduleCommit(positionToValue(position, e.altKey));
 
 			isDragging = true;
 			pointerId = e.pointerId;
 			pointerCaptured = false;
-			document.body.style.userSelect = 'none';
-			document.body.classList.add('cursor-grabbing');
+			document.body.style.userSelect = "none";
+			document.body.classList.add("cursor-grabbing");
 
 			thumbRef?.focus();
 		}
@@ -405,40 +423,46 @@
 		const currentTrackRef = trackRef;
 
 		const handleVisibilityChange = () => {
-			if (document.visibilityState === 'hidden') {
+			if (document.visibilityState === "hidden") {
 				endDrag();
 			}
 		};
 
 		if (currentThumbRef) {
-			currentThumbRef.addEventListener('pointerdown', handleThumbPointerDown);
+			currentThumbRef.addEventListener("pointerdown", handleThumbPointerDown);
 		}
 		if (currentTrackRef) {
-			currentTrackRef.addEventListener('pointerdown', handleTrackPointerDown);
+			currentTrackRef.addEventListener("pointerdown", handleTrackPointerDown);
 		}
 
-		document.addEventListener('pointermove', handlePointerMove);
-		document.addEventListener('pointerup', onPointerUpOrCancel);
-		document.addEventListener('pointercancel', onPointerUpOrCancel);
-		document.addEventListener('visibilitychange', handleVisibilityChange);
-		window.addEventListener('blur', endDrag);
+		document.addEventListener("pointermove", handlePointerMove);
+		document.addEventListener("pointerup", onPointerUpOrCancel);
+		document.addEventListener("pointercancel", onPointerUpOrCancel);
+		document.addEventListener("visibilitychange", handleVisibilityChange);
+		window.addEventListener("blur", endDrag);
 
 		return () => {
 			if (currentThumbRef) {
-				currentThumbRef.removeEventListener('pointerdown', handleThumbPointerDown);
+				currentThumbRef.removeEventListener(
+					"pointerdown",
+					handleThumbPointerDown,
+				);
 			}
 			if (currentTrackRef) {
-				currentTrackRef.removeEventListener('pointerdown', handleTrackPointerDown);
+				currentTrackRef.removeEventListener(
+					"pointerdown",
+					handleTrackPointerDown,
+				);
 			}
-			document.removeEventListener('pointermove', handlePointerMove);
-			document.removeEventListener('pointerup', onPointerUpOrCancel);
-			document.removeEventListener('pointercancel', onPointerUpOrCancel);
-			document.removeEventListener('visibilitychange', handleVisibilityChange);
-			window.removeEventListener('blur', endDrag);
+			document.removeEventListener("pointermove", handlePointerMove);
+			document.removeEventListener("pointerup", onPointerUpOrCancel);
+			document.removeEventListener("pointercancel", onPointerUpOrCancel);
+			document.removeEventListener("visibilitychange", handleVisibilityChange);
+			window.removeEventListener("blur", endDrag);
 
 			if (isDragging) {
-				document.body.style.userSelect = '';
-				document.body.classList.remove('cursor-grabbing');
+				document.body.style.userSelect = "";
+				document.body.classList.remove("cursor-grabbing");
 			}
 			clearCommitTimeout();
 		};
@@ -473,14 +497,18 @@
 			let currentPower = Math.floor(minL);
 			let tickVal = Math.pow(actualLogBase, currentPower);
 
-			while (tickVal <= maxVal * (actualLogBase * 0.9) && currentPower <= maxL + 1) {
+			while (
+				tickVal <= maxVal * (actualLogBase * 0.9) &&
+				currentPower <= maxL + 1
+			) {
 				if (tickVal >= minVal / (actualLogBase * 0.9)) {
 					const position = getPositionPercent(tickVal);
 					if (position >= 0 && position <= 100) {
 						tickElements.push({
 							key: `major-log-${actualLogBase}-${currentPower.toFixed(2)}`,
-							class: 'absolute w-px h-2 bg-neutral-500 transform -translate-x-1/2',
-							style: `left: ${position}%; bottom: -4px;`
+							class:
+								"absolute w-px h-2 bg-neutral-500 transform -translate-x-1/2",
+							style: `left: ${position}%; bottom: -4px;`,
 						});
 					}
 				}
@@ -493,7 +521,8 @@
 					nextMajorTickVal > tickVal * 1.1
 				) {
 					if (actualLogBase === 10) {
-						const subdivisors = orderSpan > 4 ? [2, 5] : [2, 3, 4, 5, 6, 7, 8, 9];
+						const subdivisors =
+							orderSpan > 4 ? [2, 5] : [2, 3, 4, 5, 6, 7, 8, 9];
 						for (const i of subdivisors) {
 							const minorTickValue = i * tickVal;
 							if (
@@ -505,8 +534,9 @@
 								if (minorPosition >= 0 && minorPosition <= 100) {
 									tickElements.push({
 										key: `minor-log10-${currentPower.toFixed(2)}-${i}`,
-										class: 'absolute w-px h-1 bg-neutral-400 transform -translate-x-1/2',
-										style: `left: ${minorPosition}%; bottom: -3px;`
+										class:
+											"absolute w-px h-1 bg-neutral-400 transform -translate-x-1/2",
+										style: `left: ${minorPosition}%; bottom: -3px;`,
 									});
 								}
 							}
@@ -523,8 +553,9 @@
 							if (minorPosition >= 0 && minorPosition <= 100) {
 								tickElements.push({
 									key: `minor-log-mid-${currentPower.toFixed(2)}`,
-									class: 'absolute w-px h-1 bg-neutral-400 transform -translate-x-1/2',
-									style: `left: ${minorPosition}%; bottom: -3px;`
+									class:
+										"absolute w-px h-1 bg-neutral-400 transform -translate-x-1/2",
+									style: `left: ${minorPosition}%; bottom: -3px;`,
 								});
 							}
 						}
@@ -535,7 +566,9 @@
 				if (tickVal <= C_EPSILON && currentPower > minL + 5) break;
 			}
 
-			const majorCount = tickElements.filter((t) => t.class.includes('h-2')).length;
+			const majorCount = tickElements.filter((t) =>
+				t.class.includes("h-2"),
+			).length;
 			if ((useUniformGrid || majorCount < 2) && orderSpan > C_EPSILON) {
 				const numDisplayTicks = Math.min(Math.max(2, tickCount), 10);
 				for (let i = 0; i <= numDisplayTicks; i++) {
@@ -549,21 +582,26 @@
 						i === numDisplayTicks ||
 						(tv > minVal &&
 							tv < maxVal &&
-							Math.abs(customLog(tv, actualLogBase) - Math.round(customLog(tv, actualLogBase))) <
-								0.05);
+							Math.abs(
+								customLog(tv, actualLogBase) -
+									Math.round(customLog(tv, actualLogBase)),
+							) < 0.05);
 
 					const key = `log-small-range-tick-${i}`;
 					if (
 						!tickElements.find(
 							(t) =>
-								Math.abs(parseFloat(t.style.match(/left: ([\d.]+)%;/)?.[1] || '-1000') - position) <
-								0.1
+								Math.abs(
+									parseFloat(
+										t.style.match(/left: ([\d.]+)%;/)?.[1] || "-1000",
+									) - position,
+								) < 0.1,
 						)
 					) {
 						tickElements.push({
 							key,
-							class: `absolute w-px ${isMajor ? 'h-2 bg-neutral-500' : 'h-1 bg-neutral-400'} transform -translate-x-1/2`,
-							style: `left: ${position}%; bottom: ${isMajor ? '-4px' : '-3px'};`
+							class: `absolute w-px ${isMajor ? "h-2 bg-neutral-500" : "h-1 bg-neutral-400"} transform -translate-x-1/2`,
+							style: `left: ${position}%; bottom: ${isMajor ? "-4px" : "-3px"};`,
 						});
 					}
 				}
@@ -572,26 +610,33 @@
 			const range = max - min;
 			if (range <= 0) return [];
 
-			const { niceTickSize, niceMin, majorTickGroupingFactor } = computeLinearTickParams();
+			const { niceTickSize, niceMin, majorTickGroupingFactor } =
+				computeLinearTickParams();
 
 			// If the tick size is too small, we just show the ticks at the min and max
 			if (niceTickSize <= C_EPSILON) {
 				if (min >= 0 && min <= 100)
 					tickElements.push({
-						key: 'linear-fallback-min',
-						class: 'absolute w-px h-2 bg-neutral-500 transform -translate-x-1/2',
-						style: `left: 0%; bottom: -4px;`
+						key: "linear-fallback-min",
+						class:
+							"absolute w-px h-2 bg-neutral-500 transform -translate-x-1/2",
+						style: `left: 0%; bottom: -4px;`,
 					});
 				if (max >= 0 && max <= 100 && Math.abs(max - min) > C_EPSILON)
 					tickElements.push({
-						key: 'linear-fallback-max',
-						class: 'absolute w-px h-2 bg-neutral-500 transform -translate-x-1/2',
-						style: `left: 100%; bottom: -4px;`
+						key: "linear-fallback-max",
+						class:
+							"absolute w-px h-2 bg-neutral-500 transform -translate-x-1/2",
+						style: `left: 100%; bottom: -4px;`,
 					});
 				return tickElements;
 			}
 
-			for (let tickVal = niceMin; tickVal <= max + niceTickSize / 2; tickVal += niceTickSize) {
+			for (
+				let tickVal = niceMin;
+				tickVal <= max + niceTickSize / 2;
+				tickVal += niceTickSize
+			) {
 				if (tickVal >= min - niceTickSize / 10) {
 					const position = ((tickVal - min) / range) * 100;
 					if (position >= -1 && position <= 101) {
@@ -602,7 +647,9 @@
 							niceTickSize > C_EPSILON &&
 							Math.abs(
 								tickVal / (majorTickGroupingFactor * niceTickSize) -
-									Math.round(tickVal / (majorTickGroupingFactor * niceTickSize))
+									Math.round(
+										tickVal / (majorTickGroupingFactor * niceTickSize),
+									),
 							) < C_EPSILON;
 
 						const isMajorTick =
@@ -614,8 +661,8 @@
 
 						tickElements.push({
 							key: `linear-tick-${tickVal.toFixed(5)}`,
-							class: `absolute w-px ${isMajorTick ? 'h-2 bg-neutral-500' : 'h-1 bg-neutral-400'} transform -translate-x-1/2`,
-							style: `left: ${Math.max(0, Math.min(100, position))}%; bottom: ${isMajorTick ? '-4px' : '-3px'};`
+							class: `absolute w-px ${isMajorTick ? "h-2 bg-neutral-500" : "h-1 bg-neutral-400"} transform -translate-x-1/2`,
+							style: `left: ${Math.max(0, Math.min(100, position))}%; bottom: ${isMajorTick ? "-4px" : "-3px"};`,
 						});
 					}
 				}
@@ -632,16 +679,24 @@
 	<div class="flex w-full gap-x-3 mb-1" class:mt-1={label}>
 		<div class="flex items-top gap-2 w-full">
 			<div class="relative flex-1 flex flex-col gap-0.5 px-0.5">
-				<div bind:this={trackRef} class="relative cursor-pointer py-1 px-0.5 touch-none">
+				<div
+					bind:this={trackRef}
+					class="relative cursor-pointer py-1 px-0.5 touch-none"
+				>
 					<!-- Track -->
 					<div class="absolute h-0.5 w-full bg-neutral-200"></div>
 
 					<!-- Filled Track -->
-					<div class="absolute h-0.5 bg-neutral-400" style:width="{sliderPosition}%"></div>
+					<div
+						class="absolute h-0.5 bg-neutral-400"
+						style:width="{sliderPosition}%"
+					></div>
 
 					<!-- Ticks -->
 					{#if showTicks && ticks.length > 0}
-						<div class="absolute w-full h-full bottom-0 pointer-events-none -translate-y-px">
+						<div
+							class="absolute w-full h-full bottom-0 pointer-events-none -translate-y-px"
+						>
 							<!-- pointer-events-none so ticks don't interfere with track click -->
 							{#each ticks as tick (tick.key)}
 								<div class={tick.class} style={tick.style}></div>
@@ -660,17 +715,22 @@
 						aria-valuenow={displayValue}
 						tabindex="0"
 						onkeydown={(e) => {
-							let stepAmount = step > 0 ? step : useLog ? displayValue * 0.05 : (max - min) / 100;
+							let stepAmount =
+								step > 0
+									? step
+									: useLog
+										? displayValue * 0.05
+										: (max - min) / 100;
 							if (stepAmount === 0 && max > min) stepAmount = (max - min) / 100;
 							if (stepAmount === 0) stepAmount = EPSILON;
 
-							if (e.key === 'ArrowLeft' || e.key === 'ArrowDown') {
+							if (e.key === "ArrowLeft" || e.key === "ArrowDown") {
 								scheduleCommit(clampToRange(displayValue - stepAmount));
-							} else if (e.key === 'ArrowRight' || e.key === 'ArrowUp') {
+							} else if (e.key === "ArrowRight" || e.key === "ArrowUp") {
 								scheduleCommit(clampToRange(displayValue + stepAmount));
-							} else if (e.key === 'Home') {
+							} else if (e.key === "Home") {
 								scheduleCommit(min);
-							} else if (e.key === 'End') {
+							} else if (e.key === "End") {
 								scheduleCommit(max);
 							}
 						}}
@@ -733,7 +793,7 @@
 	.cursor-grabbing {
 		cursor: grabbing !important;
 	}
-	[role='slider'] {
+	[role="slider"] {
 		z-index: 10;
 		touch-action: none;
 	}

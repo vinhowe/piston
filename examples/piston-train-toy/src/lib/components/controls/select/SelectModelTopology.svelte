@@ -4,10 +4,12 @@
 	import { DATASET_CONFIG_METADATA } from '$lib/train/data';
 	import { config, MODEL_TYPES } from '$lib/workspace/config.svelte';
 
-	import type { SelectOption } from './SelectInput.svelte';
-
-	import Citations, { type CitationEntries as CitationsType } from '../Citations.svelte';
-	import SelectInput from './SelectInput.svelte';
+	import {
+		Citations,
+		SelectInput,
+		type CitationEntries as CitationsType,
+		type SelectOption
+	} from 'example-common';
 
 	type ModelOption = SelectOption<{
 		title?: string;

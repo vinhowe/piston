@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { twMerge } from 'tailwind-merge';
+
 	type $$Props = {
 		direction: 'down' | 'right';
 		size?: number;
@@ -10,7 +12,7 @@
 </script>
 
 <svg
-	class={`w-3.5 h-3.5 transition-transform translate-y-[0.5px] ${svgClass}`}
+	class={twMerge(`w-3.5 h-3.5 transition-transform translate-y-[0.5px]`, svgClass)}
 	class:rotate-90={direction === 'down'}
 	fill="none"
 	stroke="currentColor"

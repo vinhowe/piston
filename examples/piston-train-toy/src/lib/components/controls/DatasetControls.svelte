@@ -6,12 +6,10 @@
 	import { config, equalsConfigDefault, resetConfigToDefaults } from '$lib/workspace/config.svelte';
 	import { getShowLowDiversityDatasetError } from '$lib/workspace/ui.svelte';
 
-	import CheckboxInput from './checkbox/CheckboxInput.svelte';
-	import ControlsNote from './ControlsNote.svelte';
+	import { ControlsNote } from 'example-common';
 	import DatasetSample from './DatasetSample.svelte';
-	import RadioGroupInput from './radio/RadioGroupInput.svelte';
 	import SelectDataset from './SelectDataset.svelte';
-	import Slider from './Slider.svelte';
+	import { Slider, RadioGroupInput, CheckboxInput } from 'example-common';
 	let { datasetName }: { datasetName: typeof config.data.dataset } = $props();
 
 	let datasetConfigMetadata = $derived(DATASET_CONFIG_METADATA[datasetName]);

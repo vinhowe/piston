@@ -1,5 +1,5 @@
 <script lang="ts">
-	import type { Settings2 } from 'lucide-svelte';
+	import type { Settings2 } from '@lucide/svelte';
 	import type { Snippet } from 'svelte';
 	import type { AriaRole } from 'svelte/elements';
 

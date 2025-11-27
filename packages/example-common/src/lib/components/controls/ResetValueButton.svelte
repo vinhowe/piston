@@ -1,5 +1,5 @@
 <script lang="ts">
-	import UndoIcon from 'lucide-svelte/icons/undo';
+	import { UndoIcon } from '@lucide/svelte/icons';
 
 	let {
 		hasDefaultValue = false,

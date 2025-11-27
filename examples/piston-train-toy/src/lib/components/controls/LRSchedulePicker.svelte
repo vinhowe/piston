@@ -12,9 +12,7 @@
 	} from '@piston-ml/piston-web';
 	import { MediaQuery } from 'svelte/reactivity';
 
-	import CheckboxInput from './checkbox/CheckboxInput.svelte';
-	import SelectInput from './select/SelectInput.svelte';
-	import Slider from './Slider.svelte';
+	import { CheckboxInput, SelectInput, Slider } from 'example-common';
 
 	let logScale = $state(false);
 	let chartContainer: HTMLDivElement;
@@ -369,7 +367,12 @@
 
 		<!-- Log scale checkbox -->
 		<div class="mt-1">
-			<CheckboxInput label="Log Scale Y-Axis" bind:checked={logScale} labelClass="ml-1 text-xs" />
+			<CheckboxInput
+				id="log-scale-y-axis"
+				label="Log Scale Y-Axis"
+				bind:checked={logScale}
+				labelClass="ml-1 text-xs"
+			/>
 		</div>
 	</div>
 

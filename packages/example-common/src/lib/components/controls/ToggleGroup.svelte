@@ -1,10 +1,9 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
 
-	import type { CitationEntries as CitationsType } from './Citations.svelte';
-
-	import BorderedGroup from './BorderedGroup.svelte';
 	import CheckboxInput from './checkbox/CheckboxInput.svelte';
+	import BorderedGroup from './BorderedGroup.svelte';
+	import type { CitationEntries as CitationsType } from './Citations.svelte';
 
 	type $$Props = {
 		title?: string;

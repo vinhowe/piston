@@ -25,20 +25,23 @@
 	import { untrack } from 'svelte';
 
 	import ActivationPicker from './ActivationPicker.svelte';
-	import BorderedGroup from './BorderedGroup.svelte';
-	import CheckboxInput from './checkbox/CheckboxInput.svelte';
-	import CollapsibleSection from './CollapsibleSection.svelte';
-	import ControlsStatistic from './ControlsStatistic.svelte';
+	// import CheckboxInput from './checkbox/CheckboxInput.svelte';
+	import {
+		BorderedGroup,
+		CollapsibleSection,
+		ControlsStatistic,
+		NumberInput,
+		Slider,
+		TextInput,
+		ToggleGroup,
+		CheckboxInput,
+		SelectInput
+	} from 'example-common';
 	import DatasetControls from './DatasetControls.svelte';
 	import LRSchedulePicker from './LRSchedulePicker.svelte';
-	import NumberInput from './NumberInput.svelte';
 	import RunsTable from './RunsTable.svelte';
-	import SelectInput from './select/SelectInput.svelte';
 	import SelectModelTopology from './select/SelectModelTopology.svelte';
 	import SelectWithCitations from './select/SelectWithCitations.svelte';
-	import Slider from './Slider.svelte';
-	import TextInput from './TextInput.svelte';
-	import ToggleGroup from './ToggleGroup.svelte';
 
 	const sectionClass = 'p-1 space-y-1 flex flex-col';
 	// Put a little bit of padding at the bottom of collapsible sections to demarcate the end of the section

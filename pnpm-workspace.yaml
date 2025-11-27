@@ -1,3 +1,6 @@
 packages:
   - "examples/piston-train-toy"
   - "packages/web"
+  - "packages/example-common"
+onlyBuiltDependencies:
+  - esbuild

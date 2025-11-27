@@ -20,7 +20,7 @@
 	import { GridComponent, TooltipComponent, VisualMapComponent } from 'echarts/components';
 	import * as echarts from 'echarts/core';
 
-	import ResetValueButton from '../../controls/ResetValueButton.svelte';
+	import { ResetValueButton } from 'example-common';
 	import CompletionsToken from './CompletionsToken.svelte';
 
 	echarts.use([VisualMapComponent, GridComponent, TooltipComponent, HeatmapChart, BarChart]);
