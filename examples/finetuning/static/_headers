@@ -1,0 +1,4 @@
+# This allows us to use performance.measureUserAgentSpecificMemory on browsers that support it (Chrome)
+/*
+  Cross-Origin-Embedder-Policy: require-corp
+  Cross-Origin-Opener-Policy: same-origin
