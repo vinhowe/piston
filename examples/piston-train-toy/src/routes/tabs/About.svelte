@@ -1,8 +1,6 @@
 <script lang="ts">
 	import CuteLogo from '$lib/components/CuteLogo.svelte';
-	import FN from '$lib/components/footnotes/Footnote.svelte';
-	import FootnotesProvider from '$lib/components/footnotes/FootnotesProvider.svelte';
-	import { UserGuideTooltip } from 'example-common';
+	import { UserGuideTooltip, Footnote as FN, FootnotesProvider } from 'example-common';
 	import { config, setPreset, validateConfig } from '$lib/workspace/config.svelte';
 	import {
 		browserInfo,
