@@ -22,5 +22,7 @@ export {
 export { default as Slider } from "./components/controls/Slider.svelte";
 export { default as TextInput } from "./components/controls/TextInput.svelte";
 export { default as ToggleGroup } from "./components/controls/ToggleGroup.svelte";
+export { default as Footnote } from "./components/footnotes/Footnote.svelte";
+export { default as FootnotesProvider } from "./components/footnotes/FootnotesProvider.svelte";
 export { default as KatexBlock } from "./components/KatexBlock.svelte";
 export { default as UserGuideTooltip } from "./components/UserGuideTooltip.svelte";
