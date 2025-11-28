@@ -1,5 +1,6 @@
 packages:
   - "examples/piston-train-toy"
+  - "examples/finetuning"
   - "packages/web"
   - "packages/example-common"
 onlyBuiltDependencies:
