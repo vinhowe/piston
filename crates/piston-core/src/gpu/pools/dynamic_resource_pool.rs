@@ -1,6 +1,7 @@
 // All resource management taken from [Rerun](https://github.com/rerun-io/rerun) MIT.
 use super::PoolError;
 use crate::RVec;
+use crate::gpu::{PhysicalAllocEvent, trace_sink};
 use std::{
     collections::hash_map::Entry,
     fmt::Debug,
@@ -101,6 +102,19 @@ where
                 entry.remove();
             }
 
+            // Reuse an existing resource (non-zero-sized only).
+            let size_bytes = desc.resource_size_in_bytes();
+            if size_bytes > 0 {
+                let buffer_id = format!("{:?}", handle);
+                let pass_index = self.current_pass_index;
+                trace_sink().push_alloc_event(PhysicalAllocEvent::Reuse {
+                    buffer_id,
+                    size_bytes,
+                    pass_index,
+                    desc: format!("{:?}", desc),
+                });
+            }
+
             return state.all_resources[handle].clone();
         }
 
@@ -136,6 +150,18 @@ where
                 handle,
             })
         });
+
+        // Log new allocations with non-zero size.
+        if added_size > 0 {
+            let buffer_id = format!("{:?}", handle);
+            let pass_index = self.current_pass_index;
+            trace_sink().push_alloc_event(PhysicalAllocEvent::Alloc {
+                buffer_id,
+                size_bytes: added_size,
+                pass_index,
+                desc: format!("{:?}", desc),
+            });
+        }
 
         state.all_resources[handle].clone()
     }
@@ -182,6 +208,17 @@ where
                     );
                     continue;
                 };
+                let size_bytes = desc.resource_size_in_bytes();
+                if size_bytes > 0 {
+                    let buffer_id = format!("{:?}", resource);
+                    let pass_index = self.current_pass_index;
+                    trace_sink().push_alloc_event(PhysicalAllocEvent::Destroy {
+                        buffer_id,
+                        size_bytes,
+                        pass_index,
+                        desc: format!("{:?}", desc),
+                    });
+                }
                 update_stats(&desc);
                 destructor(&removed_resource);
             }
@@ -195,14 +232,36 @@ where
         // get temporarily get back down to 1 without dropping the last user available copy of the Arc<Handle>.
         state.all_resources.retain(|_, resource| {
             if Arc::strong_count(resource) == 1 {
-                if resource.descriptor.allow_reuse() {
+                let desc = resource.descriptor.clone();
+                let size_bytes = desc.resource_size_in_bytes();
+                if desc.allow_reuse() {
+                    if size_bytes > 0 {
+                        let buffer_id = format!("{:?}", resource.handle);
+                        let pass_index = self.current_pass_index;
+                        trace_sink().push_alloc_event(PhysicalAllocEvent::Retire {
+                            buffer_id,
+                            size_bytes,
+                            pass_index,
+                            desc: format!("{:?}", &desc),
+                        });
+                    }
                     state
                         .last_pass_deallocated
-                        .entry(resource.descriptor.clone())
+                        .entry(desc)
                         .or_default()
                         .push(resource.handle);
                     true
                 } else {
+                    if size_bytes > 0 {
+                        let buffer_id = format!("{:?}", resource.handle);
+                        let pass_index = self.current_pass_index;
+                        trace_sink().push_alloc_event(PhysicalAllocEvent::Destroy {
+                            buffer_id,
+                            size_bytes,
+                            pass_index,
+                            desc: format!("{:?}", &desc),
+                        });
+                    }
                     update_stats(&resource.descriptor);
                     log::debug!("Dropping resource {:?}", resource.descriptor);
                     destructor(&resource.inner);

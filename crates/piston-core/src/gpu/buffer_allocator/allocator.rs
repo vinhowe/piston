@@ -4,7 +4,7 @@ use crate::{
     DeviceError, GpuCompileKey, OpTensor, TensorId,
     gpu::{
         BufferDescriptor, BufferPool, BufferUsagesExt, CpuUniform, GpuBufferHandle,
-        PooledGPUBuffer, TensorUsageRecords, UNIFORM_ALIGN, WgpuDevice,
+        PooledGPUBuffer, TensorLifetime, TensorUsageRecords, UNIFORM_ALIGN, WgpuDevice, trace_sink,
     },
 };
 use crate::{HashMap, HashSet, LazyOp};
@@ -432,6 +432,43 @@ impl BufferAllocator {
                     )
                 });
             assignments.insert(output.id(), output_buffer);
+        }
+
+        // Export tensor lifetimes for tracing (if enabled).
+        if trace_sink().tensors_enabled() {
+            let sink = trace_sink();
+            let record_map = Self::calculate_usage_records(execution_order, gpu_compile_keys);
+            let records = TensorUsageRecords::from(record_map);
+
+            for record in records.0.iter() {
+                let Some(tid) = record.id else {
+                    continue;
+                };
+                let Some(buf) = assignments.get(&tid) else {
+                    continue;
+                };
+
+                let is_output = output_tensors.contains_key(&tid);
+                let is_shareable_id = shareable_ids.contains(&tid);
+                let should_be_shared = use_shared_buffers
+                    && is_shareable_id
+                    && !is_output
+                    && !record.requires_grad.unwrap_or(false);
+
+                let lifetime = TensorLifetime {
+                    tensor_id: tid.0,
+                    producer_index: record.producer.unwrap_or(0) as u32,
+                    last_consumer_index: record.last_consumer as u32,
+                    requires_grad: record.requires_grad.unwrap_or(false),
+                    is_output,
+                    is_shared_object: should_be_shared,
+                    size_bytes: record.size as u64,
+                    buffer_id: format!("{:?}", buf.handle),
+                    pass_index: None,
+                };
+
+                sink.push_tensor_lifetime(lifetime);
+            }
         }
 
         // #[cfg(debug_assertions)]

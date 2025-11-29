@@ -429,6 +429,25 @@ impl LazyGraphExecutor {
             .map(|(id, tensor)| (*id, tensor))
             .collect::<BTreeMap<_, _>>();
 
+        // Export op descriptors for tracing (if enabled).
+        if trace_sink().tensors_enabled() {
+            let sink = trace_sink();
+            for (idx, t) in post_order.iter().enumerate() {
+                let scope = t.scope().clone();
+                let desc = TensorOpDesc {
+                    op_index: idx as u32,
+                    tensor_id: t.id().0,
+                    op_name: t.op().name().to_string(),
+                    src_tensor_ids: t.op().srcs().iter().map(|s| s.id().0).collect(),
+                    dtype: t.dtype().as_str().to_string(),
+                    shape: t.shape().to_vec(),
+                    phase: None,
+                    scope,
+                };
+                sink.push_tensor_op(desc);
+            }
+        }
+
         #[cfg(feature = "plotting")]
         crate::plot::render_to_file(
             &post_order,
@@ -504,6 +523,11 @@ impl LazyGraphExecutor {
         };
 
         let mut compiled_ops = Vec::with_capacity(post_order.len());
+
+        // Set pass index for tracing, if enabled.
+        if trace_sink().is_enabled() {
+            trace_sink().set_pass_index(Some(self.pass_index));
+        }
 
         gpu_device.begin_pass(self.pass_index);
 
