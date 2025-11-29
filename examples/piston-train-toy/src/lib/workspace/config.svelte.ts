@@ -725,6 +725,10 @@ export function validateConfig() {
 		config.visualization.example = 'all-activations';
 	}
 
+	if (config.visualization.target === 'validation' && !config.training.validation.present) {
+		config.visualization.target = 'train';
+	}
+
 	if (
 		config.training.validation.completions.present &&
 		config.training.validation.completions.amount === 'subset' &&
