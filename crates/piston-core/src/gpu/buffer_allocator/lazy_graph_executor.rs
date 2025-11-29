@@ -1,7 +1,9 @@
 use crate::{
     Compiled, CpuUniform, DebugSelection, Executable, ExecutionError, ExecutionResult, GPUBuffer,
     HashMap, HashSet, Hasher as HasherType, Inner, LazyOp, StepLog, StepLogConfig, Storage,
-    TensorError, WgpuDevice, reset_scope_context,
+    TensorError, WgpuDevice,
+    gpu::{TensorOpDesc, trace_sink},
+    reset_scope_context,
 };
 #[cfg(feature = "debug")]
 use crate::{DebugTensor, Device, DeviceStorage};
