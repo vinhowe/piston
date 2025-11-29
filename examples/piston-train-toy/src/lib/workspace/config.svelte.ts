@@ -67,7 +67,7 @@ const CONFIG_DEFAULTS: Config = {
 			value: 1.0
 		},
 		useWeakTensorReferences: true,
-		sharedObjectAllocation: false,
+		sharedObjectAllocation: true,
 		cachingEnabled: false,
 		inplaceSupport: true,
 		enableVisualization: true,

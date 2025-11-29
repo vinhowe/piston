@@ -304,6 +304,7 @@ impl WgpuDevice {
         execution_order: &[&OpTensor],
         output_tensors: &BTreeMap<TensorId, &OpTensor>,
         gpu_compile_keys: &HashMap<TensorId, GpuCompileKey>,
+        shareable_ids: &crate::HashSet<TensorId>,
         use_shared_buffers: bool,
         device: &WgpuDevice,
     ) -> Result<HashMap<TensorId, PooledGPUBuffer>, DeviceError> {
@@ -311,6 +312,7 @@ impl WgpuDevice {
             execution_order,
             output_tensors,
             gpu_compile_keys,
+            shareable_ids,
             use_shared_buffers,
             device,
         )
