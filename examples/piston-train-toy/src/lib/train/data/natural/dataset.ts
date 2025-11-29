@@ -1,5 +1,5 @@
-import type { CitationEntries } from '$lib/components/controls/Citations.svelte';
 import type { Config } from '$lib/workspace/config';
+import type { CitationEntries } from 'example-common';
 
 import { PUBLIC_DATA_URL } from '$env/static/public';
 import { PreTrainedTokenizer } from '$lib/train/tokenizer';

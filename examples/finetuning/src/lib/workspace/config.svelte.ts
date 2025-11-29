@@ -1,27 +1,18 @@
-import type { Config, ModelType } from '$lib/workspace/config';
+import type { Config } from '$lib/workspace/config';
 
-import { buildDataset, DATASET_CONFIG_METADATA } from '$lib/train/data';
+import { browser } from '$app/environment';
+import { buildDataset } from '$lib/train/data';
 import { getCollatedSampleData } from '$lib/train/data/collate';
-import { TOY_DATASET_CONFIG_DEFAULTS } from '$lib/train/data/toy/config';
-import { calculateBlockSize, calculateVocabSize, createDataloader } from '$lib/train/utils/model';
-import { seededRandom } from '$lib/train/utils/random';
+import { GPT2_BLOCK_SIZE, GPT2_VOCAB_SIZE } from '$lib/train/model/gpt';
+import { createDataloader } from '$lib/train/utils/model';
 import { SvelteURL, SvelteURLSearchParams } from 'svelte/reactivity';
 
-import { getPresetLayers } from './presets';
 import { getCurrentRun, getLatestRun } from './runs.svelte';
-import { getVisualizationExampleOptions } from './visualizationExamples';
-
-export const MODEL_TYPES = [
-	'decoder',
-	'encoder',
-	'encoder-decoder'
-] as const satisfies readonly ModelType[];
 
 const CONFIG_DEFAULTS: Config = {
-	preset: null,
 	training: {
 		logSteps: 5,
-		batchSize: 32,
+		batchSize: 1,
 		validation: {
 			present: true,
 			valSteps: 10,
@@ -49,9 +40,6 @@ const CONFIG_DEFAULTS: Config = {
 			transformer: {
 				attention: 0.1,
 				residual: 0.1
-			},
-			rnn: {
-				interLayer: 0.1
 			}
 		},
 		randomSeed: {
@@ -67,10 +55,9 @@ const CONFIG_DEFAULTS: Config = {
 			value: 1.0
 		},
 		useWeakTensorReferences: true,
-		sharedObjectAllocation: true,
+		sharedObjectAllocation: false,
 		cachingEnabled: false,
 		inplaceSupport: true,
-		enableVisualization: true,
 		vramLimitMb: {
 			present: true,
 			value: 4096
@@ -82,169 +69,10 @@ const CONFIG_DEFAULTS: Config = {
 		restartEverySteps: 1000
 	},
 	data: {
-		dataset: 'sort',
-		trainOnPrompt: false,
-		maskRatio: 0.15,
-		specialTokens: {
-			includeEos: true
-		},
-		datasets: TOY_DATASET_CONFIG_DEFAULTS,
-		natural: {
-			contextSize: 32,
-			vocabSize: 1024
-		}
+		dataset: 'tinystories'
 	},
 	model: {
-		family: 'transformer',
-		topology: 'decoder',
-		layers: 1,
-		tieEmbeddingsAndLmHead: false,
-		roundVocabSizeToNearestMultiple: {
-			present: false,
-			value: 64
-		},
-		encoderDecoder: {
-			encoderLayers: 1,
-			decoderLayers: 1
-		},
-		layerNormalization: {
-			type: 'rmsnorm',
-			eps: 1e-5,
-			transformer: {
-				present: true,
-				position: 'pre'
-			},
-			rnn: {
-				withinCell: true,
-				betweenLayers: false
-			}
-		},
-		transformer: {
-			headDim: 16,
-			initialization: {
-				present: true,
-				std: 0.02,
-				projections: {
-					attention: {
-						present: true,
-						strategy: 'zero'
-					},
-					mlp: {
-						present: true,
-						strategy: 'zero'
-					},
-					lmHead: {
-						present: true,
-						strategy: 'layer-scaled'
-					}
-				}
-			},
-			attention: {
-				present: true,
-				nKeyValueHeads: 4,
-				groupedQueryAttention: {
-					present: false,
-					queryHeadsPerKeyValueHead: 2
-				},
-				gating: {
-					present: true,
-					activation: 'sigmoid',
-					sites: {
-						afterSdpaOutput: true,
-						afterValueProjection: false,
-						afterKeyProjection: false,
-						afterQueryProjection: false,
-						afterFinalOutputProjection: false
-					}
-				},
-				sinks: {
-					present: false
-				}
-			},
-			positionalEncoding: {
-				present: true,
-				type: 'learned',
-				alibi: {
-					maxBias: 8.0
-				},
-				rope: {
-					base: 10000.0
-				}
-			},
-			normalization: {
-				qkNorm: {
-					present: true,
-					type: 'rmsnorm',
-					eps: 1e-5
-				},
-				softcap: {
-					attention: {
-						present: false,
-						value: 30
-					},
-					logits: {
-						present: false,
-						value: 30
-					}
-				}
-			},
-			mlp: {
-				present: true,
-				activation: 'relu2',
-				hiddenExpansionFactor: 4,
-				variant: 'gated'
-			}
-		},
-		rnn: {
-			cellType: 'lstm',
-			embedding: {
-				type: 'learned',
-				learned: {
-					size: 16
-				}
-			},
-			separateHiddenSize: {
-				present: false,
-				value: 16
-			},
-			initialization: {
-				present: true,
-				xavierInputColumns: {
-					present: true,
-					distribution: 'uniform'
-				},
-				orthogonalRecurrentColumns: true,
-				perGateOrthogonalBlocks: true,
-				zeroBiases: true,
-				gru: {
-					updateGateBias: {
-						present: false,
-						value: 0.0
-					}
-				},
-				lstm: {
-					forgetGateBias: {
-						present: true,
-						value: 1.0
-					}
-				}
-			},
-			hiddenStateProjection: {
-				present: false,
-				size: 16
-			},
-			encoder: {
-				bidirectional: false
-			},
-			encoderDecoderAttention: {
-				present: false,
-				type: 'additive',
-				inputFeedingProjection: true,
-				multiplicative: {
-					scaleByInverseSqrtHiddenSize: true
-				}
-			}
-		}
+		type: 'distilgpt2'
 	},
 	optimizer: {
 		type: 'Muon',
@@ -299,32 +127,11 @@ const CONFIG_DEFAULTS: Config = {
 			nesterov: true
 		}
 	},
-	visualization: {
-		script: null,
-		example: 'attention-activations',
-		target: 'validation',
-		selectedValidation: {
-			exampleIndex: 0,
-			tokenIndex: 0
-		}
-	},
 	version: 1
 };
 
-function computeEffectiveDefaults(presetId: string | null | undefined): Config {
-	// Start from root defaults
-	const base = JSON.parse(JSON.stringify(CONFIG_DEFAULTS)) as Config;
-	if (presetId) {
-		const layers = getPresetLayers(presetId);
-		for (const layer of layers) {
-			mergeDeep(
-				base as unknown as Record<string, unknown>,
-				layer as unknown as Record<string, unknown>
-			);
-		}
-		base.preset = presetId;
-	}
-	return base;
+function computeEffectiveDefaults(): Config {
+	return JSON.parse(JSON.stringify(CONFIG_DEFAULTS)) as Config;
 }
 
 /**
@@ -428,8 +235,7 @@ function getInitialConfig(): Config {
 	if (typeof window !== 'undefined' && window.location && window.URLSearchParams) {
 		try {
 			const params = new URLSearchParams(window.location.search);
-			const presetFromUrl = params.get('preset');
-			base = computeEffectiveDefaults(presetFromUrl);
+			base = computeEffectiveDefaults();
 			const configOverrides = buildConfigFromUrlParams(params, base);
 			const initial = JSON.parse(JSON.stringify(base));
 			mergeDeep(initial, configOverrides);
@@ -443,7 +249,7 @@ function getInitialConfig(): Config {
 }
 
 export const config = $state(getInitialConfig());
-const configDefaults = $derived(computeEffectiveDefaults(config.preset));
+const configDefaults = $derived(computeEffectiveDefaults());
 
 /**
  * Resets one or more config values to their defaults using dot-separated paths.
@@ -563,8 +369,6 @@ export function initSharedConfigUrlSync() {
 				configSnapshot,
 				configDefaults as unknown as Record<string, unknown>
 			);
-			// Always include preset when set, so shared URLs preserve selection
-			if (configSnapshot.preset) flatParams['preset'] = String(configSnapshot.preset);
 			// If any parameters are present, also include the current config version
 			if (Object.keys(flatParams).length > 0) {
 				flatParams['version'] = String(configSnapshot.version);
@@ -582,60 +386,37 @@ export function initSharedConfigUrlSync() {
 	}
 }
 
-export function setPreset(presetId: string) {
-	if (config.preset === presetId) return;
-	const next = computeEffectiveDefaults(presetId);
-	// Replace config fields in-place because we've made config a const and I don't want to figure
-	// that out right now.
-	config['preset'] = next.preset;
-	config['training'] = deepClone(next.training);
-	config['data'] = deepClone(next.data);
-	config['model'] = deepClone(next.model);
-	config['optimizer'] = deepClone(next.optimizer);
-	config['visualization'] = deepClone(next.visualization);
-	config['version'] = next.version;
-	validateConfig();
-}
-
 export function replaceConfig(next: Config) {
-	config['preset'] = next.preset;
 	config['training'] = deepClone(next.training);
 	config['data'] = deepClone(next.data);
 	config['model'] = deepClone(next.model);
 	config['optimizer'] = deepClone(next.optimizer);
-	config['visualization'] = deepClone(next.visualization);
 	config['version'] = next.version;
 	validateConfig();
-}
-
-function ensureDatasetSupportsModelType() {
-	const datasetKey = config.data.dataset as keyof typeof DATASET_CONFIG_METADATA;
-	const meta = DATASET_CONFIG_METADATA[datasetKey];
-	const allModels = MODEL_TYPES;
-	const supported = [
-		...('supportsModelTypes' in meta ? meta.supportsModelTypes : allModels)
-	].toSorted();
-	const isModelSupported = [...supported].includes(config.model.topology);
-	if (!isModelSupported) {
-		console.debug(`ensureDatasetSupportsModelType: setting model topology to ${supported[0]}`);
-		config.model.topology = supported[0] as ModelType;
-	}
 }
 
 function datasetFromConfig(config: Config) {
-	ensureDatasetSupportsModelType();
-	const generator = seededRandom(0);
-	const dataset = buildDataset(config, generator, 'train');
-	const [dataloader, collateFn] = createDataloader(config, dataset, generator, null);
-	const blockSize = calculateBlockSize(config, dataloader);
-	const vocabSize = calculateVocabSize(config, dataset);
+	// Only build the full dataset/tokenizer pipeline in the browser. During SSR/prerender
+	// we return a lightweight placeholder object so that components can render without
+	// triggering network fetches (which would use Node's global fetch with a relative URL).
+	if (!browser) {
+		return {
+			dataset: null,
+			tokenizer: null,
+			sampleData: null,
+			collated: null
+		};
+	}
+
+	const dataset = buildDataset(config, 'train');
+	const [, collateFn] = createDataloader(config, dataset, null);
 
 	const collatedData = getCollatedSampleData(dataset, collateFn, 4);
 
 	return {
 		dataset,
-		vocabSize,
-		blockSize,
+		vocabSize: GPT2_VOCAB_SIZE,
+		blockSize: GPT2_BLOCK_SIZE,
 		tokenizer: dataset.tokenizer,
 		sampleData: collatedData.then((data) => {
 			const firstSample = data.collated[0];
@@ -672,58 +453,8 @@ export function getLatestRunDataset() {
 	return latestRunDataset;
 }
 
-const rnnHiddenSize = $derived.by(() => {
-	const { rnn } = config.model;
-	if (rnn.hiddenStateProjection.present) {
-		return rnn.hiddenStateProjection.size;
-	}
-	if (rnn.separateHiddenSize.present) {
-		return rnn.separateHiddenSize.value;
-	}
-	if (rnn.embedding.type === 'learned') {
-		return rnn.embedding.learned.size;
-	}
-	return currentDataset.vocabSize;
-});
-
-const transformerHiddenSize = $derived(
-	config.model.transformer.headDim *
-		(config.model.transformer.attention.groupedQueryAttention.present
-			? config.model.transformer.attention.groupedQueryAttention.queryHeadsPerKeyValueHead
-			: 1) *
-		config.model.transformer.attention.nKeyValueHeads
-);
-
-const mlpIntermediateSize = $derived(
-	transformerHiddenSize * config.model.transformer.mlp.hiddenExpansionFactor
-);
-
-export function getHiddenSize() {
-	if (config.model.family === 'rnn') {
-		return rnnHiddenSize;
-	}
-	return transformerHiddenSize;
-}
-
-export function getMlpIntermediateSize() {
-	return mlpIntermediateSize;
-}
-
 export function validateConfig() {
 	// There are a few things that can still slip through the cracks, so we deal with those here.
-
-	if (
-		config.visualization.selectedValidation.exampleIndex >= config.training.validation.batchSize
-	) {
-		config.visualization.selectedValidation.exampleIndex = 0;
-	}
-
-	if (
-		config.visualization.example !== 'custom' &&
-		!getVisualizationExampleOptions(config).some((e) => e.value === config.visualization.example)
-	) {
-		config.visualization.example = 'all-activations';
-	}
 
 	if (
 		config.training.validation.completions.present &&
@@ -732,6 +463,4 @@ export function validateConfig() {
 	) {
 		config.training.validation.completions.subsetSize = config.training.validation.batchSize;
 	}
-
-	ensureDatasetSupportsModelType();
 }
