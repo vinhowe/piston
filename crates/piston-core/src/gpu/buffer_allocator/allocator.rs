@@ -7,7 +7,7 @@ use crate::{
         PooledGPUBuffer, TensorUsageRecords, UNIFORM_ALIGN, WgpuDevice,
     },
 };
-use crate::{HashMap, LazyOp};
+use crate::{HashMap, HashSet, LazyOp};
 use parking_lot::RwLock;
 use std::num::NonZero;
 use std::{borrow::Cow, collections::BTreeMap};
@@ -281,6 +281,7 @@ impl BufferAllocator {
         output_tensors: &BTreeMap<TensorId, &OpTensor>,
         assignments: &mut HashMap<TensorId, PooledGPUBuffer>,
         gpu_compile_keys: &HashMap<TensorId, GpuCompileKey>,
+        shareable_ids: &HashSet<TensorId>,
         use_shared_buffers: bool,
         device: &WgpuDevice,
     ) -> Result<(), DeviceError> {
@@ -289,9 +290,16 @@ impl BufferAllocator {
         let mut shared_objects: Vec<PooledGPUBuffer> = Vec::with_capacity(records.0.len());
 
         for record in records.0.iter() {
+            let is_output = output_tensors.get(&record.last_consumer_id).is_some();
+            let is_shareable_id = record
+                .id
+                .map(|id| shareable_ids.contains(&id))
+                .unwrap_or(false);
+
             let should_be_shared = use_shared_buffers
-                && !(record.requires_grad.unwrap_or(false)
-                    || output_tensors.get(&record.last_consumer_id).is_some());
+                && is_shareable_id
+                && !is_output
+                && !record.requires_grad.unwrap_or(false);
 
             let mut best_obj = None;
 
@@ -370,6 +378,7 @@ impl BufferAllocator {
         execution_order: &[&OpTensor],
         output_tensors: &BTreeMap<TensorId, &OpTensor>,
         gpu_compile_keys: &HashMap<TensorId, GpuCompileKey>,
+        shareable_ids: &HashSet<TensorId>,
         use_shared_buffers: bool,
         device: &WgpuDevice,
     ) -> Result<HashMap<TensorId, PooledGPUBuffer>, DeviceError> {
@@ -395,6 +404,7 @@ impl BufferAllocator {
             output_tensors,
             &mut assignments,
             gpu_compile_keys,
+            shareable_ids,
             use_shared_buffers,
             device,
         )?;

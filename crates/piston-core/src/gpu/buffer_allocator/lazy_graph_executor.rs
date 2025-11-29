@@ -392,7 +392,34 @@ impl LazyGraphExecutor {
             }
         }
 
-        log::debug!("Post-order hash: {:?}", hasher.finish());
+        // Determine which tensors are safe candidates for shared-object buffers.
+        //
+        // A tensor is considered shareable if:
+        // - It does not have extra external strong references beyond what we expect from the
+        //   execution graph and (optionally) owned_tensors.
+        // - It is not a leaf / parameter (requires_grad).
+        // - It does not retain its gradient.
+        //
+        // These tensors are good candidates for hosting shared-object buffers whose contents may
+        // be reused for other logical tensors once their lifetimes (based on execution_order)
+        // have ended.
+        let mut shareable_ids =
+            HashSet::with_capacity_and_hasher(post_order.len(), Default::default());
+        for t in &post_order {
+            let id = t.id();
+            let expected_strong = owned_tensors
+                .as_ref()
+                .and_then(|ot| ot.contains(&id).then_some(2))
+                .unwrap_or(1);
+            let strong = t.strong_count();
+
+            let externally_pinned =
+                strong > expected_strong || t.requires_grad() || t.retains_grad();
+
+            if !externally_pinned {
+                shareable_ids.insert(id);
+            }
+        }
 
         let output_tensors = tensors
             .iter()
@@ -483,6 +510,7 @@ impl LazyGraphExecutor {
                 &post_order,
                 &output_tensors,
                 &compile_keys,
+                &shareable_ids,
                 self.shared_object_allocation_enabled,
                 gpu_device,
             )?)
