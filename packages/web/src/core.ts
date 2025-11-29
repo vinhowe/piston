@@ -11,6 +11,7 @@ import {
   _setTensorConstructor,
   wasmInit,
 } from "@/wasm";
+export * as trace from "@/trace";
 
 // Track initialization state
 let isInitialized = false;
